@@ -11,7 +11,21 @@ export default function OrderModal({ orderToEdit, onClose }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (orderToEdit) setFormData(orderToEdit);
+    if (orderToEdit) {
+      // Map old legacy fields directly into the new inputs
+      setFormData({
+        ...orderToEdit,
+        clientId: orderToEdit.clientId || orderToEdit.customerId || '',
+        qty: orderToEdit.qty || orderToEdit.quantity || orderToEdit.boxes || '',
+        rate: orderToEdit.rate || orderToEdit.price || orderToEdit.amount || '',
+        date: orderToEdit.date || orderToEdit.deliveryDate || orderToEdit.orderDate || '',
+        time: orderToEdit.time || orderToEdit.deliveryTime || '',
+        address: orderToEdit.address || orderToEdit.deliveryAddress || orderToEdit.location || '',
+        mapLink: orderToEdit.mapLink || orderToEdit.googleMap || '',
+      });
+    } else {
+      setFormData({ clientId: '', qty: '', rate: '', date: '', time: '', address: '', mapLink: '', proofUrl: '' });
+    }
   }, [orderToEdit]);
 
   const handleSubmit = async (e) => {

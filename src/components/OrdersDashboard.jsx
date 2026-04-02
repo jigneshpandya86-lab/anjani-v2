@@ -7,21 +7,37 @@ export default function OrdersDashboard({ onEdit, onCopy }) {
   const [filter, setFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const getClient = (id) => clients.find(c => c.id === id) || { name: 'Unknown Client', mobile: '' };
+  // Robust Client Fetcher
+  const getDisplayName = (order) => {
+    if (order.clientId) {
+      const c = clients.find(c => c.id === order.clientId);
+      if (c) return c.name;
+    }
+    // Fallback for old legacy names saved directly in order
+    return order.clientName || order.customerName || order.name || 'Legacy Client';
+  };
+
+  const getDisplayMobile = (order) => {
+    if (order.clientId) {
+      const c = clients.find(c => c.id === order.clientId);
+      if (c) return c.mobile;
+    }
+    return order.mobile || order.phone || '';
+  };
 
   const filteredOrders = orders.filter(o => {
-    const client = getClient(o.clientId);
+    const name = getDisplayName(o);
+    const mobile = getDisplayMobile(o);
     const matchesStatus = filter === 'All' || o.status === filter;
     const searchLower = searchQuery.toLowerCase();
-    const matchesSearch = (client.name || '').toLowerCase().includes(searchLower) ||
+    const matchesSearch = name.toLowerCase().includes(searchLower) ||
                           (o.orderId || '').toLowerCase().includes(searchLower) ||
-                          (client.mobile || '').includes(searchLower);
+                          mobile.includes(searchLower);
     return matchesStatus && matchesSearch;
   });
 
   const shareOrder = (order) => {
-    const client = getClient(order.clientId);
-    const msg = `🚚 *NEW DELIVERY ASSIGNMENT*\n\n*ID:* ${order.orderId || 'N/A'}\n*Client:* ${client.name}\n*Mobile:* ${client.mobile}\n*Date:* ${order.date || 'TBD'} at ${order.time || 'TBD'}\n*Qty:* ${order.qty || 0} Boxes (200ml)\n\n*Address:*\n${order.address || 'N/A'}\n\n*Map:* ${order.mapLink || 'N/A'}`;
+    const msg = `🚚 *NEW DELIVERY ASSIGNMENT*\n\n*ID:* ${order.orderId || 'N/A'}\n*Client:* ${getDisplayName(order)}\n*Mobile:* ${getDisplayMobile(order)}\n*Date:* ${order.date || 'TBD'} at ${order.time || 'TBD'}\n*Qty:* ${order.qty || 0} Boxes (200ml)\n\n*Address:*\n${order.address || 'N/A'}\n\n*Map:* ${order.mapLink || 'N/A'}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
@@ -29,7 +45,7 @@ export default function OrdersDashboard({ onEdit, onCopy }) {
     const pending = orders.filter(o => o.status !== 'Delivered');
     let msg = `📋 *UPCOMING DISPATCH PLAN*\n\n`;
     pending.forEach((o, i) => {
-      msg += `${i+1}. ${getClient(o.clientId).name} - ${o.qty} Bxs - ${o.date} ${o.time}\n`;
+      msg += `${i+1}. ${getDisplayName(o)} - ${o.qty} Bxs - ${o.date} ${o.time}\n`;
     });
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   };
@@ -38,7 +54,7 @@ export default function OrdersDashboard({ onEdit, onCopy }) {
     if(status === 'Pending') return 'bg-yellow-100 text-yellow-700';
     if(status === 'Confirmed') return 'bg-blue-100 text-blue-700';
     if(status === 'Delivered') return 'bg-green-100 text-green-700';
-    return 'bg-gray-100 text-gray-700'; // fallback for legacy
+    return 'bg-gray-100 text-gray-700'; 
   };
 
   return (
@@ -52,7 +68,6 @@ export default function OrdersDashboard({ onEdit, onCopy }) {
         </button>
       </div>
 
-      {/* NEW: Search Bar */}
       <div className="relative px-1">
         <Search className="absolute left-4 top-3 w-4 h-4 text-gray-400" />
         <input
@@ -64,7 +79,6 @@ export default function OrdersDashboard({ onEdit, onCopy }) {
         />
       </div>
 
-      {/* Filters */}
       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide px-1">
         {['All', 'Pending', 'Confirmed', 'Delivered'].map(f => (
           <button key={f} onClick={() => setFilter(f)} 
@@ -82,7 +96,7 @@ export default function OrdersDashboard({ onEdit, onCopy }) {
             <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-3">
               <div>
                 <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${getStatusColor(order.status)}`}>{order.status || 'LEGACY'}</span>
-                <h3 className="font-black text-gray-900 text-lg mt-2 leading-none">{getClient(order.clientId).name}</h3>
+                <h3 className="font-black text-gray-900 text-lg mt-2 leading-none">{getDisplayName(order)}</h3>
                 <p className="text-[10px] text-gray-400 font-bold mt-1">ID: {order.orderId || 'OLD RECORD'}</p>
               </div>
               <div className="text-right">
@@ -92,7 +106,7 @@ export default function OrdersDashboard({ onEdit, onCopy }) {
             </div>
 
             <div className="flex items-center gap-2 text-xs font-bold text-gray-500 mb-4 bg-gray-50 p-2 rounded-lg">
-              <Clock size={14} className="text-blue-400" /> {order.date || 'No Date'} @ {order.time || 'No Time'}
+              <Clock size={14} className="text-blue-400" /> {order.date || 'No Date'} @ {order.time || '--:--'}
             </div>
 
             {/* Action Bar */}
@@ -106,7 +120,6 @@ export default function OrdersDashboard({ onEdit, onCopy }) {
                 <button onClick={() => deleteOrder(order.id)} className="bg-red-50 text-red-500 p-2 rounded-xl"><Trash2 size={16} /></button>
               </div>
 
-              {/* Status Stepper */}
               {order.status === 'Pending' && (
                 <button onClick={() => updateOrder(order.id, {status: 'Confirmed'})} className="bg-blue-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-sm">Confirm</button>
               )}

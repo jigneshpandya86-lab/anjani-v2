@@ -23,12 +23,23 @@ export const useClientStore = create((set, get) => ({
   },
 
   fetchOrders: () => {
-    // REMOVED 'orderBy' to stop Firebase from hiding old legacy orders
     const q = query(collection(db, 'orders'));
     return onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const docs = snapshot.docs.map(doc => {
+        const d = doc.data();
+        return { 
+          id: doc.id, 
+          ...d,
+          // DATA MAPPER: Catch old legacy fields
+          qty: d.qty || d.quantity || d.boxes || 0,
+          rate: d.rate || d.price || d.amount || 0,
+          date: d.date || d.deliveryDate || d.orderDate || '',
+          time: d.time || d.deliveryTime || '',
+          address: d.address || d.deliveryAddress || d.location || '',
+          clientId: d.clientId || d.customerId || ''
+        };
+      });
       
-      // Manual Javascript Sorting
       const sorted = docs.sort((a, b) => {
         const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt || a.date || 0);
         const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt || b.date || 0);
@@ -64,33 +75,31 @@ export const useClientStore = create((set, get) => ({
     const existing = get().orders.find(o => o.id === id);
     if (!existing) return;
 
-    // BULLETPROOF AUTOMATION
     if (data.status === 'Delivered' && existing.status !== 'Delivered') {
-      // Use fallbacks to prevent NaN crashes
-      const qty = Number(existing.qty) || 0;
-      const rate = Number(existing.rate) || 0;
+      const qty = Number(data.qty) || Number(existing.qty) || 0;
+      const rate = Number(data.rate) || Number(existing.rate) || 0;
       const amount = qty * rate;
 
-      if (existing.clientId && amount > 0) {
-        const client = get().clients.find(c => c.id === existing.clientId);
+      const targetClientId = data.clientId || existing.clientId;
+
+      if (targetClientId && amount > 0) {
+        const client = get().clients.find(c => c.id === targetClientId);
         const newBalance = (Number(client?.outstanding) || 0) + amount;
 
-        // 1. Charge Client Ledger
-        await updateDoc(doc(db, 'customers', existing.clientId), { 
-          outstanding: newBalance 
-        });
+        // Charge Client Ledger
+        await updateDoc(doc(db, 'customers', targetClientId), { outstanding: newBalance });
 
-        // 2. Record Invoice (Charge) in Ledger
+        // Record Invoice
         await addDoc(collection(db, 'payments'), {
-          clientId: existing.clientId,
+          clientId: targetClientId,
           amount: amount,
           type: 'invoice',
           method: 'system',
-          note: `Auto-billed for ${existing.orderId || 'Order'}`,
+          note: `Auto-billed for ${existing.orderId || 'Legacy Order'}`,
           date: serverTimestamp()
         });
 
-        // 3. Stock Debit logic setup
+        // Debit Stock
         await addDoc(collection(db, 'stock_ledger'), {
           orderId: existing.orderId || id, qty: -qty, 
           type: 'dispatch', date: serverTimestamp()
