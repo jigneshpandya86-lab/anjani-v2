@@ -29,6 +29,38 @@ export const useClientStore = create((set, get) => ({
     });
   },
 
+  addClient: async (data) => {
+    await addDoc(collection(db, 'customers'), {
+      name: data.name,
+      mobile: data.phone,
+      address: data.address,
+      active: true,
+      outstanding: 0,
+      createdAt: serverTimestamp()
+    });
+  },
+
+  updateClient: async (id, data) => {
+    await updateDoc(doc(db, 'customers', id), data);
+  },
+
+  addOrder: async (data) => {
+    await addDoc(collection(db, 'orders'), {
+      ...data,
+      qty: Number(data.qty),
+      rate: Number(data.rate),
+      status: 'Pending',
+      createdAt: serverTimestamp()
+    });
+  },
+
+  addPayment: async (data) => {
+    await addDoc(collection(db, 'payments'), {
+      ...data,
+      createdAt: serverTimestamp()
+    });
+  },
+
   fetchClients: () => {
     const q = query(collection(db, 'customers'));
     return onSnapshot(q, (snapshot) => {

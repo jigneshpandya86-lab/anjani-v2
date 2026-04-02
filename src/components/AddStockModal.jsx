@@ -13,9 +13,9 @@ export default function AddStockModal({ onClose }) {
     if (!qty || Number(qty) <= 0) return;
 
     setLoading(true);
-    await addDoc(collection(db, 'stock_ledger'), {
+    await addDoc(collection(db, 'stock'), {
       qty: Number(qty),
-      type: 'manual_add',
+      type: 'addition',
       note: note || 'Manual Addition',
       date: serverTimestamp()
     });
