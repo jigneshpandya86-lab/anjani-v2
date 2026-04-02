@@ -24,9 +24,9 @@ function App() {
     const unsubOrders = fetchOrders()
     const unsubStock = fetchStock()
     return () => {
-      unsubClients()
-      unsubOrders()
-      unsubStock()
+      if (unsubClients) unsubClients()
+      if (unsubOrders) unsubOrders()
+      if (unsubStock) unsubStock()
     }
   }, [])
 
@@ -39,13 +39,13 @@ function App() {
   ]
 
   return (
-    <div className="h-screen w-full bg-[#f8f9fa] flex flex-col md:flex-row font-sans overflow-hidden">
+    <div className="min-h-screen bg-[#f8f9fa] font-sans">
       
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-64 bg-[#131921] text-white flex-col p-6 h-full flex-none z-40">
+      <aside className="hidden md:flex w-64 bg-[#131921] text-white flex-col p-6 fixed top-0 left-0 h-full z-50 shadow-xl">
         <div className="mb-8 px-2">
           <h1 className="text-2xl font-black tracking-tighter text-[#ff9900]">ANJANI<span className="text-white">WATER</span></h1>
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em]">Management System</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em]">Management</p>
         </div>
         <nav className="space-y-2 flex-1">
           {navItems.map((item) => (
@@ -65,50 +65,48 @@ function App() {
         </nav>
       </aside>
 
-      {/* Main App Column */}
-      <div className="flex-1 flex flex-col h-full relative w-full max-w-5xl mx-auto">
+      {/* Main Content Area */}
+      <div className="md:ml-64 flex flex-col min-h-screen">
         
-        {/* Mobile Header (Fixed Top) */}
-        <header className="md:hidden flex-none bg-white p-4 shadow-sm z-20 flex justify-between items-center relative">
+        {/* Mobile Header (Sticky Top) */}
+        <header className="md:hidden sticky top-0 bg-white p-4 shadow-sm z-40 flex justify-between items-center">
           <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI<span className="text-[#ff9900]">WATER</span></h1>
           <button className="p-2 bg-gray-50 rounded-lg text-gray-600"><Menu size={20}/></button>
         </header>
 
-        {/* Scrollable Center Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
+        {/* Dynamic View Area - Massive bottom padding ensures nothing hides behind the nav */}
+        <main className="flex-1 p-4 pb-32 md:p-8 w-full max-w-5xl mx-auto">
           {activeTab === 'orders' && <OrdersDashboard />}
           {activeTab === 'stock' && <StockDashboard />}
           {activeTab === 'payments' && <PaymentDashboard />}
           {activeTab === 'clients' && (
-            <div className="space-y-6">
-              <AddClient />
-              <ClientList />
-            </div>
+             <div className="space-y-6">
+               <AddClient />
+               <ClientList />
+             </div>
           )}
           {activeTab === 'leads' && <LeadsDashboard />}
         </main>
-
-        {/* Mobile Bottom Nav (Fixed Bottom) */}
-        <nav className="md:hidden flex-none bg-white border-t border-gray-200 z-[999] flex justify-around items-center h-[70px] pb-safe">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`flex flex-col items-center justify-center w-[20%] h-full transition-all ${
-                activeTab === item.id 
-                ? 'text-[#ff9900]' 
-                : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              {item.icon}
-              <span className={`text-[9px] mt-1 uppercase tracking-tight ${activeTab === item.id ? 'font-black' : 'font-bold'}`}>
-                {item.label}
-              </span>
-            </button>
-          ))}
-        </nav>
-        
       </div>
+
+      {/* Mobile Bottom Navigation (Strictly Fixed) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-[9999] flex justify-around items-center h-20 shadow-[0_-10px_30px_rgba(0,0,0,0.05)]">
+        {navItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setActiveTab(item.id)}
+            className={`flex flex-col items-center justify-center w-1/5 h-full transition-colors ${
+              activeTab === item.id ? 'text-[#ff9900]' : 'text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            {item.icon}
+            <span className={`text-[10px] mt-1 uppercase tracking-tight ${activeTab === item.id ? 'font-black' : 'font-bold'}`}>
+              {item.label}
+            </span>
+          </button>
+        ))}
+      </nav>
+
     </div>
   )
 }
