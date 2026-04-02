@@ -1,23 +1,30 @@
 import { useState } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Package, CheckCircle, Clock, Truck, Copy, Edit2, Trash2, Smartphone } from 'lucide-react';
+import { Package, Clock, Truck, Copy, Edit2, Trash2, Smartphone, Search } from 'lucide-react';
 
 export default function OrdersDashboard({ onEdit, onCopy }) {
   const { orders, clients, updateOrder, deleteOrder } = useClientStore();
   const [filter, setFilter] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const getClient = (id) => clients.find(c => c.id === id) || { name: 'Unknown', mobile: '' };
+  const getClient = (id) => clients.find(c => c.id === id) || { name: 'Unknown Client', mobile: '' };
 
-  const filteredOrders = orders.filter(o => filter === 'All' || o.status === filter);
+  const filteredOrders = orders.filter(o => {
+    const client = getClient(o.clientId);
+    const matchesStatus = filter === 'All' || o.status === filter;
+    const searchLower = searchQuery.toLowerCase();
+    const matchesSearch = (client.name || '').toLowerCase().includes(searchLower) ||
+                          (o.orderId || '').toLowerCase().includes(searchLower) ||
+                          (client.mobile || '').includes(searchLower);
+    return matchesStatus && matchesSearch;
+  });
 
-  // Send Single Order to Staff
   const shareOrder = (order) => {
     const client = getClient(order.clientId);
-    const msg = `🚚 *NEW DELIVERY ASSIGNMENT*\n\n*ID:* ${order.orderId}\n*Client:* ${client.name}\n*Mobile:* ${client.mobile}\n*Date:* ${order.date} at ${order.time}\n*Qty:* ${order.qty} Boxes (200ml)\n\n*Address:*\n${order.address}\n\n*Map:* ${order.mapLink || 'N/A'}`;
+    const msg = `🚚 *NEW DELIVERY ASSIGNMENT*\n\n*ID:* ${order.orderId || 'N/A'}\n*Client:* ${client.name}\n*Mobile:* ${client.mobile}\n*Date:* ${order.date || 'TBD'} at ${order.time || 'TBD'}\n*Qty:* ${order.qty || 0} Boxes (200ml)\n\n*Address:*\n${order.address || 'N/A'}\n\n*Map:* ${order.mapLink || 'N/A'}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
-  // Bulk Dispatch Summary
   const shareDispatchPlan = () => {
     const pending = orders.filter(o => o.status !== 'Delivered');
     let msg = `📋 *UPCOMING DISPATCH PLAN*\n\n`;
@@ -30,7 +37,8 @@ export default function OrdersDashboard({ onEdit, onCopy }) {
   const getStatusColor = (status) => {
     if(status === 'Pending') return 'bg-yellow-100 text-yellow-700';
     if(status === 'Confirmed') return 'bg-blue-100 text-blue-700';
-    return 'bg-green-100 text-green-700';
+    if(status === 'Delivered') return 'bg-green-100 text-green-700';
+    return 'bg-gray-100 text-gray-700'; // fallback for legacy
   };
 
   return (
@@ -42,6 +50,18 @@ export default function OrdersDashboard({ onEdit, onCopy }) {
         <button onClick={shareDispatchPlan} className="bg-[#25D366] text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center gap-1 shadow-md active:scale-95">
           <Smartphone size={12} /> Share Roster
         </button>
+      </div>
+
+      {/* NEW: Search Bar */}
+      <div className="relative px-1">
+        <Search className="absolute left-4 top-3 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Search Name, Mobile, or Order ID..."
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:ring-2 focus:ring-[#ff9900] outline-none font-bold text-gray-700"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
       </div>
 
       {/* Filters */}
@@ -61,18 +81,18 @@ export default function OrdersDashboard({ onEdit, onCopy }) {
           <div key={order.id} className="bg-white rounded-[24px] p-5 shadow-sm border border-gray-100">
             <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-3">
               <div>
-                <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${getStatusColor(order.status)}`}>{order.status}</span>
+                <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${getStatusColor(order.status)}`}>{order.status || 'LEGACY'}</span>
                 <h3 className="font-black text-gray-900 text-lg mt-2 leading-none">{getClient(order.clientId).name}</h3>
-                <p className="text-[10px] text-gray-400 font-bold mt-1">ID: {order.orderId}</p>
+                <p className="text-[10px] text-gray-400 font-bold mt-1">ID: {order.orderId || 'OLD RECORD'}</p>
               </div>
               <div className="text-right">
-                <p className="text-xl font-black text-[#ff9900]">{order.qty} <span className="text-[10px] text-gray-400">BXS</span></p>
-                <p className="text-[10px] text-gray-400 font-bold mt-1 tracking-tighter">₹{(order.qty * order.rate).toLocaleString()}</p>
+                <p className="text-xl font-black text-[#ff9900]">{order.qty || 0} <span className="text-[10px] text-gray-400">BXS</span></p>
+                <p className="text-[10px] text-gray-400 font-bold mt-1 tracking-tighter">₹{((order.qty || 0) * (order.rate || 0)).toLocaleString()}</p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 text-xs font-bold text-gray-500 mb-4 bg-gray-50 p-2 rounded-lg">
-              <Clock size={14} className="text-blue-400" /> {order.date} @ {order.time}
+              <Clock size={14} className="text-blue-400" /> {order.date || 'No Date'} @ {order.time || 'No Time'}
             </div>
 
             {/* Action Bar */}

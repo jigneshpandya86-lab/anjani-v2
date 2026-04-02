@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { 
   collection, addDoc, onSnapshot, query, doc, 
-  updateDoc, deleteDoc, serverTimestamp, orderBy 
+  updateDoc, deleteDoc, serverTimestamp 
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
 
@@ -23,9 +23,18 @@ export const useClientStore = create((set, get) => ({
   },
 
   fetchOrders: () => {
-    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
+    // REMOVED 'orderBy' to stop Firebase from hiding old legacy orders
+    const q = query(collection(db, 'orders'));
     return onSnapshot(q, (snapshot) => {
-      set({ orders: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) });
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // Manual Javascript Sorting
+      const sorted = docs.sort((a, b) => {
+        const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt || a.date || 0);
+        const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt || b.date || 0);
+        return dateB - dateA;
+      });
+      set({ orders: sorted });
     });
   },
 
@@ -39,9 +48,7 @@ export const useClientStore = create((set, get) => ({
     await updateDoc(doc(db, 'customers', clientId), { outstanding: (Number(client?.outstanding || 0) - Number(amount)) });
   },
 
-  // --- NEW ORDER LOGIC ---
   addOrder: async (orderData) => {
-    // Generate 4 digit ID based on current count
     const count = get().orders.length + 1;
     const orderId = 'ORD-' + String(count).padStart(4, '0');
     
@@ -55,28 +62,40 @@ export const useClientStore = create((set, get) => ({
 
   updateOrder: async (id, data) => {
     const existing = get().orders.find(o => o.id === id);
-    
-    // AUTOMATION: If marking as Delivered
+    if (!existing) return;
+
+    // BULLETPROOF AUTOMATION
     if (data.status === 'Delivered' && existing.status !== 'Delivered') {
-      const amount = Number(existing.qty) * Number(existing.rate);
-      const client = get().clients.find(c => c.id === existing.clientId);
-      
-      // 1. Charge Client Ledger (Increase Outstanding)
-      await updateDoc(doc(db, 'customers', existing.clientId), { 
-        outstanding: (Number(client?.outstanding || 0) + amount) 
-      });
+      // Use fallbacks to prevent NaN crashes
+      const qty = Number(existing.qty) || 0;
+      const rate = Number(existing.rate) || 0;
+      const amount = qty * rate;
 
-      // 2. Record Invoice in Payments collection
-      await addDoc(collection(db, 'payments'), {
-        clientId: existing.clientId, amount, type: 'invoice', 
-        note: `Billed for ${existing.orderId}`, date: serverTimestamp()
-      });
+      if (existing.clientId && amount > 0) {
+        const client = get().clients.find(c => c.id === existing.clientId);
+        const newBalance = (Number(client?.outstanding) || 0) + amount;
 
-      // 3. Debit Stock (Phase 3 Stock prep)
-      await addDoc(collection(db, 'stock_ledger'), {
-        orderId: existing.orderId, qty: -Number(existing.qty), 
-        type: 'dispatch', date: serverTimestamp()
-      });
+        // 1. Charge Client Ledger
+        await updateDoc(doc(db, 'customers', existing.clientId), { 
+          outstanding: newBalance 
+        });
+
+        // 2. Record Invoice (Charge) in Ledger
+        await addDoc(collection(db, 'payments'), {
+          clientId: existing.clientId,
+          amount: amount,
+          type: 'invoice',
+          method: 'system',
+          note: `Auto-billed for ${existing.orderId || 'Order'}`,
+          date: serverTimestamp()
+        });
+
+        // 3. Stock Debit logic setup
+        await addDoc(collection(db, 'stock_ledger'), {
+          orderId: existing.orderId || id, qty: -qty, 
+          type: 'dispatch', date: serverTimestamp()
+        });
+      }
     }
 
     await updateDoc(doc(db, 'orders', id), data);
