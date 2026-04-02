@@ -1,84 +1,104 @@
 import { useState, useEffect } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Package, Plus, History, Calendar, Tag, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { Package, Plus, History, Tag, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 
 export default function StockDashboard() {
   const { stockEntries, addStockManual, fetchStock } = useClientStore();
   const [showAdd, setShowAdd] = useState(false);
   const [qty, setQty] = useState('');
-  const [note, setNote] = useState('');
-  const [filterDate, setFilterDate] = useState('');
+  const [narration, setNarration] = useState('');
+  
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   useEffect(() => { fetchStock(); }, []);
 
+  // Total Stock strictly calculates ALL time, unaffected by date filters
   const totalStock = stockEntries.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
 
+  // Filters ONLY the visual transaction log
   const filtered = stockEntries.filter(entry => {
-    if (!filterDate) return true;
+    if (!startDate && !endDate) return true;
     const entryDate = entry.date?.toDate ? entry.date.toDate().toISOString().split('T')[0] : '';
-    return entryDate === filterDate;
+    if (!entryDate) return true;
+    
+    if (startDate && entryDate < startDate) return false;
+    if (endDate && entryDate > endDate) return false;
+    return true;
   });
 
   const handleAdd = async (e) => {
     e.preventDefault();
     if (!qty) return;
-    await addStockManual(qty, note);
-    setQty(''); setNote(''); setShowAdd(false);
+    await addStockManual(qty, narration);
+    setQty(''); setNarration(''); setShowAdd(false);
   };
 
   return (
-    <div className="space-y-4 pb-24">
-      {/* Stock Summary Card */}
-      <div className="bg-[#131921] rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
-        <div className="relative z-10">
-          <p className="text-[10px] font-black uppercase tracking-widest text-orange-400 mb-1">Live Inventory</p>
-          <h2 className="text-4xl font-black">{totalStock.toLocaleString()} <span className="text-sm font-medium text-gray-400">Boxes</span></h2>
-          <button onClick={() => setShowAdd(!showAdd)} className="mt-4 bg-[#ff9900] text-white px-4 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-2">
-            <Plus size={16} strokeWidth={3}/> Add Stock
-          </button>
+    <div className="space-y-4">
+      {/* Small Stock Summary Card */}
+      <div className="bg-[#131921] rounded-2xl p-5 text-white shadow-lg flex justify-between items-center">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-widest text-orange-400 mb-1">Live Total</p>
+          <h2 className="text-3xl font-black">{totalStock.toLocaleString()} <span className="text-sm font-medium text-gray-400">Boxes</span></h2>
         </div>
-        <Package className="absolute -right-4 -bottom-4 text-white/5 w-32 h-32 rotate-12" />
+        <button onClick={() => setShowAdd(!showAdd)} className="bg-[#ff9900] text-white p-3 rounded-xl flex items-center justify-center">
+          <Plus size={20} strokeWidth={3}/>
+        </button>
       </div>
 
       {/* Manual Add Form */}
       {showAdd && (
-        <form onSubmit={handleAdd} className="bg-white p-4 rounded-2xl border-2 border-orange-100 animate-slide-up space-y-3">
-          <input type="number" placeholder="Quantity to add..." className="w-full p-3 bg-gray-50 rounded-xl border outline-none font-bold" value={qty} onChange={e => setQty(e.target.value)} required />
-          <input type="text" placeholder="Note (e.g. New Shipment)..." className="w-full p-3 bg-gray-50 rounded-xl border outline-none text-sm" value={note} onChange={e => setNote(e.target.value)} />
-          <button className="w-full bg-[#131921] text-[#ff9900] py-3 rounded-xl font-black uppercase">Confirm Addition</button>
+        <form onSubmit={handleAdd} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm animate-slide-up space-y-3">
+          <input type="number" placeholder="Quantity (+ for in, - for out)" className="w-full p-3 bg-gray-50 rounded-xl border outline-none font-bold" value={qty} onChange={e => setQty(e.target.value)} required />
+          <input type="text" placeholder="Narration / Note..." className="w-full p-3 bg-gray-50 rounded-xl border outline-none text-sm" value={narration} onChange={e => setNarration(e.target.value)} required />
+          <button className="w-full bg-[#131921] text-[#ff9900] py-3 rounded-xl font-black uppercase text-sm">Save Entry</button>
         </form>
       )}
 
-      {/* Filters */}
-      <div className="flex items-center gap-2 bg-white p-2 rounded-2xl border border-gray-100">
-        <Calendar size={18} className="text-gray-400 ml-2" />
-        <input type="date" className="flex-1 bg-transparent p-2 text-sm font-bold outline-none" value={filterDate} onChange={e => setFilterDate(e.target.value)} />
-        {filterDate && <button onClick={() => setFilterDate('')} className="text-[10px] font-black text-gray-400 uppercase pr-2">Clear</button>}
+      {/* Date Range Filter */}
+      <div className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm flex gap-2 items-center">
+        <div className="flex-1">
+          <label className="text-[9px] font-black text-gray-400 uppercase ml-1">Start</label>
+          <input type="date" className="w-full bg-gray-50 p-2 rounded-lg text-sm font-bold outline-none border-none" value={startDate} onChange={e => setStartDate(e.target.value)} />
+        </div>
+        <div className="flex-1">
+          <label className="text-[9px] font-black text-gray-400 uppercase ml-1">End</label>
+          <input type="date" className="w-full bg-gray-50 p-2 rounded-lg text-sm font-bold outline-none border-none" value={endDate} onChange={e => setEndDate(e.target.value)} />
+        </div>
+        {(startDate || endDate) && (
+          <button onClick={() => {setStartDate(''); setEndDate('');}} className="mt-4 text-[10px] font-black text-red-400 uppercase px-2">Clear</button>
+        )}
       </div>
 
       {/* Ledger Entries */}
-      <div className="space-y-2">
-        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-2">
-          <History size={12}/> Transaction Log
+      <div className="space-y-2 pb-6">
+        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-2 mt-4">
+          <History size={12}/> Movement Log
         </h3>
         {filtered.map(entry => (
           <div key={entry.id} className="bg-white p-4 rounded-2xl border border-gray-100 flex justify-between items-center shadow-sm">
             <div className="flex gap-3 items-center">
-              <div className={`p-2 rounded-full ${entry.qty > 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
-                {entry.qty > 0 ? <ArrowUpRight size={18} /> : <ArrowDownLeft size={18} />}
+              <div className={`p-2 rounded-full flex-shrink-0 ${entry.qty > 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
+                {entry.qty > 0 ? <ArrowUpRight size={16} /> : <ArrowDownLeft size={16} />}
               </div>
               <div>
-                <p className="font-bold text-gray-900 leading-tight">{entry.note || 'Inventory Adjustment'}</p>
+                <p className="font-bold text-gray-900 leading-tight text-sm">
+                  {entry.narration || entry.note || 'Adjustment'}
+                </p>
                 <p className="text-[9px] text-gray-400 font-bold uppercase mt-1 flex items-center gap-1">
-                  <Tag size={8}/> {entry.type} • {entry.date?.toDate ? entry.date.toDate().toLocaleDateString('en-IN') : 'Recent'}
+                  <Tag size={8}/> {entry.type || 'entry'} • {entry.date?.toDate ? entry.date.toDate().toLocaleDateString('en-IN') : 'Recent'}
                 </p>
               </div>
             </div>
-            <p className={`font-black text-lg ${entry.qty > 0 ? 'text-green-600' : 'text-red-500'}`}>
+            <p className={`font-black text-base flex-shrink-0 ${entry.qty > 0 ? 'text-green-600' : 'text-red-500'}`}>
               {entry.qty > 0 ? '+' : ''}{entry.qty}
             </p>
           </div>
         ))}
+        {filtered.length === 0 && (
+          <p className="text-center text-gray-400 text-xs font-bold py-6">No movements found.</p>
+        )}
       </div>
     </div>
   );

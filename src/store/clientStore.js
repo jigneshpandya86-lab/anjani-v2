@@ -12,7 +12,7 @@ export const useClientStore = create((set, get) => ({
   loading: false,
 
   fetchStock: () => {
-    // FIXED: Now using your existing 'stock' collection
+    // Strictly using your existing 'stock' collection
     const q = query(collection(db, 'stock'), orderBy('date', 'desc'));
     return onSnapshot(q, (snapshot) => {
       const stockEntries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -20,10 +20,10 @@ export const useClientStore = create((set, get) => ({
     });
   },
 
-  addStockManual: async (qty, note) => {
+  addStockManual: async (qty, narration) => {
     await addDoc(collection(db, 'stock'), {
       qty: Number(qty),
-      note: note || 'Manual Addition',
+      narration: narration || 'Manual Addition',
       type: 'addition',
       date: serverTimestamp()
     });
@@ -85,10 +85,10 @@ export const useClientStore = create((set, get) => ({
     const existing = get().orders.find(o => o.id === id);
     if (data.status === 'Delivered' && existing.status !== 'Delivered') {
       const qty = Number(existing.qty);
-      // Debit existing stock collection
+      // Debit stock with Narration
       await addDoc(collection(db, 'stock'), {
         qty: -qty,
-        note: `Order Delivered: ${existing.orderId || id}`,
+        narration: `Order Delivered: ${existing.orderId || id}`,
         type: 'dispatch',
         date: serverTimestamp()
       });
@@ -99,10 +99,10 @@ export const useClientStore = create((set, get) => ({
   deleteOrder: async (id) => {
     const existing = get().orders.find(o => o.id === id);
     if (existing && existing.status === 'Delivered') {
-      // Reverse existing stock collection
+      // Reverse stock with Narration
       await addDoc(collection(db, 'stock'), {
         qty: Math.abs(Number(existing.qty)),
-        note: `Order Deleted: ${existing.orderId || id}`,
+        narration: `Order Deleted (Reversal): ${existing.orderId || id}`,
         type: 'reversal',
         date: serverTimestamp()
       });
