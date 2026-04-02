@@ -5,23 +5,41 @@ import AddClient from './components/AddClient';
 import PaymentModal from './components/PaymentModal';
 import PaymentDashboard from './components/PaymentDashboard';
 import LeadsDashboard from './components/LeadsDashboard';
-import { Menu, Plus, X, Users, ShoppingBag, CreditCard, Target } from 'lucide-react';
+import OrdersDashboard from './components/OrdersDashboard';
+import OrderModal from './components/OrderModal';
+import { Menu, Plus, X, Users, ShoppingBag, CreditCard, Target, FilePlus, UserPlus } from 'lucide-react';
 
 export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('clients');
+  const [activeTab, setActiveTab] = useState('orders'); // Defaulting to orders to see the new feature!
   const [modalType, setModalType] = useState(null); 
-  const [selectedClient, setSelectedClient] = useState(null);
+  const [selectedData, setSelectedData] = useState(null);
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  
   const fetchClients = useClientStore(state => state.fetchClients);
+  const fetchOrders = useClientStore(state => state.fetchOrders);
 
   useEffect(() => {
-    const unsubscribe = fetchClients();
-    return () => unsubscribe();
+    fetchClients();
+    fetchOrders();
   }, []);
 
   const closeModals = () => {
     setModalType(null);
-    setSelectedClient(null);
+    setSelectedData(null);
+    setShowAddMenu(false);
+  };
+
+  const openOrderModal = (data = null, isCopy = false) => {
+    if (isCopy && data) {
+      // Remove ID and status to make it a fresh order
+      const { id, orderId, status, createdAt, proofUrl, ...copyData } = data;
+      setSelectedData(copyData);
+    } else {
+      setSelectedData(data);
+    }
+    setModalType('order');
+    setShowAddMenu(false);
   };
 
   return (
@@ -43,6 +61,7 @@ export default function App() {
             </div>
             <nav className="space-y-1">
               {[
+                { id: 'orders', label: 'Dispatch', icon: <ShoppingBag size={18}/> },
                 { id: 'clients', label: 'Clients', icon: <Users size={18}/> },
                 { id: 'leads', label: 'Leads', icon: <Target size={18}/> },
                 { id: 'payments', label: 'Ledger', icon: <CreditCard size={18}/> },
@@ -62,36 +81,48 @@ export default function App() {
       )}
 
       <main className="p-4 max-w-xl mx-auto">
-        {activeTab === 'clients' && <ClientList onEdit={(c) => { setSelectedClient(c); setModalType('edit'); }} onPay={(c) => { setSelectedClient(c); setModalType('payment'); }} />}
+        {activeTab === 'clients' && <ClientList onEdit={(c) => { setSelectedData(c); setModalType('editClient'); }} onPay={(c) => { setSelectedData(c); setModalType('payment'); }} />}
         {activeTab === 'leads' && <LeadsDashboard />}
         {activeTab === 'payments' && <PaymentDashboard />}
+        {activeTab === 'orders' && <OrdersDashboard onEdit={(o) => openOrderModal(o)} onCopy={(o) => openOrderModal(o, true)} />}
       </main>
 
+      {/* ADD MENU POPUP */}
+      {showAddMenu && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-white rounded-3xl shadow-2xl border border-gray-100 p-2 flex flex-col gap-2 z-50 w-48 animate-slide-up">
+          <button onClick={() => openOrderModal()} className="flex items-center gap-3 p-3 text-sm font-black text-gray-800 hover:bg-gray-50 rounded-xl">
+            <FilePlus size={18} className="text-blue-500"/> New Order
+          </button>
+          <button onClick={() => {setModalType('addClient'); setShowAddMenu(false);}} className="flex items-center gap-3 p-3 text-sm font-black text-gray-800 hover:bg-gray-50 rounded-xl">
+            <UserPlus size={18} className="text-green-500"/> New Client
+          </button>
+        </div>
+      )}
+
       {/* SLIM GLASS BOTTOM BAR */}
-      <nav className="fixed bottom-4 left-4 right-4 bg-white/90 backdrop-blur-lg border border-gray-200 h-16 rounded-2xl flex justify-around items-center shadow-lg z-40 px-4">
+      <nav className="fixed bottom-4 left-4 right-4 bg-white/90 backdrop-blur-lg border border-gray-200 h-16 rounded-3xl flex justify-around items-center shadow-lg z-40 px-4">
         <button onClick={() => setActiveTab('clients')} className={`flex flex-col items-center gap-0.5 ${activeTab === 'clients' ? 'text-[#ff9900]' : 'text-gray-400'}`}>
           <Users size={20} />
-          <span className="text-[8px] font-black uppercase">Clients</span>
         </button>
 
-        <button onClick={() => setModalType('add')} className="bg-[#ff9900] text-white p-3 rounded-xl shadow-orange-200 shadow-lg -mt-8 border-4 border-gray-50 active:scale-95 transition-all">
-          <Plus size={20} strokeWidth={4} />
+        <button onClick={() => setShowAddMenu(!showAddMenu)} className={`p-4 rounded-2xl shadow-orange-200 shadow-xl -mt-8 border-4 border-gray-50 active:scale-95 transition-all ${showAddMenu ? 'bg-[#131921] text-white rotate-45' : 'bg-[#ff9900] text-white'}`}>
+          <Plus size={24} strokeWidth={4} />
         </button>
 
-        <button onClick={() => setActiveTab('leads')} className={`flex flex-col items-center gap-0.5 ${activeTab === 'leads' ? 'text-[#ff9900]' : 'text-gray-400'}`}>
-          <Target size={20} />
-          <span className="text-[8px] font-black uppercase">Leads</span>
+        <button onClick={() => setActiveTab('orders')} className={`flex flex-col items-center gap-0.5 ${activeTab === 'orders' ? 'text-[#ff9900]' : 'text-gray-400'}`}>
+          <ShoppingBag size={20} />
         </button>
       </nav>
 
       {/* MODAL ENGINE */}
       {modalType && (
         <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end justify-center">
-          <div className="bg-white w-full max-w-lg rounded-t-[32px] p-8 shadow-2xl relative animate-slide-up">
-            <div className="w-12 h-1.5 bg-gray-100 rounded-full mx-auto -mt-4 mb-6" onClick={closeModals} />
-            {modalType === 'add' && <AddClient onDone={closeModals} />}
-            {modalType === 'edit' && <AddClient client={selectedClient} onDone={closeModals} />}
-            {modalType === 'payment' && <PaymentModal client={selectedClient} onClose={closeModals} />}
+          <div className="bg-white w-full max-w-lg rounded-t-[32px] p-6 sm:p-8 shadow-2xl relative animate-slide-up max-h-[90vh] overflow-y-auto scrollbar-hide">
+            <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto -mt-2 mb-6" onClick={closeModals} />
+            {modalType === 'addClient' && <AddClient onDone={closeModals} />}
+            {modalType === 'editClient' && <AddClient client={selectedData} onDone={closeModals} />}
+            {modalType === 'payment' && <PaymentModal client={selectedData} onClose={closeModals} />}
+            {modalType === 'order' && <OrderModal orderToEdit={selectedData} onClose={closeModals} />}
           </div>
         </div>
       )}
