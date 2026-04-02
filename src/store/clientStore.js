@@ -9,8 +9,9 @@ export const useClientStore = create((set) => ({
   loading: true,
 
   // Real-time sync with your existing 'customers' collection
-  fetchClients: () => {
-    const q = query(collection(db, 'customers'), orderBy('createdAt', 'desc'));
+fetchClients: () => {
+    // We removed the sorting rule so legacy clients show up!
+    const q = query(collection(db, 'customers')); 
     return onSnapshot(q, (snapshot) => {
       const clientList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       set({ clients: clientList, loading: false });
