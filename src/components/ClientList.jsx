@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, UserX, UserCheck } from 'lucide-react';
+import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, FileText, UserX, UserCheck } from 'lucide-react';
 
 export default function ClientList({ onEdit }) {
   const { clients, updateClient } = useClientStore();
@@ -36,7 +36,7 @@ export default function ClientList({ onEdit }) {
               <h3 className="font-bold text-gray-900 leading-tight">{client.name}</h3>
               <p className="text-xs text-gray-500 font-mono">ID: {client.shortId || client.id || 'N/A'}</p>
             </div>
-<button onClick={() => onEdit(client)} className="flex justify-center p-2 bg-gray-50 text-gray-600 rounded-md"><Edit3 className="w-4 h-4" /></button>
+<button onClick={() => onEdit(client)} className="flex justify-center p-2 bg-gray-50 text-gray-600 rounded-md"><FileText className="w-4 h-4" /></button>
           </div>
 
           <p className="text-sm text-gray-600 mb-3 line-clamp-1">{client.address}</p>
@@ -47,7 +47,7 @@ export default function ClientList({ onEdit }) {
             <a href={`https://wa.me/91${client.mobile}`} className="flex justify-center p-2 bg-green-50 text-green-600 rounded-md"><MessageSquare className="w-4 h-4" /></a>
             <button className="flex justify-center p-2 bg-orange-50 text-orange-600 rounded-md"><ShoppingCart className="w-4 h-4" /></button>
             <button className="flex justify-center p-2 bg-purple-50 text-purple-600 rounded-md"><IndianRupee className="w-4 h-4" /></button>
-            <button className="flex justify-center p-2 bg-gray-50 text-gray-600 rounded-md"><Edit3 className="w-4 h-4" /></button>
+            <button className="flex justify-center p-2 bg-gray-50 text-gray-600 rounded-md"><FileText className="w-4 h-4" /></button>
           </div>
         </div>
       ))}
