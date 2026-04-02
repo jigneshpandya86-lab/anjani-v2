@@ -14,7 +14,6 @@ export default function OrderModal({ orderToEdit, onClose }) {
     if (orderToEdit) {
       // Map old legacy fields directly into the new inputs
       setFormData({
-        ...orderToEdit,
         clientId: orderToEdit.clientId || orderToEdit.customerId || '',
         qty: orderToEdit.qty || orderToEdit.quantity || orderToEdit.boxes || '',
         rate: orderToEdit.rate || orderToEdit.price || orderToEdit.amount || '',
@@ -22,6 +21,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
         time: orderToEdit.time || orderToEdit.deliveryTime || '',
         address: orderToEdit.address || orderToEdit.deliveryAddress || orderToEdit.location || '',
         mapLink: orderToEdit.mapLink || orderToEdit.googleMap || '',
+        proofUrl: orderToEdit.proofUrl || '',
       });
     } else {
       setFormData({ clientId: '', qty: '', rate: '', date: '', time: '', address: '', mapLink: '', proofUrl: '' });
@@ -31,13 +31,18 @@ export default function OrderModal({ orderToEdit, onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    if (orderToEdit && orderToEdit.id) {
-      await updateOrder(orderToEdit.id, formData);
-    } else {
-      await addOrder(formData);
+    try {
+      if (orderToEdit && orderToEdit.id) {
+        await updateOrder(orderToEdit.id, formData);
+      } else {
+        await addOrder(formData);
+      }
+      onClose();
+    } catch (err) {
+      console.error('Order save failed:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-    onClose();
   };
 
   const total = (Number(formData.qty) || 0) * (Number(formData.rate) || 0);

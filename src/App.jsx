@@ -81,7 +81,7 @@ function App() {
 
         <div className="max-w-5xl mx-auto">
           {/* Explicitly rendering active tabs */}
-          {activeTab === 'orders' && <OrdersDashboard onEdit={setEditOrder} onCopy={(o) => setEditOrder({ ...o, id: null })} />}
+          {activeTab === 'orders' && <OrdersDashboard onEdit={setEditOrder} onCopy={(o) => setEditOrder({ ...o, id: null })} onAdd={() => setEditOrder({})} />}
           {activeTab === 'stock' && <StockDashboard />}
           {activeTab === 'payments' && <PaymentDashboard />}
           {activeTab === 'clients' && (
