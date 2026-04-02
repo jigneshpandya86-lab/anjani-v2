@@ -34,7 +34,7 @@ export default function ClientList() {
           <div className="flex justify-between items-start mb-2">
             <div>
               <h3 className="font-bold text-gray-900 leading-tight">{client.name}</h3>
-              <p className="text-xs text-gray-500 font-mono">ID: {client.shortId || 'N/A'}</p>
+              <p className="text-xs text-gray-500 font-mono">ID: {client.shortId || client.id || 'N/A'}</p>
             </div>
             <button onClick={() => toggleStatus(client)} className="text-gray-400 hover:text-red-500 transition-colors">
               {client.active ? <UserX className="w-5 h-5" /> : <UserCheck className="w-5 h-5 text-green-500" />}
