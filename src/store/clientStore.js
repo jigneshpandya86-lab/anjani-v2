@@ -59,6 +59,13 @@ export const useClientStore = create((set, get) => ({
       ...data,
       createdAt: serverTimestamp()
     });
+    if (data.clientId) {
+      const client = get().clients.find(c => c.id === data.clientId);
+      if (client !== undefined) {
+        const newOutstanding = (Number(client.outstanding) || 0) - Number(data.amount);
+        await updateDoc(doc(db, 'customers', data.clientId), { outstanding: newOutstanding });
+      }
+    }
   },
 
   fetchClients: () => {
@@ -74,9 +81,16 @@ export const useClientStore = create((set, get) => ({
   },
 
   fetchOrders: () => {
-    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'orders'));
     return onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const getTime = (o) => {
+        if (o.createdAt?.toDate) return o.createdAt.toDate().getTime();
+        const d = o.orderDate || o.deliveryDate || o.date || '';
+        return d ? new Date(d).getTime() : 0;
+      };
+      const docs = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => getTime(b) - getTime(a));
       set({ orders: docs });
     });
   },
