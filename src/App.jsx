@@ -16,7 +16,6 @@ import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
 
 function App() {
-  // Ensuring 'orders' is the default view
   const [activeTab, setActiveTab] = useState('orders')
   const { fetchClients, fetchOrders, fetchStock } = useClientStore()
 
@@ -40,9 +39,10 @@ function App() {
   ]
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] flex flex-col md:flex-row font-sans">
+    <div className="h-screen w-full bg-[#f8f9fa] flex flex-col md:flex-row font-sans overflow-hidden">
+      
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-64 bg-[#131921] text-white flex-col p-6 fixed h-full z-40">
+      <aside className="hidden md:flex w-64 bg-[#131921] text-white flex-col p-6 h-full flex-none z-40">
         <div className="mb-8 px-2">
           <h1 className="text-2xl font-black tracking-tighter text-[#ff9900]">ANJANI<span className="text-white">WATER</span></h1>
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em]">Management System</p>
@@ -65,15 +65,17 @@ function App() {
         </nav>
       </aside>
 
-      {/* Main Content Area - Added pb-32 to ensure bottom nav doesn't overlap content */}
-      <main className="flex-1 md:ml-64 p-4 md:p-8 pb-32 md:pb-8">
-        <header className="flex justify-between items-center mb-6 md:hidden bg-white p-4 rounded-2xl shadow-sm">
+      {/* Main App Column */}
+      <div className="flex-1 flex flex-col h-full relative w-full max-w-5xl mx-auto">
+        
+        {/* Mobile Header (Fixed Top) */}
+        <header className="md:hidden flex-none bg-white p-4 shadow-sm z-20 flex justify-between items-center relative">
           <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI<span className="text-[#ff9900]">WATER</span></h1>
           <button className="p-2 bg-gray-50 rounded-lg text-gray-600"><Menu size={20}/></button>
         </header>
 
-        <div className="max-w-5xl mx-auto">
-          {/* Explicitly rendering active tabs */}
+        {/* Scrollable Center Content Area */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
           {activeTab === 'orders' && <OrdersDashboard />}
           {activeTab === 'stock' && <StockDashboard />}
           {activeTab === 'payments' && <PaymentDashboard />}
@@ -84,28 +86,29 @@ function App() {
             </div>
           )}
           {activeTab === 'leads' && <LeadsDashboard />}
-        </div>
-      </main>
+        </main>
 
-      {/* Mobile Bottom Navigation - FIXED: High Z-Index, explicit styling */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-2 pb-6 flex justify-around items-center z-[999] shadow-[0_-10px_20px_rgba(0,0,0,0.05)]">
-        {navItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setActiveTab(item.id)}
-            className={`flex flex-col items-center justify-center w-16 h-14 rounded-2xl transition-all ${
-              activeTab === item.id 
-              ? 'text-[#ff9900] bg-orange-50' 
-              : 'text-gray-400 hover:text-gray-600'
-            }`}
-          >
-            {item.icon}
-            <span className={`text-[9px] mt-1 uppercase tracking-tight ${activeTab === item.id ? 'font-black' : 'font-bold'}`}>
-              {item.label}
-            </span>
-          </button>
-        ))}
-      </nav>
+        {/* Mobile Bottom Nav (Fixed Bottom) */}
+        <nav className="md:hidden flex-none bg-white border-t border-gray-200 z-[999] flex justify-around items-center h-[70px] pb-safe">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={`flex flex-col items-center justify-center w-[20%] h-full transition-all ${
+                activeTab === item.id 
+                ? 'text-[#ff9900]' 
+                : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              {item.icon}
+              <span className={`text-[9px] mt-1 uppercase tracking-tight ${activeTab === item.id ? 'font-black' : 'font-bold'}`}>
+                {item.label}
+              </span>
+            </button>
+          ))}
+        </nav>
+        
+      </div>
     </div>
   )
 }
