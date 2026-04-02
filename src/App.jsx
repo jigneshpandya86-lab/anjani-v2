@@ -8,6 +8,7 @@ export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('clients');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [clientToEdit, setClientToEdit] = useState(null); // Add this line!
   const fetchClients = useClientStore(state => state.fetchClients);
 
   useEffect(() => {
@@ -60,25 +61,26 @@ export default function App() {
         </div>
       )}
 
-      {/* --- CONTENT AREA --- */}
+      {/* Update ClientList to pass the client */}
       <main className="p-3">
-        {activeTab === 'clients' && <ClientList onEdit={() => setShowAddModal(true)} />}
-        {activeTab !== 'clients' && (
-          <div className="flex flex-col items-center justify-center h-64 text-gray-400 italic">
-            {activeTab.toUpperCase()} Module Coming Soon...
-          </div>
-        )}
+        {activeTab === 'clients' && <ClientList onEdit={(client) => { setClientToEdit(client); setShowAddModal(true); }} />}
       </main>
 
-      {/* --- ADD CLIENT MODAL (Popup) --- */}
+      {/* Pass the clientToEdit into the modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-[60] bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl relative animate-slide-up">
             <button onClick={() => setShowAddModal(false)} className="absolute right-4 top-4 text-gray-400"><X /></button>
-            <AddClient onDone={() => setShowAddModal(false)} />
+            <AddClient client={clientToEdit} onDone={() => setShowAddModal(false)} />
           </div>
         </div>
       )}
+
+      {/* Update the Bottom Plus button so it opens a BLANK form */}
+      <button 
+          onClick={() => { setClientToEdit(null); setShowAddModal(true); }}
+          className="bg-amz-navy text-white p-4 rounded-full -mt-10 shadow-xl border-4 border-gray-100 active:scale-95 transition-transform"
+        >
 
       {/* --- BOTTOM NAVIGATION --- */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-2 flex justify-between items-center shadow-[0_-4px_10px_rgba(0,0,0,0.05)] z-40">
