@@ -91,7 +91,7 @@ function App() {
             </div>
           )}
           {activeTab === 'leads' && <LeadsDashboard />}
-        </main>
+        </div>
       </div>
 
       {/* Order Modal */}
