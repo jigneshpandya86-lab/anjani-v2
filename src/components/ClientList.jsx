@@ -6,9 +6,9 @@ export default function ClientList({ onEdit, onPay }) {
   const { clients, updateClient } = useClientStore();
   const [search, setSearch] = useState('');
 
-  const filtered = clients.filter(c => 
-    c.name?.toLowerCase().includes(search.toLowerCase()) || 
-    c.mobile?.includes(search)
+  const filtered = (clients || []).filter(c => 
+    (c.name || '').toLowerCase().includes(search.toLowerCase()) || 
+    (c.mobile || '').includes(search)
   );
 
   const toggleStatus = (client) => {
@@ -27,33 +27,42 @@ export default function ClientList({ onEdit, onPay }) {
         />
       </div>
 
+      {filtered.length === 0 && search === '' && (
+        <div className="text-center p-10 text-gray-400 italic">No clients found in database...</div>
+      )}
+
       {filtered.map(client => (
         <div key={client.id} className={`bg-white p-4 rounded-lg border shadow-sm ${!client.active && 'opacity-60 bg-gray-50'}`}>
           <div className="flex justify-between items-start mb-2">
             <div>
-              <h3 className="font-bold text-gray-900 leading-tight">{client.name}</h3>
-              <p className="text-xs text-gray-500 font-mono">ID: {client.shortId || client.id || 'N/A'}</p>
+              <h3 className="font-bold text-gray-900 leading-tight">{client.name || 'Unnamed Client'}</h3>
+              <p className="text-[10px] text-gray-500 font-mono">ID: {client.shortId || 'LEGACY'}</p>
             </div>
-            {/* The Top Right Actions */}
             <div className="flex gap-3">
-              <button onClick={() => toggleStatus(client)} className="p-1 text-gray-400 hover:text-green-500 transition-colors">
+              <button onClick={() => toggleStatus(client)} className="p-1 text-gray-400 hover:text-green-500">
                 {client.active ? <UserCheck className="w-5 h-5 text-green-500" /> : <UserX className="w-5 h-5 text-red-400" />}
               </button>
-              <button onClick={() => onEdit(client)} className="p-1 text-gray-400 hover:text-[#ff9900] transition-colors">
+              <button onClick={() => onEdit(client)} className="p-1 text-gray-400 hover:text-[#ff9900]">
                 <Edit3 className="w-5 h-5" />
               </button>
             </div>
           </div>
 
-          <p className="text-sm text-gray-600 mb-3 line-clamp-1">{client.address}</p>
+          <div className="flex justify-between items-end mb-3">
+             <p className="text-sm text-gray-600 line-clamp-1 pr-4">{client.address || 'No Address'}</p>
+             <div className="text-right min-w-[80px]">
+                <p className="text-[9px] uppercase font-bold text-gray-400 leading-none">Balance</p>
+                <p className={`font-black text-sm ${client.outstanding > 0 ? 'text-red-500' : 'text-green-600'}`}>
+                  ₹{Number(client.outstanding || 0).toLocaleString()}
+                </p>
+             </div>
+          </div>
 
-          {/* Action Bar */}
           <div className="grid grid-cols-5 border-t border-gray-100 pt-3 gap-2">
             <a href={`tel:${client.mobile}`} className="flex justify-center p-2 bg-blue-50 text-blue-600 rounded-md"><Phone className="w-4 h-4" /></a>
             <a href={`https://wa.me/91${client.mobile}`} className="flex justify-center p-2 bg-green-50 text-green-600 rounded-md"><MessageSquare className="w-4 h-4" /></a>
             <button className="flex justify-center p-2 bg-orange-50 text-orange-600 rounded-md"><ShoppingCart className="w-4 h-4" /></button>
             <button onClick={() => onPay(client)} className="flex justify-center p-2 bg-purple-50 text-purple-600 rounded-md"><IndianRupee className="w-4 h-4" /></button>
-            {/* The 5th Button is now a safe Notes/Ledger icon */}
             <button className="flex justify-center p-2 bg-gray-50 text-gray-600 rounded-md"><FileText className="w-4 h-4" /></button>
           </div>
         </div>
