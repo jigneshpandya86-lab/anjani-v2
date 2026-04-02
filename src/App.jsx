@@ -8,7 +8,7 @@ export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('clients');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [clientToEdit, setClientToEdit] = useState(null); // Add this line!
+  const [clientToEdit, setClientToEdit] = useState(null);
   const fetchClients = useClientStore(state => state.fetchClients);
 
   useEffect(() => {
@@ -27,12 +27,12 @@ export default function App() {
   return (
     <div className="bg-gray-100 min-h-screen pb-24">
       {/* --- TOP HEADER & GLOBAL SEARCH --- */}
-      <header className="bg-amz-navy text-white sticky top-0 z-40 p-3 shadow-md">
+      <header className="bg-[#131921] text-white sticky top-0 z-40 p-3 shadow-md">
         <div className="flex items-center gap-3 mb-2">
           <button onClick={() => setIsMenuOpen(true)} className="p-1 hover:bg-white/10 rounded">
-            <Menu size={24} className="text-amz-orange" />
+            <Menu size={24} className="text-[#ff9900]" />
           </button>
-          <h1 className="font-bold tracking-tight">ANJANI <span className="text-amz-orange text-xs">V2</span></h1>
+          <h1 className="font-bold tracking-tight">ANJANI <span className="text-[#ff9900] text-xs">V2</span></h1>
         </div>
       </header>
 
@@ -40,7 +40,7 @@ export default function App() {
       {isMenuOpen && (
         <div className="fixed inset-0 z-50 flex">
           <div className="bg-white w-72 h-full shadow-2xl flex flex-col">
-            <div className="p-5 bg-amz-navy text-white flex justify-between items-center">
+            <div className="p-5 bg-[#131921] text-white flex justify-between items-center">
               <span className="font-bold">Main Menu</span>
               <X onClick={() => setIsMenuOpen(false)} className="cursor-pointer" />
             </div>
@@ -49,7 +49,7 @@ export default function App() {
                 <button 
                   key={item.id}
                   onClick={() => { setActiveTab(item.id); setIsMenuOpen(false); }}
-                  className={`w-full flex items-center gap-4 p-4 rounded-lg font-medium transition-colors ${activeTab === item.id ? 'bg-orange-50 text-amz-orange' : 'text-gray-600 hover:bg-gray-50'}`}
+                  className={`w-full flex items-center gap-4 p-4 rounded-lg font-medium transition-colors ${activeTab === item.id ? 'bg-orange-50 text-[#ff9900]' : 'text-gray-600 hover:bg-gray-50'}`}
                 >
                   {item.icon} {item.label}
                 </button>
@@ -61,12 +61,17 @@ export default function App() {
         </div>
       )}
 
-      {/* Update ClientList to pass the client */}
+      {/* --- CONTENT AREA --- */}
       <main className="p-3">
         {activeTab === 'clients' && <ClientList onEdit={(client) => { setClientToEdit(client); setShowAddModal(true); }} />}
+        {activeTab !== 'clients' && (
+          <div className="flex flex-col items-center justify-center h-64 text-gray-400 italic">
+            {activeTab.toUpperCase()} Module Coming Soon...
+          </div>
+        )}
       </main>
 
-      {/* Pass the clientToEdit into the modal */}
+      {/* --- ADD/EDIT CLIENT MODAL (Popup) --- */}
       {showAddModal && (
         <div className="fixed inset-0 z-[60] bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl relative animate-slide-up">
@@ -76,28 +81,22 @@ export default function App() {
         </div>
       )}
 
-      {/* Update the Bottom Plus button so it opens a BLANK form */}
-      <button 
-          onClick={() => { setClientToEdit(null); setShowAddModal(true); }}
-          className="bg-amz-navy text-white p-4 rounded-full -mt-10 shadow-xl border-4 border-gray-100 active:scale-95 transition-transform"
-        >
-
       {/* --- BOTTOM NAVIGATION --- */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-2 flex justify-between items-center shadow-[0_-4px_10px_rgba(0,0,0,0.05)] z-40">
-        <button onClick={() => setActiveTab('clients')} className={`flex flex-col items-center ${activeTab === 'clients' ? 'text-amz-orange' : 'text-gray-400'}`}>
+        <button onClick={() => setActiveTab('clients')} className={`flex flex-col items-center ${activeTab === 'clients' ? 'text-[#ff9900]' : 'text-gray-400'}`}>
           <Users size={24} />
           <span className="text-[10px] mt-1 font-bold">CLIENTS</span>
         </button>
         
         {/* Floating Action Button */}
         <button 
-          onClick={() => setShowAddModal(true)}
-          className="bg-amz-navy text-white p-4 rounded-full -mt-10 shadow-xl border-4 border-gray-100 active:scale-95 transition-transform"
+          onClick={() => { setClientToEdit(null); setShowAddModal(true); }}
+          className="bg-[#131921] text-white p-4 rounded-full -mt-10 shadow-xl border-4 border-gray-100 active:scale-95 transition-transform"
         >
-          <Plus size={28} className="text-amz-orange" />
+          <Plus size={28} className="text-[#ff9900]" />
         </button>
 
-        <button onClick={() => setActiveTab('orders')} className={`flex flex-col items-center ${activeTab === 'orders' ? 'text-amz-orange' : 'text-gray-400'}`}>
+        <button onClick={() => setActiveTab('orders')} className={`flex flex-col items-center ${activeTab === 'orders' ? 'text-[#ff9900]' : 'text-gray-400'}`}>
           <ShoppingBag size={24} />
           <span className="text-[10px] mt-1 font-bold">ORDERS</span>
         </button>
