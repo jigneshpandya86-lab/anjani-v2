@@ -30,7 +30,6 @@ export const useClientStore = create((set, get) => ({
         return { 
           id: doc.id, 
           ...d,
-          // DATA MAPPER: Catch old legacy fields
           qty: d.qty || d.quantity || d.boxes || 0,
           rate: d.rate || d.price || d.amount || 0,
           date: d.date || d.deliveryDate || d.orderDate || '',
@@ -79,38 +78,59 @@ export const useClientStore = create((set, get) => ({
       const qty = Number(data.qty) || Number(existing.qty) || 0;
       const rate = Number(data.rate) || Number(existing.rate) || 0;
       const amount = qty * rate;
-
       const targetClientId = data.clientId || existing.clientId;
 
       if (targetClientId && amount > 0) {
         const client = get().clients.find(c => c.id === targetClientId);
         const newBalance = (Number(client?.outstanding) || 0) + amount;
 
-        // Charge Client Ledger
         await updateDoc(doc(db, 'customers', targetClientId), { outstanding: newBalance });
 
-        // Record Invoice
         await addDoc(collection(db, 'payments'), {
-          clientId: targetClientId,
-          amount: amount,
-          type: 'invoice',
-          method: 'system',
-          note: `Auto-billed for ${existing.orderId || 'Legacy Order'}`,
-          date: serverTimestamp()
+          clientId: targetClientId, amount: amount, type: 'invoice',
+          method: 'system', note: `Auto-billed for ${existing.orderId || 'Legacy Order'}`, date: serverTimestamp()
         });
 
-        // Debit Stock
         await addDoc(collection(db, 'stock_ledger'), {
-          orderId: existing.orderId || id, qty: -qty, 
-          type: 'dispatch', date: serverTimestamp()
+          orderId: existing.orderId || id, qty: -qty, type: 'dispatch', date: serverTimestamp()
         });
       }
     }
-
     await updateDoc(doc(db, 'orders', id), data);
   },
 
+  // --- REVERSAL AUTOMATION ---
   deleteOrder: async (id) => {
+    const existing = get().orders.find(o => o.id === id);
+    
+    // If the order was already billed, we must reverse the charges before deleting
+    if (existing && existing.status === 'Delivered') {
+      const qty = Number(existing.qty) || 0;
+      const rate = Number(existing.rate) || 0;
+      const amount = qty * rate;
+      const targetClientId = existing.clientId;
+
+      if (targetClientId && amount > 0) {
+        const client = get().clients.find(c => c.id === targetClientId);
+        const newBalance = (Number(client?.outstanding) || 0) - amount;
+
+        // 1. Give money back to client ledger
+        await updateDoc(doc(db, 'customers', targetClientId), { outstanding: newBalance });
+
+        // 2. Add 'Reversal' paper trail to Ledger
+        await addDoc(collection(db, 'payments'), {
+          clientId: targetClientId, amount: amount, type: 'adjustment',
+          method: 'system', note: `Charge reversed for deleted ${existing.orderId || 'Order'}`, date: serverTimestamp()
+        });
+
+        // 3. Put stock back on the shelf
+        await addDoc(collection(db, 'stock_ledger'), {
+          orderId: existing.orderId || id, qty: Math.abs(qty), type: 'restock', date: serverTimestamp()
+        });
+      }
+    }
+    
+    // Finally, destroy the order record
     await deleteDoc(doc(db, 'orders', id));
   }
 }));

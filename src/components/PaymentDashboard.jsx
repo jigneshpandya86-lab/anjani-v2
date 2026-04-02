@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useClientStore } from '../store/clientStore';
 import { collection, query, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase-config';
-import { IndianRupee, Calendar, Clock, ShoppingBag } from 'lucide-react';
+import { IndianRupee, Calendar, Clock, ShoppingBag, RotateCcw } from 'lucide-react';
 
 export default function PaymentDashboard() {
   const [history, setHistory] = useState([]);
@@ -50,14 +50,37 @@ export default function PaymentDashboard() {
       )}
 
       {history.map(tx => {
-        // AUTOMATED UI CHECK: Is this a charge or a payment?
         const isCharge = tx.type === 'invoice';
+        const isAdjustment = tx.type === 'adjustment';
+        
+        let borderColor = 'border-l-green-500';
+        let iconBg = 'bg-green-50 text-green-600';
+        let amountColor = 'text-green-600';
+        let sign = '-';
+        let label = 'RECEIVED';
+        let Icon = IndianRupee;
+
+        if (isCharge) {
+          borderColor = 'border-l-red-500';
+          iconBg = 'bg-red-50 text-red-500';
+          amountColor = 'text-red-500';
+          sign = '+';
+          label = 'BILLED (CHARGE)';
+          Icon = ShoppingBag;
+        } else if (isAdjustment) {
+          borderColor = 'border-l-blue-500';
+          iconBg = 'bg-blue-50 text-blue-500';
+          amountColor = 'text-blue-500';
+          sign = '-'; // Reversals decrease the client's balance
+          label = 'SYSTEM REVERSAL';
+          Icon = RotateCcw;
+        }
 
         return (
-          <div key={tx.id} className={`bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center border-l-4 ${isCharge ? 'border-l-red-500' : 'border-l-green-500'}`}>
+          <div key={tx.id} className={`bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center border-l-4 ${borderColor}`}>
             <div className="flex gap-3 items-center">
-              <div className={`p-2 rounded-full ${isCharge ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-600'}`}>
-                {isCharge ? <ShoppingBag size={18} /> : <IndianRupee size={18} />}
+              <div className={`p-2 rounded-full ${iconBg}`}>
+                <Icon size={18} />
               </div>
               <div>
                 <p className="font-bold text-gray-900 leading-tight">{getClientName(tx.clientId)}</p>
@@ -67,11 +90,11 @@ export default function PaymentDashboard() {
               </div>
             </div>
             <div className="text-right">
-              <p className={`font-black text-lg italic ${isCharge ? 'text-red-500' : 'text-green-600'}`}>
-                {isCharge ? '+' : '-'}₹{tx.amount}
+              <p className={`font-black text-lg italic ${amountColor}`}>
+                {sign}₹{tx.amount}
               </p>
               <p className="text-[9px] text-gray-400 font-bold uppercase tracking-tighter">
-                {isCharge ? 'BILLED (CHARGE)' : 'RECEIVED'}
+                {label}
               </p>
             </div>
           </div>
