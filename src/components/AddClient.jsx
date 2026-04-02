@@ -1,58 +1,69 @@
-import { useState } from 'react';
-import { useClientStore } from '../store/clientStore';
-import { UserPlus, CheckCircle } from 'lucide-react';
+import { useState } from "react";
+import { useClientStore } from "../store/clientStore";
+import { UserPlus, CheckCircle } from "lucide-react";
 
-export default function AddClient() {
+export default function AddClient({ onDone }) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [status, setStatus] = useState("idle");
+
   const addClient = useClientStore((state) => state.addClient);
-  const [formData, setFormData] = useState({ name: '', phone: '', address: '' });
-  const [showSuccess, setShowSuccess] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    addClient(formData);
-    setShowSuccess(true);
-    setFormData({ name: '', phone: '', address: '' });
-    setTimeout(() => setShowSuccess(false), 3000);
+    setStatus("saving");
+
+    // Send data to the store
+    await addClient({ name, phone, address });
+
+    // Show success and close modal
+    setStatus("success");
+    setTimeout(() => {
+      setName("");
+      setPhone("");
+      setAddress("");
+      setStatus("idle");
+      if (onDone) onDone(); // This tells App.jsx to close the popup!
+    }, 1500);
   };
 
   return (
-    <div className="max-w-md mx-auto bg-white min-h-screen sm:min-h-0 sm:mt-10 sm:border sm:border-amz-border sm:rounded-lg shadow-sm overflow-hidden">
-      <div className="bg-amz-navy p-4 flex items-center gap-3">
-        <div className="w-8 h-8 bg-amz-orange rounded-full flex items-center justify-center text-sm">💧</div>
-        <h1 className="text-white font-black text-lg tracking-wide">ANJANI<span className="text-amz-orange">WATER</span></h1>
+    <div className="bg-white rounded-xl w-full">
+      <div className="bg-amz-navy text-white p-4 rounded-t-xl flex items-center gap-2">
+        <UserPlus className="text-amz-orange" />
+        <h2 className="font-bold text-lg">Add New Client</h2>
       </div>
 
-      <div className="p-6">
-        <div className="flex items-center gap-2 mb-6 border-b border-amz-border pb-2">
-          <UserPlus className="text-amz-orange w-5 h-5" />
-          <h2 className="text-lg font-bold text-gray-900">Add New Client</h2>
-        </div>
-
-        {showSuccess && (
-          <div className="mb-6 bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-md flex items-center gap-2 text-sm font-bold animate-pulse">
-            <CheckCircle className="w-4 h-4 text-green-600" />
-            Client saved securely! Syncing in background.
+      <div className="p-5">
+        {status === "success" ? (
+          <div className="bg-green-50 text-green-700 p-4 rounded-lg flex items-center gap-3 border border-green-200 animate-pulse">
+            <CheckCircle className="w-6 h-6" />
+            <p className="font-bold">Client Saved Successfully!</p>
           </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Client Name</label>
+              <input required value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none" placeholder="e.g. Rahul Sharma" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Mobile Number</label>
+              <input required type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none" placeholder="10-digit mobile number" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Delivery Address</label>
+              <textarea required rows="3" value={address} onChange={(e) => setAddress(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none" placeholder="Full delivery address..." />
+            </div>
+
+            <button type="submit" disabled={status === "saving"} className="w-full bg-gradient-to-b from-[#f7dfa5] to-[#f0c14b] border border-[#a88734] text-gray-900 font-bold py-3 px-4 rounded-lg shadow-sm hover:bg-gradient-to-b hover:from-[#f5d78e] hover:to-[#eeb933] active:shadow-inner disabled:opacity-50 transition-all flex justify-center items-center gap-2">
+              <UserPlus className="w-5 h-5" />
+              {status === "saving" ? "Saving..." : "Save Client"}
+            </button>
+          </form>
         )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Client Name</label>
-            <input type="text" required className="w-full border border-amz-border rounded-md px-3 py-2 text-sm focus:outline-none focus:border-amz-orange focus:ring-2 focus:ring-amz-orange/20" placeholder="e.g. Rahul Sharma" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Phone Number</label>
-            <input type="tel" required className="w-full border border-amz-border rounded-md px-3 py-2 text-sm focus:outline-none focus:border-amz-orange focus:ring-2 focus:ring-amz-orange/20" placeholder="10-digit mobile number" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Delivery Address</label>
-            <textarea required rows="3" className="w-full border border-amz-border rounded-md px-3 py-2 text-sm focus:outline-none focus:border-amz-orange focus:ring-2 focus:ring-amz-orange/20 resize-none" placeholder="Full delivery address..." value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
-          </div>
-          <button type="submit" className="w-full mt-2 bg-gradient-to-b from-[#f7dfa5] to-[#ffd814] hover:from-[#f5d78e] hover:to-[#f7ca00] active:translate-y-[1px] border border-[#a88734] text-[#111] font-bold py-2.5 px-4 rounded-md shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] transition-all flex justify-center items-center gap-2">
-            <UserPlus className="w-4 h-4" />
-            Save Client to Database
-          </button>
-        </form>
       </div>
     </div>
   );
