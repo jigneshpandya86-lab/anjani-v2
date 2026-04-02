@@ -83,7 +83,7 @@ export const useClientStore = create((set, get) => ({
 
   updateOrder: async (id, data) => {
     const existing = get().orders.find(o => o.id === id);
-    if (data.status === 'Delivered' && existing.status !== 'Delivered') {
+    if (existing && data.status === 'Delivered' && existing.status !== 'Delivered') {
       const qty = Number(existing.qty);
       // Debit stock with Narration
       await addDoc(collection(db, 'stock'), {

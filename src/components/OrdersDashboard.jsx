@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Package, Clock, Truck, Copy, Edit2, Trash2, Smartphone, Search } from 'lucide-react';
+import { Package, Clock, Truck, Copy, Edit2, Trash2, Smartphone, Search, Plus } from 'lucide-react';
 
-export default function OrdersDashboard({ onEdit, onCopy }) {
+export default function OrdersDashboard({ onEdit, onCopy, onAdd }) {
   const { orders, clients, updateOrder, deleteOrder } = useClientStore();
   const [filter, setFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -63,9 +63,14 @@ export default function OrdersDashboard({ onEdit, onCopy }) {
         <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter flex items-center gap-2">
           <Truck className="text-[#ff9900]" size={20} /> Dispatch
         </h2>
-        <button onClick={shareDispatchPlan} className="bg-[#25D366] text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center gap-1 shadow-md active:scale-95">
-          <Smartphone size={12} /> Share Roster
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={onAdd} className="bg-[#ff9900] text-white p-2 rounded-xl shadow-md active:scale-95" title="New Order">
+            <Plus size={18} strokeWidth={3} />
+          </button>
+          <button onClick={shareDispatchPlan} className="bg-[#25D366] text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center gap-1 shadow-md active:scale-95">
+            <Smartphone size={12} /> Share Roster
+          </button>
+        </div>
       </div>
 
       <div className="relative px-1">
