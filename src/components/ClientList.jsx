@@ -17,18 +17,16 @@ export default function ClientList({ onEdit }) {
 
   return (
     <div className="space-y-3">
-      {/* Search Bar */}
       <div className="relative">
         <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
         <input 
-          className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:ring-2 focus:ring-orange-400 outline-none"
+          className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:ring-2 focus:ring-[#ff9900] outline-none"
           placeholder="Search Name or Mobile..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
 
-      {/* Client Cards */}
       {filtered.map(client => (
         <div key={client.id} className={`bg-white p-4 rounded-lg border shadow-sm ${!client.active && 'opacity-60 bg-gray-50'}`}>
           <div className="flex justify-between items-start mb-2">
@@ -36,7 +34,15 @@ export default function ClientList({ onEdit }) {
               <h3 className="font-bold text-gray-900 leading-tight">{client.name}</h3>
               <p className="text-xs text-gray-500 font-mono">ID: {client.shortId || client.id || 'N/A'}</p>
             </div>
-<button onClick={() => onEdit(client)} className="flex justify-center p-2 bg-gray-50 text-gray-600 rounded-md"><FileText className="w-4 h-4" /></button>
+            {/* The Top Right Actions */}
+            <div className="flex gap-3">
+              <button onClick={() => toggleStatus(client)} className="p-1 text-gray-400 hover:text-green-500 transition-colors">
+                {client.active ? <UserCheck className="w-5 h-5 text-green-500" /> : <UserX className="w-5 h-5 text-red-400" />}
+              </button>
+              <button onClick={() => onEdit(client)} className="p-1 text-gray-400 hover:text-[#ff9900] transition-colors">
+                <Edit3 className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           <p className="text-sm text-gray-600 mb-3 line-clamp-1">{client.address}</p>
@@ -47,6 +53,7 @@ export default function ClientList({ onEdit }) {
             <a href={`https://wa.me/91${client.mobile}`} className="flex justify-center p-2 bg-green-50 text-green-600 rounded-md"><MessageSquare className="w-4 h-4" /></a>
             <button className="flex justify-center p-2 bg-orange-50 text-orange-600 rounded-md"><ShoppingCart className="w-4 h-4" /></button>
             <button className="flex justify-center p-2 bg-purple-50 text-purple-600 rounded-md"><IndianRupee className="w-4 h-4" /></button>
+            {/* The 5th Button is now a safe Notes/Ledger icon */}
             <button className="flex justify-center p-2 bg-gray-50 text-gray-600 rounded-md"><FileText className="w-4 h-4" /></button>
           </div>
         </div>
