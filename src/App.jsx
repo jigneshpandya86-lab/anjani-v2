@@ -11,12 +11,17 @@ import {
 import ClientList from './components/ClientList'
 import AddClient from './components/AddClient'
 import OrdersDashboard from './components/OrdersDashboard'
+import OrderModal from './components/OrderModal'
 import PaymentDashboard from './components/PaymentDashboard'
+import PaymentModal from './components/PaymentModal'
 import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
 
 function App() {
   const [activeTab, setActiveTab] = useState('orders')
+  const [editOrder, setEditOrder] = useState(null)
+  const [editClient, setEditClient] = useState(null)
+  const [payClient, setPayClient] = useState(null)
   const { fetchClients, fetchOrders, fetchStock } = useClientStore()
 
   useEffect(() => {
@@ -74,23 +79,50 @@ function App() {
           <button className="p-2 bg-gray-50 rounded-lg text-gray-600"><Menu size={20}/></button>
         </header>
 
-        {/* Dynamic View Area - Massive bottom padding ensures nothing hides behind the nav */}
-        <main className="flex-1 p-4 pb-32 md:p-8 w-full max-w-5xl mx-auto">
-          {activeTab === 'orders' && <OrdersDashboard />}
+        <div className="max-w-5xl mx-auto">
+          {/* Explicitly rendering active tabs */}
+          {activeTab === 'orders' && <OrdersDashboard onEdit={setEditOrder} onCopy={(o) => setEditOrder({ ...o, id: null })} />}
           {activeTab === 'stock' && <StockDashboard />}
           {activeTab === 'payments' && <PaymentDashboard />}
           {activeTab === 'clients' && (
-             <div className="space-y-6">
-               <AddClient />
-               <ClientList />
-             </div>
+            <div className="space-y-6">
+              <AddClient />
+              <ClientList onEdit={setEditClient} onPay={setPayClient} />
+            </div>
           )}
           {activeTab === 'leads' && <LeadsDashboard />}
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation (Strictly Fixed) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-[9999] flex justify-around items-center h-20 shadow-[0_-10px_30px_rgba(0,0,0,0.05)]">
+      {/* Order Modal */}
+      {editOrder !== null && (
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setEditOrder(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+            <OrderModal orderToEdit={editOrder} onClose={() => setEditOrder(null)} />
+          </div>
+        </div>
+      )}
+
+      {/* Edit Client Modal */}
+      {editClient !== null && (
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setEditClient(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-lg p-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <AddClient client={editClient} onDone={() => setEditClient(null)} />
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {payClient !== null && (
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setPayClient(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
+            <PaymentModal client={payClient} onClose={() => setPayClient(null)} />
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Bottom Navigation - FIXED: High Z-Index, explicit styling */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-2 pb-6 flex justify-around items-center z-[999] shadow-[0_-10px_20px_rgba(0,0,0,0.05)]">
         {navItems.map((item) => (
           <button
             key={item.id}
