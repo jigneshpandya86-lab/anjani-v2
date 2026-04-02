@@ -74,9 +74,26 @@ export const useClientStore = create((set, get) => ({
   },
 
   fetchOrders: () => {
-    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
+    // FIX 1: Removed strict orderBy() from Firestore query to prevent dropping legacy records
+    const q = query(collection(db, 'orders'));
     return onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      let docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      // FIX 2: Safely sort regardless of whether the timestamp is a Firestore object, string, or missing entirely.
+      docs.sort((a, b) => {
+        const getTime = (val) => {
+          if (!val) return 0;
+          if (typeof val.toMillis === 'function') return val.toMillis();
+          if (val.seconds) return val.seconds * 1000;
+          if (typeof val === 'string' || typeof val === 'number') {
+            const parsed = new Date(val).getTime();
+            return isNaN(parsed) ? 0 : parsed;
+          }
+          return 0;
+        };
+        return getTime(b.createdAt) - getTime(a.createdAt);
+      });
+
       set({ orders: docs });
     });
   },
