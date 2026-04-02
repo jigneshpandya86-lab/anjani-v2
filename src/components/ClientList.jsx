@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useClientStore } from '../store/clientStore';
 import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, UserX, UserCheck } from 'lucide-react';
 
-export default function ClientList() {
+export default function ClientList({ onEdit }) {
   const { clients, updateClient } = useClientStore();
   const [search, setSearch] = useState('');
 
@@ -36,9 +36,7 @@ export default function ClientList() {
               <h3 className="font-bold text-gray-900 leading-tight">{client.name}</h3>
               <p className="text-xs text-gray-500 font-mono">ID: {client.shortId || 'N/A'}</p>
             </div>
-            <button onClick={() => toggleStatus(client)} className="text-gray-400 hover:text-red-500 transition-colors">
-              {client.active ? <UserX className="w-5 h-5" /> : <UserCheck className="w-5 h-5 text-green-500" />}
-            </button>
+<button onClick={() => onEdit(client)} className="flex justify-center p-2 bg-gray-50 text-gray-600 rounded-md"><Edit3 className="w-4 h-4" /></button>
           </div>
 
           <p className="text-sm text-gray-600 mb-3 line-clamp-1">{client.address}</p>
