@@ -8,11 +8,12 @@ import { db } from '../firebase-config';
 export const useClientStore = create((set, get) => ({
   clients: [],
   orders: [],
-  stockEntries: [], // New state for stock
+  stockEntries: [], 
   loading: false,
 
   fetchStock: () => {
-    const q = query(collection(db, 'stock_ledger'), orderBy('date', 'desc'));
+    // FIXED: Now using your existing 'stock' collection
+    const q = query(collection(db, 'stock'), orderBy('date', 'desc'));
     return onSnapshot(q, (snapshot) => {
       const stockEntries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       set({ stockEntries });
@@ -20,7 +21,7 @@ export const useClientStore = create((set, get) => ({
   },
 
   addStockManual: async (qty, note) => {
-    await addDoc(collection(db, 'stock_ledger'), {
+    await addDoc(collection(db, 'stock'), {
       qty: Number(qty),
       note: note || 'Manual Addition',
       type: 'addition',
@@ -52,10 +53,10 @@ export const useClientStore = create((set, get) => ({
     const existing = get().orders.find(o => o.id === id);
     if (data.status === 'Delivered' && existing.status !== 'Delivered') {
       const qty = Number(existing.qty);
-      // Debit Stock on Delivery
-      await addDoc(collection(db, 'stock_ledger'), {
+      // Debit existing stock collection
+      await addDoc(collection(db, 'stock'), {
         qty: -qty,
-        note: `Order Delivered: ${existing.orderId}`,
+        note: `Order Delivered: ${existing.orderId || id}`,
         type: 'dispatch',
         date: serverTimestamp()
       });
@@ -66,10 +67,10 @@ export const useClientStore = create((set, get) => ({
   deleteOrder: async (id) => {
     const existing = get().orders.find(o => o.id === id);
     if (existing && existing.status === 'Delivered') {
-      // Reverse Stock on Deletion
-      await addDoc(collection(db, 'stock_ledger'), {
+      // Reverse existing stock collection
+      await addDoc(collection(db, 'stock'), {
         qty: Math.abs(Number(existing.qty)),
-        note: `Order Deleted (Reversal): ${existing.orderId}`,
+        note: `Order Deleted: ${existing.orderId || id}`,
         type: 'reversal',
         date: serverTimestamp()
       });
