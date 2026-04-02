@@ -7,15 +7,13 @@ export default function LeadsDashboard() {
   const [leads, setLeads] = useState([]);
 
   useEffect(() => {
-    // We remove orderBy here to prevent the Firebase 'Missing Index' error
     const q = query(collection(db, 'leads'));
     const unsub = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      // Manual sort: Recent to Past
       const sorted = docs.sort((a, b) => {
-        const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt || 0);
-        const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt || 0);
+        const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt || a.date || 0);
+        const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt || b.date || 0);
         return dateB - dateA;
       });
       
@@ -25,13 +23,24 @@ export default function LeadsDashboard() {
   }, []);
 
   const sendWhatsApp = (lead) => {
-    const msg = `Hello ${lead.name || 'Sir/Madam'}, Greetings from *Annapurna Foods, Vadodara*! ✨ \n\nPlanning an event? Make it premium with our 200ml Packaged Water Bottles. Perfect size and crystal clear quality. 💧\n\nShall we discuss your requirement?`;
+    const displayName = lead.name || 'Sir/Madam';
+    const msg = `Hello ${displayName}, Greetings from *Annapurna Foods, Vadodara*! ✨ \n\nPlanning an event? Make it premium with our 200ml Packaged Water Bottles. Perfect size and crystal clear quality. 💧\n\nShall we discuss your requirement?`;
     window.open(`https://wa.me/91${lead.mobile}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
   const sendSMS = (lead) => {
-    const msg = `Hi ${lead.name || 'there'}, refresh your guests with Annapurna Foods 200ml water bottles. Premium quality for events in Vadodara. Call us now!`;
+    const displayName = lead.name || 'there';
+    const msg = `Hi ${displayName}, refresh your guests with Annapurna Foods 200ml water bottles. Premium quality for events in Vadodara. Call us now!`;
     window.open(`sms:+91${lead.mobile}?body=${encodeURIComponent(msg)}`, '_blank');
+  };
+
+  // Advanced Date Formatter to catch old and new formats
+  const formatDate = (lead) => {
+    const rawDate = lead.createdAt || lead.date;
+    if (!rawDate) return "No Date Recorded";
+    if (rawDate.toDate) return rawDate.toDate().toLocaleDateString('en-IN');
+    if (typeof rawDate === 'string') return rawDate;
+    return new Date(rawDate).toLocaleDateString('en-IN');
   };
 
   return (
@@ -53,22 +62,23 @@ export default function LeadsDashboard() {
         leads.map(lead => (
           <div key={lead.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
             <div className="flex justify-between items-start mb-3">
-              <div className="flex gap-3">
-                <div className="bg-gray-50 p-2 rounded-xl text-gray-400"><User size={18} /></div>
+              <div className="flex gap-3 items-center">
+                <div className="bg-gray-50 p-3 rounded-xl text-gray-400"><User size={18} /></div>
                 <div>
-                  <h3 className="font-bold text-gray-900 text-sm uppercase">{lead.name || 'Unknown'}</h3>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                    {lead.createdAt?.toDate ? lead.createdAt.toDate().toLocaleDateString('en-IN') : 'Recent'}
+                  {/* Shows Name OR Mobile OR 'No Details' */}
+                  <h3 className="font-bold text-gray-900 text-sm uppercase">{lead.name || lead.mobile || 'No Details'}</h3>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">
+                    {formatDate(lead)}
                   </p>
                 </div>
               </div>
-              <a href={`tel:${lead.mobile}`} className="text-blue-500 p-2"><Phone size={18} /></a>
+              <a href={`tel:${lead.mobile}`} className="text-blue-500 p-2 bg-blue-50 rounded-xl active:scale-90 transition-transform"><Phone size={18} /></a>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => sendWhatsApp(lead)} className="flex items-center justify-center gap-2 bg-[#25D366] text-white py-2.5 rounded-xl font-black text-[10px] uppercase tracking-wider">
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <button onClick={() => sendWhatsApp(lead)} className="flex items-center justify-center gap-2 bg-[#25D366] text-white py-2.5 rounded-xl font-black text-[10px] uppercase tracking-wider active:scale-[0.98] transition-transform">
                 <MessageSquare size={14} /> WhatsApp
               </button>
-              <button onClick={() => sendSMS(lead)} className="flex items-center justify-center gap-2 bg-gray-900 text-white py-2.5 rounded-xl font-black text-[10px] uppercase tracking-wider">
+              <button onClick={() => sendSMS(lead)} className="flex items-center justify-center gap-2 bg-gray-900 text-white py-2.5 rounded-xl font-black text-[10px] uppercase tracking-wider active:scale-[0.98] transition-transform">
                 <Send size={14} /> SMS
               </button>
             </div>
