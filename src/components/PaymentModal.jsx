@@ -3,7 +3,7 @@ import { useClientStore } from '../store/clientStore';
 import { X, IndianRupee, Save, CreditCard, Banknote } from 'lucide-react';
 
 export default function PaymentModal({ client, onClose }) {
-  const { addTransaction } = useClientStore();
+  const { addPayment } = useClientStore();
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('cash');
   const [note, setNote] = useState('');
@@ -14,7 +14,7 @@ export default function PaymentModal({ client, onClose }) {
     if (!amount || amount <= 0) return;
 
     setLoading(true);
-    await addTransaction({
+    await addPayment({
       clientId: client.id,
       amount: parseFloat(amount),
       type: 'payment',

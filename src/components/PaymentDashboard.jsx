@@ -9,7 +9,7 @@ export default function PaymentDashboard() {
   const { clients } = useClientStore();
 
   useEffect(() => {
-    const q = query(collection(db, 'transactions'), orderBy('date', 'desc'));
+    const q = query(collection(db, 'payments'), orderBy('date', 'desc'));
     const unsub = onSnapshot(q, (snapshot) => {
       setHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });

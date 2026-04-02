@@ -15,7 +15,6 @@ export const useClientStore = create((set, get) => ({
   loading: false,
 
   fetchClients: () => {
-    // UPDATED: Pointing back to your original 'customers' collection
     const q = query(collection(db, 'customers'));
     return onSnapshot(q, (snapshot) => {
       const clients = snapshot.docs.map(doc => {
@@ -23,7 +22,6 @@ export const useClientStore = create((set, get) => ({
         return { 
           id: doc.id, 
           ...data,
-          // DATA MAPPING: If the old data used 'clientName', use it as 'name'
           name: data.name || data.clientName || 'Unnamed Customer',
           outstanding: data.outstanding || 0
         };
@@ -32,45 +30,27 @@ export const useClientStore = create((set, get) => ({
     });
   },
 
-  addClient: async (clientData) => {
+  // This function now saves directly to your existing 'payments' collection
+  addPayment: async (paymentData) => {
+    const { clientId, amount, method, note } = paymentData;
     try {
-      const shortId = 'C-' + Date.now().toString().slice(-6);
-      await addDoc(collection(db, 'customers'), {
-        ...clientData,
-        shortId,
-        active: true,
-        outstanding: 0,
-        createdAt: serverTimestamp()
-      });
-    } catch (error) {
-      console.error("Error adding customer:", error);
-    }
-  },
-
-  updateClient: async (id, data) => {
-    const clientRef = doc(db, 'customers', id);
-    await updateDoc(clientRef, data);
-  },
-
-  addTransaction: async (transactionData) => {
-    const { clientId, amount, type, method, note } = transactionData;
-    try {
-      await addDoc(collection(db, 'transactions'), {
+      await addDoc(collection(db, 'payments'), {
         clientId,
         amount: Number(amount),
-        type,
         method: method || 'cash',
         note: note || '',
+        type: 'payment', // We add this field to identify it as a payment
         date: serverTimestamp()
       });
 
+      // Update the customer's balance
       const client = get().clients.find(c => c.id === clientId);
       const currentBalance = Number(client?.outstanding || 0);
       const newBalance = currentBalance - Number(amount);
       
       await updateDoc(doc(db, 'customers', clientId), { outstanding: newBalance });
     } catch (error) {
-      console.error("Transaction failed:", error);
+      console.error("Payment failed:", error);
     }
   }
 }));
