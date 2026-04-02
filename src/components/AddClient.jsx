@@ -2,23 +2,28 @@ import { useState } from "react";
 import { useClientStore } from "../store/clientStore";
 import { UserPlus, CheckCircle } from "lucide-react";
 
-export default function AddClient({ onDone }) {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
+export default function AddClient({ onDone, client }) {
+  // If editing, fill in the blanks. If new, leave empty!
+  const [name, setName] = useState(client ? client.name : "");
+  const [phone, setPhone] = useState(client ? client.mobile : "");
+  const [address, setAddress] = useState(client ? client.address : "");
   const [status, setStatus] = useState("idle");
 
   const addClient = useClientStore((state) => state.addClient);
+  const updateClient = useClientStore((state) => state.updateClient);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setStatus("saving");
 
-    // Send data to the store
-    await addClient({ name, phone, address });
+    if (client) {
+      await updateClient(client.id, { name, mobile: phone, address });
+    } else {
+      await addClient({ name, phone, address });
+    }
 
-    // Show success and close modal
     setStatus("success");
+    // ... rest stays the same
     setTimeout(() => {
       setName("");
       setPhone("");
