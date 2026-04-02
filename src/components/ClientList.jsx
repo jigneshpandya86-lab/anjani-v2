@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useClientStore } from '../store/clientStore';
 import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, UserX, UserCheck } from 'lucide-react';
 
-export default function ClientList() {
+export default function ClientList({ onEdit }) {
   const { clients, updateClient } = useClientStore();
   const [search, setSearch] = useState('');
 
@@ -21,7 +21,7 @@ export default function ClientList() {
       <div className="relative">
         <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
         <input 
-          className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-amz-border bg-white text-sm focus:ring-2 focus:ring-amz-orange/20 outline-none"
+          className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:ring-2 focus:ring-orange-400 outline-none"
           placeholder="Search Name or Mobile..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -30,15 +30,13 @@ export default function ClientList() {
 
       {/* Client Cards */}
       {filtered.map(client => (
-        <div key={client.id} className={`bg-white p-4 rounded-lg border border-amz-border shadow-sm ${!client.active && 'opacity-60 bg-gray-50'}`}>
+        <div key={client.id} className={`bg-white p-4 rounded-lg border shadow-sm ${!client.active && 'opacity-60 bg-gray-50'}`}>
           <div className="flex justify-between items-start mb-2">
             <div>
               <h3 className="font-bold text-gray-900 leading-tight">{client.name}</h3>
               <p className="text-xs text-gray-500 font-mono">ID: {client.shortId || client.id || 'N/A'}</p>
             </div>
-            <button onClick={() => toggleStatus(client)} className="text-gray-400 hover:text-red-500 transition-colors">
-              {client.active ? <UserX className="w-5 h-5" /> : <UserCheck className="w-5 h-5 text-green-500" />}
-            </button>
+<button onClick={() => onEdit(client)} className="flex justify-center p-2 bg-gray-50 text-gray-600 rounded-md"><Edit3 className="w-4 h-4" /></button>
           </div>
 
           <p className="text-sm text-gray-600 mb-3 line-clamp-1">{client.address}</p>
