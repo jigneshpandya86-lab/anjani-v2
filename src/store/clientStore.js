@@ -83,25 +83,30 @@ export const useClientStore = create((set, get) => ({
   },
 
   fetchOrders: () => {
-    // FIX 1: Removed strict orderBy() from Firestore query to prevent dropping legacy records
     const q = query(collection(db, 'orders'));
     return onSnapshot(q, (snapshot) => {
-      let docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-      // FIX 2: Safely sort regardless of whether the timestamp is a Firestore object, string, or missing entirely.
-      docs.sort((a, b) => {
-        const getTime = (val) => {
-          if (!val) return 0;
-          if (typeof val.toMillis === 'function') return val.toMillis();
-          if (val.seconds) return val.seconds * 1000;
-          if (typeof val === 'string' || typeof val === 'number') {
-            const parsed = new Date(val).getTime();
-            return isNaN(parsed) ? 0 : parsed;
-          }
-          return 0;
-        };
-        return getTime(b.createdAt) - getTime(a.createdAt);
+      const normalize = (raw) => ({
+        ...raw,
+        qty:      Number(raw.qty || raw.boxes || raw.quantity) || 0,
+        rate:     Number(raw.rate) || 0,
+        date:     raw.date || raw.deliveryDate || raw.orderDate || '',
+        time:     raw.time || raw.deliveryTime || '',
+        clientId: raw.clientId || raw.customerId || '',
+        address:  raw.address || raw.deliveryAddress || raw.location || '',
+        mapLink:  raw.mapLink || raw.googleMap || '',
       });
+
+      const getTime = (o) => {
+        const ts = o.createdAt;
+        if (ts?.toMillis) return ts.toMillis();
+        if (ts?.seconds) return ts.seconds * 1000;
+        const d = o.date || o.orderDate || o.deliveryDate || '';
+        return d ? new Date(d).getTime() : 0;
+      };
+
+      const docs = snapshot.docs
+        .map(doc => normalize({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => getTime(b) - getTime(a));
 
       set({ orders: docs });
     });
