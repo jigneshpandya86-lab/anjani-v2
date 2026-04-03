@@ -60,27 +60,26 @@ export default function LeadsDashboard() {
         </div>
       ) : (
         leads.map(lead => (
-          <div key={lead.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-            <div className="flex justify-between items-start mb-3">
-              <div className="flex gap-3 items-center">
-                <div className="bg-gray-50 p-3 rounded-xl text-gray-400"><User size={18} /></div>
-                <div>
-                  {/* Shows Name OR Mobile OR 'No Details' */}
-                  <h3 className="font-bold text-gray-900 text-sm uppercase">{lead.name || lead.mobile || 'No Details'}</h3>
+          <div key={lead.id} className="bg-white rounded-2xl px-4 py-3 shadow-sm border border-gray-100">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex gap-3 items-center min-w-0">
+                <div className="bg-gray-50 p-3 rounded-xl text-gray-400 shrink-0"><User size={18} /></div>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-gray-900 text-sm uppercase truncate">{lead.name || lead.mobile || 'No Details'}</h3>
                   <p className="text-[10px] font-bold text-[#c4a484] uppercase tracking-widest mt-0.5 whitespace-nowrap">
                     {formatDate(lead)}
                   </p>
                 </div>
               </div>
-              <a href={`tel:${lead.mobile}`} className="text-blue-500 p-2 bg-blue-50 rounded-xl active:scale-90 transition-transform"><Phone size={18} /></a>
-            </div>
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              <button onClick={() => sendWhatsApp(lead)} className="flex items-center justify-center gap-2 bg-[#25D366] text-white py-2.5 rounded-xl font-black text-[10px] uppercase tracking-wider active:scale-[0.98] transition-transform">
-                <MessageSquare size={14} /> WhatsApp
-              </button>
-              <button onClick={() => sendSMS(lead)} className="flex items-center justify-center gap-2 bg-gray-900 text-white py-2.5 rounded-xl font-black text-[10px] uppercase tracking-wider active:scale-[0.98] transition-transform">
-                <Send size={14} /> SMS
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={() => sendWhatsApp(lead)} className="flex items-center justify-center gap-1 bg-[#25D366] text-white px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-wider active:scale-[0.98] transition-transform whitespace-nowrap">
+                  <MessageSquare size={14} /> WA
+                </button>
+                <button onClick={() => sendSMS(lead)} className="flex items-center justify-center gap-1 bg-gray-900 text-white px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-wider active:scale-[0.98] transition-transform whitespace-nowrap">
+                  <Send size={14} /> SMS
+                </button>
+                <a href={`tel:${lead.mobile}`} className="text-blue-500 p-2 bg-blue-50 rounded-xl active:scale-90 transition-transform"><Phone size={18} /></a>
+              </div>
             </div>
           </div>
         ))
