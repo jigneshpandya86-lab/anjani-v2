@@ -156,7 +156,7 @@ function App() {
       {/* Payment Modal */}
       {payClient !== null && (
         <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setPayClient(null)}>
-          <div className="relative bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-4 pt-12 md:p-6 md:pt-12" onClick={(e) => e.stopPropagation()}>
+          <div className="relative bg-white rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 pt-10 md:p-5 md:pt-10" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => setPayClient(null)}
