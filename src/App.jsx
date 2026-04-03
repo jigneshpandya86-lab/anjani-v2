@@ -84,9 +84,9 @@ function App() {
 
   const navItems = [
     { id: 'orders', label: 'Orders', icon: <ShoppingCart size={20} /> },
-    { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
     { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
     { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
+    { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
   ]
 
   const drawerNavItems = navItems
