@@ -7,9 +7,27 @@ export default function StockDashboard() {
   const [showAdd, setShowAdd] = useState(false);
   const [qty, setQty] = useState('');
   const [narration, setNarration] = useState('');
-  
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+
+  const getDefaultDateRange = () => {
+    const end = new Date();
+    const start = new Date(end);
+    start.setDate(start.getDate() - 7);
+
+    const toInputDate = (date) => {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+
+    return {
+      start: toInputDate(start),
+      end: toInputDate(end),
+    };
+  };
+
+  const [startDate, setStartDate] = useState(() => getDefaultDateRange().start);
+  const [endDate, setEndDate] = useState(() => getDefaultDateRange().end);
   const MIN_VISIBLE_ITEMS = 15;
 
   useEffect(() => {
@@ -102,7 +120,16 @@ export default function StockDashboard() {
           <input type="date" className="w-full bg-gray-50 px-2.5 py-1.5 rounded-lg text-[13px] font-bold outline-none border-none" value={endDate} onChange={e => setEndDate(e.target.value)} />
         </div>
         {(startDate || endDate) && (
-          <button onClick={() => {setStartDate(''); setEndDate('');}} className="mt-4 text-[10px] font-black text-red-400 uppercase px-2">Clear</button>
+          <button
+            onClick={() => {
+              const { start, end } = getDefaultDateRange();
+              setStartDate(start);
+              setEndDate(end);
+            }}
+            className="mt-4 text-[10px] font-black text-red-400 uppercase px-2"
+          >
+            Clear
+          </button>
         )}
       </div>
 
