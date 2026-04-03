@@ -14,17 +14,38 @@ export const useClientStore = create((set, get) => ({
   fetchStock: () => {
     const q = query(collection(db, 'stock'), orderBy('date', 'desc'));
     return onSnapshot(q, (snapshot) => {
-      const normalize = (raw) => ({
-        ...raw,
-        narration: raw.narration || raw.note || '',
-        date:      raw.date || raw.createdAt,
-      });
+      const normalize = (raw) => {
+        // Check if it's an old job entry (has 'customer' field but no 'narration')
+        if (raw.customer && !raw.narration) {
+          const produced = raw.produced ? ` Produced ${raw.produced}` : '';
+          return {
+            ...raw,
+            narration: `${raw.customer} - Delivered ${raw.delivered}${produced}`,
+            qty: raw.delivered || 0,
+            type: 'old_job',
+            date: raw.date, // Keep as-is (string)
+          };
+        }
+        // New inventory entry - normalize fields
+        return {
+          ...raw,
+          narration: raw.narration || raw.note || '',
+          qty: Number(raw.qty || raw.boxes || raw.quantity) || 0,
+          rate: Number(raw.rate) || 0,
+          date: raw.date || raw.createdAt,
+          type: raw.type || 'entry',
+        };
+      };
+
       const stockEntries = snapshot.docs
         .map(doc => normalize({ id: doc.id, ...doc.data() }))
         .sort((a, b) => {
           const getTime = (ts) => {
             if (ts?.toMillis) return ts.toMillis();
             if (ts?.seconds) return ts.seconds * 1000;
+            if (typeof ts === 'string') {
+              return new Date(ts).getTime();
+            }
             return 0;
           };
           return getTime(b.date) - getTime(a.date);
