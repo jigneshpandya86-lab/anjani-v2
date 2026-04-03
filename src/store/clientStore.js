@@ -150,13 +150,36 @@ export const useClientStore = create((set, get) => ({
     const existing = get().orders.find(o => o.id === id);
     if (existing && data.status === 'Delivered' && existing.status !== 'Delivered') {
       const qty = Number(existing.qty);
-      // Debit stock with Narration
+      const rate = Number(existing.rate);
+
+      // 1. Debit stock
       await addDoc(collection(db, 'stock'), {
         qty: -qty,
         narration: `Order Delivered: ${existing.orderId || id}`,
         type: 'dispatch',
         date: serverTimestamp()
       });
+
+      // 2. Create invoice transaction in payments
+      const amount = qty * rate;
+      if (existing.clientId && amount > 0) {
+        await addDoc(collection(db, 'payments'), {
+          clientId: existing.clientId,
+          amount,
+          type: 'invoice',
+          method: 'SYSTEM',
+          narration: `Order Delivered: ${existing.orderId || id}`,
+          date: serverTimestamp(),
+          createdAt: serverTimestamp()
+        });
+        // 3. Increase customer outstanding
+        const client = get().clients.find(c => c.id === existing.clientId);
+        if (client) {
+          await updateDoc(doc(db, 'customers', existing.clientId), {
+            outstanding: (Number(client.outstanding) || 0) + amount
+          });
+        }
+      }
     }
     await updateDoc(doc(db, 'orders', id), data);
   },
