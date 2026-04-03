@@ -119,7 +119,7 @@ function App() {
     }
   ]
 
-  const openReportWindow = ({ title, columns, rows }) => {
+  const openReportWindow = ({ title, columns, rows, metadata = [] }) => {
     const reportWindow = window.open('', '_blank', 'width=900,height=700')
     if (!reportWindow) {
       toast.error('Popup blocked. Please allow popups to generate PDF report.')
@@ -129,6 +129,10 @@ function App() {
     const generatedAt = new Date().toLocaleString('en-IN')
     const headerRow = columns.map((col) => `<th>${col}</th>`).join('')
     const bodyRows = rows.map((row) => `<tr>${row.map((cell) => `<td>${cell || '-'}</td>`).join('')}</tr>`).join('')
+    const metadataRows = metadata
+      .filter(Boolean)
+      .map((entry) => `<p class="meta">${entry}</p>`)
+      .join('')
 
     reportWindow.document.write(`
       <html>
@@ -146,6 +150,7 @@ function App() {
         <body>
           <h1>${title}</h1>
           <p class="meta">Generated: ${generatedAt}</p>
+          ${metadataRows}
           <table>
             <thead><tr>${headerRow}</tr></thead>
             <tbody>${bodyRows}</tbody>
@@ -201,6 +206,46 @@ function App() {
 
   const handleLedgerStatementPdf = async () => {
     try {
+      const clientOptions = [
+        { id: 'all', name: 'All Clients' },
+        ...clients.map((client) => ({ id: client.id, name: client.name || 'Unnamed Client' }))
+      ]
+      const promptLabel = clientOptions.map((client, index) => `${index}. ${client.name}`).join('\n')
+      const selectedClientIndexInput = window.prompt(`Select client for ledger statement:\n${promptLabel}`, '0')
+      if (selectedClientIndexInput === null) return
+
+      const selectedClientIndex = Number(selectedClientIndexInput)
+      if (!Number.isInteger(selectedClientIndex) || selectedClientIndex < 0 || selectedClientIndex >= clientOptions.length) {
+        toast.error('Invalid client selection for report.')
+        return
+      }
+      const selectedClient = clientOptions[selectedClientIndex]
+
+      const startDateInput = window.prompt('Enter start date (YYYY-MM-DD)', '')
+      if (startDateInput === null) return
+      const endDateInput = window.prompt('Enter end date (YYYY-MM-DD)', '')
+      if (endDateInput === null) return
+
+      const parseDateInput = (value, boundary) => {
+        if (!value.trim()) return null
+        const parsed = new Date(`${value.trim()}T00:00:00`)
+        if (Number.isNaN(parsed.getTime())) return 'invalid'
+        if (boundary === 'end') parsed.setHours(23, 59, 59, 999)
+        return parsed
+      }
+
+      const startDate = parseDateInput(startDateInput, 'start')
+      const endDate = parseDateInput(endDateInput, 'end')
+
+      if (startDate === 'invalid' || endDate === 'invalid') {
+        toast.error('Invalid date format. Use YYYY-MM-DD.')
+        return
+      }
+      if (startDate && endDate && startDate > endDate) {
+        toast.error('Start date cannot be after end date.')
+        return
+      }
+
       const paymentsSnap = await getDocs(query(collection(db, 'payments')))
       const payments = paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
       if (payments.length === 0) {
@@ -209,6 +254,16 @@ function App() {
       }
 
       const rows = payments
+        .filter((tx) => {
+          if (selectedClient.id !== 'all' && tx.clientId !== selectedClient.id) return false
+
+          if (!startDate && !endDate) return true
+          const txDateRaw = tx.date?.toDate?.() || tx.createdAt?.toDate?.() || null
+          if (!txDateRaw) return false
+          if (startDate && txDateRaw < startDate) return false
+          if (endDate && txDateRaw > endDate) return false
+          return true
+        })
         .sort((a, b) => {
           const aTime = a.date?.toMillis?.() || a.createdAt?.toMillis?.() || 0
           const bTime = b.date?.toMillis?.() || b.createdAt?.toMillis?.() || 0
@@ -229,10 +284,21 @@ function App() {
           ]
         })
 
+      if (rows.length === 0) {
+        toast.error('No ledger entries found for the selected client/date range.')
+        return
+      }
+
+      const dateRangeLabel = `${startDateInput.trim() || 'Beginning'} to ${endDateInput.trim() || 'Today'}`
+
       openReportWindow({
         title: 'Ledger Statement Report (PDF)',
         columns: ['Client', 'Date', 'Type', 'Method', 'Amount', 'Narration'],
-        rows
+        rows,
+        metadata: [
+          `Client: ${selectedClient.name}`,
+          `Date Range: ${dateRangeLabel}`
+        ]
       })
     } catch (error) {
       toast.error('Unable to generate ledger statement report.')
