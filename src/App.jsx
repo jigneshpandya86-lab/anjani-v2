@@ -23,6 +23,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('orders')
   const [editOrder, setEditOrder] = useState(null)
   const [editClient, setEditClient] = useState(null)
+  const [addClientOpen, setAddClientOpen] = useState(false)
   const [payClient, setPayClient] = useState(null)
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
@@ -146,7 +147,6 @@ function App() {
           {activeTab === 'payments' && <PaymentDashboard />}
           {activeTab === 'clients' && (
             <div className="space-y-6">
-              <AddClient />
               <ClientList onEdit={setEditClient} onPay={setPayClient} />
             </div>
           )}
@@ -168,6 +168,15 @@ function App() {
         <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setEditClient(null)}>
           <div className="bg-white rounded-2xl w-full max-w-lg p-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <AddClient client={editClient} onDone={() => setEditClient(null)} />
+          </div>
+        </div>
+      )}
+
+      {/* Add Client Modal */}
+      {addClientOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setAddClientOpen(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-lg p-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <AddClient onDone={() => setAddClientOpen(false)} />
           </div>
         </div>
       )}
@@ -241,6 +250,16 @@ function App() {
             </nav>
           </aside>
         </div>
+      )}
+
+      {activeTab === 'clients' && (
+        <button
+          onClick={() => setAddClientOpen(true)}
+          className="fixed right-5 bottom-24 md:bottom-8 z-[1000] h-14 w-14 rounded-full bg-[#ff9900] text-white shadow-lg shadow-orange-900/30 flex items-center justify-center text-3xl font-light leading-none hover:bg-[#f08804] active:scale-95 transition-all"
+          aria-label="Add new client"
+        >
+          +
+        </button>
       )}
 
     </div>
