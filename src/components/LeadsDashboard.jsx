@@ -93,20 +93,9 @@ export default function LeadsDashboard() {
         <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter flex items-center gap-2">
           <Sparkles className="text-[#ff9900]" size={20} /> Inquiries
         </h2>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowAddForm((prev) => !prev)}
-            className="h-8 w-8 rounded-full bg-[#ff9900] text-white flex items-center justify-center shadow-sm active:scale-95 transition-transform"
-            aria-label="Manually add lead"
-            title="Manually add lead"
-          >
-            <Plus size={18} />
-          </button>
-          <span className="bg-orange-100 text-[#ff9900] px-2 py-0.5 rounded-lg text-[10px] font-black italic">
-            {leads.length} LEADS
-          </span>
-        </div>
+        <span className="bg-orange-100 text-[#ff9900] px-2 py-0.5 rounded-lg text-[10px] font-black italic">
+          {leads.length} LEADS
+        </span>
       </div>
 
       {showAddForm && (
@@ -193,6 +182,18 @@ export default function LeadsDashboard() {
           </div>
         ))
       )}
+
+
+      <button
+        type="button"
+        onClick={() => setShowAddForm((prev) => !prev)}
+        className="fixed right-4 bottom-24 z-20 h-12 w-12 rounded-full bg-[#ff9900] text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+        aria-label="Manually add lead"
+        title="Manually add lead"
+      >
+        <Plus size={20} />
+      </button>
+
     </div>
   );
 }
