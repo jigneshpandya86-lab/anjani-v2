@@ -55,6 +55,7 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
             <div>
               <h3 className="font-bold text-gray-900 leading-tight">{client.name || 'Unnamed Client'}</h3>
               <p className="text-[10px] text-gray-500 font-mono">ID: {client.shortId || 'LEGACY'}</p>
+              <p className="text-[11px] text-gray-500 font-semibold">Rate: ₹{Number(client.rate || 0).toLocaleString()}</p>
             </div>
             <div className="flex gap-3">
               <button onClick={() => toggleStatus(client)} className="p-1 text-gray-400 hover:text-green-500">
