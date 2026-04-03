@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { 
   collection, addDoc, onSnapshot, query, doc, 
-  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc 
+  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
 
@@ -109,10 +109,11 @@ export const useClientStore = create((set, get) => ({
       createdAt: serverTimestamp()
     });
     if (data.clientId) {
-      const client = get().clients.find(c => c.id === data.clientId);
-      if (client !== undefined) {
-        const newOutstanding = (Number(client.outstanding) || 0) - Number(data.amount);
-        await updateDoc(doc(db, 'customers', data.clientId), { outstanding: newOutstanding });
+      const amount = Number(data.amount) || 0;
+      if (amount > 0) {
+        await updateDoc(doc(db, 'customers', data.clientId), {
+          outstanding: increment(-amount)
+        });
       }
     }
   },
@@ -131,7 +132,7 @@ export const useClientStore = create((set, get) => ({
   },
 
   fetchOrders: () => {
-    const q = query(collection(db, 'orders'));
+    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(50));
     return onSnapshot(q, (snapshot) => {
       const normalize = (raw) => ({
         ...raw,
@@ -186,13 +187,10 @@ export const useClientStore = create((set, get) => ({
           date: serverTimestamp(),
           createdAt: serverTimestamp()
         });
-        // 3. Increase customer outstanding
-        const client = get().clients.find(c => c.id === existing.clientId);
-        if (client) {
-          await updateDoc(doc(db, 'customers', existing.clientId), {
-            outstanding: (Number(client.outstanding) || 0) + amount
-          });
-        }
+        // 3. Increase customer outstanding atomically
+        await updateDoc(doc(db, 'customers', existing.clientId), {
+          outstanding: increment(amount)
+        });
       }
     }
     await updateDoc(doc(db, 'orders', id), data);
