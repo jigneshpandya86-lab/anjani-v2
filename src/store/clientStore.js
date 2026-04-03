@@ -45,8 +45,10 @@ export const useClientStore = create((set, get) => ({
   },
 
   addOrder: async (data) => {
+    const orderId = `ORD-${Date.now()}`;
     await addDoc(collection(db, 'orders'), {
       ...data,
+      orderId,
       qty: Number(data.qty),
       rate: Number(data.rate),
       status: 'Pending',
@@ -83,13 +85,23 @@ export const useClientStore = create((set, get) => ({
   fetchOrders: () => {
     const q = query(collection(db, 'orders'));
     return onSnapshot(q, (snapshot) => {
+      const normalize = (raw) => ({
+        ...raw,
+        qty:      Number(raw.qty || raw.boxes || raw.quantity) || 0,
+        rate:     Number(raw.rate) || 0,
+        date:     raw.date || raw.deliveryDate || raw.orderDate || '',
+        time:     raw.time || raw.deliveryTime || '',
+        clientId: raw.clientId || raw.customerId || '',
+        address:  raw.address || raw.deliveryAddress || raw.location || '',
+        mapLink:  raw.mapLink || raw.googleMap || '',
+      });
       const getTime = (o) => {
         if (o.createdAt?.toDate) return o.createdAt.toDate().getTime();
-        const d = o.orderDate || o.deliveryDate || o.date || '';
+        const d = o.date || o.orderDate || o.deliveryDate || '';
         return d ? new Date(d).getTime() : 0;
       };
       const docs = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .map(doc => normalize({ id: doc.id, ...doc.data() }))
         .sort((a, b) => getTime(b) - getTime(a));
       set({ orders: docs });
     });
