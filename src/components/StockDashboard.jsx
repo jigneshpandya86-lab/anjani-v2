@@ -38,13 +38,13 @@ export default function StockDashboard() {
   return (
     <div className="space-y-4">
       {/* Small Stock Summary Card */}
-      <div className="bg-[#131921] rounded-2xl px-4 py-3.5 text-white shadow-lg flex justify-between items-center">
+      <div className="bg-[#131921] rounded-2xl px-3 py-2.5 text-white shadow-lg flex justify-between items-center">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-orange-400 mb-1">Live Total</p>
-          <h2 className="text-[2rem] leading-none font-black">{totalStock.toLocaleString()} <span className="text-xs font-semibold text-gray-400">Boxes</span></h2>
+          <p className="text-[9px] font-black uppercase tracking-widest text-orange-400 mb-0.5">Live Total</p>
+          <h2 className="text-[1.85rem] leading-none font-black whitespace-nowrap">{totalStock.toLocaleString()} <span className="text-[11px] font-semibold text-gray-400">Boxes</span></h2>
         </div>
-        <button onClick={() => setShowAdd(!showAdd)} className="bg-[#ff9900] text-white p-2.5 rounded-lg flex items-center justify-center">
-          <Plus size={18} strokeWidth={3}/>
+        <button onClick={() => setShowAdd(!showAdd)} className="bg-[#ff9900] text-white p-2 rounded-lg flex items-center justify-center">
+          <Plus size={16} strokeWidth={3}/>
         </button>
       </div>
 
@@ -58,14 +58,14 @@ export default function StockDashboard() {
       )}
 
       {/* Date Range Filter */}
-      <div className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm flex gap-2 items-center">
+      <div className="bg-white p-2.5 rounded-2xl border border-gray-100 shadow-sm flex gap-2 items-end">
         <div className="flex-1">
-          <label className="text-[9px] font-black text-gray-400 uppercase ml-1">Start</label>
-          <input type="date" className="w-full bg-gray-50 p-2 rounded-lg text-sm font-bold outline-none border-none" value={startDate} onChange={e => setStartDate(e.target.value)} />
+          <label className="text-[8px] font-black text-gray-400 uppercase ml-1">Start</label>
+          <input type="date" className="w-full bg-gray-50 px-2.5 py-1.5 rounded-lg text-[13px] font-bold outline-none border-none" value={startDate} onChange={e => setStartDate(e.target.value)} />
         </div>
         <div className="flex-1">
-          <label className="text-[9px] font-black text-gray-400 uppercase ml-1">End</label>
-          <input type="date" className="w-full bg-gray-50 p-2 rounded-lg text-sm font-bold outline-none border-none" value={endDate} onChange={e => setEndDate(e.target.value)} />
+          <label className="text-[8px] font-black text-gray-400 uppercase ml-1">End</label>
+          <input type="date" className="w-full bg-gray-50 px-2.5 py-1.5 rounded-lg text-[13px] font-bold outline-none border-none" value={endDate} onChange={e => setEndDate(e.target.value)} />
         </div>
         {(startDate || endDate) && (
           <button onClick={() => {setStartDate(''); setEndDate('');}} className="mt-4 text-[10px] font-black text-red-400 uppercase px-2">Clear</button>
