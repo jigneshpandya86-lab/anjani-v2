@@ -471,7 +471,6 @@ function App() {
                 ))}
               </div>
               <div className="space-y-1">
-                <p className="px-2 text-[11px] font-black tracking-[0.14em] text-gray-400 uppercase">Navigate</p>
                 {navItems.map(item => (
                   <button key={`drawer-${item.id}`}
                     onClick={() => { setActiveTab(item.id); setDrawerOpen(false); }}
