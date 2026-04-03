@@ -36,6 +36,7 @@ function App() {
   const [editClient, setEditClient] = useState(null)
   const [addClientOpen, setAddClientOpen] = useState(false)
   const [payClient, setPayClient] = useState(null)
+  const [paymentPrefill, setPaymentPrefill] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
   const [ledgerClientId, setLedgerClientId] = useState('all')
@@ -118,6 +119,7 @@ function App() {
       onClick: () => {
         setActiveTab('payments')
         setPayClient({})
+        setPaymentPrefill(null)
         setDrawerOpen(false)
       }
     }
@@ -257,6 +259,129 @@ function App() {
       </html>
     `)
     reportWindow.document.close()
+  }
+
+  const escapePdfText = (text) => String(text || '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+
+  const buildSimpleInvoicePdfFile = ({ order, clientName, mobile }) => {
+    const qty = Number(order.qty) || 0
+    const rate = Number(order.rate) || 0
+    const total = qty * rate
+    const orderId = order.orderId || order.id || 'NA'
+    const issuedAt = new Date().toLocaleString('en-IN')
+    const invoiceDateTime = `${order.date || '-'} ${order.time || ''}`.trim()
+    const textAt = (x, y, size, text) =>
+      `BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${escapePdfText(text)}) Tj ET`
+
+    const stream = [
+      'q',
+      '0.95 0.97 1 rg',
+      '40 760 515 60 re f',
+      '0 0 0 rg',
+      textAt(52, 795, 22, 'INVOICE'),
+      textAt(52, 774, 11, 'ANJANI WATER'),
+      textAt(410, 795, 10, `Invoice #: ${orderId}`),
+      textAt(410, 778, 10, `Issued: ${issuedAt}`),
+      '0.85 0.85 0.85 RG',
+      '40 695 515 58 re S',
+      textAt(52, 736, 10, `Bill To: ${clientName || 'Unknown Client'}`),
+      textAt(52, 719, 10, `Mobile: ${mobile || '-'}`),
+      textAt(320, 736, 10, `Delivery Date: ${invoiceDateTime || '-'}`),
+      textAt(320, 719, 10, `Status: ${order.status || '-'}`),
+      '0.88 0.88 0.88 rg',
+      '40 665 515 22 re f',
+      '0 0 0 rg',
+      textAt(52, 671, 10, 'Description'),
+      textAt(300, 671, 10, 'Qty'),
+      textAt(380, 671, 10, 'Rate'),
+      textAt(470, 671, 10, 'Amount'),
+      '0.9 0.9 0.9 RG',
+      '40 625 515 40 re S',
+      textAt(52, 641, 10, 'Water Box Supply'),
+      textAt(300, 641, 10, `${qty} Boxes`),
+      textAt(380, 641, 10, `INR ${rate.toLocaleString('en-IN')}`),
+      textAt(470, 641, 10, `INR ${total.toLocaleString('en-IN')}`),
+      '0.95 0.95 0.95 rg',
+      '355 575 200 40 re f',
+      '0.82 0.82 0.82 RG',
+      '355 575 200 40 re S',
+      '0 0 0 rg',
+      textAt(367, 598, 10, 'Total'),
+      textAt(470, 598, 12, `INR ${total.toLocaleString('en-IN')}`),
+      textAt(40, 540, 9, 'Thank you for your business.'),
+      'Q'
+    ].join('\n')
+
+    const objects = []
+    objects.push('1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj')
+    objects.push('2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj')
+    objects.push('3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj')
+    objects.push(`4 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream endobj`)
+    objects.push('5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj')
+
+    let pdf = '%PDF-1.4\n'
+    const offsets = [0]
+    objects.forEach((obj) => {
+      offsets.push(pdf.length)
+      pdf += `${obj}\n`
+    })
+    const xrefStart = pdf.length
+    pdf += `xref\n0 ${objects.length + 1}\n`
+    pdf += '0000000000 65535 f \n'
+    for (let i = 1; i <= objects.length; i += 1) {
+      pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`
+    }
+    pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`
+    return new File([pdf], `invoice-${orderId}.pdf`, { type: 'application/pdf' })
+  }
+
+  const handleRecordPaymentFromOrder = (order) => {
+    const client = clients.find((c) => c.id === order.clientId)
+    const amount = (Number(order.qty) || 0) * (Number(order.rate) || 0)
+    const now = new Date()
+    const date = now.toISOString().slice(0, 10)
+    const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
+
+    setPayClient(client || {})
+    setPaymentPrefill({
+      amount,
+      date,
+      time,
+      note: `Payment received for order ${order.orderId || order.id}`
+    })
+  }
+
+  const handleOrderInvoiceWhatsApp = async (order) => {
+    const client = clients.find((c) => c.id === order.clientId)
+    const clientName = client?.name || order.clientName || order.customerName || 'Unknown Client'
+    const mobile = client?.mobile || order.mobile || order.phone || ''
+    const amount = ((Number(order.qty) || 0) * (Number(order.rate) || 0)).toLocaleString('en-IN')
+    const pdfFile = buildSimpleInvoicePdfFile({ order, clientName, mobile })
+    const msg = `Invoice ${order.orderId || order.id || ''}\nClient: ${clientName}\nAmount: ₹${amount}`
+
+    try {
+      if (navigator.share && navigator.canShare?.({ files: [pdfFile] })) {
+        await navigator.share({
+          title: `Invoice ${order.orderId || order.id || ''}`,
+          text: msg,
+          files: [pdfFile]
+        })
+        toast.success('Invoice PDF attached. Select WhatsApp and hit send.')
+        return
+      }
+    } catch (error) {
+      if (error?.name === 'AbortError') return
+      console.error(error)
+    }
+
+    window.open(`https://wa.me/?text=${encodeURIComponent(`${msg}\n\nDirect PDF attachment works only when your browser supports file share (mostly mobile).`)}`, '_blank')
+    openInvoiceWindow({
+      title: `Order Invoice (PDF) - ${order.orderId || order.id || 'Invoice'}`,
+      order,
+      clientName,
+      mobile
+    })
+    toast('Direct WhatsApp attachment is browser-limited. Invoice preview opened for print/share.', { icon: 'ℹ️' })
   }
 
   const handleOrderPrintPdf = () => {
@@ -503,14 +628,24 @@ function App() {
       {/* Main Content Area */}
       <div className="flex flex-col min-h-screen">
         <div className="max-w-5xl mx-auto w-full pb-28">
-          {activeTab === 'orders' && <OrdersDashboard onEdit={setEditOrder} onCopy={(o) => setEditOrder({ ...o, id: null })} />}
+          {activeTab === 'orders' && (
+            <OrdersDashboard
+              onEdit={setEditOrder}
+              onCopy={(o) => setEditOrder({ ...o, id: null })}
+              onRecordPayment={handleRecordPaymentFromOrder}
+              onShareInvoice={handleOrderInvoiceWhatsApp}
+            />
+          )}
           {activeTab === 'stock' && <StockDashboard />}
           {activeTab === 'payments' && <PaymentDashboard />}
           {activeTab === 'clients' && (
             <div className="space-y-6">
               <ClientList
                 onEdit={setEditClient}
-                onPay={setPayClient}
+                onPay={(client) => {
+                  setPaymentPrefill(null)
+                  setPayClient(client)
+                }}
                 onOrder={(client) => setEditOrder({ clientId: client.id })}
               />
             </div>
@@ -621,17 +756,30 @@ function App() {
 
       {/* Payment Modal */}
       {payClient !== null && (
-        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setPayClient(null)}>
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => {
+          setPayClient(null)
+          setPaymentPrefill(null)
+        }}>
           <div className="relative bg-white rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 pt-10 md:p-5 md:pt-10" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
-              onClick={() => setPayClient(null)}
+              onClick={() => {
+                setPayClient(null)
+                setPaymentPrefill(null)
+              }}
               className="absolute top-3 right-3 p-2 rounded-lg text-gray-500 bg-gray-100 hover:bg-gray-200"
               aria-label="Close payment form"
             >
               <X size={18} />
             </button>
-            <PaymentModal client={payClient} onClose={() => setPayClient(null)} />
+            <PaymentModal
+              client={payClient}
+              initialValues={paymentPrefill || {}}
+              onClose={() => {
+                setPayClient(null)
+                setPaymentPrefill(null)
+              }}
+            />
           </div>
         </div>
       )}
@@ -749,7 +897,10 @@ function App() {
       {/* FAB: Record Payment (Transactions tab) */}
       {activeTab === 'payments' && (
         <button
-          onClick={() => setPayClient({})}
+          onClick={() => {
+            setPaymentPrefill(null)
+            setPayClient({})
+          }}
           className="fixed right-4 bottom-24 z-[998] h-14 w-14 rounded-full bg-[#ff9900] text-white shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
           aria-label="Record payment"
         >
