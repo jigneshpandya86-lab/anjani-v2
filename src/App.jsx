@@ -23,6 +23,8 @@ import PaymentModal from './components/PaymentModal'
 import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
 
+const APP_PIN = '9999'
+
 function App() {
   const [activeTab, setActiveTab] = useState('orders')
   const [editOrder, setEditOrder] = useState(null)
@@ -30,9 +32,14 @@ function App() {
   const [addClientOpen, setAddClientOpen] = useState(false)
   const [payClient, setPayClient] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinError, setPinError] = useState('')
+  const [isUnlocked, setIsUnlocked] = useState(() => sessionStorage.getItem('anjani-app-unlocked') === 'true')
   const { fetchClients, fetchOrders, fetchStock } = useClientStore()
 
   useEffect(() => {
+    if (!isUnlocked) return undefined
+
     const unsubClients = fetchClients()
     const unsubOrders = fetchOrders()
     const unsubStock = fetchStock()
@@ -41,7 +48,29 @@ function App() {
       if (unsubOrders) unsubOrders()
       if (unsubStock) unsubStock()
     }
-  }, [])
+  }, [fetchClients, fetchOrders, fetchStock, isUnlocked])
+
+  const verifyPin = (value) => {
+    if (value !== APP_PIN) {
+      setPinInput('')
+      setPinError('Wrong PIN. Please try again.')
+      return
+    }
+
+    setPinError('')
+    setIsUnlocked(true)
+    sessionStorage.setItem('anjani-app-unlocked', 'true')
+  }
+
+  const handlePinChange = (event) => {
+    const nextValue = event.target.value.replace(/\D/g, '').slice(0, 4)
+    setPinInput(nextValue)
+    setPinError('')
+
+    if (nextValue.length === 4) {
+      verifyPin(nextValue)
+    }
+  }
 
   const navItems = [
     { id: 'orders', label: 'Orders', icon: <ShoppingCart size={20} /> },
@@ -83,6 +112,29 @@ function App() {
       }
     }
   ]
+
+  if (!isUnlocked) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa] font-sans flex items-center justify-center px-4">
+        <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-gray-100 p-6 text-center">
+          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
+          <p className="mt-4 text-sm font-semibold text-gray-600">Enter 4-digit PIN to unlock app</p>
+          <input
+            type="password"
+            inputMode="numeric"
+            autoFocus
+            value={pinInput}
+            onChange={handlePinChange}
+            maxLength={4}
+            className="mt-4 w-full rounded-xl border border-gray-200 px-4 py-3 text-center text-2xl font-black tracking-[0.35em] text-[#131921] focus:outline-none focus:ring-2 focus:ring-orange-300"
+            placeholder="••••"
+            aria-label="App PIN"
+          />
+          {pinError && <p className="mt-3 text-sm font-bold text-red-500">{pinError}</p>}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] font-sans">
