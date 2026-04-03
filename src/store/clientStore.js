@@ -17,11 +17,15 @@ export const useClientStore = create((set, get) => ({
       const normalize = (raw) => {
         // Check if it's an old job entry (has 'customer' field but no 'narration')
         if (raw.customer && !raw.narration) {
-          const produced = raw.produced ? ` Produced ${raw.produced}` : '';
+          const producedCount = Number(raw.produced) || 0;
+          const deliveredCount = Number(raw.delivered) || 0;
+          const produced = producedCount ? ` Produced ${producedCount}` : '';
           return {
             ...raw,
-            narration: `${raw.customer} - Delivered ${raw.delivered}${produced}`,
-            qty: raw.delivered || 0,
+            narration: `${raw.customer} - Delivered ${deliveredCount}${produced}`,
+            produced: producedCount,
+            delivered: deliveredCount,
+            qty: deliveredCount || 0,
             type: 'old_job',
             date: raw.date, // Keep as-is (string)
           };

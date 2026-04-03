@@ -48,7 +48,15 @@ export default function StockDashboard() {
   };
 
   // Total Stock strictly calculates ALL time, unaffected by date filters
-  const totalStock = stockEntries.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
+  // Legacy old_job rows store produced and delivered separately, so net stock is produced - delivered.
+  const totalStock = stockEntries.reduce((acc, curr) => {
+    if (curr.type === 'old_job') {
+      const produced = Number(curr.produced) || 0;
+      const delivered = Number(curr.delivered) || 0;
+      return acc + (produced - delivered);
+    }
+    return acc + (Number(curr.qty) || 0);
+  }, 0);
 
   // Filters ONLY the visual transaction log
   const filtered = stockEntries.filter(entry => {
