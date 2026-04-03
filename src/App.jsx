@@ -16,15 +16,12 @@ import {
   Package,
   CreditCard,
   Users,
-  TrendingUp
+  TrendingUp,
+  LogOut
 } from 'lucide-react'
 import { collection, getDocs, query } from 'firebase/firestore'
-import { auth, db } from './firebase-config'
-import {
-  signInWithEmailPassword,
-  signInWithGoogle,
-  signOutUser
-} from './firebase-auth'
+import { db, auth } from './firebase-config'
+import { signOut, onAuthStateChanged } from 'firebase/auth'
 import ClientList from './components/ClientList'
 import AddClient from './components/AddClient'
 import OrdersDashboard from './components/OrdersDashboard'
@@ -33,6 +30,7 @@ import PaymentDashboard from './components/PaymentDashboard'
 import PaymentModal from './components/PaymentModal'
 import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
+import Login from './components/Login'
 
 function App() {
   const [activeTab, setActiveTab] = useState('orders')
@@ -45,24 +43,23 @@ function App() {
   const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
   const [ledgerClientId, setLedgerClientId] = useState('all')
   const [ledgerDateRange, setLedgerDateRange] = useState('current-month')
-  const [emailInput, setEmailInput] = useState('')
-  const [passwordInput, setPasswordInput] = useState('')
-  const [authActionLoading, setAuthActionLoading] = useState(false)
-  const [currentUser, setCurrentUser] = useState(null)
+  const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const { fetchClients, fetchOrders, fetchStock, fetchStockTotal, orders, clients } = useClientStore()
 
+  // Monitor Firebase auth state
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user)
+    setAuthLoading(true)
+    const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser)
       setAuthLoading(false)
     })
-
-    return () => unsubscribe()
+    return unsubAuth
   }, [])
 
+  // Fetch data when user is authenticated
   useEffect(() => {
-    if (!currentUser) return undefined
+    if (!user) return undefined
 
     const unsubClients = fetchClients()
     const unsubOrders = fetchOrders()
@@ -74,56 +71,14 @@ function App() {
       if (unsubStock) unsubStock()
       if (unsubStockTotal) unsubStockTotal()
     }
-  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, currentUser])
-
-  const clearAuthForm = () => {
-    setEmailInput('')
-    setPasswordInput('')
-  }
-
-  const handleGoogleLogin = async () => {
-    try {
-      setAuthActionLoading(true)
-      await signInWithGoogle()
-      toast.success('Signed in with Google.')
-    } catch (error) {
-      toast.error(error?.message || 'Google sign-in failed.')
-    } finally {
-      setAuthActionLoading(false)
-    }
-  }
-
-  const handleEmailAuth = async (event) => {
-    event.preventDefault()
-
-    const email = emailInput.trim()
-    const password = passwordInput
-
-    if (!email || !password) {
-      toast.error('Email and password are required.')
-      return
-    }
-
-    try {
-      setAuthActionLoading(true)
-
-      await signInWithEmailPassword(email, password)
-      toast.success('Signed in successfully.')
-
-      clearAuthForm()
-    } catch (error) {
-      toast.error(error?.message || 'Email sign-in failed.')
-    } finally {
-      setAuthActionLoading(false)
-    }
-  }
+  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, user])
 
   const handleLogout = async () => {
     try {
-      await signOutUser()
-      toast.success('Signed out.')
+      await signOut(auth)
+      toast.success('Signed out successfully')
     } catch (error) {
-      toast.error(error?.message || 'Sign out failed.')
+      toast.error('Failed to sign out')
     }
   }
 
@@ -656,71 +611,16 @@ function App() {
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#f8f9fa] font-sans flex items-center justify-center px-4">
-        <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-gray-100 p-6 text-center">
-          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
-          <p className="mt-4 text-sm font-semibold text-gray-600">Checking authentication...</p>
+        <div className="text-center">
+          <h1 className="text-2xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
+          <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
     )
   }
 
-  if (!currentUser) {
-    return (
-      <div className="min-h-screen bg-[#f8f9fa] font-sans flex items-center justify-center px-4">
-        <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-gray-100 p-6 text-center">
-          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
-          <p className="mt-4 text-sm font-semibold text-gray-600">Sign in with Google or email/password</p>
-
-          <form onSubmit={handleEmailAuth} className="mt-5 space-y-3 text-left">
-            <div>
-              <label htmlFor="email" className="mb-1 block text-xs font-bold uppercase text-gray-500">Email</label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                value={emailInput}
-                onChange={(event) => setEmailInput(event.target.value)}
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-semibold text-[#131921] focus:outline-none focus:ring-2 focus:ring-orange-300"
-                placeholder="you@example.com"
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="mb-1 block text-xs font-bold uppercase text-gray-500">Password</label>
-              <input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                value={passwordInput}
-                onChange={(event) => setPasswordInput(event.target.value)}
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-semibold text-[#131921] focus:outline-none focus:ring-2 focus:ring-orange-300"
-                placeholder="••••••••"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={authActionLoading}
-              className="w-full rounded-xl bg-[#131921] px-4 py-3 text-sm font-black text-white hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              Sign in with Email
-            </button>
-          </form>
-
-
-
-          <div className="my-4 h-px w-full bg-gray-100" />
-
-          <button
-            type="button"
-            disabled={authActionLoading}
-            onClick={handleGoogleLogin}
-            className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-black text-[#131921] hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            Sign in with Google
-          </button>
-          <p className="mt-3 text-xs font-semibold text-gray-500">Accounts cannot be self-created here. Ask admin to create your account in Firebase Authentication. For Android, Google login uses redirect instead of popup.</p>
-        </div>
-      </div>
-    )
+  if (!user) {
+    return <Login />
   }
 
   return (
@@ -728,16 +628,29 @@ function App() {
       <Toaster position="top-center" toastOptions={{ style: { background: '#ffffff', color: '#131921', border: '1px solid #e5e7eb', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', borderRadius: '12px', fontWeight: '900', fontSize: '14px', padding: '16px 24px' }, success: { iconTheme: { primary: '#25D366', secondary: '#fff' } }, error: { iconTheme: { primary: '#EF4444', secondary: '#fff' } } }} />
 
       {/* Unified Top Header (all screen sizes) */}
-      <header className="sticky top-0 bg-white shadow-sm z-40 flex items-center px-4 py-3">
-        <button
-          onClick={() => setDrawerOpen(true)}
-          className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 transition-colors"
-          aria-label="Open menu"
-        >
-          <Menu size={22} />
-        </button>
-        <div className="ml-2">
-          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
+      <header className="sticky top-0 bg-white shadow-sm z-40 flex items-center justify-between px-4 py-3">
+        <div className="flex items-center">
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 transition-colors"
+            aria-label="Open menu"
+          >
+            <Menu size={22} />
+          </button>
+          <div className="ml-2">
+            <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-600 hidden sm:inline">{user?.email}</span>
+          <button
+            onClick={handleLogout}
+            className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 transition-colors"
+            aria-label="Sign out"
+            title="Sign out"
+          >
+            <LogOut size={20} />
+          </button>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <span className="hidden md:block text-xs font-bold text-gray-500">{currentUser.email}</span>
