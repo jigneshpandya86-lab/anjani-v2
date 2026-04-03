@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { collection, query, onSnapshot } from 'firebase/firestore';
+import { collection, query, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase-config';
-import { MessageSquare, Send, Calendar, User, Phone, Sparkles } from 'lucide-react';
+import { MessageSquare, Send, User, Phone, Sparkles, Trash2 } from 'lucide-react';
 
 export default function LeadsDashboard() {
   const [leads, setLeads] = useState([]);
@@ -32,6 +32,15 @@ export default function LeadsDashboard() {
     const displayName = lead.name || 'there';
     const msg = `Hi ${displayName}, refresh your guests with Annapurna Foods 200ml water bottles. Premium quality for events in Vadodara. Call us now!`;
     window.open(`sms:+91${lead.mobile}?body=${encodeURIComponent(msg)}`, '_blank');
+  };
+
+
+  const deleteLead = async (leadId) => {
+    try {
+      await deleteDoc(doc(db, 'leads', leadId));
+    } catch (error) {
+      console.error('Failed to delete lead:', error);
+    }
   };
 
   // Advanced Date Formatter to catch old and new formats
@@ -79,6 +88,13 @@ export default function LeadsDashboard() {
                   <Send size={14} /> SMS
                 </button>
                 <a href={`tel:${lead.mobile}`} className="text-blue-500 p-2 bg-blue-50 rounded-xl active:scale-90 transition-transform"><Phone size={18} /></a>
+                <button
+                  onClick={() => deleteLead(lead.id)}
+                  className="text-red-500 p-2 bg-red-50 rounded-xl active:scale-90 transition-transform"
+                  aria-label="Delete lead"
+                >
+                  <Trash2 size={18} />
+                </button>
               </div>
             </div>
           </div>
