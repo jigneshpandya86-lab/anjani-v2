@@ -41,11 +41,11 @@ function App() {
   }, [])
 
   const navItems = [
-    { id: 'orders', label: 'Orders', icon: <ShoppingCart size={22} /> },
-    { id: 'stock', label: 'Stock', icon: <Package size={22} /> },
-    { id: 'payments', label: 'Transactions', icon: <CreditCard size={22} /> },
-    { id: 'clients', label: 'Clients', icon: <Users size={22} /> },
-    { id: 'leads', label: 'Leads', icon: <TrendingUp size={22} /> },
+    { id: 'orders', label: 'Orders', icon: <ShoppingCart size={20} /> },
+    { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
+    { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
+    { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
+    { id: 'leads', label: 'Leads', icon: <TrendingUp size={20} /> },
   ]
 
   return (
@@ -55,8 +55,7 @@ function App() {
       {/* Unified Top Header (all screen sizes) */}
       <header className="sticky top-0 bg-white shadow-sm z-40 flex items-center justify-between px-4 py-3">
         <div>
-          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI<span className="text-[#ff9900]">WATER</span></h1>
-          <span className="block text-[9px] font-bold text-gray-400 uppercase tracking-[0.2em]">Management</span>
+          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
         </div>
         <button
           onClick={() => setDrawerOpen(true)}
@@ -70,7 +69,7 @@ function App() {
       {/* Main Content Area */}
       <div className="flex flex-col min-h-screen">
         <div className="max-w-5xl mx-auto w-full pb-28">
-          {activeTab === 'orders' && <OrdersDashboard onEdit={setEditOrder} onCopy={(o) => setEditOrder({ ...o, id: null })} onAdd={() => setEditOrder({})} />}
+          {activeTab === 'orders' && <OrdersDashboard onEdit={setEditOrder} onCopy={(o) => setEditOrder({ ...o, id: null })} />}
           {activeTab === 'stock' && <StockDashboard />}
           {activeTab === 'payments' && <PaymentDashboard />}
           {activeTab === 'clients' && (
@@ -89,8 +88,7 @@ function App() {
           <aside className="absolute left-0 top-0 h-full w-72 bg-white shadow-2xl flex flex-col">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <div>
-                <h2 className="text-lg font-black tracking-tighter text-[#131921]">ANJANI<span className="text-[#ff9900]">WATER</span></h2>
-                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Management</p>
+                <h2 className="text-lg font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h2>
               </div>
               <button onClick={() => setDrawerOpen(false)} className="p-2 rounded-xl text-gray-400 hover:bg-gray-100" aria-label="Close menu">
                 <X size={18} />
@@ -153,12 +151,12 @@ function App() {
       )}
 
       {/* Bottom Navigation (all screen sizes) */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-2 pb-6 flex justify-around items-center z-[999] shadow-[0_-10px_20px_rgba(0,0,0,0.08)]">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-1.5 pb-4 flex justify-around items-center z-[999] shadow-[0_-10px_20px_rgba(0,0,0,0.08)]">
         {navItems.map((item) => (
           <button
             key={item.id}
             onClick={() => setActiveTab(item.id)}
-            className={`flex flex-col items-center justify-center w-[19%] py-2 rounded-xl transition-all ${
+            className={`flex flex-col items-center justify-center w-[19%] py-1.5 rounded-xl transition-all ${
               activeTab === item.id
                 ? 'text-[#ff9900] bg-[#fff4e5] shadow-[0_4px_10px_rgba(255,153,0,0.15)]'
                 : 'text-gray-400 hover:text-gray-600'
@@ -166,7 +164,7 @@ function App() {
             aria-label={`Open ${item.label}`}
           >
             {item.icon}
-            <span className={`text-[10px] mt-1 uppercase tracking-tight ${activeTab === item.id ? 'font-black' : 'font-bold'}`}>
+            <span className={`text-[9px] mt-0.5 uppercase tracking-tight ${activeTab === item.id ? 'font-black' : 'font-bold'}`}>
               {item.label}
             </span>
           </button>

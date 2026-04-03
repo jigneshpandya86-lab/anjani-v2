@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Package, Clock, Truck, Copy, Edit2, Trash2, Smartphone, Search, Plus } from 'lucide-react';
+import { Clock, Copy, Edit2, Trash2, Smartphone, Search } from 'lucide-react';
 
-export default function OrdersDashboard({ onEdit, onCopy, onAdd }) {
+export default function OrdersDashboard({ onEdit, onCopy }) {
   const { orders, clients, updateOrder, deleteOrder } = useClientStore();
   const [filter, setFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,20 +59,6 @@ export default function OrdersDashboard({ onEdit, onCopy, onAdd }) {
 
   return (
     <div className="space-y-3 pb-20">
-      <div className="flex justify-between items-center">
-        <h2 className="text-lg font-black text-gray-800 uppercase tracking-tight flex items-center gap-1.5">
-          <Truck className="text-[#ff9900]" size={18} /> Dispatch
-        </h2>
-        <div className="flex items-center gap-2">
-          <button onClick={onAdd} className="bg-[#ff9900] text-white p-1.5 rounded-lg shadow-md active:scale-95" title="New Order">
-            <Plus size={17} strokeWidth={3} />
-          </button>
-          <button onClick={shareDispatchPlan} className="bg-[#25D366] text-white px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1 shadow-md active:scale-95">
-            <Smartphone size={11} /> Share Roster
-          </button>
-        </div>
-      </div>
-
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <input
@@ -84,13 +70,16 @@ export default function OrdersDashboard({ onEdit, onCopy, onAdd }) {
         />
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide px-1">
+      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide px-1 items-center">
         {['All', 'Pending', 'Confirmed', 'Delivered'].map(f => (
           <button key={f} onClick={() => setFilter(f)} 
             className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${filter === f ? 'bg-[#131921] text-[#ff9900]' : 'bg-white text-gray-400 border border-gray-200'}`}>
             {f}
           </button>
         ))}
+        <button onClick={shareDispatchPlan} className="bg-[#25D366] text-white px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95">
+          <Smartphone size={12} /> Roster
+        </button>
       </div>
 
       {filteredOrders.length === 0 ? (
