@@ -121,7 +121,15 @@ function App() {
       {/* Order Modal */}
       {editOrder !== null && (
         <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setEditOrder(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+          <div className="relative bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 pt-12" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setEditOrder(null)}
+              className="absolute top-3 right-3 p-2 rounded-lg text-gray-500 bg-gray-100 hover:bg-gray-200"
+              aria-label="Close order form"
+            >
+              <X size={18} />
+            </button>
             <OrderModal orderToEdit={editOrder} onClose={() => setEditOrder(null)} />
           </div>
         </div>
