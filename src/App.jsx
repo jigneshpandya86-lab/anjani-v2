@@ -279,24 +279,49 @@ function App() {
     const rate = Number(order.rate) || 0
     const total = qty * rate
     const orderId = order.orderId || order.id || 'NA'
-    const lines = [
-      'ANJANI WATER - Invoice',
-      `Invoice: ${orderId}`,
-      `Client: ${clientName || 'Unknown Client'}`,
-      `Mobile: ${mobile || '-'}`,
-      `Date: ${order.date || '-'} ${order.time || ''}`.trim(),
-      `Qty: ${qty} Boxes`,
-      `Rate: INR ${rate.toLocaleString('en-IN')}`,
-      `Total: INR ${total.toLocaleString('en-IN')}`,
-      '',
-      `Generated: ${new Date().toLocaleString('en-IN')}`
-    ]
-    const lineHeight = 18
-    const startY = 780
-    const content = lines
-      .map((line, index) => `BT /F1 12 Tf 50 ${startY - (index * lineHeight)} Td (${escapePdfText(line)}) Tj ET`)
-      .join('\n')
-    const stream = `q\n${content}\nQ`
+    const issuedAt = new Date().toLocaleString('en-IN')
+    const invoiceDateTime = `${order.date || '-'} ${order.time || ''}`.trim()
+    const textAt = (x, y, size, text) =>
+      `BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${escapePdfText(text)}) Tj ET`
+
+    const stream = [
+      'q',
+      '0.95 0.97 1 rg',
+      '40 760 515 60 re f',
+      '0 0 0 rg',
+      textAt(52, 795, 22, 'INVOICE'),
+      textAt(52, 774, 11, 'ANJANI WATER'),
+      textAt(410, 795, 10, `Invoice #: ${orderId}`),
+      textAt(410, 778, 10, `Issued: ${issuedAt}`),
+      '0.85 0.85 0.85 RG',
+      '40 695 515 58 re S',
+      textAt(52, 736, 10, `Bill To: ${clientName || 'Unknown Client'}`),
+      textAt(52, 719, 10, `Mobile: ${mobile || '-'}`),
+      textAt(320, 736, 10, `Delivery Date: ${invoiceDateTime || '-'}`),
+      textAt(320, 719, 10, `Status: ${order.status || '-'}`),
+      '0.88 0.88 0.88 rg',
+      '40 665 515 22 re f',
+      '0 0 0 rg',
+      textAt(52, 671, 10, 'Description'),
+      textAt(300, 671, 10, 'Qty'),
+      textAt(380, 671, 10, 'Rate'),
+      textAt(470, 671, 10, 'Amount'),
+      '0.9 0.9 0.9 RG',
+      '40 625 515 40 re S',
+      textAt(52, 641, 10, 'Water Box Supply'),
+      textAt(300, 641, 10, `${qty} Boxes`),
+      textAt(380, 641, 10, `INR ${rate.toLocaleString('en-IN')}`),
+      textAt(470, 641, 10, `INR ${total.toLocaleString('en-IN')}`),
+      '0.95 0.95 0.95 rg',
+      '355 575 200 40 re f',
+      '0.82 0.82 0.82 RG',
+      '355 575 200 40 re S',
+      '0 0 0 rg',
+      textAt(367, 598, 10, 'Total'),
+      textAt(470, 598, 12, `INR ${total.toLocaleString('en-IN')}`),
+      textAt(40, 540, 9, 'Thank you for your business.'),
+      'Q'
+    ].join('\n')
 
     const objects = []
     objects.push('1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj')
@@ -360,11 +385,14 @@ function App() {
       console.error(error)
     }
 
-    const invoiceBlobUrl = URL.createObjectURL(pdfFile)
-    window.open(invoiceBlobUrl, '_blank')
-    window.open(`https://wa.me/?text=${encodeURIComponent(`${msg}\n\nInvoice PDF opened in another tab. Please attach and send.`)}`, '_blank')
-    toast('WhatsApp Web cannot auto-attach files by URL. PDF opened for quick attach.', { icon: 'ℹ️' })
-    setTimeout(() => URL.revokeObjectURL(invoiceBlobUrl), 60 * 1000)
+    window.open(`https://wa.me/?text=${encodeURIComponent(`${msg}\n\nDirect PDF attachment works only when your browser supports file share (mostly mobile).`)}`, '_blank')
+    openInvoiceWindow({
+      title: `Order Invoice (PDF) - ${order.orderId || order.id || 'Invoice'}`,
+      order,
+      clientName,
+      mobile
+    })
+    toast('Direct WhatsApp attachment is browser-limited. Invoice preview opened for print/share.', { icon: 'ℹ️' })
   }
 
   const handleOrderPrintPdf = () => {
