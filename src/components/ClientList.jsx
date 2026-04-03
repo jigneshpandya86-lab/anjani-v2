@@ -66,27 +66,25 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
             </div>
           </div>
 
-          <div className="flex justify-between items-end mb-3">
-             <p className="text-sm text-gray-600 line-clamp-1 pr-4">{client.address || 'No Address'}</p>
+          <div className="flex justify-between items-center gap-3">
+             <div className="grid grid-cols-5 gap-2 flex-1">
+               <a href={`tel:${client.mobile}`} className="flex justify-center p-2 bg-blue-50 text-blue-600 rounded-md"><Phone className="w-4 h-4" /></a>
+               <a href={`https://wa.me/91${client.mobile}`} className="flex justify-center p-2 bg-green-50 text-green-600 rounded-md"><MessageSquare className="w-4 h-4" /></a>
+               <button
+                 onClick={() => onOrder(client)}
+                 className="flex justify-center p-2 bg-orange-50 text-orange-600 rounded-md"
+               >
+                 <ShoppingCart className="w-4 h-4" />
+               </button>
+               <button onClick={() => onPay(client)} className="flex justify-center p-2 bg-purple-50 text-purple-600 rounded-md"><IndianRupee className="w-4 h-4" /></button>
+               <button className="flex justify-center p-2 bg-gray-50 text-gray-600 rounded-md"><FileText className="w-4 h-4" /></button>
+             </div>
              <div className="text-right min-w-[80px]">
                 <p className="text-[9px] uppercase font-bold text-gray-400 leading-none">Balance</p>
                 <p className={`font-black text-sm ${client.outstanding > 0 ? 'text-red-500' : 'text-green-600'}`}>
                   ₹{Number(client.outstanding || 0).toLocaleString()}
                 </p>
              </div>
-          </div>
-
-          <div className="grid grid-cols-5 border-t border-gray-100 pt-3 gap-2">
-            <a href={`tel:${client.mobile}`} className="flex justify-center p-2 bg-blue-50 text-blue-600 rounded-md"><Phone className="w-4 h-4" /></a>
-            <a href={`https://wa.me/91${client.mobile}`} className="flex justify-center p-2 bg-green-50 text-green-600 rounded-md"><MessageSquare className="w-4 h-4" /></a>
-            <button
-              onClick={() => onOrder(client)}
-              className="flex justify-center p-2 bg-orange-50 text-orange-600 rounded-md"
-            >
-              <ShoppingCart className="w-4 h-4" />
-            </button>
-            <button onClick={() => onPay(client)} className="flex justify-center p-2 bg-purple-50 text-purple-600 rounded-md"><IndianRupee className="w-4 h-4" /></button>
-            <button className="flex justify-center p-2 bg-gray-50 text-gray-600 rounded-md"><FileText className="w-4 h-4" /></button>
           </div>
         </div>
       ))}
