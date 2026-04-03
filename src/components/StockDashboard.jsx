@@ -14,14 +14,47 @@ export default function StockDashboard() {
 
   useEffect(() => { fetchStock(); }, []);
 
+  const toDateKey = (value) => {
+    if (!value) return '';
+
+    let dateObj = null;
+
+    if (value?.toDate) {
+      dateObj = value.toDate();
+    } else if (value?.seconds) {
+      dateObj = new Date(value.seconds * 1000);
+    } else if (typeof value === 'string') {
+      // Supports legacy dd-mm-yyyy strings and ISO-like strings.
+      const ddmmyyyy = value.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      if (ddmmyyyy) {
+        const [, dd, mm, yyyy] = ddmmyyyy;
+        return `${yyyy}-${mm}-${dd}`;
+      }
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) {
+        dateObj = parsed;
+      }
+    } else if (value instanceof Date) {
+      dateObj = value;
+    }
+
+    if (!dateObj || Number.isNaN(dateObj.getTime())) return '';
+
+    // Use local calendar date to avoid timezone drift from toISOString().
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
   // Total Stock strictly calculates ALL time, unaffected by date filters
   const totalStock = stockEntries.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
 
   // Filters ONLY the visual transaction log
   const filtered = stockEntries.filter(entry => {
     if (!startDate && !endDate) return true;
-    const entryDate = entry.date?.toDate ? entry.date.toDate().toISOString().split('T')[0] : '';
-    if (!entryDate) return true;
+    const entryDate = toDateKey(entry.date);
+    if (!entryDate) return false;
     
     if (startDate && entryDate < startDate) return false;
     if (endDate && entryDate > endDate) return false;
