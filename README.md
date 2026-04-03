@@ -1,35 +1,46 @@
-# React + Vite
+# Anjani V2
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Google Sign-In setup (Firebase)
 
-Currently, two official plugins are available:
+### 1) Enable Google provider in Firebase Console
+1. Open **Firebase Console → Authentication → Sign-in method**.
+2. Enable **Google**.
+3. Add your support email and save.
+4. In **Authentication → Settings → Authorized domains**, add your app domain (and `localhost` for local testing).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+### 2) Client code
+Google auth helpers are available in `src/firebase-auth.js`.
 
-## React Compiler
+```js
+import { signInWithGoogle, signOutFromGoogle } from "./firebase-auth";
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+const handleLogin = async () => {
+  const user = await signInWithGoogle();
+  console.log("Signed in user:", user.uid, user.email);
+};
 
-## Expanding the ESLint configuration
+const handleLogout = async () => {
+  await signOutFromGoogle();
+};
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### 3) Firestore rules for authenticated Google users
+Copy the rule below into **Firebase Console → Firestore Database → Rules**.
 
-## Android APK build (personal sideload use)
+```txt
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedInWithGoogle() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider == "google.com";
+    }
 
-This repo includes a GitHub Actions workflow at `.github/workflows/android-apk.yml` that builds a **debug APK** using Capacitor.
+    match /{document=**} {
+      allow read, write: if signedInWithGoogle();
+    }
+  }
+}
+```
 
-### What it does
-- Builds the web app (`npm run build`).
-- Creates/syncs the Capacitor Android project.
-- Ensures these permissions are present in `android/app/src/main/AndroidManifest.xml`:
-  - `android.permission.SEND_SMS`
-  - `android.permission.CAMERA`
-  - `android.permission.ACCESS_COARSE_LOCATION`
-  - `android.permission.ACCESS_FINE_LOCATION`
-- Builds `app-debug.apk` and uploads it as a workflow artifact.
-
-### How to use
-1. Push to `main` **or** run the workflow manually from the **Actions** tab (`Build Android APK (Capacitor)`).
-2. Download the `app-debug-apk` artifact.
-3. Install the APK manually on your phone (sideload). This is suitable for personal/internal use and does not require Play Store publishing.
+> If you want stricter controls (for example, user-specific documents), add document-level checks with `request.auth.uid`.
