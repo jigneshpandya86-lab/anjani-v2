@@ -184,11 +184,11 @@ export default function StockDashboard() {
       <button
         type="button"
         onClick={() => setShowAdd(true)}
-        className="fixed right-4 bottom-24 z-20 h-12 w-12 rounded-full bg-[#ff9900] text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+        className="fixed right-4 bottom-24 z-[998] h-14 w-14 rounded-full bg-[#ff9900] text-white flex items-center justify-center shadow-lg shadow-orange-300/50 active:scale-95 transition-all"
         aria-label="Add stock entry"
         title="Add stock entry"
       >
-        <Plus size={20} />
+        <Plus size={24} strokeWidth={2.5} />
       </button>
     </div>
   );
