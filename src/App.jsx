@@ -159,13 +159,21 @@ function App() {
     reportWindow.document.close()
   }
 
-  const handleOrderPrintPdf = () => {
-    if (orders.length === 0) {
+  const handleOrderPrintPdf = async () => {
+    const ordersSnap = await getDocs(query(collection(db, 'orders')))
+    const allOrders = ordersSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+    if (allOrders.length === 0) {
       toast.error('No orders available for report.')
       return
     }
 
-    const rows = orders.map((order) => {
+    const rows = allOrders
+      .sort((a, b) => {
+        const aTime = a.createdAt?.toMillis?.() || 0
+        const bTime = b.createdAt?.toMillis?.() || 0
+        return bTime - aTime
+      })
+      .map((order) => {
       const clientName = clients.find((c) => c.id === order.clientId)?.name
         || order.clientName
         || order.customerName
