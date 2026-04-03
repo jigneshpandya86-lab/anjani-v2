@@ -156,7 +156,15 @@ function App() {
       {/* Payment Modal */}
       {payClient !== null && (
         <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setPayClient(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
+          <div className="relative bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-4 pt-12 md:p-6 md:pt-12" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setPayClient(null)}
+              className="absolute top-3 right-3 p-2 rounded-lg text-gray-500 bg-gray-100 hover:bg-gray-200"
+              aria-label="Close payment form"
+            >
+              <X size={18} />
+            </button>
             <PaymentModal client={payClient} onClose={() => setPayClient(null)} />
           </div>
         </div>
