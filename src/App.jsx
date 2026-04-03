@@ -2,11 +2,7 @@ import { useState, useEffect } from 'react'
 import toast, { Toaster } from 'react-hot-toast'
 import { useClientStore } from './store/clientStore'
 import {
-  Users,
   ShoppingCart,
-  CreditCard,
-  TrendingUp,
-  Package,
   Menu,
   Plus,
   X,
@@ -84,10 +80,6 @@ function App() {
 
   const navItems = [
     { id: 'orders', label: 'Orders', icon: <ShoppingCart size={20} /> },
-    { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
-    { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
-    { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
-    { id: 'leads', label: 'Leads', icon: <TrendingUp size={20} /> },
   ]
 
   const drawerQuickActions = [
