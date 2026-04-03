@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { useClientStore } from './store/clientStore'
 import { 
@@ -7,7 +7,6 @@ import {
   CreditCard, 
   TrendingUp, 
   Package, 
-  Menu,
   MoreVertical,
   X
 } from 'lucide-react'
@@ -25,7 +24,8 @@ function App() {
   const [editOrder, setEditOrder] = useState(null)
   const [editClient, setEditClient] = useState(null)
   const [payClient, setPayClient] = useState(null)
-  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false)
+  const mobileActionsRef = useRef(null)
   const { fetchClients, fetchOrders, fetchStock } = useClientStore()
 
   useEffect(() => {
@@ -38,6 +38,29 @@ function App() {
       if (unsubStock) unsubStock()
     }
   }, [])
+
+  useEffect(() => {
+    if (!mobileActionsOpen) return
+
+    const handleOutsideClick = (event) => {
+      if (!mobileActionsRef.current) return
+      if (!mobileActionsRef.current.contains(event.target)) {
+        setMobileActionsOpen(false)
+      }
+    }
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setMobileActionsOpen(false)
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick)
+    document.addEventListener('keydown', handleEscape)
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [mobileActionsOpen])
 
   const navItems = [
     { id: 'orders', label: 'Orders', icon: <ShoppingCart size={22} /> },
@@ -80,21 +103,39 @@ function App() {
         
         {/* Mobile Header (Sticky Top) */}
         <header className="md:hidden sticky top-0 bg-white p-4 shadow-sm z-40 flex justify-between items-center">
-          <div className="flex items-center gap-3">
+          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI<span className="text-[#ff9900]">WATER</span></h1>
+          <div className="relative" ref={mobileActionsRef}>
             <button
-              onClick={() => setMobileNavOpen(true)}
+              onClick={() => setMobileActionsOpen((prev) => !prev)}
               className="p-2 bg-gray-50 rounded-lg text-gray-600 border border-gray-100"
-              aria-haspopup="dialog"
-              aria-expanded={mobileNavOpen}
-              aria-label="Open navigation menu"
+              aria-haspopup="menu"
+              aria-expanded={mobileActionsOpen}
+              aria-label="Open quick actions"
             >
-              <Menu size={18} />
+              {mobileActionsOpen ? <X size={18} /> : <MoreVertical size={18} />}
             </button>
-            <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI<span className="text-[#ff9900]">WATER</span></h1>
+
+            {mobileActionsOpen && (
+              <div className="absolute right-0 mt-2 w-40 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden z-50">
+                {navItems.map((item) => (
+                  <button
+                    key={`mobile-action-${item.id}`}
+                    onClick={() => {
+                      setActiveTab(item.id)
+                      setMobileActionsOpen(false)
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm font-bold text-left ${
+                      activeTab === item.id ? 'bg-[#fff4e5] text-[#131921]' : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                    role="menuitem"
+                  >
+                    <span className={`${activeTab === item.id ? 'text-[#ff9900]' : 'text-gray-400'}`}>{item.icon}</span>
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <button className="p-2 bg-gray-50 rounded-lg text-gray-500 border border-gray-100" aria-label="More options">
-            <MoreVertical size={18} />
-          </button>
         </header>
 
         <div className="max-w-5xl mx-auto pb-28 md:pb-0">
