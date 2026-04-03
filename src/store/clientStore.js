@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { 
   collection, addDoc, onSnapshot, query, doc, 
-  updateDoc, deleteDoc, serverTimestamp, orderBy 
+  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc 
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
 
@@ -114,16 +114,24 @@ export const useClientStore = create((set, get) => ({
   },
 
   deleteOrder: async (id) => {
-    const existing = get().orders.find(o => o.id === id);
-    if (existing && existing.status === 'Delivered') {
-      // Reverse stock with Narration
-      await addDoc(collection(db, 'stock'), {
-        qty: Math.abs(Number(existing.qty)),
-        narration: `Order Deleted (Reversal): ${existing.orderId || id}`,
-        type: 'reversal',
-        date: serverTimestamp()
-      });
+    try {
+      const orderRef = doc(db, 'orders', id);
+      const orderSnap = await getDoc(orderRef);
+      if (orderSnap.exists()) {
+        const existing = orderSnap.data();
+        if (existing.status === 'Delivered') {
+          await addDoc(collection(db, 'stock'), {
+            qty: Math.abs(Number(existing.qty || 0)),
+            narration: `Order Deleted (Reversal): ${existing.orderId || id}`,
+            type: 'reversal',
+            date: serverTimestamp()
+          });
+        }
+      }
+      await deleteDoc(orderRef);
+    } catch (err) {
+      console.error('Delete failed:', err);
+      throw err;
     }
-    await deleteDoc(doc(db, 'orders', id));
   }
 }));

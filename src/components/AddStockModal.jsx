@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { PackagePlus, Save } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export default function AddStockModal({ onClose }) {
   const [qty, setQty] = useState('');
@@ -13,14 +14,20 @@ export default function AddStockModal({ onClose }) {
     if (!qty || Number(qty) <= 0) return;
 
     setLoading(true);
-    await addDoc(collection(db, 'stock'), {
-      qty: Number(qty),
-      type: 'addition',
-      note: note || 'Manual Addition',
-      date: serverTimestamp()
-    });
-    setLoading(false);
-    onClose();
+    try {
+      await addDoc(collection(db, 'stock'), {
+        qty: Number(qty),
+        type: 'addition',
+        note: note || 'Manual Addition',
+        date: serverTimestamp()
+      });
+      toast.success('Stock added successfully');
+      onClose();
+    } catch (err) {
+      toast.error('Failed to add stock: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

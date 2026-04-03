@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useClientStore } from "../store/clientStore";
 import { UserPlus, CheckCircle } from "lucide-react";
+import toast from 'react-hot-toast';
 
 export default function AddClient({ onDone, client }) {
   // If editing, fill in the blanks. If new, leave empty!
@@ -16,21 +17,25 @@ export default function AddClient({ onDone, client }) {
     e.preventDefault();
     setStatus("saving");
 
-    if (client) {
-      await updateClient(client.id, { name, mobile: phone, address });
-    } else {
-      await addClient({ name, phone, address });
-    }
-
-    setStatus("success");
-    // ... rest stays the same
-    setTimeout(() => {
+    try {
+      if (client) {
+        await updateClient(client.id, { name, mobile: phone, address });
+        toast.success("Client updated successfully");
+      } else {
+        await addClient({ name, phone, address });
+        toast.success("Client created successfully");
+      }
+      
+      // Removed setTimeOut memory leak
       setName("");
       setPhone("");
       setAddress("");
       setStatus("idle");
-      if (onDone) onDone(); // This tells App.jsx to close the popup!
-    }, 1500);
+      if (onDone) onDone(); 
+    } catch (error) {
+      toast.error("Failed to save client: " + error.message);
+      setStatus("idle");
+    }
   };
 
   return (

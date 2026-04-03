@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useClientStore } from '../store/clientStore';
 import { X, IndianRupee, Save, CreditCard, Banknote } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export default function PaymentModal({ client, onClose }) {
   const { addPayment } = useClientStore();
@@ -14,15 +15,21 @@ export default function PaymentModal({ client, onClose }) {
     if (!amount || amount <= 0) return;
 
     setLoading(true);
-    await addPayment({
-      clientId: client.id,
-      amount: parseFloat(amount),
-      type: 'payment',
-      method,
-      note
-    });
-    setLoading(false);
-    onClose();
+    try {
+      await addPayment({
+        clientId: client.id,
+        amount: parseFloat(amount),
+        type: 'payment',
+        method,
+        note
+      });
+      toast.success('Payment recorded successfully');
+      onClose();
+    } catch (err) {
+      toast.error('Failed to record payment: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const newBalance = (client.outstanding || 0) - (parseFloat(amount) || 0);

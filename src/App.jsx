@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Toaster } from 'react-hot-toast'
 import { useClientStore } from './store/clientStore'
 import { 
   Users, 
@@ -45,6 +46,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] font-sans">
+      <Toaster position="top-center" toastOptions={{ style: { background: '#ffffff', color: '#131921', border: '1px solid #e5e7eb', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', borderRadius: '12px', fontWeight: '900', fontSize: '14px', padding: '16px 24px' }, success: { iconTheme: { primary: '#25D366', secondary: '#fff' } }, error: { iconTheme: { primary: '#EF4444', secondary: '#fff' } } }} />
       
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-64 bg-[#131921] text-white flex-col p-6 fixed top-0 left-0 h-full z-50 shadow-xl">
