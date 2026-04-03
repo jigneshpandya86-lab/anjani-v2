@@ -47,10 +47,12 @@ export default function StockDashboard() {
     return `${y}-${m}-${d}`;
   };
 
-  // Total Stock strictly calculates ALL time, unaffected by date filters
-  // Legacy old_job rows store produced and delivered separately, so net stock is produced - delivered.
+  // Total Stock strictly calculates ALL time, unaffected by date filters.
+  // Legacy rows may carry produced/delivered instead of direct qty.
   const totalStock = stockEntries.reduce((acc, curr) => {
-    if (curr.type === 'old_job') {
+    const hasLegacyProducedDelivered =
+      curr.produced !== undefined || curr.delivered !== undefined;
+    if (hasLegacyProducedDelivered) {
       const produced = Number(curr.produced) || 0;
       const delivered = Number(curr.delivered) || 0;
       return acc + (produced - delivered);

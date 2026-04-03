@@ -15,17 +15,25 @@ export const useClientStore = create((set, get) => ({
     const q = query(collection(db, 'stock'), orderBy('date', 'desc'));
     return onSnapshot(q, (snapshot) => {
       const normalize = (raw) => {
-        // Check if it's an old job entry (has 'customer' field but no 'narration')
-        if (raw.customer && !raw.narration) {
+        const hasLegacyProducedDelivered =
+          raw.produced !== undefined || raw.delivered !== undefined;
+        const hasDirectQty =
+          raw.qty !== undefined || raw.boxes !== undefined || raw.quantity !== undefined;
+
+        // Legacy rows from previous system may only store produced/delivered.
+        if (hasLegacyProducedDelivered && !hasDirectQty) {
           const producedCount = Number(raw.produced) || 0;
           const deliveredCount = Number(raw.delivered) || 0;
-          const produced = producedCount ? ` Produced ${producedCount}` : '';
+          const title = raw.customer || raw.clientName || 'Legacy Entry';
+          const netQty = producedCount - deliveredCount;
           return {
             ...raw,
-            narration: `${raw.customer} - Delivered ${deliveredCount}${produced}`,
+            narration:
+              raw.narration ||
+              `${title} - Produced ${producedCount} Delivered ${deliveredCount}`,
             produced: producedCount,
             delivered: deliveredCount,
-            qty: deliveredCount || 0,
+            qty: netQty,
             type: 'old_job',
             date: raw.date, // Keep as-is (string)
           };
