@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, FileText, UserX, UserCheck, Flag } from 'lucide-react';
+import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, FileText, UserX, UserCheck, Flag, Fingerprint } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export default function ClientList({ onEdit, onPay, onOrder }) {
-  const { clients, updateClient } = useClientStore();
+  const { clients, updateClient, generateLegacyClientIds } = useClientStore();
   const [search, setSearch] = useState('');
   const [sortByDue, setSortByDue] = useState(false);
+  const [isGeneratingIds, setIsGeneratingIds] = useState(false);
+
+  const legacyCount = (clients || []).filter((client) => !client.shortId || String(client.shortId).trim() === '').length;
 
   const filtered = (clients || [])
     .filter(c => 
@@ -19,6 +23,20 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
 
   const toggleStatus = (client) => {
     updateClient(client.id, { active: !client.active });
+  };
+
+  const handleGenerateLegacyIds = async () => {
+    if (legacyCount === 0 || isGeneratingIds) return;
+
+    try {
+      setIsGeneratingIds(true);
+      const updatedCount = await generateLegacyClientIds();
+      toast.success(`Generated IDs for ${updatedCount} legacy client${updatedCount === 1 ? '' : 's'}`);
+    } catch (error) {
+      toast.error(`Unable to generate IDs: ${error.message}`);
+    } finally {
+      setIsGeneratingIds(false);
+    }
   };
 
   return (
@@ -42,6 +60,20 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
           title="Sort by highest due"
         >
           <Flag className="w-4 h-4" />
+        </button>
+        <button
+          onClick={handleGenerateLegacyIds}
+          disabled={legacyCount === 0 || isGeneratingIds}
+          className={`h-10 px-3 rounded-lg border flex-shrink-0 transition-colors flex items-center gap-1.5 text-xs font-semibold ${
+            legacyCount > 0 && !isGeneratingIds
+              ? 'bg-white border-gray-300 text-gray-600 hover:border-[#ff9900] hover:text-[#ff9900]'
+              : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
+          }`}
+          aria-label="Generate IDs for legacy clients"
+          title={legacyCount > 0 ? `Generate IDs for ${legacyCount} legacy clients` : 'All clients already have IDs'}
+        >
+          <Fingerprint className="w-4 h-4" />
+          <span>{isGeneratingIds ? 'Generating...' : `Fix IDs (${legacyCount})`}</span>
         </button>
       </div>
 

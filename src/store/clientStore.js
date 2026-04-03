@@ -33,6 +33,11 @@ const formatOrderNarration = (prefix, orderRef, clientName) => {
     : `${prefix}: ${orderRef}`;
 };
 
+const buildClientShortId = (clientDocId) => {
+  const safeId = String(clientDocId || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  return `CLT-${safeId.slice(0, 6).padEnd(6, '0')}`;
+};
+
 export const useClientStore = create((set, get) => ({
   clients: [],
   orders: [],
@@ -153,7 +158,7 @@ export const useClientStore = create((set, get) => ({
   },
 
   addClient: async (data) => {
-    await addDoc(collection(db, 'customers'), {
+    const docRef = await addDoc(collection(db, 'customers'), {
       name: data.name,
       mobile: data.phone,
       address: data.address,
@@ -161,6 +166,9 @@ export const useClientStore = create((set, get) => ({
       active: true,
       outstanding: 0,
       createdAt: serverTimestamp()
+    });
+    await updateDoc(docRef, {
+      shortId: buildClientShortId(docRef.id)
     });
   },
 
@@ -209,6 +217,23 @@ export const useClientStore = create((set, get) => ({
       }));
       set({ clients });
     });
+  },
+
+  generateLegacyClientIds: async () => {
+    const customersSnapshot = await getDocs(query(collection(db, 'customers')));
+    const updates = customersSnapshot.docs
+      .filter((customerDoc) => {
+        const shortId = customerDoc.data()?.shortId;
+        return !shortId || String(shortId).trim() === '';
+      })
+      .map((customerDoc) =>
+        updateDoc(doc(db, 'customers', customerDoc.id), {
+          shortId: buildClientShortId(customerDoc.id)
+        })
+      );
+
+    await Promise.all(updates);
+    return updates.length;
   },
 
   fetchOrders: () => {
