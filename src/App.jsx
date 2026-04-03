@@ -37,6 +37,9 @@ function App() {
   const [addClientOpen, setAddClientOpen] = useState(false)
   const [payClient, setPayClient] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
+  const [ledgerClientId, setLedgerClientId] = useState('all')
+  const [ledgerDateRange, setLedgerDateRange] = useState('current-month')
   const [pinInput, setPinInput] = useState('')
   const [pinError, setPinError] = useState('')
   const [isUnlocked, setIsUnlocked] = useState(() => sessionStorage.getItem('anjani-app-unlocked') === 'true')
@@ -120,11 +123,11 @@ function App() {
     }
   ]
 
-  const openReportWindow = ({ title, columns, rows, metadata = [] }) => {
-    const reportWindow = window.open('', '_blank', 'width=900,height=700')
+  const openReportWindow = ({ title, columns, rows, metadata = [], reportWindow: providedReportWindow = null }) => {
+    const reportWindow = providedReportWindow || window.open('', '_blank', 'width=900,height=700')
     if (!reportWindow) {
       toast.error('Popup blocked. Please allow popups to generate PDF report.')
-      return
+      return false
     }
 
     const generatedAt = new Date().toLocaleString('en-IN')
@@ -165,6 +168,7 @@ function App() {
       </html>
     `)
     reportWindow.document.close()
+    return true
   }
 
   const handleOrderPrintPdf = () => {
@@ -197,52 +201,56 @@ function App() {
     })
   }
 
+  const getLedgerDateRange = (rangeKey) => {
+    const now = new Date()
+    const endDate = new Date(now)
+    endDate.setHours(23, 59, 59, 999)
+
+    const startDate = new Date(now)
+    startDate.setHours(0, 0, 0, 0)
+
+    if (rangeKey === 'current-month') {
+      startDate.setDate(1)
+      return { startDate, endDate, label: 'Current Month' }
+    }
+
+    if (rangeKey === 'past-6-months') {
+      startDate.setMonth(startDate.getMonth() - 6)
+      return { startDate, endDate, label: 'Past 6 Months' }
+    }
+
+    startDate.setFullYear(startDate.getFullYear() - 1)
+    return { startDate, endDate, label: 'Past 1 Year' }
+  }
+
   const handleLedgerStatementPdf = async () => {
+    const reportWindow = window.open('', '_blank', 'width=900,height=700')
+    if (!reportWindow) {
+      toast.error('Popup blocked. Please allow popups to generate PDF report.')
+      return
+    }
+
+    reportWindow.document.write('<p style="font-family:Arial,sans-serif;padding:16px;">Preparing ledger statement...</p>')
+    reportWindow.document.close()
+
     try {
-      const clientOptions = [
-        { id: 'all', name: 'All Clients' },
-        ...clients.map((client) => ({ id: client.id, name: client.name || 'Unnamed Client' }))
-      ]
-      const promptLabel = clientOptions.map((client, index) => `${index}. ${client.name}`).join('\n')
-      const selectedClientIndexInput = window.prompt(`Select client for ledger statement:\n${promptLabel}`, '0')
-      if (selectedClientIndexInput === null) return
+      const selectedClient = ledgerClientId === 'all'
+        ? { id: 'all', name: 'All Clients' }
+        : clients.find((client) => client.id === ledgerClientId)
 
-      const selectedClientIndex = Number(selectedClientIndexInput)
-      if (!Number.isInteger(selectedClientIndex) || selectedClientIndex < 0 || selectedClientIndex >= clientOptions.length) {
-        toast.error('Invalid client selection for report.')
+      if (!selectedClient) {
+        toast.error('Please select a valid client.')
+        reportWindow.close()
         return
       }
-      const selectedClient = clientOptions[selectedClientIndex]
 
-      const startDateInput = window.prompt('Enter start date (YYYY-MM-DD)', '')
-      if (startDateInput === null) return
-      const endDateInput = window.prompt('Enter end date (YYYY-MM-DD)', '')
-      if (endDateInput === null) return
-
-      const parseDateInput = (value, boundary) => {
-        if (!value.trim()) return null
-        const parsed = new Date(`${value.trim()}T00:00:00`)
-        if (Number.isNaN(parsed.getTime())) return 'invalid'
-        if (boundary === 'end') parsed.setHours(23, 59, 59, 999)
-        return parsed
-      }
-
-      const startDate = parseDateInput(startDateInput, 'start')
-      const endDate = parseDateInput(endDateInput, 'end')
-
-      if (startDate === 'invalid' || endDate === 'invalid') {
-        toast.error('Invalid date format. Use YYYY-MM-DD.')
-        return
-      }
-      if (startDate && endDate && startDate > endDate) {
-        toast.error('Start date cannot be after end date.')
-        return
-      }
+      const { startDate, endDate, label: dateRangeLabel } = getLedgerDateRange(ledgerDateRange)
 
       const paymentsSnap = await getDocs(query(collection(db, 'payments')))
       const payments = paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
       if (payments.length === 0) {
         toast.error('No ledger entries available for report.')
+        reportWindow.close()
         return
       }
 
@@ -250,11 +258,10 @@ function App() {
         .filter((tx) => {
           if (selectedClient.id !== 'all' && tx.clientId !== selectedClient.id) return false
 
-          if (!startDate && !endDate) return true
           const txDateRaw = tx.date?.toDate?.() || tx.createdAt?.toDate?.() || null
           if (!txDateRaw) return false
-          if (startDate && txDateRaw < startDate) return false
-          if (endDate && txDateRaw > endDate) return false
+          if (txDateRaw < startDate) return false
+          if (txDateRaw > endDate) return false
           return true
         })
         .sort((a, b) => {
@@ -279,12 +286,12 @@ function App() {
 
       if (rows.length === 0) {
         toast.error('No ledger entries found for the selected client/date range.')
+        reportWindow.close()
         return
       }
 
-      const dateRangeLabel = `${startDateInput.trim() || 'Beginning'} to ${endDateInput.trim() || 'Today'}`
-
       openReportWindow({
+        reportWindow,
         title: 'Ledger Statement Report (PDF)',
         columns: ['Client', 'Date', 'Type', 'Method', 'Amount', 'Narration'],
         rows,
@@ -293,8 +300,11 @@ function App() {
           `Date Range: ${dateRangeLabel}`
         ]
       })
+
+      setLedgerModalOpen(false)
     } catch (error) {
       toast.error('Unable to generate ledger statement report.')
+      reportWindow.close()
       console.error(error)
     }
   }
@@ -374,9 +384,9 @@ function App() {
       id: 'report-ledger-statement',
       label: 'Ledger Statement (PDF)',
       icon: <BookText size={18} />,
-      onClick: async () => {
-        await handleLedgerStatementPdf()
+      onClick: () => {
         setDrawerOpen(false)
+        setLedgerModalOpen(true)
       }
     }
   ]
@@ -555,6 +565,73 @@ function App() {
               <X size={18} />
             </button>
             <PaymentModal client={payClient} onClose={() => setPayClient(null)} />
+          </div>
+        </div>
+      )}
+
+
+      {/* Ledger Statement Modal */}
+      {ledgerModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setLedgerModalOpen(false)}>
+          <div className="relative bg-white rounded-2xl w-full max-w-lg p-5" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setLedgerModalOpen(false)}
+              className="absolute top-3 right-3 p-2 rounded-lg text-gray-500 bg-gray-100 hover:bg-gray-200"
+              aria-label="Close ledger statement options"
+            >
+              <X size={18} />
+            </button>
+
+            <h3 className="text-lg font-black text-[#131921]">Ledger Statement Options</h3>
+
+            <div className="mt-4 space-y-4">
+              <label className="block">
+                <span className="text-sm font-bold text-gray-700">Client</span>
+                <select
+                  value={ledgerClientId}
+                  onChange={(e) => setLedgerClientId(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                >
+                  <option value="all">All Clients</option>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name || 'Unnamed Client'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-bold text-gray-700">Date Range</span>
+                <select
+                  value={ledgerDateRange}
+                  onChange={(e) => setLedgerDateRange(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                >
+                  <option value="current-month">Current Month</option>
+                  <option value="past-6-months">Past 6 Months</option>
+                  <option value="past-1-year">Past 1 Year</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setLedgerModalOpen(false)}
+                className="rounded-xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleLedgerStatementPdf}
+                className="rounded-xl bg-[#2563eb] px-4 py-2 text-sm font-bold text-white hover:bg-[#1d4ed8]"
+              >
+                Generate PDF
+              </button>
+            </div>
           </div>
         </div>
       )}
