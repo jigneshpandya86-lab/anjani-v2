@@ -201,6 +201,47 @@ function App() {
         ))}
       </nav>
 
+      {/* Mobile Side Navigation Drawer */}
+      {mobileNavOpen && (
+        <div className="md:hidden fixed inset-0 z-[1001]">
+          <button
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setMobileNavOpen(false)}
+            aria-label="Close navigation menu"
+          />
+          <aside className="absolute left-0 top-0 h-full w-72 bg-white shadow-2xl p-5 flex flex-col">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-black tracking-tight text-[#131921]">Menu</h2>
+              <button
+                onClick={() => setMobileNavOpen(false)}
+                className="p-2 rounded-lg border border-gray-200 text-gray-600"
+                aria-label="Close menu"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <nav className="space-y-2">
+              {navItems.map((item) => (
+                <button
+                  key={`drawer-${item.id}`}
+                  onClick={() => {
+                    setActiveTab(item.id)
+                    setMobileNavOpen(false)
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold ${
+                    activeTab === item.id ? 'bg-[#fff4e5] text-[#131921]' : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className={`${activeTab === item.id ? 'text-[#ff9900]' : 'text-gray-400'}`}>{item.icon}</span>
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+          </aside>
+        </div>
+      )}
+
     </div>
   )
 }
