@@ -1,0 +1,70 @@
+name: Build Android APK (Capacitor)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Capacitor tooling
+        run: npm install --no-save @capacitor/core @capacitor/cli @capacitor/android
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Initialize Android platform (if missing)
+        run: |
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Ensure Android permissions (SMS, Location, Camera)
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+
+          add_permission() {
+            local permission="$1"
+            if ! grep -q "$permission" "$MANIFEST"; then
+              sed -i '/<application/i \    <uses-permission android:name="'"$permission"'" />' "$MANIFEST"
+            fi
+          }
+
+          add_permission "android.permission.SEND_SMS"
+          add_permission "android.permission.CAMERA"
+          add_permission "android.permission.ACCESS_COARSE_LOCATION"
+          add_permission "android.permission.ACCESS_FINE_LOCATION"
+
+          echo "Updated permissions in $MANIFEST"
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk

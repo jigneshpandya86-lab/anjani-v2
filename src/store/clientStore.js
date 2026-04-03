@@ -9,6 +9,55 @@ let stockUnsubscribe = null;
 let stockSubscriberCount = 0;
 const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary');
 
+const getOrderClientName = async (order, clients = []) => {
+  const normalizeName = (value) => {
+    if (typeof value !== 'string') return '';
+    return value.trim();
+  };
+
+  const fromOrder = [
+    order?.clientName,
+    order?.customerName,
+    order?.client?.name,
+    order?.customer?.name,
+    typeof order?.customer === 'string' ? order.customer : '',
+    typeof order?.client === 'string' ? order.client : '',
+    order?.name,
+  ]
+    .map(normalizeName)
+    .find(Boolean);
+
+  if (fromOrder) return fromOrder;
+
+  const rawClientId =
+    order?.clientId ||
+    order?.customerId ||
+    order?.client?.id ||
+    order?.customer?.id ||
+    order?.client_id ||
+    order?.customer_id;
+
+  const clientId = rawClientId ? String(rawClientId).trim() : '';
+  if (!clientId) return '';
+
+  const fromStore = clients.find((client) => String(client.id).trim() === clientId)?.name;
+  if (fromStore) return normalizeName(fromStore);
+
+  const customerSnap = await getDoc(doc(db, 'customers', clientId));
+  return customerSnap.exists() ? normalizeName(customerSnap.data()?.name) : '';
+};
+
+const formatOrderNarration = (prefix, orderRef, clientName) => {
+  return clientName
+    ? `${prefix}: ${orderRef} • ${clientName}`
+    : `${prefix}: ${orderRef}`;
+};
+
+const buildClientShortId = (clientDocId) => {
+  const safeId = String(clientDocId || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  return `CLT-${safeId.slice(0, 6).padEnd(6, '0')}`;
+};
+
 export const useClientStore = create((set, get) => ({
   clients: [],
   orders: [],
@@ -20,8 +69,24 @@ export const useClientStore = create((set, get) => ({
     stockSubscriberCount += 1;
 
     if (!stockUnsubscribe) {
-      const q = query(collection(db, 'stock'), orderBy('date', 'desc'), limit(15));
+      const q = query(collection(db, 'stock'));
       stockUnsubscribe = onSnapshot(q, (snapshot) => {
+        const getTime = (value) => {
+          if (!value) return 0;
+          if (value?.toMillis) return value.toMillis();
+          if (value?.seconds) return value.seconds * 1000;
+          if (value instanceof Date) return value.getTime();
+          if (typeof value === 'string') {
+            const ddmmyyyy = value.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+            if (ddmmyyyy) {
+              const [, dd, mm, yyyy] = ddmmyyyy;
+              return new Date(`${yyyy}-${mm}-${dd}T00:00:00`).getTime();
+            }
+            return new Date(value).getTime();
+          }
+          return 0;
+        };
+
         const normalize = (raw) => {
           const hasLegacyProducedDelivered =
             raw.produced !== undefined || raw.delivered !== undefined;
@@ -59,15 +124,10 @@ export const useClientStore = create((set, get) => ({
         const stockEntries = snapshot.docs
           .map(doc => normalize({ id: doc.id, ...doc.data() }))
           .sort((a, b) => {
-            const getTime = (ts) => {
-              if (ts?.toMillis) return ts.toMillis();
-              if (ts?.seconds) return ts.seconds * 1000;
-              if (typeof ts === 'string') {
-                return new Date(ts).getTime();
-              }
-              return 0;
-            };
-            return getTime(b.date) - getTime(a.date);
+            const primaryDiff = getTime(b.date) - getTime(a.date);
+            if (primaryDiff !== 0) return primaryDiff;
+
+            return getTime(b.createdAt) - getTime(a.createdAt);
           });
         set({ stockEntries });
       });
@@ -117,8 +177,24 @@ export const useClientStore = create((set, get) => ({
     await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(parsedQty) }, { merge: true });
   },
 
+  deleteStockEntry: async (id) => {
+    const stockRef = doc(db, 'stock', id);
+    const stockSnap = await getDoc(stockRef);
+    if (!stockSnap.exists()) return;
+
+    const raw = stockSnap.data();
+    const hasLegacyProducedDelivered =
+      raw.produced !== undefined || raw.delivered !== undefined;
+    const qtyDelta = hasLegacyProducedDelivered && raw.qty === undefined
+      ? (Number(raw.produced) || 0) - (Number(raw.delivered) || 0)
+      : Number(raw.qty || raw.boxes || raw.quantity) || 0;
+
+    await deleteDoc(stockRef);
+    await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(-qtyDelta) }, { merge: true });
+  },
+
   addClient: async (data) => {
-    await addDoc(collection(db, 'customers'), {
+    const docRef = await addDoc(collection(db, 'customers'), {
       name: data.name,
       mobile: data.phone,
       address: data.address,
@@ -126,6 +202,9 @@ export const useClientStore = create((set, get) => ({
       active: true,
       outstanding: 0,
       createdAt: serverTimestamp()
+    });
+    await updateDoc(docRef, {
+      shortId: buildClientShortId(docRef.id)
     });
   },
 
@@ -135,9 +214,12 @@ export const useClientStore = create((set, get) => ({
 
   addOrder: async (data) => {
     const orderId = `ORD-${Date.now()}`;
+    const selectedClient = get().clients.find((client) => client.id === data.clientId);
+
     await addDoc(collection(db, 'orders'), {
       ...data,
       orderId,
+      clientName: selectedClient?.name || data.clientName || '',
       qty: Number(data.qty),
       rate: Number(data.rate),
       status: 'Pending',
@@ -171,6 +253,23 @@ export const useClientStore = create((set, get) => ({
       }));
       set({ clients });
     });
+  },
+
+  generateLegacyClientIds: async () => {
+    const customersSnapshot = await getDocs(query(collection(db, 'customers')));
+    const updates = customersSnapshot.docs
+      .filter((customerDoc) => {
+        const shortId = customerDoc.data()?.shortId;
+        return !shortId || String(shortId).trim() === '';
+      })
+      .map((customerDoc) =>
+        updateDoc(doc(db, 'customers', customerDoc.id), {
+          shortId: buildClientShortId(customerDoc.id)
+        })
+      );
+
+    await Promise.all(updates);
+    return updates.length;
   },
 
   fetchOrders: () => {
@@ -208,11 +307,14 @@ export const useClientStore = create((set, get) => ({
     if (existing && data.status === 'Delivered' && existing.status !== 'Delivered') {
       const qty = Number(existing.qty);
       const rate = Number(existing.rate);
+      const orderRef = existing.orderId || id;
+      const clientName = await getOrderClientName(existing, get().clients);
+      const deliveredNarration = formatOrderNarration('Order Delivered', orderRef, clientName);
 
       // 1. Debit stock
       await addDoc(collection(db, 'stock'), {
         qty: -qty,
-        narration: `Order Delivered: ${existing.orderId || id}`,
+        narration: deliveredNarration,
         type: 'dispatch',
         date: serverTimestamp()
       });
@@ -226,7 +328,7 @@ export const useClientStore = create((set, get) => ({
           amount,
           type: 'invoice',
           method: 'SYSTEM',
-          narration: `Order Delivered: ${existing.orderId || id}`,
+          narration: deliveredNarration,
           date: serverTimestamp(),
           createdAt: serverTimestamp()
         });
@@ -247,9 +349,12 @@ export const useClientStore = create((set, get) => ({
         const existing = orderSnap.data();
         if (existing.status === 'Delivered') {
           const reversalQty = Math.abs(Number(existing.qty || 0));
+          const orderRef = existing.orderId || id;
+          const clientName = await getOrderClientName(existing, get().clients);
+          const reversalNarration = formatOrderNarration('Order Deleted (Reversal)', orderRef, clientName);
           await addDoc(collection(db, 'stock'), {
             qty: reversalQty,
-            narration: `Order Deleted (Reversal): ${existing.orderId || id}`,
+            narration: reversalNarration,
             type: 'reversal',
             date: serverTimestamp()
           });
