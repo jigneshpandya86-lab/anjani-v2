@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useClientStore } from '../store/clientStore';
 import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, FileText, UserX, UserCheck } from 'lucide-react';
 
-export default function ClientList({ onEdit, onPay }) {
+export default function ClientList({ onEdit, onPay, onOrder }) {
   const { clients, updateClient } = useClientStore();
   const [search, setSearch] = useState('');
 
@@ -61,7 +61,12 @@ export default function ClientList({ onEdit, onPay }) {
           <div className="grid grid-cols-5 border-t border-gray-100 pt-3 gap-2">
             <a href={`tel:${client.mobile}`} className="flex justify-center p-2 bg-blue-50 text-blue-600 rounded-md"><Phone className="w-4 h-4" /></a>
             <a href={`https://wa.me/91${client.mobile}`} className="flex justify-center p-2 bg-green-50 text-green-600 rounded-md"><MessageSquare className="w-4 h-4" /></a>
-            <button className="flex justify-center p-2 bg-orange-50 text-orange-600 rounded-md"><ShoppingCart className="w-4 h-4" /></button>
+            <button
+              onClick={() => onOrder(client)}
+              className="flex justify-center p-2 bg-orange-50 text-orange-600 rounded-md"
+            >
+              <ShoppingCart className="w-4 h-4" />
+            </button>
             <button onClick={() => onPay(client)} className="flex justify-center p-2 bg-purple-50 text-purple-600 rounded-md"><IndianRupee className="w-4 h-4" /></button>
             <button className="flex justify-center p-2 bg-gray-50 text-gray-600 rounded-md"><FileText className="w-4 h-4" /></button>
           </div>
