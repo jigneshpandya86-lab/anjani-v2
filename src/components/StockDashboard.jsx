@@ -82,16 +82,13 @@ export default function StockDashboard() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-20">
       {/* Small Stock Summary Card */}
-      <div className="bg-[#131921] rounded-2xl px-3 py-2.5 text-white shadow-lg flex justify-between items-center">
+      <div className="bg-[#131921] rounded-2xl px-3 py-2.5 text-white shadow-lg">
         <div>
           <p className="text-[9px] font-black uppercase tracking-widest text-orange-400 mb-0.5">Live Total</p>
           <h2 className="text-[1.85rem] leading-none font-black whitespace-nowrap">{totalStock.toLocaleString()} <span className="text-[11px] font-semibold text-gray-400">Boxes</span></h2>
         </div>
-        <button onClick={() => setShowAdd(true)} className="bg-[#ff9900] text-white p-2 rounded-lg flex items-center justify-center">
-          <Plus size={16} strokeWidth={3}/>
-        </button>
       </div>
 
       {/* Date Range Filter */}
@@ -183,6 +180,16 @@ export default function StockDashboard() {
           </div>
         </div>
       )}
+
+      <button
+        type="button"
+        onClick={() => setShowAdd(true)}
+        className="fixed right-4 bottom-24 z-20 h-12 w-12 rounded-full bg-[#ff9900] text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+        aria-label="Add stock entry"
+        title="Add stock entry"
+      >
+        <Plus size={20} />
+      </button>
     </div>
   );
 }
