@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Toaster } from 'react-hot-toast'
+import toast, { Toaster } from 'react-hot-toast'
 import { useClientStore } from './store/clientStore'
 import {
   Users,
@@ -12,8 +12,12 @@ import {
   X,
   ClipboardPlus,
   UserPlus,
-  HandCoins
+  HandCoins,
+  Printer,
+  BookText
 } from 'lucide-react'
+import { collection, getDocs, query } from 'firebase/firestore'
+import { db } from './firebase-config'
 import ClientList from './components/ClientList'
 import AddClient from './components/AddClient'
 import OrdersDashboard from './components/OrdersDashboard'
@@ -35,7 +39,7 @@ function App() {
   const [pinInput, setPinInput] = useState('')
   const [pinError, setPinError] = useState('')
   const [isUnlocked, setIsUnlocked] = useState(() => sessionStorage.getItem('anjani-app-unlocked') === 'true')
-  const { fetchClients, fetchOrders, fetchStock } = useClientStore()
+  const { fetchClients, fetchOrders, fetchStock, orders, clients } = useClientStore()
 
   useEffect(() => {
     if (!isUnlocked) return undefined
@@ -108,6 +112,140 @@ function App() {
       onClick: () => {
         setActiveTab('payments')
         setPayClient({})
+        setDrawerOpen(false)
+      }
+    }
+  ]
+
+  const openReportWindow = ({ title, columns, rows }) => {
+    const reportWindow = window.open('', '_blank', 'width=900,height=700')
+    if (!reportWindow) {
+      toast.error('Popup blocked. Please allow popups to generate PDF report.')
+      return
+    }
+
+    const generatedAt = new Date().toLocaleString('en-IN')
+    const headerRow = columns.map((col) => `<th>${col}</th>`).join('')
+    const bodyRows = rows.map((row) => `<tr>${row.map((cell) => `<td>${cell || '-'}</td>`).join('')}</tr>`).join('')
+
+    reportWindow.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+            h1 { margin: 0 0 6px; font-size: 22px; }
+            .meta { margin-bottom: 16px; color: #6b7280; font-size: 12px; }
+            table { width: 100%; border-collapse: collapse; font-size: 13px; }
+            th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; }
+            th { background: #f3f4f6; font-weight: 700; }
+          </style>
+        </head>
+        <body>
+          <h1>${title}</h1>
+          <p class="meta">Generated: ${generatedAt}</p>
+          <table>
+            <thead><tr>${headerRow}</tr></thead>
+            <tbody>${bodyRows}</tbody>
+          </table>
+          <script>
+            window.onload = () => {
+              window.print();
+            }
+          </script>
+        </body>
+      </html>
+    `)
+    reportWindow.document.close()
+  }
+
+  const handleOrderPrintPdf = () => {
+    if (orders.length === 0) {
+      toast.error('No orders available for report.')
+      return
+    }
+
+    const rows = orders.map((order) => {
+      const clientName = clients.find((c) => c.id === order.clientId)?.name
+        || order.clientName
+        || order.customerName
+        || 'Unknown Client'
+      const total = (Number(order.qty) || 0) * (Number(order.rate) || 0)
+      return [
+        order.orderId || order.id,
+        clientName,
+        order.date || '-',
+        order.time || '-',
+        order.status || '-',
+        `${order.qty || 0} Boxes`,
+        `₹${total.toLocaleString('en-IN')}`
+      ]
+    })
+
+    openReportWindow({
+      title: 'Order Print Report (PDF)',
+      columns: ['Order ID', 'Client', 'Date', 'Time', 'Status', 'Qty', 'Amount'],
+      rows
+    })
+  }
+
+  const handleLedgerStatementPdf = async () => {
+    try {
+      const paymentsSnap = await getDocs(query(collection(db, 'payments')))
+      const payments = paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+      if (payments.length === 0) {
+        toast.error('No ledger entries available for report.')
+        return
+      }
+
+      const rows = payments
+        .sort((a, b) => {
+          const aTime = a.date?.toMillis?.() || a.createdAt?.toMillis?.() || 0
+          const bTime = b.date?.toMillis?.() || b.createdAt?.toMillis?.() || 0
+          return bTime - aTime
+        })
+        .map((tx) => {
+          const clientName = clients.find((c) => c.id === tx.clientId)?.name || 'Unknown Client'
+          const txDate = tx.date?.toDate?.()?.toLocaleDateString('en-IN')
+            || tx.createdAt?.toDate?.()?.toLocaleDateString('en-IN')
+            || '-'
+          return [
+            clientName,
+            txDate,
+            tx.type || '-',
+            tx.method || 'SYSTEM',
+            `₹${Number(tx.amount || 0).toLocaleString('en-IN')}`,
+            tx.narration || '-'
+          ]
+        })
+
+      openReportWindow({
+        title: 'Ledger Statement Report (PDF)',
+        columns: ['Client', 'Date', 'Type', 'Method', 'Amount', 'Narration'],
+        rows
+      })
+    } catch (error) {
+      toast.error('Unable to generate ledger statement report.')
+      console.error(error)
+    }
+  }
+
+  const drawerReports = [
+    {
+      id: 'report-order-print',
+      label: 'Order Print (PDF)',
+      icon: <Printer size={18} />,
+      onClick: () => {
+        handleOrderPrintPdf()
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'report-ledger-statement',
+      label: 'Ledger Statement (PDF)',
+      icon: <BookText size={18} />,
+      onClick: async () => {
+        await handleLedgerStatementPdf()
         setDrawerOpen(false)
       }
     }
@@ -216,6 +354,21 @@ function App() {
                       {item.icon}
                     </span>
                     {item.label}
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-1">
+                <p className="px-2 text-[11px] font-black tracking-[0.14em] text-gray-400 uppercase">Reports (PDF)</p>
+                {drawerReports.map(report => (
+                  <button
+                    key={report.id}
+                    onClick={report.onClick}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all"
+                  >
+                    <span className="text-[#ff9900]">
+                      {report.icon}
+                    </span>
+                    {report.label}
                   </button>
                 ))}
               </div>
