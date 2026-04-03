@@ -10,6 +10,7 @@ export default function StockDashboard() {
   
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const MIN_VISIBLE_ITEMS = 15;
 
   useEffect(() => { fetchStock(); }, []);
 
@@ -37,13 +38,13 @@ export default function StockDashboard() {
   return (
     <div className="space-y-4">
       {/* Small Stock Summary Card */}
-      <div className="bg-[#131921] rounded-2xl p-5 text-white shadow-lg flex justify-between items-center">
+      <div className="bg-[#131921] rounded-2xl px-4 py-3.5 text-white shadow-lg flex justify-between items-center">
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest text-orange-400 mb-1">Live Total</p>
-          <h2 className="text-3xl font-black">{totalStock.toLocaleString()} <span className="text-sm font-medium text-gray-400">Boxes</span></h2>
+          <h2 className="text-[2rem] leading-none font-black">{totalStock.toLocaleString()} <span className="text-xs font-semibold text-gray-400">Boxes</span></h2>
         </div>
-        <button onClick={() => setShowAdd(!showAdd)} className="bg-[#ff9900] text-white p-3 rounded-xl flex items-center justify-center">
-          <Plus size={20} strokeWidth={3}/>
+        <button onClick={() => setShowAdd(!showAdd)} className="bg-[#ff9900] text-white p-2.5 rounded-lg flex items-center justify-center">
+          <Plus size={18} strokeWidth={3}/>
         </button>
       </div>
 
@@ -72,18 +73,23 @@ export default function StockDashboard() {
       </div>
 
       {/* Ledger Entries */}
-      <div className="space-y-2 pb-6">
-        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-2 mt-4">
+      <div className="space-y-1.5 pb-6">
+        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center justify-between gap-2 mt-3">
+          <span className="flex items-center gap-2">
           <History size={12}/> Movement Log
+          </span>
+          <span className="text-[9px] text-gray-400 font-bold normal-case tracking-normal">
+            Showing up to {Math.min(filtered.length, MIN_VISIBLE_ITEMS)} of {filtered.length}
+          </span>
         </h3>
-        {filtered.map(entry => (
-          <div key={entry.id} className="bg-white p-4 rounded-2xl border border-gray-100 flex justify-between items-center shadow-sm">
+        {filtered.slice(0, MIN_VISIBLE_ITEMS).map(entry => (
+          <div key={entry.id} className="bg-white p-3 rounded-xl border border-gray-100 flex justify-between items-center shadow-sm">
             <div className="flex gap-3 items-center">
-              <div className={`p-2 rounded-full flex-shrink-0 ${entry.qty > 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
-                {entry.qty > 0 ? <ArrowUpRight size={16} /> : <ArrowDownLeft size={16} />}
+              <div className={`p-1.5 rounded-full flex-shrink-0 ${entry.qty > 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
+                {entry.qty > 0 ? <ArrowUpRight size={14} /> : <ArrowDownLeft size={14} />}
               </div>
               <div>
-                <p className="font-bold text-gray-900 leading-tight text-sm">
+                <p className="font-bold text-gray-900 leading-tight text-[13px]">
                   {entry.narration || entry.note || 'Adjustment'}
                 </p>
                 <p className="text-[9px] text-gray-400 font-bold uppercase mt-1 flex items-center gap-1">
@@ -91,7 +97,7 @@ export default function StockDashboard() {
                 </p>
               </div>
             </div>
-            <p className={`font-black text-base flex-shrink-0 ${entry.qty > 0 ? 'text-green-600' : 'text-red-500'}`}>
+            <p className={`font-black text-lg leading-none flex-shrink-0 ${entry.qty > 0 ? 'text-green-600' : 'text-red-500'}`}>
               {entry.qty > 0 ? '+' : ''}{entry.qty}
             </p>
           </div>
