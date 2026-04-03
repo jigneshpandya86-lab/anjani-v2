@@ -205,6 +205,17 @@ function App() {
         </button>
       )}
 
+      {/* FAB: Record Payment (Transactions tab) */}
+      {activeTab === 'payments' && (
+        <button
+          onClick={() => setPayClient({})}
+          className="fixed right-4 bottom-24 z-[998] h-14 w-14 rounded-full bg-[#ff9900] text-white shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
+          aria-label="Record payment"
+        >
+          <Plus size={24} strokeWidth={2.5} />
+        </button>
+      )}
+
     </div>
   )
 }
