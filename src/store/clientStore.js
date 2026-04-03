@@ -45,8 +45,10 @@ export const useClientStore = create((set, get) => ({
   },
 
   addOrder: async (data) => {
+    const orderId = `ORD-${Date.now()}`;
     await addDoc(collection(db, 'orders'), {
       ...data,
+      orderId,
       qty: Number(data.qty),
       rate: Number(data.rate),
       status: 'Pending',
@@ -59,6 +61,13 @@ export const useClientStore = create((set, get) => ({
       ...data,
       createdAt: serverTimestamp()
     });
+    if (data.clientId) {
+      const client = get().clients.find(c => c.id === data.clientId);
+      if (client !== undefined) {
+        const newOutstanding = (Number(client.outstanding) || 0) - Number(data.amount);
+        await updateDoc(doc(db, 'customers', data.clientId), { outstanding: newOutstanding });
+      }
+    }
   },
 
   fetchClients: () => {

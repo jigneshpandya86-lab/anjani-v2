@@ -56,7 +56,7 @@ export default function PaymentDashboard() {
         let borderColor = 'border-l-green-500';
         let iconBg = 'bg-green-50 text-green-600';
         let amountColor = 'text-green-600';
-        let sign = '-';
+        let sign = '+';
         let label = 'RECEIVED';
         let Icon = IndianRupee;
 
