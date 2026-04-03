@@ -1,0 +1,6 @@
+{
+  "appId": "com.anjani.app",
+  "appName": "Anjani",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}
