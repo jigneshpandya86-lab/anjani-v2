@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Package, Plus, History, Tag, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { Plus, History, Tag, ArrowUpRight, ArrowDownLeft, X } from 'lucide-react';
 
 export default function StockDashboard() {
   const { stockEntries, stockTotal, addStockManual, fetchStock } = useClientStore();
@@ -70,7 +70,15 @@ export default function StockDashboard() {
     e.preventDefault();
     if (!qty) return;
     await addStockManual(qty, narration);
-    setQty(''); setNarration(''); setShowAdd(false);
+    setQty('');
+    setNarration('');
+    setShowAdd(false);
+  };
+
+  const closeAddModal = () => {
+    setShowAdd(false);
+    setQty('');
+    setNarration('');
   };
 
   return (
@@ -81,19 +89,10 @@ export default function StockDashboard() {
           <p className="text-[9px] font-black uppercase tracking-widest text-orange-400 mb-0.5">Live Total</p>
           <h2 className="text-[1.85rem] leading-none font-black whitespace-nowrap">{totalStock.toLocaleString()} <span className="text-[11px] font-semibold text-gray-400">Boxes</span></h2>
         </div>
-        <button onClick={() => setShowAdd(!showAdd)} className="bg-[#ff9900] text-white p-2 rounded-lg flex items-center justify-center">
+        <button onClick={() => setShowAdd(true)} className="bg-[#ff9900] text-white p-2 rounded-lg flex items-center justify-center">
           <Plus size={16} strokeWidth={3}/>
         </button>
       </div>
-
-      {/* Manual Add Form */}
-      {showAdd && (
-        <form onSubmit={handleAdd} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm animate-slide-up space-y-3">
-          <input type="number" placeholder="Quantity (+ for in, - for out)" className="w-full p-3 bg-gray-50 rounded-xl border outline-none font-bold" value={qty} onChange={e => setQty(e.target.value)} required />
-          <input type="text" placeholder="Narration / Note..." className="w-full p-3 bg-gray-50 rounded-xl border outline-none text-sm" value={narration} onChange={e => setNarration(e.target.value)} required />
-          <button className="w-full bg-[#131921] text-[#ff9900] py-3 rounded-xl font-black uppercase text-sm">Save Entry</button>
-        </form>
-      )}
 
       {/* Date Range Filter */}
       <div className="bg-white p-2.5 rounded-2xl border border-gray-100 shadow-sm flex gap-2 items-end">
@@ -144,6 +143,46 @@ export default function StockDashboard() {
           <p className="text-center text-gray-400 text-xs font-bold py-6">No movements found.</p>
         )}
       </div>
+
+      {/* Add Stock Modal */}
+      {showAdd && (
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={closeAddModal}>
+          <div className="relative bg-white rounded-2xl w-full max-w-lg p-5 pt-12" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={closeAddModal}
+              className="absolute top-3 right-3 p-2 rounded-lg text-gray-500 bg-gray-100 hover:bg-gray-200"
+              aria-label="Close stock form"
+            >
+              <X size={18} />
+            </button>
+            <h3 className="font-black text-[#131921] text-lg mb-1">Add Stock</h3>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Manual Inventory Entry</p>
+            <form onSubmit={handleAdd} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Quantity (Boxes)</label>
+                <input type="number" placeholder="Quantity (+ for in, - for out)" className="w-full p-3 bg-gray-50 rounded-xl border border-gray-300 outline-none font-bold focus:ring-2 focus:ring-amz-orange focus:border-amz-orange" value={qty} onChange={e => setQty(e.target.value)} required />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Narration / Note</label>
+                <input type="text" placeholder="e.g. Received from factory" className="w-full p-3 bg-gray-50 rounded-xl border border-gray-300 outline-none text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange" value={narration} onChange={e => setNarration(e.target.value)} required />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={closeAddModal}
+                  className="w-full bg-gray-100 border border-gray-300 text-gray-700 font-bold py-3 px-4 rounded-lg shadow-sm hover:bg-gray-200 active:shadow-inner transition-all"
+                >
+                  Cancel
+                </button>
+                <button className="w-full bg-gradient-to-b from-[#f7dfa5] to-[#f0c14b] border border-[#a88734] text-gray-900 font-bold py-3 px-4 rounded-lg shadow-sm hover:bg-gradient-to-b hover:from-[#f5d78e] hover:to-[#eeb933] active:shadow-inner transition-all">
+                  Save Entry
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
