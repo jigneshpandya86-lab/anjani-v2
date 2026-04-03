@@ -3,7 +3,7 @@ import { useClientStore } from '../store/clientStore';
 import { Package, Plus, History, Tag, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 
 export default function StockDashboard() {
-  const { stockEntries, addStockManual, fetchStock } = useClientStore();
+  const { stockEntries, stockTotal, addStockManual, fetchStock } = useClientStore();
   const [showAdd, setShowAdd] = useState(false);
   const [qty, setQty] = useState('');
   const [narration, setNarration] = useState('');
@@ -12,7 +12,12 @@ export default function StockDashboard() {
   const [endDate, setEndDate] = useState('');
   const MIN_VISIBLE_ITEMS = 15;
 
-  useEffect(() => { fetchStock(); }, []);
+  useEffect(() => {
+    const unsub = fetchStock();
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [fetchStock]);
 
   const toDateKey = (value) => {
     if (!value) return '';
@@ -47,18 +52,8 @@ export default function StockDashboard() {
     return `${y}-${m}-${d}`;
   };
 
-  // Total Stock strictly calculates ALL time, unaffected by date filters.
-  // Legacy rows may carry produced/delivered instead of direct qty.
-  const totalStock = stockEntries.reduce((acc, curr) => {
-    const hasLegacyProducedDelivered =
-      curr.produced !== undefined || curr.delivered !== undefined;
-    if (hasLegacyProducedDelivered) {
-      const produced = Number(curr.produced) || 0;
-      const delivered = Number(curr.delivered) || 0;
-      return acc + (produced - delivered);
-    }
-    return acc + (Number(curr.qty) || 0);
-  }, 0);
+  // Total stock now comes from aggregate summary doc, so list queries can stay limited.
+  const totalStock = Number(stockTotal) || 0;
 
   // Filters ONLY the visual transaction log
   const filtered = stockEntries.filter(entry => {

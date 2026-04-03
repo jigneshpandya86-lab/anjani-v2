@@ -39,7 +39,7 @@ function App() {
   const [pinInput, setPinInput] = useState('')
   const [pinError, setPinError] = useState('')
   const [isUnlocked, setIsUnlocked] = useState(() => sessionStorage.getItem('anjani-app-unlocked') === 'true')
-  const { fetchClients, fetchOrders, fetchStock, orders, clients } = useClientStore()
+  const { fetchClients, fetchOrders, fetchStock, fetchStockTotal, orders, clients } = useClientStore()
 
   useEffect(() => {
     if (!isUnlocked) return undefined
@@ -47,12 +47,14 @@ function App() {
     const unsubClients = fetchClients()
     const unsubOrders = fetchOrders()
     const unsubStock = fetchStock()
+    const unsubStockTotal = fetchStockTotal()
     return () => {
       if (unsubClients) unsubClients()
       if (unsubOrders) unsubOrders()
       if (unsubStock) unsubStock()
+      if (unsubStockTotal) unsubStockTotal()
     }
-  }, [fetchClients, fetchOrders, fetchStock, isUnlocked])
+  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, isUnlocked])
 
   const verifyPin = (value) => {
     if (value !== APP_PIN) {
