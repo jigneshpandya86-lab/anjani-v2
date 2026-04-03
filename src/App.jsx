@@ -74,7 +74,11 @@ function App() {
           {activeTab === 'payments' && <PaymentDashboard />}
           {activeTab === 'clients' && (
             <div className="space-y-6">
-              <ClientList onEdit={setEditClient} onPay={setPayClient} />
+              <ClientList
+                onEdit={setEditClient}
+                onPay={setPayClient}
+                onOrder={(client) => setEditOrder({ clientId: client.id })}
+              />
             </div>
           )}
           {activeTab === 'leads' && <LeadsDashboard />}
