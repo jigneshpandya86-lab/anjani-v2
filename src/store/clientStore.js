@@ -80,6 +80,7 @@ export const useClientStore = create((set, get) => ({
       name: data.name,
       mobile: data.phone,
       address: data.address,
+      rate: Number(data.rate) || 0,
       active: true,
       outstanding: 0,
       createdAt: serverTimestamp()
@@ -122,7 +123,8 @@ export const useClientStore = create((set, get) => ({
       const clients = snapshot.docs.map(doc => ({ 
         id: doc.id, ...doc.data(),
         name: doc.data().name || 'Unnamed',
-        outstanding: doc.data().outstanding || 0
+        outstanding: doc.data().outstanding || 0,
+        rate: Number(doc.data().rate) || 0
       }));
       set({ clients });
     });
