@@ -104,33 +104,6 @@ function App() {
       }
     },
     {
-      id: 'quick-open-stock',
-      label: 'Open Stock',
-      icon: <Package size={18} />,
-      onClick: () => {
-        setActiveTab('stock')
-        setDrawerOpen(false)
-      }
-    },
-    {
-      id: 'quick-open-transactions',
-      label: 'Open Transactions',
-      icon: <CreditCard size={18} />,
-      onClick: () => {
-        setActiveTab('payments')
-        setDrawerOpen(false)
-      }
-    },
-    {
-      id: 'quick-open-clients',
-      label: 'Open Clients',
-      icon: <Users size={18} />,
-      onClick: () => {
-        setActiveTab('clients')
-        setDrawerOpen(false)
-      }
-    },
-    {
       id: 'quick-open-leads',
       label: 'Open Leads',
       icon: <TrendingUp size={18} />,
