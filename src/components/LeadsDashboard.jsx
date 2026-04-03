@@ -67,7 +67,7 @@ export default function LeadsDashboard() {
                 <div>
                   {/* Shows Name OR Mobile OR 'No Details' */}
                   <h3 className="font-bold text-gray-900 text-sm uppercase">{lead.name || lead.mobile || 'No Details'}</h3>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">
+                  <p className="text-[10px] font-bold text-[#c4a484] uppercase tracking-widest mt-0.5 whitespace-nowrap">
                     {formatDate(lead)}
                   </p>
                 </div>
