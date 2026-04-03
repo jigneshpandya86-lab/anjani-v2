@@ -136,7 +136,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
           <span className="text-xl font-black text-[#ff9900]">₹{total.toLocaleString()}</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="sticky bottom-0 bg-white pt-3 pb-1 border-t border-gray-100 grid grid-cols-2 gap-3">
           <button
             type="button"
             onClick={onClose}
