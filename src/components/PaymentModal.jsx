@@ -1,23 +1,28 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { X, IndianRupee, Save, CreditCard, Banknote } from 'lucide-react';
+import { IndianRupee, Save, CreditCard, Banknote } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function PaymentModal({ client, onClose }) {
-  const { addPayment } = useClientStore();
+  const { addPayment, clients } = useClientStore();
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('cash');
   const [note, setNote] = useState('');
+  const [selectedClientId, setSelectedClientId] = useState(client?.id || '');
   const [loading, setLoading] = useState(false);
+  const selectedClient = useMemo(
+    () => clients.find((c) => c.id === selectedClientId) || (client?.id ? client : null),
+    [clients, selectedClientId, client]
+  );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!amount || amount <= 0) return;
+    if (!amount || amount <= 0 || !selectedClient) return;
 
     setLoading(true);
     try {
       await addPayment({
-        clientId: client.id,
+        clientId: selectedClient.id,
         amount: parseFloat(amount),
         type: 'payment',
         method,
@@ -32,21 +37,40 @@ export default function PaymentModal({ client, onClose }) {
     }
   };
 
-  const newBalance = (client.outstanding || 0) - (parseFloat(amount) || 0);
+  const newBalance = (selectedClient?.outstanding || 0) - (parseFloat(amount) || 0);
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center border-b pb-4">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Record Payment</h2>
-          <p className="text-sm text-gray-500">{client.name}</p>
+          <p className="text-sm text-gray-500">{selectedClient?.name || 'Select client'}</p>
         </div>
       </div>
 
+      {!client?.id && (
+        <div>
+          <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Client</label>
+          <select
+            className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-[#ff9900] outline-none"
+            value={selectedClientId}
+            onChange={(e) => setSelectedClientId(e.target.value)}
+            required
+          >
+            <option value="">Select a client</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="bg-gray-50 p-4 rounded-xl flex justify-between items-center border border-gray-100">
         <span className="text-gray-600 font-medium">Current Balance:</span>
-        <span className={`font-bold text-lg ${client.outstanding > 0 ? 'text-red-500' : 'text-green-600'}`}>
-          ₹{client.outstanding?.toLocaleString() || 0}
+        <span className={`font-bold text-lg ${(selectedClient?.outstanding || 0) > 0 ? 'text-red-500' : 'text-green-600'}`}>
+          ₹{selectedClient?.outstanding?.toLocaleString() || 0}
         </span>
       </div>
 
@@ -108,7 +132,7 @@ export default function PaymentModal({ client, onClose }) {
         )}
 
         <button 
-          disabled={loading}
+          disabled={loading || !selectedClient}
           className="w-full bg-[#131921] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg disabled:opacity-50"
         >
           {loading ? "Saving..." : <><Save size={20} /> Save Transaction</>}
