@@ -118,9 +118,7 @@ export default function OrdersDashboard({ onEdit, onCopy, onAdd }) {
             <div className="flex justify-between items-center gap-2">
               <div className="flex gap-2">
                 <button onClick={() => shareOrder(order)} className="bg-[#25D366]/10 text-[#25D366] p-2 rounded-xl"><Smartphone size={16} /></button>
-                {order.status !== 'Delivered' && (
-                  <button onClick={() => onEdit(order)} className="bg-blue-50 text-blue-500 p-2 rounded-xl"><Edit2 size={16} /></button>
-                )}
+                <button onClick={() => onEdit(order)} className="bg-blue-50 text-blue-500 p-2 rounded-xl"><Edit2 size={16} /></button>
                 <button onClick={() => onCopy(order)} className="bg-gray-100 text-gray-500 p-2 rounded-xl"><Copy size={16} /></button>
                 <button onClick={() => deleteOrder(order.id)} className="bg-red-50 text-red-500 p-2 rounded-xl"><Trash2 size={16} /></button>
               </div>
