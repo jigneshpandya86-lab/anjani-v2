@@ -7,7 +7,9 @@ import {
   CreditCard, 
   TrendingUp, 
   Package, 
-  Menu
+  Menu,
+  MoreVertical,
+  X
 } from 'lucide-react'
 import ClientList from './components/ClientList'
 import AddClient from './components/AddClient'
@@ -23,6 +25,7 @@ function App() {
   const [editOrder, setEditOrder] = useState(null)
   const [editClient, setEditClient] = useState(null)
   const [payClient, setPayClient] = useState(null)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const { fetchClients, fetchOrders, fetchStock } = useClientStore()
 
   useEffect(() => {
@@ -77,11 +80,24 @@ function App() {
         
         {/* Mobile Header (Sticky Top) */}
         <header className="md:hidden sticky top-0 bg-white p-4 shadow-sm z-40 flex justify-between items-center">
-          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI<span className="text-[#ff9900]">WATER</span></h1>
-          <button className="p-2 bg-gray-50 rounded-lg text-gray-600"><Menu size={20}/></button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMobileNavOpen(true)}
+              className="p-2 bg-gray-50 rounded-lg text-gray-600 border border-gray-100"
+              aria-haspopup="dialog"
+              aria-expanded={mobileNavOpen}
+              aria-label="Open navigation menu"
+            >
+              <Menu size={18} />
+            </button>
+            <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI<span className="text-[#ff9900]">WATER</span></h1>
+          </div>
+          <button className="p-2 bg-gray-50 rounded-lg text-gray-500 border border-gray-100" aria-label="More options">
+            <MoreVertical size={18} />
+          </button>
         </header>
 
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-5xl mx-auto pb-28 md:pb-0">
           {/* Explicitly rendering active tabs */}
           {activeTab === 'orders' && <OrdersDashboard onEdit={setEditOrder} onCopy={(o) => setEditOrder({ ...o, id: null })} onAdd={() => setEditOrder({})} />}
           {activeTab === 'stock' && <StockDashboard />}
@@ -124,14 +140,17 @@ function App() {
       )}
 
       {/* Mobile Bottom Navigation - FIXED: High Z-Index, explicit styling */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-2 pb-6 flex justify-around items-center z-[999] shadow-[0_-10px_20px_rgba(0,0,0,0.05)]">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-2 pb-6 flex justify-around items-center z-[999] shadow-[0_-10px_20px_rgba(0,0,0,0.08)]">
         {navItems.map((item) => (
           <button
             key={item.id}
             onClick={() => setActiveTab(item.id)}
-            className={`flex flex-col items-center justify-center w-1/5 h-full transition-colors ${
-              activeTab === item.id ? 'text-[#ff9900]' : 'text-gray-400 hover:text-gray-600'
+            className={`flex flex-col items-center justify-center w-[19%] py-2 rounded-xl transition-all ${
+              activeTab === item.id
+                ? 'text-[#ff9900] bg-[#fff4e5] shadow-[0_4px_10px_rgba(255,153,0,0.15)]'
+                : 'text-gray-400 hover:text-gray-600'
             }`}
+            aria-label={`Open ${item.label}`}
           >
             {item.icon}
             <span className={`text-[10px] mt-1 uppercase tracking-tight ${activeTab === item.id ? 'font-black' : 'font-bold'}`}>
@@ -140,6 +159,47 @@ function App() {
           </button>
         ))}
       </nav>
+
+      {/* Mobile Side Navigation Drawer */}
+      {mobileNavOpen && (
+        <div className="md:hidden fixed inset-0 z-[1001]">
+          <button
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setMobileNavOpen(false)}
+            aria-label="Close navigation menu"
+          />
+          <aside className="absolute left-0 top-0 h-full w-72 bg-white shadow-2xl p-5 flex flex-col">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-black tracking-tight text-[#131921]">Menu</h2>
+              <button
+                onClick={() => setMobileNavOpen(false)}
+                className="p-2 rounded-lg border border-gray-200 text-gray-600"
+                aria-label="Close menu"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <nav className="space-y-2">
+              {navItems.map((item) => (
+                <button
+                  key={`drawer-${item.id}`}
+                  onClick={() => {
+                    setActiveTab(item.id)
+                    setMobileNavOpen(false)
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold ${
+                    activeTab === item.id ? 'bg-[#fff4e5] text-[#131921]' : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className={`${activeTab === item.id ? 'text-[#ff9900]' : 'text-gray-400'}`}>{item.icon}</span>
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+          </aside>
+        </div>
+      )}
 
     </div>
   )
