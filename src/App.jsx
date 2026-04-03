@@ -48,12 +48,14 @@ function App() {
     const unsubClients = fetchClients()
     const unsubOrders = fetchOrders()
     const unsubStock = fetchStock()
+    const unsubStockTotal = fetchStockTotal()
     return () => {
       if (unsubClients) unsubClients()
       if (unsubOrders) unsubOrders()
       if (unsubStock) unsubStock()
+      if (unsubStockTotal) unsubStockTotal()
     }
-  }, [fetchClients, fetchOrders, fetchStock, isUnlocked])
+  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, isUnlocked])
 
   const verifyPin = (value) => {
     if (value !== APP_PIN) {
@@ -492,12 +494,12 @@ function App() {
       )}
 
       {/* Bottom Navigation (all screen sizes) */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-1.5 pb-4 flex justify-around items-center z-[999] shadow-[0_-10px_20px_rgba(0,0,0,0.08)]">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-1 pb-3 flex justify-around items-center z-[999] shadow-[0_-10px_20px_rgba(0,0,0,0.08)]">
         {navItems.map((item) => (
           <button
             key={item.id}
             onClick={() => setActiveTab(item.id)}
-            className={`flex flex-col items-center justify-center w-[19%] py-1.5 rounded-xl transition-all ${
+            className={`flex flex-col items-center justify-center w-[19%] py-1 rounded-xl transition-all ${
               activeTab === item.id
                 ? 'text-[#ff9900] bg-[#fff4e5] shadow-[0_4px_10px_rgba(255,153,0,0.15)]'
                 : 'text-gray-400 hover:text-gray-600'
@@ -505,7 +507,7 @@ function App() {
             aria-label={`Open ${item.label}`}
           >
             {item.icon}
-            <span className={`text-[9px] mt-0.5 uppercase tracking-tight ${activeTab === item.id ? 'font-black' : 'font-bold'}`}>
+            <span className={`text-[9px] mt-0 uppercase tracking-tight ${activeTab === item.id ? 'font-black' : 'font-bold'}`}>
               {item.label}
             </span>
           </button>

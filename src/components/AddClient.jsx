@@ -8,6 +8,7 @@ export default function AddClient({ onDone, client }) {
   const [name, setName] = useState(client ? client.name : "");
   const [phone, setPhone] = useState(client ? client.mobile : "");
   const [address, setAddress] = useState(client ? client.address : "");
+  const [rate, setRate] = useState(client ? String(client.rate ?? "") : "");
   const [status, setStatus] = useState("idle");
 
   const addClient = useClientStore((state) => state.addClient);
@@ -19,10 +20,20 @@ export default function AddClient({ onDone, client }) {
 
     try {
       if (client) {
-        await updateClient(client.id, { name, mobile: phone, address });
+        await updateClient(client.id, {
+          name,
+          mobile: phone,
+          address,
+          rate: rate === "" ? 0 : Number(rate),
+        });
         toast.success("Client updated successfully");
       } else {
-        await addClient({ name, phone, address });
+        await addClient({
+          name,
+          phone,
+          address,
+          rate: rate === "" ? 0 : Number(rate),
+        });
         toast.success("Client created successfully");
       }
       
@@ -30,6 +41,7 @@ export default function AddClient({ onDone, client }) {
       setName("");
       setPhone("");
       setAddress("");
+      setRate("");
       setStatus("idle");
       if (onDone) onDone(); 
     } catch (error) {
@@ -66,6 +78,19 @@ export default function AddClient({ onDone, client }) {
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Delivery Address</label>
               <textarea required rows="3" value={address} onChange={(e) => setAddress(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none" placeholder="Full delivery address..." />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Rate (₹ / Box)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={rate}
+                onChange={(e) => setRate(e.target.value)}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
+                placeholder="e.g. 125"
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-3">

@@ -1,15 +1,21 @@
 import { useEffect, useState } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { collection, query, onSnapshot } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { IndianRupee, Calendar, Clock, ShoppingBag, RotateCcw } from 'lucide-react';
+
+const TRANSACTION_FEED_LIMIT = 15;
 
 export default function PaymentDashboard() {
   const [history, setHistory] = useState([]);
   const { clients } = useClientStore();
 
   useEffect(() => {
-    const q = query(collection(db, 'payments'));
+    const q = query(
+      collection(db, 'payments'),
+      orderBy('createdAt', 'desc'),
+      limit(TRANSACTION_FEED_LIMIT)
+    );
     const unsub = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
@@ -39,7 +45,7 @@ export default function PaymentDashboard() {
       <div className="flex items-center justify-between px-1">
         <h2 className="text-xl font-black text-gray-800 uppercase tracking-tight">Payment Ledger</h2>
         <div className="flex items-center gap-1 text-[10px] bg-[#ff9900]/10 text-[#ff9900] px-2 py-1 rounded-full font-black uppercase">
-          <Clock size={12} /> Sorted: Recent
+          <Clock size={12} /> Recent: {TRANSACTION_FEED_LIMIT}
         </div>
       </div>
 

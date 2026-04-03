@@ -29,6 +29,20 @@ export default function OrderModal({ orderToEdit, onClose }) {
     }
   }, [orderToEdit]);
 
+
+  useEffect(() => {
+    if (!formData.clientId) return;
+    const selectedClient = clients.find((client) => client.id === formData.clientId);
+    if (!selectedClient) return;
+
+    setFormData((prev) => {
+      if (prev.rate !== '' && Number(prev.rate) > 0) return prev;
+      const nextRate = Number(selectedClient.rate) || 0;
+      if (!nextRate) return prev;
+      return { ...prev, rate: String(nextRate) };
+    });
+  }, [clients, formData.clientId]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);

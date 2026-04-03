@@ -1,78 +1,120 @@
 import { create } from 'zustand';
 import { 
   collection, addDoc, onSnapshot, query, doc, 
-  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc 
+  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
+
+let stockUnsubscribe = null;
+let stockSubscriberCount = 0;
+const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary');
 
 export const useClientStore = create((set, get) => ({
   clients: [],
   orders: [],
   stockEntries: [], 
+  stockTotal: 0,
   loading: false,
 
   fetchStock: () => {
-    const q = query(collection(db, 'stock'), orderBy('date', 'desc'));
-    return onSnapshot(q, (snapshot) => {
-      const normalize = (raw) => {
-        const hasLegacyProducedDelivered =
-          raw.produced !== undefined || raw.delivered !== undefined;
-        const hasDirectQty =
-          raw.qty !== undefined || raw.boxes !== undefined || raw.quantity !== undefined;
+    stockSubscriberCount += 1;
 
-        // Legacy rows from previous system may only store produced/delivered.
-        if (hasLegacyProducedDelivered && !hasDirectQty) {
-          const producedCount = Number(raw.produced) || 0;
-          const deliveredCount = Number(raw.delivered) || 0;
-          const title = raw.customer || raw.clientName || 'Legacy Entry';
-          const netQty = producedCount - deliveredCount;
+    if (!stockUnsubscribe) {
+      const q = query(collection(db, 'stock'), orderBy('date', 'desc'), limit(15));
+      stockUnsubscribe = onSnapshot(q, (snapshot) => {
+        const normalize = (raw) => {
+          const hasLegacyProducedDelivered =
+            raw.produced !== undefined || raw.delivered !== undefined;
+          const hasDirectQty =
+            raw.qty !== undefined || raw.boxes !== undefined || raw.quantity !== undefined;
+
+          // Legacy rows from previous system may only store produced/delivered.
+          if (hasLegacyProducedDelivered && !hasDirectQty) {
+            const producedCount = Number(raw.produced) || 0;
+            const deliveredCount = Number(raw.delivered) || 0;
+            const title = raw.customer || raw.clientName || 'Legacy Entry';
+            const netQty = producedCount - deliveredCount;
+            return {
+              ...raw,
+              narration:
+                raw.narration ||
+                `${title} - Produced ${producedCount} Delivered ${deliveredCount}`,
+              produced: producedCount,
+              delivered: deliveredCount,
+              qty: netQty,
+              type: 'old_job',
+              date: raw.date, // Keep as-is (string)
+            };
+          }
+          // New inventory entry - normalize fields
           return {
             ...raw,
-            narration:
-              raw.narration ||
-              `${title} - Produced ${producedCount} Delivered ${deliveredCount}`,
-            produced: producedCount,
-            delivered: deliveredCount,
-            qty: netQty,
-            type: 'old_job',
-            date: raw.date, // Keep as-is (string)
+            narration: raw.narration || raw.note || '',
+            qty: Number(raw.qty || raw.boxes || raw.quantity) || 0,
+            rate: Number(raw.rate) || 0,
+            date: raw.date || raw.createdAt,
+            type: raw.type || 'entry',
           };
-        }
-        // New inventory entry - normalize fields
-        return {
-          ...raw,
-          narration: raw.narration || raw.note || '',
-          qty: Number(raw.qty || raw.boxes || raw.quantity) || 0,
-          rate: Number(raw.rate) || 0,
-          date: raw.date || raw.createdAt,
-          type: raw.type || 'entry',
         };
-      };
+        const stockEntries = snapshot.docs
+          .map(doc => normalize({ id: doc.id, ...doc.data() }))
+          .sort((a, b) => {
+            const getTime = (ts) => {
+              if (ts?.toMillis) return ts.toMillis();
+              if (ts?.seconds) return ts.seconds * 1000;
+              if (typeof ts === 'string') {
+                return new Date(ts).getTime();
+              }
+              return 0;
+            };
+            return getTime(b.date) - getTime(a.date);
+          });
+        set({ stockEntries });
+      });
+    }
 
-      const stockEntries = snapshot.docs
-        .map(doc => normalize({ id: doc.id, ...doc.data() }))
-        .sort((a, b) => {
-          const getTime = (ts) => {
-            if (ts?.toMillis) return ts.toMillis();
-            if (ts?.seconds) return ts.seconds * 1000;
-            if (typeof ts === 'string') {
-              return new Date(ts).getTime();
-            }
-            return 0;
-          };
-          return getTime(b.date) - getTime(a.date);
-        });
-      set({ stockEntries });
+    return () => {
+      stockSubscriberCount = Math.max(0, stockSubscriberCount - 1);
+      if (stockSubscriberCount === 0 && stockUnsubscribe) {
+        stockUnsubscribe();
+        stockUnsubscribe = null;
+      }
+    };
+  },
+
+  fetchStockTotal: () => {
+    return onSnapshot(STOCK_SUMMARY_DOC, async (summarySnap) => {
+      if (summarySnap.exists()) {
+        set({ stockTotal: Number(summarySnap.data()?.totalQty) || 0 });
+        return;
+      }
+
+      // One-time backfill for existing deployments where summary doc does not exist yet.
+      const fullSnap = await getDocs(query(collection(db, 'stock')));
+      const computedTotal = fullSnap.docs.reduce((acc, d) => {
+        const raw = d.data();
+        const hasLegacyProducedDelivered =
+          raw.produced !== undefined || raw.delivered !== undefined;
+        if (hasLegacyProducedDelivered && raw.qty === undefined) {
+          return acc + ((Number(raw.produced) || 0) - (Number(raw.delivered) || 0));
+        }
+        return acc + (Number(raw.qty || raw.boxes || raw.quantity) || 0);
+      }, 0);
+
+      await setDoc(STOCK_SUMMARY_DOC, { totalQty: computedTotal }, { merge: true });
+      set({ stockTotal: computedTotal });
     });
   },
 
   addStockManual: async (qty, narration) => {
+    const parsedQty = Number(qty) || 0;
     await addDoc(collection(db, 'stock'), {
-      qty: Number(qty),
+      qty: parsedQty,
       narration: narration || 'Manual Addition',
       type: 'addition',
       date: serverTimestamp()
     });
+    await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(parsedQty) }, { merge: true });
   },
 
   addClient: async (data) => {
@@ -80,6 +122,7 @@ export const useClientStore = create((set, get) => ({
       name: data.name,
       mobile: data.phone,
       address: data.address,
+      rate: Number(data.rate) || 0,
       active: true,
       outstanding: 0,
       createdAt: serverTimestamp()
@@ -108,10 +151,11 @@ export const useClientStore = create((set, get) => ({
       createdAt: serverTimestamp()
     });
     if (data.clientId) {
-      const client = get().clients.find(c => c.id === data.clientId);
-      if (client !== undefined) {
-        const newOutstanding = (Number(client.outstanding) || 0) - Number(data.amount);
-        await updateDoc(doc(db, 'customers', data.clientId), { outstanding: newOutstanding });
+      const amount = Number(data.amount) || 0;
+      if (amount > 0) {
+        await updateDoc(doc(db, 'customers', data.clientId), {
+          outstanding: increment(-amount)
+        });
       }
     }
   },
@@ -122,14 +166,15 @@ export const useClientStore = create((set, get) => ({
       const clients = snapshot.docs.map(doc => ({ 
         id: doc.id, ...doc.data(),
         name: doc.data().name || 'Unnamed',
-        outstanding: doc.data().outstanding || 0
+        outstanding: doc.data().outstanding || 0,
+        rate: Number(doc.data().rate) || 0
       }));
       set({ clients });
     });
   },
 
   fetchOrders: () => {
-    const q = query(collection(db, 'orders'));
+    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(50));
     return onSnapshot(q, (snapshot) => {
       const normalize = (raw) => ({
         ...raw,
@@ -171,6 +216,7 @@ export const useClientStore = create((set, get) => ({
         type: 'dispatch',
         date: serverTimestamp()
       });
+      await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(-qty) }, { merge: true });
 
       // 2. Create invoice transaction in payments
       const amount = qty * rate;
@@ -184,13 +230,10 @@ export const useClientStore = create((set, get) => ({
           date: serverTimestamp(),
           createdAt: serverTimestamp()
         });
-        // 3. Increase customer outstanding
-        const client = get().clients.find(c => c.id === existing.clientId);
-        if (client) {
-          await updateDoc(doc(db, 'customers', existing.clientId), {
-            outstanding: (Number(client.outstanding) || 0) + amount
-          });
-        }
+        // 3. Increase customer outstanding atomically
+        await updateDoc(doc(db, 'customers', existing.clientId), {
+          outstanding: increment(amount)
+        });
       }
     }
     await updateDoc(doc(db, 'orders', id), data);
@@ -203,12 +246,14 @@ export const useClientStore = create((set, get) => ({
       if (orderSnap.exists()) {
         const existing = orderSnap.data();
         if (existing.status === 'Delivered') {
+          const reversalQty = Math.abs(Number(existing.qty || 0));
           await addDoc(collection(db, 'stock'), {
-            qty: Math.abs(Number(existing.qty || 0)),
+            qty: reversalQty,
             narration: `Order Deleted (Reversal): ${existing.orderId || id}`,
             type: 'reversal',
             date: serverTimestamp()
           });
+          await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(reversalQty) }, { merge: true });
         }
       }
       await deleteDoc(orderRef);
