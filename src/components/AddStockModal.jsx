@@ -18,7 +18,7 @@ export default function AddStockModal({ onClose }) {
       await addDoc(collection(db, 'stock'), {
         qty: Number(qty),
         type: 'addition',
-        note: note || 'Manual Addition',
+        narration: note || 'Manual Addition',
         date: serverTimestamp()
       });
       toast.success('Stock added successfully');
