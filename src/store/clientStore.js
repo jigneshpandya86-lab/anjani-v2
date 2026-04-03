@@ -10,21 +10,41 @@ let stockSubscriberCount = 0;
 const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary');
 
 const getOrderClientName = async (order, clients = []) => {
-  const fromOrder =
-    order?.clientName ||
-    order?.customerName ||
-    order?.customer ||
-    order?.name;
+  const normalizeName = (value) => {
+    if (typeof value !== 'string') return '';
+    return value.trim();
+  };
+
+  const fromOrder = [
+    order?.clientName,
+    order?.customerName,
+    order?.client?.name,
+    order?.customer?.name,
+    typeof order?.customer === 'string' ? order.customer : '',
+    typeof order?.client === 'string' ? order.client : '',
+    order?.name,
+  ]
+    .map(normalizeName)
+    .find(Boolean);
+
   if (fromOrder) return fromOrder;
 
-  const clientId = order?.clientId || order?.customerId;
+  const rawClientId =
+    order?.clientId ||
+    order?.customerId ||
+    order?.client?.id ||
+    order?.customer?.id ||
+    order?.client_id ||
+    order?.customer_id;
+
+  const clientId = rawClientId ? String(rawClientId).trim() : '';
   if (!clientId) return '';
 
-  const fromStore = clients.find((client) => client.id === clientId)?.name;
-  if (fromStore) return fromStore;
+  const fromStore = clients.find((client) => String(client.id).trim() === clientId)?.name;
+  if (fromStore) return normalizeName(fromStore);
 
   const customerSnap = await getDoc(doc(db, 'customers', clientId));
-  return customerSnap.exists() ? customerSnap.data()?.name || '' : '';
+  return customerSnap.exists() ? normalizeName(customerSnap.data()?.name) : '';
 };
 
 const formatOrderNarration = (prefix, orderRef, clientName) => {
