@@ -14,7 +14,7 @@ export default function OrdersDashboard({ onEdit, onCopy, onAdd }) {
       if (c) return c.name;
     }
     // Fallback for old legacy names saved directly in order
-    return order.clientName || order.customerName || order.name || 'Legacy Client';
+    return order.clientName || order.customerName || order.customer || order.name || 'Legacy Client';
   };
 
   const getDisplayMobile = (order) => {
