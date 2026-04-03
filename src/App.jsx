@@ -40,7 +40,7 @@ function App() {
   const [pinInput, setPinInput] = useState('')
   const [pinError, setPinError] = useState('')
   const [isUnlocked, setIsUnlocked] = useState(() => sessionStorage.getItem('anjani-app-unlocked') === 'true')
-  const { fetchClients, fetchOrders, fetchStock, orders, clients } = useClientStore()
+  const { fetchClients, fetchOrders, fetchStock, fetchStockTotal, orders, clients } = useClientStore()
 
   useEffect(() => {
     if (!isUnlocked) return undefined
