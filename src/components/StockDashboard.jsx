@@ -47,8 +47,18 @@ export default function StockDashboard() {
     return `${y}-${m}-${d}`;
   };
 
-  // Total Stock strictly calculates ALL time, unaffected by date filters
-  const totalStock = stockEntries.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
+  // Total Stock strictly calculates ALL time, unaffected by date filters.
+  // Legacy rows may carry produced/delivered instead of direct qty.
+  const totalStock = stockEntries.reduce((acc, curr) => {
+    const hasLegacyProducedDelivered =
+      curr.produced !== undefined || curr.delivered !== undefined;
+    if (hasLegacyProducedDelivered) {
+      const produced = Number(curr.produced) || 0;
+      const delivered = Number(curr.delivered) || 0;
+      return acc + (produced - delivered);
+    }
+    return acc + (Number(curr.qty) || 0);
+  }, 0);
 
   // Filters ONLY the visual transaction log
   const filtered = stockEntries.filter(entry => {
