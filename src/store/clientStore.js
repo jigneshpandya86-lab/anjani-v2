@@ -9,19 +9,25 @@ let stockUnsubscribe = null;
 let stockSubscriberCount = 0;
 const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary');
 
-const formatOrderNarration = (prefix, order, fallbackId, clients = []) => {
-  const orderRef = order?.orderId || fallbackId;
-  const matchedClient =
-    clients.find((client) => client.id === order?.clientId) ||
-    clients.find((client) => client.id === order?.customerId);
-
-  const clientName =
+const getOrderClientName = async (order, clients = []) => {
+  const fromOrder =
     order?.clientName ||
     order?.customerName ||
     order?.customer ||
-    order?.name ||
-    matchedClient?.name;
+    order?.name;
+  if (fromOrder) return fromOrder;
 
+  const clientId = order?.clientId || order?.customerId;
+  if (!clientId) return '';
+
+  const fromStore = clients.find((client) => client.id === clientId)?.name;
+  if (fromStore) return fromStore;
+
+  const customerSnap = await getDoc(doc(db, 'customers', clientId));
+  return customerSnap.exists() ? customerSnap.data()?.name || '' : '';
+};
+
+const formatOrderNarration = (prefix, orderRef, clientName) => {
   return clientName
     ? `${prefix}: ${orderRef} • ${clientName}`
     : `${prefix}: ${orderRef}`;
@@ -164,9 +170,12 @@ export const useClientStore = create((set, get) => ({
 
   addOrder: async (data) => {
     const orderId = `ORD-${Date.now()}`;
+    const selectedClient = get().clients.find((client) => client.id === data.clientId);
+
     await addDoc(collection(db, 'orders'), {
       ...data,
       orderId,
+      clientName: selectedClient?.name || data.clientName || '',
       qty: Number(data.qty),
       rate: Number(data.rate),
       status: 'Pending',
@@ -237,11 +246,14 @@ export const useClientStore = create((set, get) => ({
     if (existing && data.status === 'Delivered' && existing.status !== 'Delivered') {
       const qty = Number(existing.qty);
       const rate = Number(existing.rate);
+      const orderRef = existing.orderId || id;
+      const clientName = await getOrderClientName(existing, get().clients);
+      const deliveredNarration = formatOrderNarration('Order Delivered', orderRef, clientName);
 
       // 1. Debit stock
       await addDoc(collection(db, 'stock'), {
         qty: -qty,
-        narration: formatOrderNarration('Order Delivered', existing, id, get().clients),
+        narration: deliveredNarration,
         type: 'dispatch',
         date: serverTimestamp()
       });
@@ -255,7 +267,7 @@ export const useClientStore = create((set, get) => ({
           amount,
           type: 'invoice',
           method: 'SYSTEM',
-          narration: formatOrderNarration('Order Delivered', existing, id, get().clients),
+          narration: deliveredNarration,
           date: serverTimestamp(),
           createdAt: serverTimestamp()
         });
@@ -276,9 +288,12 @@ export const useClientStore = create((set, get) => ({
         const existing = orderSnap.data();
         if (existing.status === 'Delivered') {
           const reversalQty = Math.abs(Number(existing.qty || 0));
+          const orderRef = existing.orderId || id;
+          const clientName = await getOrderClientName(existing, get().clients);
+          const reversalNarration = formatOrderNarration('Order Deleted (Reversal)', orderRef, clientName);
           await addDoc(collection(db, 'stock'), {
             qty: reversalQty,
-            narration: formatOrderNarration('Order Deleted (Reversal)', existing, id, get().clients),
+            narration: reversalNarration,
             type: 'reversal',
             date: serverTimestamp()
           });
