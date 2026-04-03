@@ -20,8 +20,24 @@ export const useClientStore = create((set, get) => ({
     stockSubscriberCount += 1;
 
     if (!stockUnsubscribe) {
-      const q = query(collection(db, 'stock'), orderBy('date', 'desc'), limit(15));
+      const q = query(collection(db, 'stock'));
       stockUnsubscribe = onSnapshot(q, (snapshot) => {
+        const getTime = (value) => {
+          if (!value) return 0;
+          if (value?.toMillis) return value.toMillis();
+          if (value?.seconds) return value.seconds * 1000;
+          if (value instanceof Date) return value.getTime();
+          if (typeof value === 'string') {
+            const ddmmyyyy = value.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+            if (ddmmyyyy) {
+              const [, dd, mm, yyyy] = ddmmyyyy;
+              return new Date(`${yyyy}-${mm}-${dd}T00:00:00`).getTime();
+            }
+            return new Date(value).getTime();
+          }
+          return 0;
+        };
+
         const normalize = (raw) => {
           const hasLegacyProducedDelivered =
             raw.produced !== undefined || raw.delivered !== undefined;
@@ -59,15 +75,10 @@ export const useClientStore = create((set, get) => ({
         const stockEntries = snapshot.docs
           .map(doc => normalize({ id: doc.id, ...doc.data() }))
           .sort((a, b) => {
-            const getTime = (ts) => {
-              if (ts?.toMillis) return ts.toMillis();
-              if (ts?.seconds) return ts.seconds * 1000;
-              if (typeof ts === 'string') {
-                return new Date(ts).getTime();
-              }
-              return 0;
-            };
-            return getTime(b.date) - getTime(a.date);
+            const primaryDiff = getTime(b.date) - getTime(a.date);
+            if (primaryDiff !== 0) return primaryDiff;
+
+            return getTime(b.createdAt) - getTime(a.createdAt);
           });
         set({ stockEntries });
       });
