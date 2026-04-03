@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, onSnapshot, deleteDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase-config';
-import { MessageSquare, Send, User, Phone, Sparkles, Trash2 } from 'lucide-react';
+import { MessageSquare, Send, User, Phone, Sparkles, Trash2, Plus } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export default function LeadsDashboard() {
   const [leads, setLeads] = useState([]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newLeadName, setNewLeadName] = useState('');
+  const [newLeadMobile, setNewLeadMobile] = useState('');
+  const [isSavingLead, setIsSavingLead] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, 'leads'));
@@ -43,6 +48,36 @@ export default function LeadsDashboard() {
     }
   };
 
+  const saveManualLead = async (e) => {
+    e.preventDefault();
+    const mobile = newLeadMobile.trim();
+    const name = newLeadName.trim();
+
+    if (!/^\d{10}$/.test(mobile)) {
+      toast.error('Please enter a valid 10-digit mobile number');
+      return;
+    }
+
+    setIsSavingLead(true);
+    try {
+      await addDoc(collection(db, 'leads'), {
+        name,
+        mobile,
+        source: 'manual',
+        createdAt: serverTimestamp(),
+      });
+      toast.success('Lead added successfully');
+      setNewLeadName('');
+      setNewLeadMobile('');
+      setShowAddForm(false);
+    } catch (error) {
+      console.error('Failed to add lead:', error);
+      toast.error('Failed to add lead');
+    } finally {
+      setIsSavingLead(false);
+    }
+  };
+
   // Advanced Date Formatter to catch old and new formats
   const formatDate = (lead) => {
     const rawDate = lead.createdAt || lead.date;
@@ -58,10 +93,68 @@ export default function LeadsDashboard() {
         <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter flex items-center gap-2">
           <Sparkles className="text-[#ff9900]" size={20} /> Inquiries
         </h2>
-        <span className="bg-orange-100 text-[#ff9900] px-2 py-0.5 rounded-lg text-[10px] font-black italic">
-          {leads.length} LEADS
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowAddForm((prev) => !prev)}
+            className="h-8 w-8 rounded-full bg-[#ff9900] text-white flex items-center justify-center shadow-sm active:scale-95 transition-transform"
+            aria-label="Manually add lead"
+            title="Manually add lead"
+          >
+            <Plus size={18} />
+          </button>
+          <span className="bg-orange-100 text-[#ff9900] px-2 py-0.5 rounded-lg text-[10px] font-black italic">
+            {leads.length} LEADS
+          </span>
+        </div>
       </div>
+
+      {showAddForm && (
+        <form onSubmit={saveManualLead} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
+          <h3 className="text-sm font-black uppercase text-gray-800 tracking-wide">Add Lead Manually</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <input
+              type="text"
+              value={newLeadName}
+              onChange={(e) => setNewLeadName(e.target.value)}
+              placeholder="Lead name (optional)"
+              className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-200"
+            />
+            <input
+              required
+              type="tel"
+              inputMode="numeric"
+              pattern="\d{10}"
+              maxLength={10}
+              value={newLeadMobile}
+              onChange={(e) => setNewLeadMobile(e.target.value.replace(/\D/g, ''))}
+              placeholder="10-digit mobile number"
+              className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-200"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddForm(false);
+                setNewLeadName('');
+                setNewLeadMobile('');
+              }}
+              className="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 font-bold text-xs uppercase"
+              disabled={isSavingLead}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSavingLead}
+              className="px-4 py-2 rounded-xl bg-[#ff9900] text-white font-bold text-xs uppercase disabled:opacity-60"
+            >
+              {isSavingLead ? 'Saving...' : 'Save Lead'}
+            </button>
+          </div>
+        </form>
+      )}
 
       {leads.length === 0 ? (
         <div className="bg-white p-12 rounded-3xl text-center border-2 border-dashed border-gray-100 text-gray-400 font-bold italic">
