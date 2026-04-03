@@ -383,10 +383,8 @@ function App() {
         return
       }
     } catch (error) {
-      if (error?.name !== 'AbortError') {
-        console.error(error)
-      }
-      return
+      if (error?.name === 'AbortError') return
+      console.error(error)
     }
 
     const invoiceBlobUrl = URL.createObjectURL(pdfFile)
@@ -806,73 +804,6 @@ function App() {
                 setPaymentPrefill(null)
               }}
             />
-          </div>
-        </div>
-      )}
-
-
-      {/* Ledger Statement Modal */}
-      {ledgerModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setLedgerModalOpen(false)}>
-          <div className="relative bg-white rounded-2xl w-full max-w-lg p-5" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => setLedgerModalOpen(false)}
-              className="absolute top-3 right-3 p-2 rounded-lg text-gray-500 bg-gray-100 hover:bg-gray-200"
-              aria-label="Close ledger statement options"
-            >
-              <X size={18} />
-            </button>
-
-            <h3 className="text-lg font-black text-[#131921]">Ledger Statement Options</h3>
-
-            <div className="mt-4 space-y-4">
-              <label className="block">
-                <span className="text-sm font-bold text-gray-700">Client</span>
-                <select
-                  value={ledgerClientId}
-                  onChange={(e) => setLedgerClientId(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
-                >
-                  <option value="all">All Clients</option>
-                  {clients.map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.name || 'Unnamed Client'}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block">
-                <span className="text-sm font-bold text-gray-700">Date Range</span>
-                <select
-                  value={ledgerDateRange}
-                  onChange={(e) => setLedgerDateRange(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
-                >
-                  <option value="current-month">Current Month</option>
-                  <option value="past-6-months">Past 6 Months</option>
-                  <option value="past-1-year">Past 1 Year</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setLedgerModalOpen(false)}
-                className="rounded-xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleLedgerStatementPdf}
-                className="rounded-xl bg-[#2563eb] px-4 py-2 text-sm font-bold text-white hover:bg-[#1d4ed8]"
-              >
-                Generate PDF
-              </button>
-            </div>
           </div>
         </div>
       )}

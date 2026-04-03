@@ -96,10 +96,10 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
                   <button
                     type="button"
                     onClick={() => onRecordPayment?.(order)}
-                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-200 text-[10px] font-black tracking-wide uppercase"
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-200 text-[9px] font-black tracking-wide uppercase"
                     title="Record payment"
                   >
-                    <HandCoins size={14} />
+                    <HandCoins size={12} />
                     Pay
                   </button>
                   <button
