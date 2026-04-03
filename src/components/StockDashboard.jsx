@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Plus, History, Tag, ArrowUpRight, ArrowDownLeft, X } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { Plus, History, Tag, ArrowUpRight, ArrowDownLeft, X, Trash2 } from 'lucide-react';
 
 export default function StockDashboard() {
-  const { stockEntries, stockTotal, addStockManual, fetchStock } = useClientStore();
+  const { stockEntries, stockTotal, addStockManual, deleteStockEntry, fetchStock } = useClientStore();
   const [showAdd, setShowAdd] = useState(false);
   const [qty, setQty] = useState('');
   const [narration, setNarration] = useState('');
@@ -99,6 +100,19 @@ export default function StockDashboard() {
     setNarration('');
   };
 
+  const handleDelete = async (entry) => {
+    const label = entry.narration || entry.note || 'this entry';
+    const confirmed = window.confirm(`Delete "${label}"? This will update live stock total.`);
+    if (!confirmed) return;
+
+    try {
+      await deleteStockEntry(entry.id);
+      toast.success('Stock entry deleted');
+    } catch (error) {
+      toast.error(`Failed to delete entry: ${error.message}`);
+    }
+  };
+
   return (
     <div className="space-y-4 pb-20">
       {/* Stock Summary + Date Range Filter (single line, light theme) */}
@@ -158,9 +172,20 @@ export default function StockDashboard() {
                 </p>
               </div>
             </div>
-            <p className={`font-black text-lg leading-none flex-shrink-0 ${entry.qty > 0 ? 'text-green-600' : 'text-red-500'}`}>
-              {entry.qty > 0 ? '+' : ''}{entry.qty}
-            </p>
+            <div className="flex items-center gap-3">
+              <p className={`font-black text-lg leading-none flex-shrink-0 ${entry.qty > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                {entry.qty > 0 ? '+' : ''}{entry.qty}
+              </p>
+              <button
+                type="button"
+                onClick={() => handleDelete(entry)}
+                className="h-8 w-8 rounded-lg border border-red-100 bg-red-50 text-red-500 hover:bg-red-100 active:scale-95 transition-all flex items-center justify-center"
+                aria-label={`Delete ${entry.narration || entry.note || 'stock entry'}`}
+                title="Delete stock entry"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
           </div>
         ))}
         {filtered.length === 0 && (

@@ -172,6 +172,22 @@ export const useClientStore = create((set, get) => ({
     await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(parsedQty) }, { merge: true });
   },
 
+  deleteStockEntry: async (id) => {
+    const stockRef = doc(db, 'stock', id);
+    const stockSnap = await getDoc(stockRef);
+    if (!stockSnap.exists()) return;
+
+    const raw = stockSnap.data();
+    const hasLegacyProducedDelivered =
+      raw.produced !== undefined || raw.delivered !== undefined;
+    const qtyDelta = hasLegacyProducedDelivered && raw.qty === undefined
+      ? (Number(raw.produced) || 0) - (Number(raw.delivered) || 0)
+      : Number(raw.qty || raw.boxes || raw.quantity) || 0;
+
+    await deleteDoc(stockRef);
+    await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(-qtyDelta) }, { merge: true });
+  },
+
   addClient: async (data) => {
     await addDoc(collection(db, 'customers'), {
       name: data.name,
