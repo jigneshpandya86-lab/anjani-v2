@@ -90,6 +90,8 @@ function App() {
     { id: 'leads', label: 'Leads', icon: <TrendingUp size={20} /> },
   ]
 
+  const drawerNavItems = navItems.filter((item) => item.id === 'orders')
+
   const drawerQuickActions = [
     {
       id: 'quick-new-order',
@@ -98,6 +100,42 @@ function App() {
       onClick: () => {
         setActiveTab('orders')
         setEditOrder({})
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-open-stock',
+      label: 'Open Stock',
+      icon: <Package size={18} />,
+      onClick: () => {
+        setActiveTab('stock')
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-open-transactions',
+      label: 'Open Transactions',
+      icon: <CreditCard size={18} />,
+      onClick: () => {
+        setActiveTab('payments')
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-open-clients',
+      label: 'Open Clients',
+      icon: <Users size={18} />,
+      onClick: () => {
+        setActiveTab('clients')
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-open-leads',
+      label: 'Open Leads',
+      icon: <TrendingUp size={18} />,
+      onClick: () => {
+        setActiveTab('leads')
         setDrawerOpen(false)
       }
     },
@@ -549,7 +587,7 @@ function App() {
                 ))}
               </div>
               <div className="space-y-1">
-                {navItems.map(item => (
+                {drawerNavItems.map(item => (
                   <button key={`drawer-${item.id}`}
                     onClick={() => { setActiveTab(item.id); setDrawerOpen(false); }}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
