@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Clock, Copy, Edit2, Trash2, Smartphone, Search } from 'lucide-react';
+import { Clock, Copy, Edit2, Trash2, Smartphone, Search, HandCoins, FileText } from 'lucide-react';
 
-export default function OrdersDashboard({ onEdit, onCopy }) {
+export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
   const { orders, clients, updateOrder, deleteOrder } = useClientStore();
   const [filter, setFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -91,7 +91,27 @@ export default function OrdersDashboard({ onEdit, onCopy }) {
               <div>
                 <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${getStatusColor(order.status)}`}>{order.status || 'LEGACY'}</span>
                 <h3 className="font-black text-gray-900 text-lg mt-2 leading-none">{getDisplayName(order)}</h3>
-                <p className="text-[10px] text-gray-400 font-bold mt-1">ID: {order.orderId || 'OLD RECORD'}</p>
+                <div className="mt-1 flex items-center gap-2 flex-wrap">
+                  <p className="text-[10px] text-gray-400 font-bold">ID: {order.orderId || 'OLD RECORD'}</p>
+                  <button
+                    type="button"
+                    onClick={() => onRecordPayment?.(order)}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-200 text-[10px] font-black tracking-wide uppercase"
+                    title="Record payment"
+                  >
+                    <HandCoins size={14} />
+                    Pay
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onShareInvoice?.(order)}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-black tracking-wide uppercase"
+                    title="Invoice PDF / WhatsApp"
+                  >
+                    <FileText size={14} />
+                    PDF
+                  </button>
+                </div>
               </div>
               <div className="text-right">
                 <p className="text-xl font-black text-[#ff9900]">{order.qty || 0} <span className="text-[10px] text-gray-400">BXS</span></p>

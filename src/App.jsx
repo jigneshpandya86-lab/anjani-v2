@@ -2,11 +2,7 @@ import { useState, useEffect } from 'react'
 import toast, { Toaster } from 'react-hot-toast'
 import { useClientStore } from './store/clientStore'
 import {
-  Users,
   ShoppingCart,
-  CreditCard,
-  TrendingUp,
-  Package,
   Menu,
   Plus,
   X,
@@ -15,7 +11,11 @@ import {
   HandCoins,
   Printer,
   BookText,
-  Search
+  Search,
+  Package,
+  CreditCard,
+  Users,
+  TrendingUp
 } from 'lucide-react'
 import { collection, getDocs, query } from 'firebase/firestore'
 import { db } from './firebase-config'
@@ -36,6 +36,7 @@ function App() {
   const [editClient, setEditClient] = useState(null)
   const [addClientOpen, setAddClientOpen] = useState(false)
   const [payClient, setPayClient] = useState(null)
+  const [paymentPrefill, setPaymentPrefill] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
   const [ledgerClientId, setLedgerClientId] = useState('all')
@@ -87,8 +88,9 @@ function App() {
     { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
     { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
     { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
-    { id: 'leads', label: 'Leads', icon: <TrendingUp size={20} /> },
   ]
+
+  const drawerNavItems = navItems
 
   const drawerQuickActions = [
     {
@@ -98,6 +100,42 @@ function App() {
       onClick: () => {
         setActiveTab('orders')
         setEditOrder({})
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-open-stock',
+      label: 'Open Stock',
+      icon: <Package size={18} />,
+      onClick: () => {
+        setActiveTab('stock')
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-open-transactions',
+      label: 'Open Transactions',
+      icon: <CreditCard size={18} />,
+      onClick: () => {
+        setActiveTab('payments')
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-open-clients',
+      label: 'Open Clients',
+      icon: <Users size={18} />,
+      onClick: () => {
+        setActiveTab('clients')
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-open-leads',
+      label: 'Open Leads',
+      icon: <TrendingUp size={18} />,
+      onClick: () => {
+        setActiveTab('leads')
         setDrawerOpen(false)
       }
     },
@@ -118,6 +156,7 @@ function App() {
       onClick: () => {
         setActiveTab('payments')
         setPayClient({})
+        setPaymentPrefill(null)
         setDrawerOpen(false)
       }
     }
@@ -169,6 +208,192 @@ function App() {
     `)
     reportWindow.document.close()
     return true
+  }
+
+  const openInvoiceWindow = ({ title, order, clientName, mobile }) => {
+    const reportWindow = window.open('', '_blank', 'width=900,height=700')
+    if (!reportWindow) {
+      toast.error('Popup blocked. Please allow popups to generate PDF report.')
+      return
+    }
+
+    const generatedAt = new Date().toLocaleString('en-IN')
+    const qty = Number(order.qty) || 0
+    const rate = Number(order.rate) || 0
+    const total = qty * rate
+    const invoiceNumber = order.orderId || order.id || '-'
+    const invoiceDate = order.date || '-'
+    const invoiceTime = order.time || '-'
+    const invoiceStatus = order.status || '-'
+
+    reportWindow.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+            .invoice { border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; }
+            .head { padding: 16px 20px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
+            h1 { margin: 0; font-size: 24px; letter-spacing: .4px; }
+            .muted { color: #6b7280; font-size: 12px; margin-top: 4px; }
+            .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 18px 20px; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
+            .label { color: #6b7280; font-size: 11px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: .4px; }
+            .value { color: #111827; font-weight: 600; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; text-align: left; font-size: 13px; }
+            th { font-size: 11px; text-transform: uppercase; color: #6b7280; background: #fafafa; letter-spacing: .3px; }
+            .total-wrap { padding: 16px 20px; display: flex; justify-content: flex-end; }
+            .total-box { width: 260px; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+            .total-line { display: flex; justify-content: space-between; padding: 10px 12px; font-size: 13px; }
+            .total-line + .total-line { border-top: 1px solid #f3f4f6; }
+            .grand { background: #111827; color: white; font-weight: 700; }
+          </style>
+        </head>
+        <body>
+          <div class="invoice">
+            <div class="head">
+              <h1>Invoice</h1>
+              <div class="muted">Generated: ${generatedAt}</div>
+            </div>
+            <div class="grid">
+              <div><div class="label">Invoice Number</div><div class="value">${invoiceNumber}</div></div>
+              <div><div class="label">Status</div><div class="value">${invoiceStatus}</div></div>
+              <div><div class="label">Invoice Date</div><div class="value">${invoiceDate}</div></div>
+              <div><div class="label">Invoice Time</div><div class="value">${invoiceTime}</div></div>
+              <div><div class="label">Bill To</div><div class="value">${clientName}</div></div>
+              <div><div class="label">Mobile</div><div class="value">${mobile || '-'}</div></div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>Qty</th>
+                  <th>Rate</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Water Box Supply</td>
+                  <td>${qty} Boxes</td>
+                  <td>₹${rate.toLocaleString('en-IN')}</td>
+                  <td>₹${total.toLocaleString('en-IN')}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="total-wrap">
+              <div class="total-box">
+                <div class="total-line"><span>Subtotal</span><span>₹${total.toLocaleString('en-IN')}</span></div>
+                <div class="total-line grand"><span>Total</span><span>₹${total.toLocaleString('en-IN')}</span></div>
+              </div>
+            </div>
+          </div>
+          <script>
+            window.onload = () => {
+              window.print();
+            }
+          </script>
+        </body>
+      </html>
+    `)
+    reportWindow.document.close()
+  }
+
+  const escapePdfText = (text) => String(text || '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+
+  const buildSimpleInvoicePdfFile = ({ order, clientName, mobile }) => {
+    const qty = Number(order.qty) || 0
+    const rate = Number(order.rate) || 0
+    const total = qty * rate
+    const orderId = order.orderId || order.id || 'NA'
+    const lines = [
+      'ANJANI WATER - Invoice',
+      `Invoice: ${orderId}`,
+      `Client: ${clientName || 'Unknown Client'}`,
+      `Mobile: ${mobile || '-'}`,
+      `Date: ${order.date || '-'} ${order.time || ''}`.trim(),
+      `Qty: ${qty} Boxes`,
+      `Rate: INR ${rate.toLocaleString('en-IN')}`,
+      `Total: INR ${total.toLocaleString('en-IN')}`,
+      '',
+      `Generated: ${new Date().toLocaleString('en-IN')}`
+    ]
+    const lineHeight = 18
+    const startY = 780
+    const content = lines
+      .map((line, index) => `BT /F1 12 Tf 50 ${startY - (index * lineHeight)} Td (${escapePdfText(line)}) Tj ET`)
+      .join('\n')
+    const stream = `q\n${content}\nQ`
+
+    const objects = []
+    objects.push('1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj')
+    objects.push('2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj')
+    objects.push('3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj')
+    objects.push(`4 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream endobj`)
+    objects.push('5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj')
+
+    let pdf = '%PDF-1.4\n'
+    const offsets = [0]
+    objects.forEach((obj) => {
+      offsets.push(pdf.length)
+      pdf += `${obj}\n`
+    })
+    const xrefStart = pdf.length
+    pdf += `xref\n0 ${objects.length + 1}\n`
+    pdf += '0000000000 65535 f \n'
+    for (let i = 1; i <= objects.length; i += 1) {
+      pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`
+    }
+    pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`
+    return new File([pdf], `invoice-${orderId}.pdf`, { type: 'application/pdf' })
+  }
+
+  const handleRecordPaymentFromOrder = (order) => {
+    const client = clients.find((c) => c.id === order.clientId)
+    const amount = (Number(order.qty) || 0) * (Number(order.rate) || 0)
+    const now = new Date()
+    const date = now.toISOString().slice(0, 10)
+    const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
+
+    setPayClient(client || {})
+    setPaymentPrefill({
+      amount,
+      date,
+      time,
+      note: `Payment received for order ${order.orderId || order.id}`
+    })
+  }
+
+  const handleOrderInvoiceWhatsApp = async (order) => {
+    const client = clients.find((c) => c.id === order.clientId)
+    const clientName = client?.name || order.clientName || order.customerName || 'Unknown Client'
+    const mobile = client?.mobile || order.mobile || order.phone || ''
+    const amount = ((Number(order.qty) || 0) * (Number(order.rate) || 0)).toLocaleString('en-IN')
+    const pdfFile = buildSimpleInvoicePdfFile({ order, clientName, mobile })
+    const msg = `Invoice ${order.orderId || order.id || ''}\nClient: ${clientName}\nAmount: ₹${amount}`
+
+    try {
+      if (navigator.share && navigator.canShare?.({ files: [pdfFile] })) {
+        await navigator.share({
+          title: `Invoice ${order.orderId || order.id || ''}`,
+          text: msg,
+          files: [pdfFile]
+        })
+        toast.success('Invoice PDF attached. Select WhatsApp and hit send.')
+        return
+      }
+    } catch (error) {
+      if (error?.name !== 'AbortError') {
+        console.error(error)
+      }
+      return
+    }
+
+    const invoiceBlobUrl = URL.createObjectURL(pdfFile)
+    window.open(invoiceBlobUrl, '_blank')
+    window.open(`https://wa.me/?text=${encodeURIComponent(`${msg}\n\nInvoice PDF opened in another tab. Please attach and send.`)}`, '_blank')
+    toast('WhatsApp Web cannot auto-attach files by URL. PDF opened for quick attach.', { icon: 'ℹ️' })
+    setTimeout(() => URL.revokeObjectURL(invoiceBlobUrl), 60 * 1000)
   }
 
   const handleOrderPrintPdf = () => {
@@ -337,27 +562,21 @@ function App() {
       return
     }
 
-    const rows = matchedOrders.map((order) => {
-      const client = clients.find((c) => c.id === order.clientId)
-      const clientName = client?.name || order.clientName || order.customerName || 'Unknown Client'
-      const mobile = client?.mobile || order.mobile || order.phone || '-'
-      const total = (Number(order.qty) || 0) * (Number(order.rate) || 0)
-      return [
-        order.orderId || order.id,
-        clientName,
-        mobile,
-        order.date || '-',
-        order.time || '-',
-        order.status || '-',
-        `${order.qty || 0} Boxes`,
-        `₹${total.toLocaleString('en-IN')}`
-      ]
-    })
+    if (matchedOrders.length > 1) {
+      toast.error('Multiple matching orders found. Please search by exact Order ID for single invoice.')
+      return
+    }
 
-    openReportWindow({
-      title: `Order Specific Report (PDF) - ${searchValue.trim()}`,
-      columns: ['Order ID', 'Client', 'Mobile', 'Date', 'Time', 'Status', 'Qty', 'Amount'],
-      rows
+    const order = matchedOrders[0]
+    const client = clients.find((c) => c.id === order.clientId)
+    const clientName = client?.name || order.clientName || order.customerName || 'Unknown Client'
+    const mobile = client?.mobile || order.mobile || order.phone || '-'
+
+    openInvoiceWindow({
+      title: `Order Invoice (PDF) - ${order.orderId || order.id || searchValue.trim()}`,
+      order,
+      clientName,
+      mobile
     })
   }
 
@@ -435,14 +654,24 @@ function App() {
       {/* Main Content Area */}
       <div className="flex flex-col min-h-screen">
         <div className="max-w-5xl mx-auto w-full pb-28">
-          {activeTab === 'orders' && <OrdersDashboard onEdit={setEditOrder} onCopy={(o) => setEditOrder({ ...o, id: null })} />}
+          {activeTab === 'orders' && (
+            <OrdersDashboard
+              onEdit={setEditOrder}
+              onCopy={(o) => setEditOrder({ ...o, id: null })}
+              onRecordPayment={handleRecordPaymentFromOrder}
+              onShareInvoice={handleOrderInvoiceWhatsApp}
+            />
+          )}
           {activeTab === 'stock' && <StockDashboard />}
           {activeTab === 'payments' && <PaymentDashboard />}
           {activeTab === 'clients' && (
             <div className="space-y-6">
               <ClientList
                 onEdit={setEditClient}
-                onPay={setPayClient}
+                onPay={(client) => {
+                  setPaymentPrefill(null)
+                  setPayClient(client)
+                }}
                 onOrder={(client) => setEditOrder({ clientId: client.id })}
               />
             </div>
@@ -481,8 +710,7 @@ function App() {
                 ))}
               </div>
               <div className="space-y-1">
-                <p className="px-2 text-[11px] font-black tracking-[0.14em] text-gray-400 uppercase">Navigate</p>
-                {navItems.map(item => (
+                {drawerNavItems.map(item => (
                   <button key={`drawer-${item.id}`}
                     onClick={() => { setActiveTab(item.id); setDrawerOpen(false); }}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
@@ -554,17 +782,97 @@ function App() {
 
       {/* Payment Modal */}
       {payClient !== null && (
-        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setPayClient(null)}>
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => {
+          setPayClient(null)
+          setPaymentPrefill(null)
+        }}>
           <div className="relative bg-white rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 pt-10 md:p-5 md:pt-10" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
-              onClick={() => setPayClient(null)}
+              onClick={() => {
+                setPayClient(null)
+                setPaymentPrefill(null)
+              }}
               className="absolute top-3 right-3 p-2 rounded-lg text-gray-500 bg-gray-100 hover:bg-gray-200"
               aria-label="Close payment form"
             >
               <X size={18} />
             </button>
-            <PaymentModal client={payClient} onClose={() => setPayClient(null)} />
+            <PaymentModal
+              client={payClient}
+              initialValues={paymentPrefill || {}}
+              onClose={() => {
+                setPayClient(null)
+                setPaymentPrefill(null)
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+
+      {/* Ledger Statement Modal */}
+      {ledgerModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setLedgerModalOpen(false)}>
+          <div className="relative bg-white rounded-2xl w-full max-w-lg p-5" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setLedgerModalOpen(false)}
+              className="absolute top-3 right-3 p-2 rounded-lg text-gray-500 bg-gray-100 hover:bg-gray-200"
+              aria-label="Close ledger statement options"
+            >
+              <X size={18} />
+            </button>
+
+            <h3 className="text-lg font-black text-[#131921]">Ledger Statement Options</h3>
+
+            <div className="mt-4 space-y-4">
+              <label className="block">
+                <span className="text-sm font-bold text-gray-700">Client</span>
+                <select
+                  value={ledgerClientId}
+                  onChange={(e) => setLedgerClientId(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                >
+                  <option value="all">All Clients</option>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name || 'Unnamed Client'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-bold text-gray-700">Date Range</span>
+                <select
+                  value={ledgerDateRange}
+                  onChange={(e) => setLedgerDateRange(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                >
+                  <option value="current-month">Current Month</option>
+                  <option value="past-6-months">Past 6 Months</option>
+                  <option value="past-1-year">Past 1 Year</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setLedgerModalOpen(false)}
+                className="rounded-xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleLedgerStatementPdf}
+                className="rounded-xl bg-[#2563eb] px-4 py-2 text-sm font-bold text-white hover:bg-[#1d4ed8]"
+              >
+                Generate PDF
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -682,7 +990,10 @@ function App() {
       {/* FAB: Record Payment (Transactions tab) */}
       {activeTab === 'payments' && (
         <button
-          onClick={() => setPayClient({})}
+          onClick={() => {
+            setPaymentPrefill(null)
+            setPayClient({})
+          }}
           className="fixed right-4 bottom-24 z-[998] h-14 w-14 rounded-full bg-[#ff9900] text-white shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
           aria-label="Record payment"
         >
