@@ -3,11 +3,16 @@ import { useClientStore } from '../store/clientStore';
 import { IndianRupee, Save, CreditCard, Banknote } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-export default function PaymentModal({ client, onClose }) {
+const getToday = () => new Date().toISOString().slice(0, 10);
+const getCurrentTime = () => new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+export default function PaymentModal({ client, onClose, initialValues = {} }) {
   const { addPayment, clients } = useClientStore();
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(initialValues.amount ? String(initialValues.amount) : '');
   const [method, setMethod] = useState('cash');
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(initialValues.note || '');
+  const [paymentDate, setPaymentDate] = useState(initialValues.date || getToday());
+  const [paymentTime, setPaymentTime] = useState(initialValues.time || getCurrentTime());
   const [selectedClientId, setSelectedClientId] = useState(client?.id || '');
   const [loading, setLoading] = useState(false);
   const selectedClient = useMemo(
@@ -26,7 +31,8 @@ export default function PaymentModal({ client, onClose }) {
         amount: parseFloat(amount),
         type: 'payment',
         method,
-        note
+        note,
+        date: new Date(`${paymentDate}T${paymentTime || '00:00'}`)
       });
       toast.success('Payment recorded successfully');
       onClose();
@@ -92,6 +98,29 @@ export default function PaymentModal({ client, onClose }) {
         </div>
 
         {/* Payment Method Toggle */}
+        <div className="grid grid-cols-2 gap-3">
+          <label>
+            <span className="block text-xs font-bold text-gray-500 uppercase mb-2">Payment Date</span>
+            <input
+              type="date"
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-[#ff9900] outline-none"
+              value={paymentDate}
+              onChange={(e) => setPaymentDate(e.target.value)}
+              required
+            />
+          </label>
+          <label>
+            <span className="block text-xs font-bold text-gray-500 uppercase mb-2">Payment Time</span>
+            <input
+              type="time"
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-[#ff9900] outline-none"
+              value={paymentTime}
+              onChange={(e) => setPaymentTime(e.target.value)}
+              required
+            />
+          </label>
+        </div>
+
         <div>
           <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Payment Method</label>
           <div className="grid grid-cols-2 gap-3">
