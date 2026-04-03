@@ -1,15 +1,21 @@
 import { useState } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, FileText, UserX, UserCheck } from 'lucide-react';
+import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, FileText, UserX, UserCheck, Flag } from 'lucide-react';
 
 export default function ClientList({ onEdit, onPay, onOrder }) {
   const { clients, updateClient } = useClientStore();
   const [search, setSearch] = useState('');
+  const [sortByDue, setSortByDue] = useState(false);
 
-  const filtered = (clients || []).filter(c => 
-    (c.name || '').toLowerCase().includes(search.toLowerCase()) || 
-    (c.mobile || '').includes(search)
-  );
+  const filtered = (clients || [])
+    .filter(c => 
+      (c.name || '').toLowerCase().includes(search.toLowerCase()) || 
+      (c.mobile || '').includes(search)
+    )
+    .sort((a, b) => {
+      if (!sortByDue) return 0;
+      return Number(b.outstanding || 0) - Number(a.outstanding || 0);
+    });
 
   const toggleStatus = (client) => {
     updateClient(client.id, { active: !client.active });
@@ -17,14 +23,26 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
 
   return (
     <div className="space-y-3">
-      <div className="relative">
-        <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-        <input 
-          className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:ring-2 focus:ring-[#ff9900] outline-none"
-          placeholder="Search Name or Mobile..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+          <input 
+            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:ring-2 focus:ring-[#ff9900] outline-none"
+            placeholder="Search Name or Mobile..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <button
+          onClick={() => setSortByDue(prev => !prev)}
+          className={`h-10 w-10 rounded-lg border flex-shrink-0 bg-white cursor-pointer transition-colors flex items-center justify-center ${
+            sortByDue ? 'border-[#ff9900] text-[#ff9900]' : 'border-gray-300 text-gray-500'
+          }`}
+          aria-label={sortByDue ? 'Disable due amount sorting' : 'Sort by highest due amount'}
+          title="Sort by highest due"
+        >
+          <Flag className="w-4 h-4" />
+        </button>
       </div>
 
       {filtered.length === 0 && search === '' && (
