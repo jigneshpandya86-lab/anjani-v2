@@ -15,10 +15,12 @@ import {
   Package,
   CreditCard,
   Users,
-  TrendingUp
+  TrendingUp,
+  LogOut
 } from 'lucide-react'
 import { collection, getDocs, query } from 'firebase/firestore'
-import { db } from './firebase-config'
+import { db, auth } from './firebase-config'
+import { signOut, onAuthStateChanged } from 'firebase/auth'
 import ClientList from './components/ClientList'
 import AddClient from './components/AddClient'
 import OrdersDashboard from './components/OrdersDashboard'
@@ -27,8 +29,7 @@ import PaymentDashboard from './components/PaymentDashboard'
 import PaymentModal from './components/PaymentModal'
 import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
-
-const APP_PIN = '9999'
+import Login from './components/Login'
 
 function App() {
   const [activeTab, setActiveTab] = useState('orders')
@@ -40,13 +41,23 @@ function App() {
   const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
   const [ledgerClientId, setLedgerClientId] = useState('all')
   const [ledgerDateRange, setLedgerDateRange] = useState('current-month')
-  const [pinInput, setPinInput] = useState('')
-  const [pinError, setPinError] = useState('')
-  const [isUnlocked, setIsUnlocked] = useState(() => sessionStorage.getItem('anjani-app-unlocked') === 'true')
+  const [user, setUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const { fetchClients, fetchOrders, fetchStock, fetchStockTotal, orders, clients } = useClientStore()
 
+  // Monitor Firebase auth state
   useEffect(() => {
-    if (!isUnlocked) return undefined
+    setAuthLoading(true)
+    const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser)
+      setAuthLoading(false)
+    })
+    return unsubAuth
+  }, [])
+
+  // Fetch data when user is authenticated
+  useEffect(() => {
+    if (!user) return undefined
 
     const unsubClients = fetchClients()
     const unsubOrders = fetchOrders()
@@ -58,27 +69,14 @@ function App() {
       if (unsubStock) unsubStock()
       if (unsubStockTotal) unsubStockTotal()
     }
-  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, isUnlocked])
+  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, user])
 
-  const verifyPin = (value) => {
-    if (value !== APP_PIN) {
-      setPinInput('')
-      setPinError('Wrong PIN. Please try again.')
-      return
-    }
-
-    setPinError('')
-    setIsUnlocked(true)
-    sessionStorage.setItem('anjani-app-unlocked', 'true')
-  }
-
-  const handlePinChange = (event) => {
-    const nextValue = event.target.value.replace(/\D/g, '').slice(0, 4)
-    setPinInput(nextValue)
-    setPinError('')
-
-    if (nextValue.length === 4) {
-      verifyPin(nextValue)
+  const handleLogout = async () => {
+    try {
+      await signOut(auth)
+      toast.success('Signed out successfully')
+    } catch (error) {
+      toast.error('Failed to sign out')
     }
   }
 
@@ -496,27 +494,19 @@ function App() {
     }
   ]
 
-  if (!isUnlocked) {
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-[#f8f9fa] font-sans flex items-center justify-center px-4">
-        <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-gray-100 p-6 text-center">
-          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
-          <p className="mt-4 text-sm font-semibold text-gray-600">Enter 4-digit PIN to unlock app</p>
-          <input
-            type="password"
-            inputMode="numeric"
-            autoFocus
-            value={pinInput}
-            onChange={handlePinChange}
-            maxLength={4}
-            className="mt-4 w-full rounded-xl border border-gray-200 px-4 py-3 text-center text-2xl font-black tracking-[0.35em] text-[#131921] focus:outline-none focus:ring-2 focus:ring-orange-300"
-            placeholder="••••"
-            aria-label="App PIN"
-          />
-          {pinError && <p className="mt-3 text-sm font-bold text-red-500">{pinError}</p>}
+        <div className="text-center">
+          <h1 className="text-2xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
+          <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
     )
+  }
+
+  if (!user) {
+    return <Login />
   }
 
   return (
@@ -524,16 +514,29 @@ function App() {
       <Toaster position="top-center" toastOptions={{ style: { background: '#ffffff', color: '#131921', border: '1px solid #e5e7eb', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', borderRadius: '12px', fontWeight: '900', fontSize: '14px', padding: '16px 24px' }, success: { iconTheme: { primary: '#25D366', secondary: '#fff' } }, error: { iconTheme: { primary: '#EF4444', secondary: '#fff' } } }} />
 
       {/* Unified Top Header (all screen sizes) */}
-      <header className="sticky top-0 bg-white shadow-sm z-40 flex items-center px-4 py-3">
-        <button
-          onClick={() => setDrawerOpen(true)}
-          className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 transition-colors"
-          aria-label="Open menu"
-        >
-          <Menu size={22} />
-        </button>
-        <div className="ml-2">
-          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
+      <header className="sticky top-0 bg-white shadow-sm z-40 flex items-center justify-between px-4 py-3">
+        <div className="flex items-center">
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 transition-colors"
+            aria-label="Open menu"
+          >
+            <Menu size={22} />
+          </button>
+          <div className="ml-2">
+            <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-600 hidden sm:inline">{user?.email}</span>
+          <button
+            onClick={handleLogout}
+            className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 transition-colors"
+            aria-label="Sign out"
+            title="Sign out"
+          >
+            <LogOut size={20} />
+          </button>
         </div>
       </header>
 
