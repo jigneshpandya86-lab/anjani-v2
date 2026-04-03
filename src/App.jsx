@@ -1,13 +1,14 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { useClientStore } from './store/clientStore'
-import { 
-  Users, 
-  ShoppingCart, 
-  CreditCard, 
-  TrendingUp, 
-  Package, 
-  MoreVertical,
+import {
+  Users,
+  ShoppingCart,
+  CreditCard,
+  TrendingUp,
+  Package,
+  Menu,
+  Plus,
   X
 } from 'lucide-react'
 import ClientList from './components/ClientList'
@@ -25,9 +26,7 @@ function App() {
   const [editClient, setEditClient] = useState(null)
   const [addClientOpen, setAddClientOpen] = useState(false)
   const [payClient, setPayClient] = useState(null)
-  const [mobileActionsOpen, setMobileActionsOpen] = useState(false)
-  const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const mobileActionsRef = useRef(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const { fetchClients, fetchOrders, fetchStock } = useClientStore()
 
   useEffect(() => {
@@ -41,33 +40,10 @@ function App() {
     }
   }, [])
 
-  useEffect(() => {
-    if (!mobileActionsOpen) return
-
-    const handleOutsideClick = (event) => {
-      if (!mobileActionsRef.current) return
-      if (!mobileActionsRef.current.contains(event.target)) {
-        setMobileActionsOpen(false)
-      }
-    }
-
-    const handleEscape = (event) => {
-      if (event.key === 'Escape') setMobileActionsOpen(false)
-    }
-
-    document.addEventListener('mousedown', handleOutsideClick)
-    document.addEventListener('keydown', handleEscape)
-
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [mobileActionsOpen])
-
   const navItems = [
     { id: 'orders', label: 'Orders', icon: <ShoppingCart size={22} /> },
     { id: 'stock', label: 'Stock', icon: <Package size={22} /> },
-    { id: 'payments', label: 'Pay', icon: <CreditCard size={22} /> },
+    { id: 'payments', label: 'Transactions', icon: <CreditCard size={22} /> },
     { id: 'clients', label: 'Clients', icon: <Users size={22} /> },
     { id: 'leads', label: 'Leads', icon: <TrendingUp size={22} /> },
   ]
@@ -75,73 +51,25 @@ function App() {
   return (
     <div className="min-h-screen bg-[#f8f9fa] font-sans">
       <Toaster position="top-center" toastOptions={{ style: { background: '#ffffff', color: '#131921', border: '1px solid #e5e7eb', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', borderRadius: '12px', fontWeight: '900', fontSize: '14px', padding: '16px 24px' }, success: { iconTheme: { primary: '#25D366', secondary: '#fff' } }, error: { iconTheme: { primary: '#EF4444', secondary: '#fff' } } }} />
-      
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-64 bg-[#131921] text-white flex-col p-6 fixed top-0 left-0 h-full z-50 shadow-xl">
-        <div className="mb-8 px-2">
-          <h1 className="text-2xl font-black tracking-tighter text-[#ff9900]">ANJANI<span className="text-white">WATER</span></h1>
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em]">Management</p>
+
+      {/* Unified Top Header (all screen sizes) */}
+      <header className="sticky top-0 bg-white shadow-sm z-40 flex items-center justify-between px-4 py-3">
+        <div>
+          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI<span className="text-[#ff9900]">WATER</span></h1>
+          <span className="block text-[9px] font-bold text-gray-400 uppercase tracking-[0.2em]">Management</span>
         </div>
-        <nav className="space-y-2 flex-1">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all font-bold text-sm ${
-                activeTab === item.id 
-                ? 'bg-[#ff9900] text-white shadow-lg shadow-orange-900/20' 
-                : 'text-gray-400 hover:bg-white/5 hover:text-white'
-              }`}
-            >
-              {item.icon}
-              {item.label}
-            </button>
-          ))}
-        </nav>
-      </aside>
+        <button
+          onClick={() => setDrawerOpen(true)}
+          className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 transition-colors"
+          aria-label="Open menu"
+        >
+          <Menu size={22} />
+        </button>
+      </header>
 
       {/* Main Content Area */}
-      <div className="md:ml-64 flex flex-col min-h-screen">
-        
-        {/* Mobile Header (Sticky Top) */}
-        <header className="md:hidden sticky top-0 bg-white p-4 shadow-sm z-40 flex justify-between items-center">
-          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI<span className="text-[#ff9900]">WATER</span></h1>
-          <div className="relative" ref={mobileActionsRef}>
-            <button
-              onClick={() => setMobileActionsOpen((prev) => !prev)}
-              className="p-2 bg-gray-50 rounded-lg text-gray-600 border border-gray-100"
-              aria-haspopup="menu"
-              aria-expanded={mobileActionsOpen}
-              aria-label="Open quick actions"
-            >
-              {mobileActionsOpen ? <X size={18} /> : <MoreVertical size={18} />}
-            </button>
-
-            {mobileActionsOpen && (
-              <div className="absolute right-0 mt-2 w-40 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden z-50">
-                {navItems.map((item) => (
-                  <button
-                    key={`mobile-action-${item.id}`}
-                    onClick={() => {
-                      setActiveTab(item.id)
-                      setMobileActionsOpen(false)
-                    }}
-                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm font-bold text-left ${
-                      activeTab === item.id ? 'bg-[#fff4e5] text-[#131921]' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                    role="menuitem"
-                  >
-                    <span className={`${activeTab === item.id ? 'text-[#ff9900]' : 'text-gray-400'}`}>{item.icon}</span>
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </header>
-
-        <div className="max-w-5xl mx-auto pb-28 md:pb-0">
-          {/* Explicitly rendering active tabs */}
+      <div className="flex flex-col min-h-screen">
+        <div className="max-w-5xl mx-auto w-full pb-28">
           {activeTab === 'orders' && <OrdersDashboard onEdit={setEditOrder} onCopy={(o) => setEditOrder({ ...o, id: null })} onAdd={() => setEditOrder({})} />}
           {activeTab === 'stock' && <StockDashboard />}
           {activeTab === 'payments' && <PaymentDashboard />}
@@ -153,6 +81,40 @@ function App() {
           {activeTab === 'leads' && <LeadsDashboard />}
         </div>
       </div>
+
+      {/* Slide-in Drawer (all screen sizes) */}
+      {drawerOpen && (
+        <div className="fixed inset-0 z-[1001]">
+          <div className="absolute inset-0 bg-black/20" onClick={() => setDrawerOpen(false)} />
+          <aside className="absolute left-0 top-0 h-full w-72 bg-white shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <div>
+                <h2 className="text-lg font-black tracking-tighter text-[#131921]">ANJANI<span className="text-[#ff9900]">WATER</span></h2>
+                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Management</p>
+              </div>
+              <button onClick={() => setDrawerOpen(false)} className="p-2 rounded-xl text-gray-400 hover:bg-gray-100" aria-label="Close menu">
+                <X size={18} />
+              </button>
+            </div>
+            <nav className="flex-1 p-4 space-y-1">
+              {navItems.map(item => (
+                <button key={`drawer-${item.id}`}
+                  onClick={() => { setActiveTab(item.id); setDrawerOpen(false); }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                    activeTab === item.id
+                      ? 'bg-orange-50 text-[#131921] border border-orange-100'
+                      : 'text-gray-500 hover:bg-gray-50'
+                  }`}>
+                  <span className={activeTab === item.id ? 'text-[#ff9900]' : 'text-gray-400'}>
+                    {item.icon}
+                  </span>
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+          </aside>
+        </div>
+      )}
 
       {/* Order Modal */}
       {editOrder !== null && (
@@ -190,8 +152,8 @@ function App() {
         </div>
       )}
 
-      {/* Mobile Bottom Navigation - FIXED: High Z-Index, explicit styling */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-2 pb-6 flex justify-around items-center z-[999] shadow-[0_-10px_20px_rgba(0,0,0,0.08)]">
+      {/* Bottom Navigation (all screen sizes) */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-2 pb-6 flex justify-around items-center z-[999] shadow-[0_-10px_20px_rgba(0,0,0,0.08)]">
         {navItems.map((item) => (
           <button
             key={item.id}
@@ -211,54 +173,25 @@ function App() {
         ))}
       </nav>
 
-      {/* Mobile Side Navigation Drawer */}
-      {mobileNavOpen && (
-        <div className="md:hidden fixed inset-0 z-[1001]">
-          <button
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setMobileNavOpen(false)}
-            aria-label="Close navigation menu"
-          />
-          <aside className="absolute left-0 top-0 h-full w-72 bg-white shadow-2xl p-5 flex flex-col">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-black tracking-tight text-[#131921]">Menu</h2>
-              <button
-                onClick={() => setMobileNavOpen(false)}
-                className="p-2 rounded-lg border border-gray-200 text-gray-600"
-                aria-label="Close menu"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <nav className="space-y-2">
-              {navItems.map((item) => (
-                <button
-                  key={`drawer-${item.id}`}
-                  onClick={() => {
-                    setActiveTab(item.id)
-                    setMobileNavOpen(false)
-                  }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold ${
-                    activeTab === item.id ? 'bg-[#fff4e5] text-[#131921]' : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  <span className={`${activeTab === item.id ? 'text-[#ff9900]' : 'text-gray-400'}`}>{item.icon}</span>
-                  {item.label}
-                </button>
-              ))}
-            </nav>
-          </aside>
-        </div>
+      {/* FAB: New Order (Orders tab) */}
+      {activeTab === 'orders' && (
+        <button
+          onClick={() => setEditOrder({})}
+          className="fixed bottom-24 right-4 z-[998] bg-[#ff9900] text-white w-14 h-14 rounded-full shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
+          aria-label="New Order"
+        >
+          <Plus size={24} strokeWidth={2.5} />
+        </button>
       )}
 
+      {/* FAB: Add Client (Clients tab) */}
       {activeTab === 'clients' && (
         <button
           onClick={() => setAddClientOpen(true)}
-          className="fixed right-5 bottom-24 md:bottom-8 z-[1000] h-14 w-14 rounded-full bg-[#ff9900] text-white shadow-lg shadow-orange-900/30 flex items-center justify-center text-3xl font-light leading-none hover:bg-[#f08804] active:scale-95 transition-all"
+          className="fixed right-4 bottom-24 z-[998] h-14 w-14 rounded-full bg-[#ff9900] text-white shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
           aria-label="Add new client"
         >
-          +
+          <Plus size={24} strokeWidth={2.5} />
         </button>
       )}
 
