@@ -9,7 +9,10 @@ import {
   Package,
   Menu,
   Plus,
-  X
+  X,
+  ClipboardPlus,
+  UserPlus,
+  HandCoins
 } from 'lucide-react'
 import ClientList from './components/ClientList'
 import AddClient from './components/AddClient'
@@ -46,6 +49,39 @@ function App() {
     { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
     { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
     { id: 'leads', label: 'Leads', icon: <TrendingUp size={20} /> },
+  ]
+
+  const drawerQuickActions = [
+    {
+      id: 'quick-new-order',
+      label: 'New Order',
+      icon: <ClipboardPlus size={18} />,
+      onClick: () => {
+        setActiveTab('orders')
+        setEditOrder({})
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-add-client',
+      label: 'Add Client',
+      icon: <UserPlus size={18} />,
+      onClick: () => {
+        setActiveTab('clients')
+        setAddClientOpen(true)
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-record-payment',
+      label: 'Record Payment',
+      icon: <HandCoins size={18} />,
+      onClick: () => {
+        setActiveTab('payments')
+        setPayClient({})
+        setDrawerOpen(false)
+      }
+    }
   ]
 
   return (
@@ -98,21 +134,39 @@ function App() {
                 <X size={18} />
               </button>
             </div>
-            <nav className="flex-1 p-4 space-y-1">
-              {navItems.map(item => (
-                <button key={`drawer-${item.id}`}
-                  onClick={() => { setActiveTab(item.id); setDrawerOpen(false); }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                    activeTab === item.id
-                      ? 'bg-orange-50 text-[#131921] border border-orange-100'
-                      : 'text-gray-500 hover:bg-gray-50'
-                  }`}>
-                  <span className={activeTab === item.id ? 'text-[#ff9900]' : 'text-gray-400'}>
-                    {item.icon}
-                  </span>
-                  {item.label}
-                </button>
-              ))}
+            <nav className="flex-1 p-4 space-y-6 overflow-y-auto">
+              <div className="space-y-1">
+                <p className="px-2 text-[11px] font-black tracking-[0.14em] text-gray-400 uppercase">Quick Actions</p>
+                {drawerQuickActions.map(action => (
+                  <button
+                    key={action.id}
+                    onClick={action.onClick}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all"
+                  >
+                    <span className="text-[#ff9900]">
+                      {action.icon}
+                    </span>
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-1">
+                <p className="px-2 text-[11px] font-black tracking-[0.14em] text-gray-400 uppercase">Navigate</p>
+                {navItems.map(item => (
+                  <button key={`drawer-${item.id}`}
+                    onClick={() => { setActiveTab(item.id); setDrawerOpen(false); }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                      activeTab === item.id
+                        ? 'bg-orange-50 text-[#131921] border border-orange-100'
+                        : 'text-gray-500 hover:bg-gray-50'
+                    }`}>
+                    <span className={activeTab === item.id ? 'text-[#ff9900]' : 'text-gray-400'}>
+                      {item.icon}
+                    </span>
+                    {item.label}
+                  </button>
+                ))}
+              </div>
             </nav>
           </aside>
         </div>
