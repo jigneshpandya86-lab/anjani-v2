@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import toast, { Toaster } from 'react-hot-toast'
 import { useClientStore } from './store/clientStore'
+import { onAuthStateChanged } from 'firebase/auth'
 import {
   ShoppingCart,
   Menu,
@@ -18,7 +19,8 @@ import {
   TrendingUp
 } from 'lucide-react'
 import { collection, getDocs, query } from 'firebase/firestore'
-import { db } from './firebase-config'
+import { auth, db } from './firebase-config'
+import { signInWithGoogle, signOutFromGoogle } from './firebase-auth'
 import ClientList from './components/ClientList'
 import AddClient from './components/AddClient'
 import OrdersDashboard from './components/OrdersDashboard'
@@ -44,10 +46,27 @@ function App() {
   const [pinInput, setPinInput] = useState('')
   const [pinError, setPinError] = useState('')
   const [isUnlocked, setIsUnlocked] = useState(() => sessionStorage.getItem('anjani-app-unlocked') === 'true')
+  const [currentUser, setCurrentUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const { fetchClients, fetchOrders, fetchStock, fetchStockTotal, orders, clients } = useClientStore()
 
   useEffect(() => {
-    if (!isUnlocked) return undefined
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user)
+      setAuthLoading(false)
+
+      if (!user) {
+        setIsUnlocked(false)
+        setPinInput('')
+        sessionStorage.removeItem('anjani-app-unlocked')
+      }
+    })
+
+    return () => unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    if (!isUnlocked || !currentUser) return undefined
 
     const unsubClients = fetchClients()
     const unsubOrders = fetchOrders()
@@ -59,7 +78,7 @@ function App() {
       if (unsubStock) unsubStock()
       if (unsubStockTotal) unsubStockTotal()
     }
-  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, isUnlocked])
+  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, isUnlocked, currentUser])
 
   const verifyPin = (value) => {
     if (value !== APP_PIN) {
@@ -80,6 +99,24 @@ function App() {
 
     if (nextValue.length === 4) {
       verifyPin(nextValue)
+    }
+  }
+
+  const handleGoogleLogin = async () => {
+    try {
+      await signInWithGoogle()
+      toast.success('Signed in with Google.')
+    } catch (error) {
+      toast.error(error?.message || 'Google sign-in failed.')
+    }
+  }
+
+  const handleGoogleLogout = async () => {
+    try {
+      await signOutFromGoogle()
+      toast.success('Signed out.')
+    } catch (error) {
+      toast.error(error?.message || 'Sign out failed.')
     }
   }
 
@@ -609,11 +646,41 @@ function App() {
     }
   ]
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa] font-sans flex items-center justify-center px-4">
+        <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-gray-100 p-6 text-center">
+          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
+          <p className="mt-4 text-sm font-semibold text-gray-600">Checking authentication...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa] font-sans flex items-center justify-center px-4">
+        <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-gray-100 p-6 text-center">
+          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
+          <p className="mt-4 text-sm font-semibold text-gray-600">Sign in with Google to continue</p>
+          <button
+            type="button"
+            onClick={handleGoogleLogin}
+            className="mt-5 w-full rounded-xl bg-[#131921] px-4 py-3 text-sm font-black text-white hover:opacity-95"
+          >
+            Sign in with Google
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (!isUnlocked) {
     return (
       <div className="min-h-screen bg-[#f8f9fa] font-sans flex items-center justify-center px-4">
         <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-gray-100 p-6 text-center">
           <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
+          <p className="mt-3 text-xs font-semibold text-gray-500">{currentUser.email}</p>
           <p className="mt-4 text-sm font-semibold text-gray-600">Enter 4-digit PIN to unlock app</p>
           <input
             type="password"
@@ -627,6 +694,13 @@ function App() {
             aria-label="App PIN"
           />
           {pinError && <p className="mt-3 text-sm font-bold text-red-500">{pinError}</p>}
+          <button
+            type="button"
+            onClick={handleGoogleLogout}
+            className="mt-4 text-xs font-bold text-gray-500 underline underline-offset-2"
+          >
+            Sign out
+          </button>
         </div>
       </div>
     )
@@ -647,6 +721,16 @@ function App() {
         </button>
         <div className="ml-2">
           <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="hidden md:block text-xs font-bold text-gray-500">{currentUser.email}</span>
+          <button
+            type="button"
+            onClick={handleGoogleLogout}
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-50"
+          >
+            Logout
+          </button>
         </div>
       </header>
 
