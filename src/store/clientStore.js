@@ -12,10 +12,23 @@ export const useClientStore = create((set, get) => ({
   loading: false,
 
   fetchStock: () => {
-    // Strictly using your existing 'stock' collection
     const q = query(collection(db, 'stock'), orderBy('date', 'desc'));
     return onSnapshot(q, (snapshot) => {
-      const stockEntries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const normalize = (raw) => ({
+        ...raw,
+        narration: raw.narration || raw.note || '',
+        date:      raw.date || raw.createdAt,
+      });
+      const stockEntries = snapshot.docs
+        .map(doc => normalize({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => {
+          const getTime = (ts) => {
+            if (ts?.toMillis) return ts.toMillis();
+            if (ts?.seconds) return ts.seconds * 1000;
+            return 0;
+          };
+          return getTime(b.date) - getTime(a.date);
+        });
       set({ stockEntries });
     });
   },
