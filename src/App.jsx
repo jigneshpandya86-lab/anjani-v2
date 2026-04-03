@@ -167,6 +167,95 @@ function App() {
     reportWindow.document.close()
   }
 
+  const openInvoiceWindow = ({ title, order, clientName, mobile }) => {
+    const reportWindow = window.open('', '_blank', 'width=900,height=700')
+    if (!reportWindow) {
+      toast.error('Popup blocked. Please allow popups to generate PDF report.')
+      return
+    }
+
+    const generatedAt = new Date().toLocaleString('en-IN')
+    const qty = Number(order.qty) || 0
+    const rate = Number(order.rate) || 0
+    const total = qty * rate
+    const invoiceNumber = order.orderId || order.id || '-'
+    const invoiceDate = order.date || '-'
+    const invoiceTime = order.time || '-'
+    const invoiceStatus = order.status || '-'
+
+    reportWindow.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+            .invoice { border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; }
+            .head { padding: 16px 20px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
+            h1 { margin: 0; font-size: 24px; letter-spacing: .4px; }
+            .muted { color: #6b7280; font-size: 12px; margin-top: 4px; }
+            .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 18px 20px; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
+            .label { color: #6b7280; font-size: 11px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: .4px; }
+            .value { color: #111827; font-weight: 600; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; text-align: left; font-size: 13px; }
+            th { font-size: 11px; text-transform: uppercase; color: #6b7280; background: #fafafa; letter-spacing: .3px; }
+            .total-wrap { padding: 16px 20px; display: flex; justify-content: flex-end; }
+            .total-box { width: 260px; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+            .total-line { display: flex; justify-content: space-between; padding: 10px 12px; font-size: 13px; }
+            .total-line + .total-line { border-top: 1px solid #f3f4f6; }
+            .grand { background: #111827; color: white; font-weight: 700; }
+          </style>
+        </head>
+        <body>
+          <div class="invoice">
+            <div class="head">
+              <h1>Invoice</h1>
+              <div class="muted">Generated: ${generatedAt}</div>
+            </div>
+            <div class="grid">
+              <div><div class="label">Invoice Number</div><div class="value">${invoiceNumber}</div></div>
+              <div><div class="label">Status</div><div class="value">${invoiceStatus}</div></div>
+              <div><div class="label">Invoice Date</div><div class="value">${invoiceDate}</div></div>
+              <div><div class="label">Invoice Time</div><div class="value">${invoiceTime}</div></div>
+              <div><div class="label">Bill To</div><div class="value">${clientName}</div></div>
+              <div><div class="label">Mobile</div><div class="value">${mobile || '-'}</div></div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>Qty</th>
+                  <th>Rate</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Water Box Supply</td>
+                  <td>${qty} Boxes</td>
+                  <td>₹${rate.toLocaleString('en-IN')}</td>
+                  <td>₹${total.toLocaleString('en-IN')}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="total-wrap">
+              <div class="total-box">
+                <div class="total-line"><span>Subtotal</span><span>₹${total.toLocaleString('en-IN')}</span></div>
+                <div class="total-line grand"><span>Total</span><span>₹${total.toLocaleString('en-IN')}</span></div>
+              </div>
+            </div>
+          </div>
+          <script>
+            window.onload = () => {
+              window.print();
+            }
+          </script>
+        </body>
+      </html>
+    `)
+    reportWindow.document.close()
+  }
+
   const handleOrderPrintPdf = () => {
     if (orders.length === 0) {
       toast.error('No orders available for report.')
@@ -327,27 +416,21 @@ function App() {
       return
     }
 
-    const rows = matchedOrders.map((order) => {
-      const client = clients.find((c) => c.id === order.clientId)
-      const clientName = client?.name || order.clientName || order.customerName || 'Unknown Client'
-      const mobile = client?.mobile || order.mobile || order.phone || '-'
-      const total = (Number(order.qty) || 0) * (Number(order.rate) || 0)
-      return [
-        order.orderId || order.id,
-        clientName,
-        mobile,
-        order.date || '-',
-        order.time || '-',
-        order.status || '-',
-        `${order.qty || 0} Boxes`,
-        `₹${total.toLocaleString('en-IN')}`
-      ]
-    })
+    if (matchedOrders.length > 1) {
+      toast.error('Multiple matching orders found. Please search by exact Order ID for single invoice.')
+      return
+    }
 
-    openReportWindow({
-      title: `Order Specific Report (PDF) - ${searchValue.trim()}`,
-      columns: ['Order ID', 'Client', 'Mobile', 'Date', 'Time', 'Status', 'Qty', 'Amount'],
-      rows
+    const order = matchedOrders[0]
+    const client = clients.find((c) => c.id === order.clientId)
+    const clientName = client?.name || order.clientName || order.customerName || 'Unknown Client'
+    const mobile = client?.mobile || order.mobile || order.phone || '-'
+
+    openInvoiceWindow({
+      title: `Order Invoice (PDF) - ${order.orderId || order.id || searchValue.trim()}`,
+      order,
+      clientName,
+      mobile
     })
   }
 
