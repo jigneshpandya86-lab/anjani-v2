@@ -136,9 +136,22 @@ export default function OrderModal({ orderToEdit, onClose }) {
           <span className="text-xl font-black text-[#ff9900]">₹{total.toLocaleString()}</span>
         </div>
 
-        <button disabled={loading} className="w-full bg-[#131921] text-[#ff9900] py-4 rounded-xl font-black uppercase tracking-widest active:scale-95 transition-transform">
-          {loading ? 'Saving...' : 'Save Order'}
-        </button>
+        <div className="sticky bottom-0 bg-white pt-3 pb-1 border-t border-gray-100 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="w-full border border-gray-300 text-gray-700 py-4 rounded-xl font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            disabled={loading}
+            className="w-full bg-[#131921] text-[#ff9900] py-4 rounded-xl font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
+          >
+            {loading ? 'Saving...' : 'Save Order'}
+          </button>
+        </div>
       </form>
     </div>
   );
