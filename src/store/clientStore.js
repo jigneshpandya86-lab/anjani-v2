@@ -9,6 +9,24 @@ let stockUnsubscribe = null;
 let stockSubscriberCount = 0;
 const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary');
 
+const formatOrderNarration = (prefix, order, fallbackId, clients = []) => {
+  const orderRef = order?.orderId || fallbackId;
+  const matchedClient =
+    clients.find((client) => client.id === order?.clientId) ||
+    clients.find((client) => client.id === order?.customerId);
+
+  const clientName =
+    order?.clientName ||
+    order?.customerName ||
+    order?.customer ||
+    order?.name ||
+    matchedClient?.name;
+
+  return clientName
+    ? `${prefix}: ${orderRef} • ${clientName}`
+    : `${prefix}: ${orderRef}`;
+};
+
 export const useClientStore = create((set, get) => ({
   clients: [],
   orders: [],
@@ -223,7 +241,7 @@ export const useClientStore = create((set, get) => ({
       // 1. Debit stock
       await addDoc(collection(db, 'stock'), {
         qty: -qty,
-        narration: `Order Delivered: ${existing.orderId || id}`,
+        narration: formatOrderNarration('Order Delivered', existing, id, get().clients),
         type: 'dispatch',
         date: serverTimestamp()
       });
@@ -237,7 +255,7 @@ export const useClientStore = create((set, get) => ({
           amount,
           type: 'invoice',
           method: 'SYSTEM',
-          narration: `Order Delivered: ${existing.orderId || id}`,
+          narration: formatOrderNarration('Order Delivered', existing, id, get().clients),
           date: serverTimestamp(),
           createdAt: serverTimestamp()
         });
@@ -260,7 +278,7 @@ export const useClientStore = create((set, get) => ({
           const reversalQty = Math.abs(Number(existing.qty || 0));
           await addDoc(collection(db, 'stock'), {
             qty: reversalQty,
-            narration: `Order Deleted (Reversal): ${existing.orderId || id}`,
+            narration: formatOrderNarration('Order Deleted (Reversal)', existing, id, get().clients),
             type: 'reversal',
             date: serverTimestamp()
           });
