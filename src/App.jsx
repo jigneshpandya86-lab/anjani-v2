@@ -25,6 +25,7 @@ function App() {
   const [editClient, setEditClient] = useState(null)
   const [payClient, setPayClient] = useState(null)
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const mobileActionsRef = useRef(null)
   const { fetchClients, fetchOrders, fetchStock } = useClientStore()
 
