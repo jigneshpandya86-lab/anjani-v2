@@ -131,7 +131,9 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
                   <button onClick={() => onEdit(order)} className="bg-blue-50 text-blue-500 p-2 rounded-xl"><Edit2 size={16} /></button>
                 )}
                 <button onClick={() => onCopy(order)} className="bg-gray-100 text-gray-500 p-2 rounded-xl"><Copy size={16} /></button>
-                <button onClick={() => deleteOrder(order.id)} className="bg-red-50 text-red-500 p-2 rounded-xl"><Trash2 size={16} /></button>
+                {order.status !== 'Delivered' && (
+                  <button onClick={() => deleteOrder(order.id)} className="bg-red-50 text-red-500 p-2 rounded-xl"><Trash2 size={16} /></button>
+                )}
               </div>
 
               {order.status === 'Pending' && (

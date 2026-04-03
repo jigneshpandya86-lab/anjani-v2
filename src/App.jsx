@@ -2,11 +2,7 @@ import { useState, useEffect } from 'react'
 import toast, { Toaster } from 'react-hot-toast'
 import { useClientStore } from './store/clientStore'
 import {
-  Users,
   ShoppingCart,
-  CreditCard,
-  TrendingUp,
-  Package,
   Menu,
   Plus,
   X,
@@ -15,7 +11,11 @@ import {
   HandCoins,
   Printer,
   BookText,
-  Search
+  Search,
+  Package,
+  CreditCard,
+  Users,
+  TrendingUp
 } from 'lucide-react'
 import { collection, getDocs, query } from 'firebase/firestore'
 import { db } from './firebase-config'
@@ -88,8 +88,9 @@ function App() {
     { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
     { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
     { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
-    { id: 'leads', label: 'Leads', icon: <TrendingUp size={20} /> },
   ]
+
+  const drawerNavItems = navItems
 
   const drawerQuickActions = [
     {
@@ -99,6 +100,42 @@ function App() {
       onClick: () => {
         setActiveTab('orders')
         setEditOrder({})
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-open-stock',
+      label: 'Open Stock',
+      icon: <Package size={18} />,
+      onClick: () => {
+        setActiveTab('stock')
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-open-transactions',
+      label: 'Open Transactions',
+      icon: <CreditCard size={18} />,
+      onClick: () => {
+        setActiveTab('payments')
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-open-clients',
+      label: 'Open Clients',
+      icon: <Users size={18} />,
+      onClick: () => {
+        setActiveTab('clients')
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-open-leads',
+      label: 'Open Leads',
+      icon: <TrendingUp size={18} />,
+      onClick: () => {
+        setActiveTab('leads')
         setDrawerOpen(false)
       }
     },
@@ -125,11 +162,11 @@ function App() {
     }
   ]
 
-  const openReportWindow = ({ title, columns, rows, metadata = [] }) => {
-    const reportWindow = window.open('', '_blank', 'width=900,height=700')
+  const openReportWindow = ({ title, columns, rows, metadata = [], reportWindow: providedReportWindow = null }) => {
+    const reportWindow = providedReportWindow || window.open('', '_blank', 'width=900,height=700')
     if (!reportWindow) {
       toast.error('Popup blocked. Please allow popups to generate PDF report.')
-      return
+      return false
     }
 
     const generatedAt = new Date().toLocaleString('en-IN')
@@ -170,6 +207,7 @@ function App() {
       </html>
     `)
     reportWindow.document.close()
+    return true
   }
 
   const openInvoiceWindow = ({ title, order, clientName, mobile }) => {
@@ -409,6 +447,15 @@ function App() {
   }
 
   const handleLedgerStatementPdf = async () => {
+    const reportWindow = window.open('', '_blank', 'width=900,height=700')
+    if (!reportWindow) {
+      toast.error('Popup blocked. Please allow popups to generate PDF report.')
+      return
+    }
+
+    reportWindow.document.write('<p style="font-family:Arial,sans-serif;padding:16px;">Preparing ledger statement...</p>')
+    reportWindow.document.close()
+
     try {
       const selectedClient = ledgerClientId === 'all'
         ? { id: 'all', name: 'All Clients' }
@@ -416,6 +463,7 @@ function App() {
 
       if (!selectedClient) {
         toast.error('Please select a valid client.')
+        reportWindow.close()
         return
       }
 
@@ -425,6 +473,7 @@ function App() {
       const payments = paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
       if (payments.length === 0) {
         toast.error('No ledger entries available for report.')
+        reportWindow.close()
         return
       }
 
@@ -460,10 +509,12 @@ function App() {
 
       if (rows.length === 0) {
         toast.error('No ledger entries found for the selected client/date range.')
+        reportWindow.close()
         return
       }
 
       openReportWindow({
+        reportWindow,
         title: 'Ledger Statement Report (PDF)',
         columns: ['Client', 'Date', 'Type', 'Method', 'Amount', 'Narration'],
         rows,
@@ -476,6 +527,7 @@ function App() {
       setLedgerModalOpen(false)
     } catch (error) {
       toast.error('Unable to generate ledger statement report.')
+      reportWindow.close()
       console.error(error)
     }
   }
@@ -656,7 +708,7 @@ function App() {
                 ))}
               </div>
               <div className="space-y-1">
-                {navItems.map(item => (
+                {drawerNavItems.map(item => (
                   <button key={`drawer-${item.id}`}
                     onClick={() => { setActiveTab(item.id); setDrawerOpen(false); }}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
