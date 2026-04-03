@@ -11,7 +11,11 @@ import {
   HandCoins,
   Printer,
   BookText,
-  Search
+  Search,
+  Package,
+  CreditCard,
+  Users,
+  TrendingUp
 } from 'lucide-react'
 import { collection, getDocs, query } from 'firebase/firestore'
 import { db } from './firebase-config'
