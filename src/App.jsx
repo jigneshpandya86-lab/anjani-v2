@@ -89,10 +89,7 @@ function App() {
       <Toaster position="top-center" toastOptions={{ style: { background: '#ffffff', color: '#131921', border: '1px solid #e5e7eb', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', borderRadius: '12px', fontWeight: '900', fontSize: '14px', padding: '16px 24px' }, success: { iconTheme: { primary: '#25D366', secondary: '#fff' } }, error: { iconTheme: { primary: '#EF4444', secondary: '#fff' } } }} />
 
       {/* Unified Top Header (all screen sizes) */}
-      <header className="sticky top-0 bg-white shadow-sm z-40 flex items-center justify-between px-4 py-3">
-        <div>
-          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
-        </div>
+      <header className="sticky top-0 bg-white shadow-sm z-40 flex items-center px-4 py-3">
         <button
           onClick={() => setDrawerOpen(true)}
           className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 transition-colors"
@@ -100,6 +97,9 @@ function App() {
         >
           <Menu size={22} />
         </button>
+        <div className="ml-2">
+          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
+        </div>
       </header>
 
       {/* Main Content Area */}
