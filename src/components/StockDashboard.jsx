@@ -101,36 +101,36 @@ export default function StockDashboard() {
 
   return (
     <div className="space-y-4 pb-20">
-      {/* Small Stock Summary Card */}
-      <div className="bg-[#131921] rounded-2xl px-3 py-2.5 text-white shadow-lg">
-        <div>
-          <p className="text-[9px] font-black uppercase tracking-widest text-orange-400 mb-0.5">Live Total</p>
-          <h2 className="text-[1.85rem] leading-none font-black whitespace-nowrap">{totalStock.toLocaleString()} <span className="text-[11px] font-semibold text-gray-400">Boxes</span></h2>
+      {/* Stock Summary + Date Range Filter (single line, light theme) */}
+      <div className="bg-white p-2.5 rounded-2xl border border-gray-100 shadow-sm flex items-end gap-2">
+        <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 min-w-[115px]">
+          <p className="text-[9px] font-black uppercase tracking-widest text-amber-700 mb-0.5">Live Total</p>
+          <h2 className="text-[1.35rem] leading-none font-black whitespace-nowrap text-gray-900">
+            {totalStock.toLocaleString()} <span className="text-[10px] font-semibold text-gray-500">Boxes</span>
+          </h2>
         </div>
-      </div>
-
-      {/* Date Range Filter */}
-      <div className="bg-white p-2.5 rounded-2xl border border-gray-100 shadow-sm flex gap-2 items-end">
-        <div className="flex-1">
-          <label className="text-[8px] font-black text-gray-400 uppercase ml-1">Start</label>
-          <input type="date" className="w-full bg-gray-50 px-2.5 py-1.5 rounded-lg text-[13px] font-bold outline-none border-none" value={startDate} onChange={e => setStartDate(e.target.value)} />
+        <div className="flex-1 flex items-end gap-2">
+          <div className="flex-1 min-w-0">
+            <label className="text-[8px] font-black text-gray-400 uppercase ml-1">Start</label>
+            <input type="date" className="w-full bg-gray-50 px-2 py-1.5 rounded-lg text-[12px] font-bold outline-none border border-gray-100" value={startDate} onChange={e => setStartDate(e.target.value)} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <label className="text-[8px] font-black text-gray-400 uppercase ml-1">End</label>
+            <input type="date" className="w-full bg-gray-50 px-2 py-1.5 rounded-lg text-[12px] font-bold outline-none border border-gray-100" value={endDate} onChange={e => setEndDate(e.target.value)} />
+          </div>
+          {(startDate || endDate) && (
+            <button
+              onClick={() => {
+                const { start, end } = getDefaultDateRange();
+                setStartDate(start);
+                setEndDate(end);
+              }}
+              className="text-[10px] font-black text-red-400 uppercase px-1.5 pb-1"
+            >
+              Clear
+            </button>
+          )}
         </div>
-        <div className="flex-1">
-          <label className="text-[8px] font-black text-gray-400 uppercase ml-1">End</label>
-          <input type="date" className="w-full bg-gray-50 px-2.5 py-1.5 rounded-lg text-[13px] font-bold outline-none border-none" value={endDate} onChange={e => setEndDate(e.target.value)} />
-        </div>
-        {(startDate || endDate) && (
-          <button
-            onClick={() => {
-              const { start, end } = getDefaultDateRange();
-              setStartDate(start);
-              setEndDate(end);
-            }}
-            className="mt-4 text-[10px] font-black text-red-400 uppercase px-2"
-          >
-            Clear
-          </button>
-        )}
       </div>
 
       {/* Ledger Entries */}
