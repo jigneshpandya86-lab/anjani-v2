@@ -99,50 +99,64 @@ export default function LeadsDashboard() {
       </div>
 
       {showAddForm && (
-        <form onSubmit={saveManualLead} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-3">
-          <h3 className="text-sm font-black uppercase text-gray-800 tracking-wide">Add Lead Manually</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <input
-              type="text"
-              value={newLeadName}
-              onChange={(e) => setNewLeadName(e.target.value)}
-              placeholder="Lead name (optional)"
-              className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-200"
-            />
-            <input
-              required
-              type="tel"
-              inputMode="numeric"
-              pattern="\d{10}"
-              maxLength={10}
-              value={newLeadMobile}
-              onChange={(e) => setNewLeadMobile(e.target.value.replace(/\D/g, ''))}
-              placeholder="10-digit mobile number"
-              className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-200"
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setShowAddForm(false);
-                setNewLeadName('');
-                setNewLeadMobile('');
-              }}
-              className="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 font-bold text-xs uppercase"
-              disabled={isSavingLead}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSavingLead}
-              className="px-4 py-2 rounded-xl bg-[#ff9900] text-white font-bold text-xs uppercase disabled:opacity-60"
-            >
-              {isSavingLead ? 'Saving...' : 'Save Lead'}
-            </button>
-          </div>
-        </form>
+        <div
+          className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4"
+          onClick={() => {
+            if (isSavingLead) return;
+            setShowAddForm(false);
+            setNewLeadName('');
+            setNewLeadMobile('');
+          }}
+        >
+          <form
+            onSubmit={saveManualLead}
+            className="bg-white rounded-2xl w-full max-w-lg p-5 shadow-xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-black uppercase text-gray-800 tracking-wide">Add Lead Manually</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input
+                type="text"
+                value={newLeadName}
+                onChange={(e) => setNewLeadName(e.target.value)}
+                placeholder="Lead name (optional)"
+                className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-200"
+              />
+              <input
+                required
+                type="tel"
+                inputMode="numeric"
+                pattern="\d{10}"
+                maxLength={10}
+                value={newLeadMobile}
+                onChange={(e) => setNewLeadMobile(e.target.value.replace(/\D/g, ''))}
+                placeholder="10-digit mobile number"
+                className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-200"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddForm(false);
+                  setNewLeadName('');
+                  setNewLeadMobile('');
+                }}
+                className="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 font-bold text-xs uppercase"
+                disabled={isSavingLead}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSavingLead}
+                className="px-4 py-2 rounded-xl bg-[#ff9900] text-white font-bold text-xs uppercase disabled:opacity-60"
+              >
+                {isSavingLead ? 'Saving...' : 'Save Lead'}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
 
       {leads.length === 0 ? (
