@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useClientStore } from '../store/clientStore';
 import { Save, MapPin, Package, Clock, IndianRupee, Image as ImageIcon } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export default function OrderModal({ orderToEdit, onClose }) {
   const { clients, addOrder, updateOrder } = useClientStore();
@@ -34,12 +35,15 @@ export default function OrderModal({ orderToEdit, onClose }) {
     try {
       if (orderToEdit && orderToEdit.id) {
         await updateOrder(orderToEdit.id, formData);
+        toast.success('Order updated successfully');
       } else {
         await addOrder(formData);
+        toast.success('Order created successfully');
       }
       onClose();
     } catch (err) {
       console.error('Order save failed:', err);
+      toast.error('Failed to save order: ' + err.message);
     } finally {
       setLoading(false);
     }
