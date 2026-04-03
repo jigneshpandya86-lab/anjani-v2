@@ -20,7 +20,11 @@ import {
 } from 'lucide-react'
 import { collection, getDocs, query } from 'firebase/firestore'
 import { auth, db } from './firebase-config'
-import { signInWithGoogle, signOutFromGoogle } from './firebase-auth'
+import {
+  signInWithEmailPassword,
+  signInWithGoogle,
+  signOutUser
+} from './firebase-auth'
 import ClientList from './components/ClientList'
 import AddClient from './components/AddClient'
 import OrdersDashboard from './components/OrdersDashboard'
@@ -29,8 +33,6 @@ import PaymentDashboard from './components/PaymentDashboard'
 import PaymentModal from './components/PaymentModal'
 import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
-
-const APP_PIN = '9999'
 
 function App() {
   const [activeTab, setActiveTab] = useState('orders')
@@ -43,9 +45,9 @@ function App() {
   const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
   const [ledgerClientId, setLedgerClientId] = useState('all')
   const [ledgerDateRange, setLedgerDateRange] = useState('current-month')
-  const [pinInput, setPinInput] = useState('')
-  const [pinError, setPinError] = useState('')
-  const [isUnlocked, setIsUnlocked] = useState(() => sessionStorage.getItem('anjani-app-unlocked') === 'true')
+  const [emailInput, setEmailInput] = useState('')
+  const [passwordInput, setPasswordInput] = useState('')
+  const [authActionLoading, setAuthActionLoading] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const { fetchClients, fetchOrders, fetchStock, fetchStockTotal, orders, clients } = useClientStore()
@@ -54,19 +56,13 @@ function App() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user)
       setAuthLoading(false)
-
-      if (!user) {
-        setIsUnlocked(false)
-        setPinInput('')
-        sessionStorage.removeItem('anjani-app-unlocked')
-      }
     })
 
     return () => unsubscribe()
   }, [])
 
   useEffect(() => {
-    if (!isUnlocked || !currentUser) return undefined
+    if (!currentUser) return undefined
 
     const unsubClients = fetchClients()
     const unsubOrders = fetchOrders()
@@ -78,42 +74,53 @@ function App() {
       if (unsubStock) unsubStock()
       if (unsubStockTotal) unsubStockTotal()
     }
-  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, isUnlocked, currentUser])
+  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, currentUser])
 
-  const verifyPin = (value) => {
-    if (value !== APP_PIN) {
-      setPinInput('')
-      setPinError('Wrong PIN. Please try again.')
-      return
-    }
-
-    setPinError('')
-    setIsUnlocked(true)
-    sessionStorage.setItem('anjani-app-unlocked', 'true')
-  }
-
-  const handlePinChange = (event) => {
-    const nextValue = event.target.value.replace(/\D/g, '').slice(0, 4)
-    setPinInput(nextValue)
-    setPinError('')
-
-    if (nextValue.length === 4) {
-      verifyPin(nextValue)
-    }
+  const clearAuthForm = () => {
+    setEmailInput('')
+    setPasswordInput('')
   }
 
   const handleGoogleLogin = async () => {
     try {
+      setAuthActionLoading(true)
       await signInWithGoogle()
       toast.success('Signed in with Google.')
     } catch (error) {
       toast.error(error?.message || 'Google sign-in failed.')
+    } finally {
+      setAuthActionLoading(false)
     }
   }
 
-  const handleGoogleLogout = async () => {
+  const handleEmailAuth = async (event) => {
+    event.preventDefault()
+
+    const email = emailInput.trim()
+    const password = passwordInput
+
+    if (!email || !password) {
+      toast.error('Email and password are required.')
+      return
+    }
+
     try {
-      await signOutFromGoogle()
+      setAuthActionLoading(true)
+
+      await signInWithEmailPassword(email, password)
+      toast.success('Signed in successfully.')
+
+      clearAuthForm()
+    } catch (error) {
+      toast.error(error?.message || 'Email sign-in failed.')
+    } finally {
+      setAuthActionLoading(false)
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await signOutUser()
       toast.success('Signed out.')
     } catch (error) {
       toast.error(error?.message || 'Sign out failed.')
@@ -662,45 +669,55 @@ function App() {
       <div className="min-h-screen bg-[#f8f9fa] font-sans flex items-center justify-center px-4">
         <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-gray-100 p-6 text-center">
           <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
-          <p className="mt-4 text-sm font-semibold text-gray-600">Sign in with Google to continue</p>
+          <p className="mt-4 text-sm font-semibold text-gray-600">Sign in with Google or email/password</p>
+
+          <form onSubmit={handleEmailAuth} className="mt-5 space-y-3 text-left">
+            <div>
+              <label htmlFor="email" className="mb-1 block text-xs font-bold uppercase text-gray-500">Email</label>
+              <input
+                id="email"
+                type="email"
+                autoComplete="email"
+                value={emailInput}
+                onChange={(event) => setEmailInput(event.target.value)}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-semibold text-[#131921] focus:outline-none focus:ring-2 focus:ring-orange-300"
+                placeholder="you@example.com"
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="mb-1 block text-xs font-bold uppercase text-gray-500">Password</label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={passwordInput}
+                onChange={(event) => setPasswordInput(event.target.value)}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-semibold text-[#131921] focus:outline-none focus:ring-2 focus:ring-orange-300"
+                placeholder="••••••••"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={authActionLoading}
+              className="w-full rounded-xl bg-[#131921] px-4 py-3 text-sm font-black text-white hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              Sign in with Email
+            </button>
+          </form>
+
+
+
+          <div className="my-4 h-px w-full bg-gray-100" />
+
           <button
             type="button"
+            disabled={authActionLoading}
             onClick={handleGoogleLogin}
-            className="mt-5 w-full rounded-xl bg-[#131921] px-4 py-3 text-sm font-black text-white hover:opacity-95"
+            className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-black text-[#131921] hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-70"
           >
             Sign in with Google
           </button>
-        </div>
-      </div>
-    )
-  }
-
-  if (!isUnlocked) {
-    return (
-      <div className="min-h-screen bg-[#f8f9fa] font-sans flex items-center justify-center px-4">
-        <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-gray-100 p-6 text-center">
-          <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
-          <p className="mt-3 text-xs font-semibold text-gray-500">{currentUser.email}</p>
-          <p className="mt-4 text-sm font-semibold text-gray-600">Enter 4-digit PIN to unlock app</p>
-          <input
-            type="password"
-            inputMode="numeric"
-            autoFocus
-            value={pinInput}
-            onChange={handlePinChange}
-            maxLength={4}
-            className="mt-4 w-full rounded-xl border border-gray-200 px-4 py-3 text-center text-2xl font-black tracking-[0.35em] text-[#131921] focus:outline-none focus:ring-2 focus:ring-orange-300"
-            placeholder="••••"
-            aria-label="App PIN"
-          />
-          {pinError && <p className="mt-3 text-sm font-bold text-red-500">{pinError}</p>}
-          <button
-            type="button"
-            onClick={handleGoogleLogout}
-            className="mt-4 text-xs font-bold text-gray-500 underline underline-offset-2"
-          >
-            Sign out
-          </button>
+          <p className="mt-3 text-xs font-semibold text-gray-500">Accounts cannot be self-created here. Ask admin to create your account in Firebase Authentication. For Android, Google login uses redirect instead of popup.</p>
         </div>
       </div>
     )
@@ -726,7 +743,7 @@ function App() {
           <span className="hidden md:block text-xs font-bold text-gray-500">{currentUser.email}</span>
           <button
             type="button"
-            onClick={handleGoogleLogout}
+            onClick={handleLogout}
             className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-50"
           >
             Logout
