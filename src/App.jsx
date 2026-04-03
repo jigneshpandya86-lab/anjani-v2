@@ -14,7 +14,8 @@ import {
   UserPlus,
   HandCoins,
   Printer,
-  BookText
+  BookText,
+  Search
 } from 'lucide-react'
 import { collection, getDocs, query } from 'firebase/firestore'
 import { db } from './firebase-config'
@@ -39,7 +40,7 @@ function App() {
   const [pinInput, setPinInput] = useState('')
   const [pinError, setPinError] = useState('')
   const [isUnlocked, setIsUnlocked] = useState(() => sessionStorage.getItem('anjani-app-unlocked') === 'true')
-  const { fetchClients, fetchOrders, fetchStock, fetchStockTotal, orders, clients } = useClientStore()
+  const { fetchClients, fetchOrders, fetchStock, orders, clients } = useClientStore()
 
   useEffect(() => {
     if (!isUnlocked) return undefined
@@ -166,21 +167,13 @@ function App() {
     reportWindow.document.close()
   }
 
-  const handleOrderPrintPdf = async () => {
-    const ordersSnap = await getDocs(query(collection(db, 'orders')))
-    const allOrders = ordersSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
-    if (allOrders.length === 0) {
+  const handleOrderPrintPdf = () => {
+    if (orders.length === 0) {
       toast.error('No orders available for report.')
       return
     }
 
-    const rows = allOrders
-      .sort((a, b) => {
-        const aTime = a.createdAt?.toMillis?.() || 0
-        const bTime = b.createdAt?.toMillis?.() || 0
-        return bTime - aTime
-      })
-      .map((order) => {
+    const rows = orders.map((order) => {
       const clientName = clients.find((c) => c.id === order.clientId)?.name
         || order.clientName
         || order.customerName
@@ -306,6 +299,58 @@ function App() {
     }
   }
 
+  const handleOrderSpecificPrintPdf = () => {
+    if (orders.length === 0) {
+      toast.error('No orders available for report.')
+      return
+    }
+
+    const searchValue = window.prompt('Enter Order ID, client name, or mobile number')
+    if (searchValue === null) return
+
+    const searchTerm = searchValue.trim().toLowerCase()
+    if (!searchTerm) {
+      toast.error('Please enter a value to search orders.')
+      return
+    }
+
+    const matchedOrders = orders.filter((order) => {
+      const client = clients.find((c) => c.id === order.clientId)
+      const clientName = (client?.name || order.clientName || order.customerName || '').toLowerCase()
+      const mobile = String(client?.mobile || order.mobile || order.phone || '').toLowerCase()
+      const orderId = String(order.orderId || order.id || '').toLowerCase()
+      return orderId.includes(searchTerm) || clientName.includes(searchTerm) || mobile.includes(searchTerm)
+    })
+
+    if (matchedOrders.length === 0) {
+      toast.error('No matching orders found.')
+      return
+    }
+
+    const rows = matchedOrders.map((order) => {
+      const client = clients.find((c) => c.id === order.clientId)
+      const clientName = client?.name || order.clientName || order.customerName || 'Unknown Client'
+      const mobile = client?.mobile || order.mobile || order.phone || '-'
+      const total = (Number(order.qty) || 0) * (Number(order.rate) || 0)
+      return [
+        order.orderId || order.id,
+        clientName,
+        mobile,
+        order.date || '-',
+        order.time || '-',
+        order.status || '-',
+        `${order.qty || 0} Boxes`,
+        `₹${total.toLocaleString('en-IN')}`
+      ]
+    })
+
+    openReportWindow({
+      title: `Order Specific Report (PDF) - ${searchValue.trim()}`,
+      columns: ['Order ID', 'Client', 'Mobile', 'Date', 'Time', 'Status', 'Qty', 'Amount'],
+      rows
+    })
+  }
+
   const drawerReports = [
     {
       id: 'report-order-print',
@@ -313,6 +358,15 @@ function App() {
       icon: <Printer size={18} />,
       onClick: () => {
         handleOrderPrintPdf()
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'report-order-specific',
+      label: 'Order Specific Print (PDF)',
+      icon: <Search size={18} />,
+      onClick: () => {
+        handleOrderSpecificPrintPdf()
         setDrawerOpen(false)
       }
     },
