@@ -32,6 +32,14 @@ export default function PaymentDashboard() {
 
   const getClientName = (id) => clients.find(c => c.id === id)?.name || 'Unknown Client';
 
+  const getOrderId = (tx) => {
+    if (tx.orderId) return tx.orderId;
+
+    const narration = tx.narration || tx.note || '';
+    const match = narration.match(/\bORD-\d+\b/i);
+    return match ? match[0].toUpperCase() : '';
+  };
+
   const formatDate = (tx) => {
     const rawDate = tx.date || tx.paymentDate || tx.createdAt;
     if (!rawDate) return "No Date Found";
@@ -82,6 +90,8 @@ export default function PaymentDashboard() {
           Icon = RotateCcw;
         }
 
+        const orderId = getOrderId(tx);
+
         return (
           <div key={tx.id} className={`bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center border-l-4 ${borderColor}`}>
             <div className="flex gap-3 items-center">
@@ -89,7 +99,14 @@ export default function PaymentDashboard() {
                 <Icon size={18} />
               </div>
               <div>
-                <p className="font-bold text-gray-900 leading-tight">{getClientName(tx.clientId)}</p>
+                <p className="font-bold text-gray-900 leading-tight flex items-center gap-2">
+                  <span>{getClientName(tx.clientId)}</span>
+                  {orderId && (
+                    <span className="text-[10px] font-medium text-gray-400 tracking-wide">
+                      {orderId}
+                    </span>
+                  )}
+                </p>
                 <p className="text-[10px] text-gray-400 flex items-center gap-1 uppercase tracking-widest font-black mt-1">
                   <Calendar size={10} /> {formatDate(tx)} • {tx.method || 'SYSTEM'}
                 </p>
