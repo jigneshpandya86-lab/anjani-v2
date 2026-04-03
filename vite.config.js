@@ -13,5 +13,5 @@ export default defineConfig({
       'react-hot-toast': path.resolve(__dirname, 'src/shims/react-hot-toast.js'),
     },
   },
-  base: '/anjani-v2/', 
+  base: '/', 
 })
