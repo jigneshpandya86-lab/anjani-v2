@@ -170,11 +170,13 @@ export const useClientStore = create((set, get) => ({
 
   addStockManual: async (qty, narration) => {
     const parsedQty = Number(qty) || 0;
+    const entryDate = new Date();
     await addDoc(collection(db, 'stock'), {
       qty: parsedQty,
       narration: narration || 'Manual Addition',
       type: 'addition',
-      date: serverTimestamp()
+      date: entryDate,
+      createdAt: serverTimestamp()
     });
     await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(parsedQty) }, { merge: true });
   },
@@ -305,25 +307,35 @@ export const useClientStore = create((set, get) => ({
   },
 
   updateOrder: async (id, data) => {
-    const existing = get().orders.find(o => o.id === id);
-    if (existing && data.status === 'Delivered' && existing.status !== 'Delivered') {
-      const qty = Number(existing.qty);
-      const rate = Number(existing.rate);
-      const orderRef = existing.orderId || id;
-      const clientName = await getOrderClientName(existing, get().clients);
-      const deliveredNarration = formatOrderNarration('Order Delivered', orderRef, clientName);
+    const orderRef = doc(db, 'orders', id);
+    const localExisting = get().orders.find((o) => o.id === id);
+    const orderSnap = await getDoc(orderRef);
+    const remoteExisting = orderSnap.exists() ? { id, ...orderSnap.data() } : null;
+    const existing = localExisting || remoteExisting;
+    const previousStatus = remoteExisting?.status || localExisting?.status || '';
 
-      // 1. Debit stock
-      await addDoc(collection(db, 'stock'), {
-        qty: -qty,
-        narration: deliveredNarration,
-        type: 'dispatch',
-        date: serverTimestamp()
-      });
-      await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(-qty) }, { merge: true });
+    if (existing && data.status === 'Delivered' && previousStatus !== 'Delivered') {
+      const qty = Number(existing.qty || existing.boxes || existing.quantity) || 0;
+      const rate = Number(existing.rate) || 0;
+      const orderCode = existing.orderId || id;
+      const clientName = await getOrderClientName(existing, get().clients);
+      const deliveredNarration = formatOrderNarration('Order Delivered', orderCode, clientName);
+
+      if (qty !== 0) {
+        // 1. Debit stock
+        const stockEntryDate = new Date();
+        await addDoc(collection(db, 'stock'), {
+          qty: -Math.abs(qty),
+          narration: deliveredNarration,
+          type: 'dispatch',
+          date: stockEntryDate,
+          createdAt: serverTimestamp()
+        });
+        await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(-Math.abs(qty)) }, { merge: true });
+      }
 
       // 2. Create invoice transaction in payments
-      const amount = qty * rate;
+      const amount = Math.abs(qty) * rate;
       if (existing.clientId && amount > 0) {
         await addDoc(collection(db, 'payments'), {
           clientId: existing.clientId,
@@ -340,7 +352,7 @@ export const useClientStore = create((set, get) => ({
         });
       }
     }
-    await updateDoc(doc(db, 'orders', id), data);
+    await updateDoc(orderRef, data);
   },
 
   deleteOrder: async (id) => {
@@ -357,11 +369,13 @@ export const useClientStore = create((set, get) => ({
           const orderRef = existing.orderId || id;
           const clientName = await getOrderClientName(existing, get().clients);
           const reversalNarration = formatOrderNarration('Order Deleted (Reversal)', orderRef, clientName);
+          const stockEntryDate = new Date();
           await addDoc(collection(db, 'stock'), {
             qty: reversalQty,
             narration: reversalNarration,
             type: 'reversal',
-            date: serverTimestamp()
+            date: stockEntryDate,
+            createdAt: serverTimestamp()
           });
           await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(reversalQty) }, { merge: true });
 
