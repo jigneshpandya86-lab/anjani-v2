@@ -57,25 +57,18 @@ const markJobSuccess = async ({ db, jobId }) => {
 
 const markJobFailure = async ({ db, job, reason, now }) => {
   const nextAttemptCount = Number(job.attemptCount || 0) + 1
-
-  if (nextAttemptCount >= MAX_ATTEMPTS) {
-    await updateDoc(doc(db, 'sms_jobs', job.id), {
-      status: 'failed',
-      attemptCount: nextAttemptCount,
-      lastError: reason,
-      failedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    })
-    return
-  }
+  const isMaxAttemptsReached = nextAttemptCount >= MAX_ATTEMPTS
 
   await updateDoc(doc(db, 'sms_jobs', job.id), {
-    status: 'pending',
+    status: isMaxAttemptsReached ? 'failed' : 'pending',
     attemptCount: nextAttemptCount,
     lastError: reason,
-    scheduledFor: computeRetryTimestamp(nextAttemptCount, now),
+    ...(isMaxAttemptsReached && { failedAt: serverTimestamp() }),
+    ...(!isMaxAttemptsReached && { scheduledFor: computeRetryTimestamp(nextAttemptCount, now) }),
     updatedAt: serverTimestamp(),
   })
+
+  return nextAttemptCount
 }
 
 const fetchDuePendingJobs = async ({ db, now, maxJobs = BATCH_LIMIT }) => {
@@ -116,6 +109,13 @@ export const processDueSmsJobs = async ({ db, now = new Date(), maxJobs = BATCH_
 
   for (const job of dueJobs) {
     try {
+      // Idempotency check: verify job is still pending (could have been processed elsewhere)
+      const currentJobSnap = await getDoc(doc(db, 'sms_jobs', job.id))
+      if (!currentJobSnap.exists() || currentJobSnap.data().status !== 'pending') {
+        console.log(`Job ${job.id} is no longer pending, skipping (status: ${currentJobSnap.data()?.status || 'deleted'})`)
+        continue
+      }
+
       await markJobProcessing({ db, jobId: job.id })
       const sendResult = await sendSmsNative({
         to: job.recipientMobile,
@@ -126,12 +126,15 @@ export const processDueSmsJobs = async ({ db, now = new Date(), maxJobs = BATCH_
       }
       await markJobSuccess({ db, jobId: job.id })
       sent += 1
+      console.log(`SMS sent successfully - jobId: ${job.id}, recipient: ${job.recipientMobile}, entity: ${job.entityId}`)
     } catch (error) {
       const reason = error?.message || 'SMS send failed'
-      const nextAttemptCount = Number(job.attemptCount || 0) + 1
-      await markJobFailure({ db, job, reason, now })
+      const nextAttemptCount = await markJobFailure({ db, job, reason, now })
+      const isMaxAttemptsReached = nextAttemptCount >= MAX_ATTEMPTS
 
-      if (nextAttemptCount >= MAX_ATTEMPTS) {
+      console.error(`SMS send failed - jobId: ${job.id}, recipient: ${job.recipientMobile}, entity: ${job.entityId}, attempt: ${nextAttemptCount}/${MAX_ATTEMPTS}, error: ${reason}`)
+
+      if (isMaxAttemptsReached) {
         failed += 1
       } else {
         retried += 1
@@ -139,12 +142,18 @@ export const processDueSmsJobs = async ({ db, now = new Date(), maxJobs = BATCH_
     }
   }
 
-  return {
+  const result = {
     processed: dueJobs.length,
     sent,
     failed,
     retried,
   }
+
+  if (dueJobs.length > 0) {
+    console.log(`SMS batch processed: ${JSON.stringify(result)}`)
+  }
+
+  return result
 }
 
 export const __testables = {

@@ -11,6 +11,13 @@ import {
   where,
 } from 'firebase/firestore'
 
+// Validates phone number format: 10-15 digits, optional + prefix
+const isValidPhoneNumber = (phone) => {
+  if (!phone) return false
+  const cleanPhone = String(phone).replace(/\D/g, '')
+  return cleanPhone.length >= 10 && cleanPhone.length <= 15
+}
+
 export const TASK_TYPES = {
   LEADS: 'leads',
   PAYMENTS: 'payments',
@@ -45,6 +52,15 @@ const createDedupeKey = ({ taskType, entityId, scheduleType, scheduledFor }) => 
   return `${taskType}:${entityId}:${scheduleType}:${stamp}`
 }
 
+const jobAlreadyExists = async (db, dedupeKey) => {
+  const q = query(
+    collection(db, 'sms_jobs'),
+    where('dedupeKey', '==', dedupeKey)
+  )
+  const snap = await getDocs(q)
+  return snap.size > 0
+}
+
 const pushRecurringEvery30 = ({ rows, config, startDate, horizonDays }) => {
   if (!config?.every30After) return
 
@@ -69,6 +85,10 @@ export const buildSmsJobsFromConfig = ({
 }) => {
   if (!taskType || !entityId) {
     throw new Error('taskType and entityId are required')
+  }
+
+  if (!isValidPhoneNumber(recipientMobile)) {
+    throw new Error(`Invalid phone number: ${recipientMobile}`)
   }
 
   if (!config?.active) return []
@@ -128,16 +148,25 @@ export const enqueueSmsJobsForEvent = async ({
     return { queuedCount: 0, jobs: [] }
   }
 
+  let queuedCount = 0
   for (const smsJob of jobs) {
+    // Check for existing job with same dedupeKey to prevent duplicates
+    const exists = await jobAlreadyExists(db, smsJob.dedupeKey)
+    if (exists) {
+      console.log(`SMS job already exists with dedupeKey: ${smsJob.dedupeKey}`)
+      continue
+    }
+
     await addDoc(collection(db, 'sms_jobs'), {
       ...smsJob,
       scheduledFor: Timestamp.fromDate(smsJob.scheduledFor),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     })
+    queuedCount += 1
   }
 
-  return { queuedCount: jobs.length, jobs }
+  return { queuedCount, jobs }
 }
 
 export const cancelPendingSmsJobsForEntity = async ({
