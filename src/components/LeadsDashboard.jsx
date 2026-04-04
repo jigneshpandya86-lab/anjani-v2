@@ -173,9 +173,11 @@ export default function LeadsDashboard() {
               <div className="flex gap-3 items-center min-w-0">
                 <div className="bg-gray-50 p-3 rounded-xl text-gray-400 shrink-0"><User size={18} /></div>
                 <div className="min-w-0">
-                  <h3 className="font-bold text-gray-900 text-sm uppercase truncate">{lead.name || lead.mobile || 'No Details'}</h3>
-                  <p className="text-[10px] font-bold text-[#c4a484] uppercase tracking-widest mt-0.5 whitespace-nowrap">
-                    {formatDate(lead)}
+                  <p className="font-bold text-gray-900 text-sm uppercase truncate whitespace-nowrap">
+                    {lead.name || lead.mobile || 'No Details'}
+                    <span className="text-[10px] font-bold text-[#c4a484] tracking-widest ml-2 align-middle">
+                      {formatDate(lead)}
+                    </span>
                   </p>
                 </div>
               </div>
