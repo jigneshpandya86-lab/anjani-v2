@@ -1,8 +1,14 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH — DO NOT MODIFY WITHOUT TEAM REVIEW
+// This is the login screen component. It handles email/password and Google
+// sign-in. Changes here affect every user's ability to access the app.
+// ─────────────────────────────────────────────────────────────────────────────
 import { useState } from 'react'
 import toast, { Toaster } from 'react-hot-toast'
 import { signInWithGoogle, signInWithEmailPassword, signUpWithEmailPassword } from '../firebase-auth'
 import { Mail, Lock, LogIn } from 'lucide-react'
 
+// AUTH: maps Firebase error codes to human-readable messages — do not remove entries
 const AUTH_ERRORS = {
   'auth/email-already-in-use': 'Email already in use',
   'auth/weak-password': 'Password must be at least 6 characters',
@@ -21,6 +27,7 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // AUTH: handles email/password sign-in and sign-up form submission
   const handleEmailAuth = async (e) => {
     e.preventDefault()
     if (!email || !password) {
@@ -46,6 +53,7 @@ export default function Login() {
     }
   }
 
+  // AUTH: handles Google OAuth sign-in
   const handleGoogleSignIn = async () => {
     setLoading(true)
     try {

@@ -42,11 +42,14 @@ function App() {
   const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
   const [ledgerClientId, setLedgerClientId] = useState('all')
   const [ledgerDateRange, setLedgerDateRange] = useState('current-month')
+  // ─────────────────────────────────────────
+  // AUTH — DO NOT MODIFY WITHOUT TEAM REVIEW
+  // ─────────────────────────────────────────
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const { fetchClients, fetchOrders, fetchStock, fetchStockTotal, orders, clients } = useClientStore()
 
-  // Monitor Firebase auth state
+  // AUTH: monitors login/logout state — removing this breaks the entire auth flow
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
@@ -55,9 +58,9 @@ function App() {
     return unsubAuth
   }, [])
 
-  // Fetch data when user is authenticated
+  // AUTH: data is only fetched when user is signed in — do not remove the guard
   useEffect(() => {
-    if (!user) return undefined
+    if (!user) return undefined // AUTH: do not remove — prevents data fetch for unauthenticated users
 
     const unsubClients = fetchClients()
     const unsubOrders = fetchOrders()
@@ -71,6 +74,7 @@ function App() {
     }
   }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, user])
 
+  // AUTH: signs out the current user and clears session
   const handleLogout = async () => {
     try {
       await signOut(auth)
@@ -606,6 +610,7 @@ function App() {
     }
   ]
 
+  // AUTH: show loading screen while Firebase resolves the auth state on startup
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#f8f9fa] font-sans flex items-center justify-center px-4">
@@ -617,6 +622,7 @@ function App() {
     )
   }
 
+  // AUTH: gate — unauthenticated users see login screen only, do not remove
   if (!user) {
     return <Login />
   }
@@ -639,6 +645,7 @@ function App() {
             <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
           </div>
         </div>
+        {/* AUTH: user email + logout button — do not remove */}
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-600 hidden sm:inline">{user?.email}</span>
           <button
