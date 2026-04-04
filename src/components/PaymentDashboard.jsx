@@ -95,31 +95,31 @@ export default function PaymentDashboard() {
         return (
           <div
             key={tx.id}
-            className={`bg-white/95 backdrop-blur-sm p-4 rounded-2xl shadow-[0_8px_24px_rgba(15,23,42,0.05)] border border-slate-100 flex justify-between items-center border-l-[5px] ${borderColor} transition-all duration-200 hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)] hover:-translate-y-0.5`}
+            className={`bg-white/95 p-4 rounded-2xl shadow-[0_6px_20px_rgba(15,23,42,0.05)] border border-gray-100 flex justify-between items-start border-l-4 ${borderColor} transition-all`}
           >
-            <div className="flex gap-3 items-center min-w-0">
-              <div className={`p-2.5 rounded-xl ring-1 ring-black/5 ${iconBg}`}>
-                <Icon size={17} />
+            <div className="flex gap-3 items-start min-w-0">
+              <div className={`p-2.5 rounded-2xl ${iconBg} shrink-0`}>
+                <Icon size={18} />
               </div>
               <div className="min-w-0">
-                <p className="font-extrabold text-slate-900 leading-tight flex items-center gap-2 min-w-0">
+                <p className="font-extrabold text-gray-900 leading-tight flex items-center gap-2 flex-wrap">
                   <span className="truncate">{getClientName(tx.clientId)}</span>
                   {orderId && (
-                    <span className="text-[10px] font-semibold text-slate-400 tracking-wide bg-slate-100 px-2 py-0.5 rounded-full shrink-0">
+                    <span className="text-[10px] font-semibold text-gray-500 tracking-wide bg-gray-100 px-2 py-0.5 rounded-full">
                       {orderId}
                     </span>
                   )}
                 </p>
-                <p className="text-[10px] text-slate-500 flex items-center gap-1 uppercase tracking-wider font-bold mt-1">
-                  <Calendar size={10} /> {formatDate(tx)} • {tx.method || 'SYSTEM'}
+                <p className="text-[11px] text-gray-500 flex items-center gap-1 uppercase tracking-wide font-bold mt-1">
+                  <Calendar size={11} /> {formatDate(tx)} • {tx.method || 'SYSTEM'}
                 </p>
               </div>
             </div>
-            <div className="text-right">
-              <p className={`font-black text-2xl leading-none tabular-nums ${amountColor}`}>
+            <div className="text-right pl-3 shrink-0">
+              <p className={`font-black text-2xl leading-none ${amountColor}`}>
                 {sign}₹{tx.amount}
               </p>
-              <p className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wide mt-1">
+              <p className="mt-2 inline-flex text-[10px] text-gray-600 font-extrabold uppercase tracking-wide bg-gray-100 px-2 py-0.5 rounded-full">
                 {label}
               </p>
             </div>
