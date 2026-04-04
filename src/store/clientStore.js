@@ -360,6 +360,8 @@ export const useClientStore = create((set, get) => ({
     if (existing && data.status === 'Delivered' && previousStatus !== 'Delivered') {
       const qty = Number(existing.qty || existing.boxes || existing.quantity) || 0;
       const rate = Number(existing.rate) || 0;
+      const stockDelta = -Math.abs(qty);
+      const stockEntryDate = new Date();
       const clientName = await getOrderClientName(existing, get().clients);
       const deliveredNarration = formatOrderNarration('Order Delivered', existing.orderId || id, clientName);
 
