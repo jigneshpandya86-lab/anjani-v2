@@ -18,7 +18,7 @@ import {
   TrendingUp,
   LogOut
 } from 'lucide-react'
-import { collection, getDocs, query } from 'firebase/firestore'
+import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'firebase/firestore'
 import { db, auth } from './firebase-config'
 import { signOut, onAuthStateChanged } from 'firebase/auth'
 import ClientList from './components/ClientList'
@@ -30,6 +30,8 @@ import PaymentModal from './components/PaymentModal'
 import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
 import Login from './components/Login'
+
+const LEDGER_EXPORT_PAGE_SIZE = 500
 
 function App() {
   const [activeTab, setActiveTab] = useState('orders')
@@ -450,22 +452,40 @@ function App() {
 
       const { startDate, endDate, label: dateRangeLabel } = getLedgerDateRange(ledgerDateRange)
 
-      const paymentsSnap = await getDocs(query(collection(db, 'payments')))
-      const payments = paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+      const payments = []
+      let lastVisibleDoc = null
+
+      while (true) {
+        const constraints = [
+          where('createdAt', '>=', startDate),
+          where('createdAt', '<=', endDate),
+          orderBy('createdAt', 'desc'),
+          limit(LEDGER_EXPORT_PAGE_SIZE)
+        ]
+
+        if (selectedClient.id !== 'all') {
+          constraints.splice(2, 0, where('clientId', '==', selectedClient.id))
+        }
+
+        if (lastVisibleDoc) {
+          constraints.push(startAfter(lastVisibleDoc))
+        }
+
+        const paymentsSnap = await getDocs(query(collection(db, 'payments'), ...constraints))
+        if (paymentsSnap.empty) break
+
+        payments.push(...paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
+        if (paymentsSnap.docs.length < LEDGER_EXPORT_PAGE_SIZE) break
+
+        lastVisibleDoc = paymentsSnap.docs[paymentsSnap.docs.length - 1]
+      }
+
       if (payments.length === 0) {
         toast.error('No ledger entries available for report.')
         return
       }
 
       const rows = payments
-        .filter((tx) => {
-          if (selectedClient.id !== 'all' && tx.clientId !== selectedClient.id) return false
-          const txDateRaw = tx.date?.toDate?.() || tx.createdAt?.toDate?.() || null
-          if (!txDateRaw) return false
-          if (txDateRaw < startDate) return false
-          if (txDateRaw > endDate) return false
-          return true
-        })
         .sort((a, b) => {
           const aTime = a.date?.toMillis?.() || a.createdAt?.toMillis?.() || 0
           const bTime = b.date?.toMillis?.() || b.createdAt?.toMillis?.() || 0
