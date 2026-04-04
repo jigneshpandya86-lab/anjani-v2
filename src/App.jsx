@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import toast, { Toaster } from 'react-hot-toast'
 import { useClientStore } from './store/clientStore'
-import { onAuthStateChanged } from 'firebase/auth'
 import {
   ShoppingCart,
   Menu,
