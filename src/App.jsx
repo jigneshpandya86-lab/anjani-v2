@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import toast, { Toaster } from 'react-hot-toast'
 import { useClientStore } from './store/clientStore'
-import { onAuthStateChanged } from 'firebase/auth'
 import {
   ShoppingCart,
   Menu,
@@ -649,16 +648,6 @@ function App() {
             title="Sign out"
           >
             <LogOut size={20} />
-          </button>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <span className="hidden md:block text-xs font-bold text-gray-500">{currentUser.email}</span>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-50"
-          >
-            Logout
           </button>
         </div>
       </header>

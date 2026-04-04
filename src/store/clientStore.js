@@ -69,7 +69,7 @@ export const useClientStore = create((set, get) => ({
     stockSubscriberCount += 1;
 
     if (!stockUnsubscribe) {
-      const q = query(collection(db, 'stock'));
+      const q = query(collection(db, 'stock'), orderBy('date', 'desc'), limit(20));
       stockUnsubscribe = onSnapshot(q, (snapshot) => {
         const getTime = (value) => {
           if (!value) return 0;
@@ -172,7 +172,8 @@ export const useClientStore = create((set, get) => ({
       qty: parsedQty,
       narration: narration || 'Manual Addition',
       type: 'addition',
-      date: serverTimestamp()
+      date: new Date(),
+      createdAt: serverTimestamp()
     });
     await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(parsedQty) }, { merge: true });
   },
