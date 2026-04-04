@@ -70,7 +70,7 @@ export const useClientStore = create((set, get) => ({
     stockSubscriberCount += 1;
 
     if (!stockUnsubscribe) {
-      const q = query(collection(db, 'stock'), orderBy('date', 'desc'), limit(300));
+      const q = query(collection(db, 'stock'), orderBy('date', 'desc'), limit(20));
       stockUnsubscribe = onSnapshot(q, (snapshot) => {
         const getTime = (value) => {
           if (!value) return 0;
@@ -175,7 +175,7 @@ export const useClientStore = create((set, get) => ({
       qty: parsedQty,
       narration: narration || 'Manual Addition',
       type: 'addition',
-      date: entryDate,
+      date: new Date(),
       createdAt: serverTimestamp()
     });
     await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(parsedQty) }, { merge: true });
@@ -319,20 +319,17 @@ export const useClientStore = create((set, get) => ({
       const rate = Number(existing.rate) || 0;
       const orderCode = existing.orderId || id;
       const clientName = await getOrderClientName(existing, get().clients);
-      const deliveredNarration = formatOrderNarration('Order Delivered', orderCode, clientName);
+      const deliveredNarration = formatOrderNarration('Order Delivered', orderRef, clientName);
 
-      if (qty !== 0) {
-        // 1. Debit stock
-        const stockEntryDate = new Date();
-        await addDoc(collection(db, 'stock'), {
-          qty: -Math.abs(qty),
-          narration: deliveredNarration,
-          type: 'dispatch',
-          date: stockEntryDate,
-          createdAt: serverTimestamp()
-        });
-        await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(-Math.abs(qty)) }, { merge: true });
-      }
+      // 1. Debit stock
+      await addDoc(collection(db, 'stock'), {
+        qty: -qty,
+        narration: deliveredNarration,
+        type: 'dispatch',
+        date: new Date(),
+        createdAt: serverTimestamp()
+      });
+      await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(-qty) }, { merge: true });
 
       // 2. Create invoice transaction in payments
       const amount = Math.abs(qty) * rate;
