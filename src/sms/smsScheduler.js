@@ -61,6 +61,28 @@ const jobAlreadyExists = async (db, dedupeKey) => {
   return snap.size > 0
 }
 
+// Batch check for existing jobs - OPTIMIZED for cost reduction
+// Instead of N queries (one per dedupeKey), uses 1 query for all keys
+// Firestore 'in' operator supports up to 10 values per query, so we batch
+const jobAlreadyExistBatch = async (db, dedupeKeys) => {
+  if (dedupeKeys.length === 0) return new Set()
+
+  const existingKeys = new Set()
+
+  // Batch keys in groups of 10 (Firestore 'in' operator limit)
+  for (let i = 0; i < dedupeKeys.length; i += 10) {
+    const batch = dedupeKeys.slice(i, i + 10)
+    const q = query(
+      collection(db, 'sms_jobs'),
+      where('dedupeKey', 'in', batch)
+    )
+    const snap = await getDocs(q)
+    snap.forEach(doc => existingKeys.add(doc.data().dedupeKey))
+  }
+
+  return existingKeys
+}
+
 const pushRecurringEvery30 = ({ rows, config, startDate, horizonDays }) => {
   if (!config?.every30After) return
 
@@ -148,11 +170,17 @@ export const enqueueSmsJobsForEvent = async ({
     return { queuedCount: 0, jobs: [] }
   }
 
+  // OPTIMIZED: Batch check for existing jobs instead of checking each individually
+  // This reduces reads from N to ~1 (batched in groups of 10)
+  const existingDedupeKeys = await jobAlreadyExistBatch(
+    db,
+    jobs.map(j => j.dedupeKey)
+  )
+
   let queuedCount = 0
   for (const smsJob of jobs) {
-    // Check for existing job with same dedupeKey to prevent duplicates
-    const exists = await jobAlreadyExists(db, smsJob.dedupeKey)
-    if (exists) {
+    // Check if job already exists (from batch query results)
+    if (existingDedupeKeys.has(smsJob.dedupeKey)) {
       console.log(`SMS job already exists with dedupeKey: ${smsJob.dedupeKey}`)
       continue
     }
