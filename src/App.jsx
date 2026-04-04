@@ -9,7 +9,6 @@ import {
   ClipboardPlus,
   UserPlus,
   HandCoins,
-  Printer,
   BookText,
   Search,
   Package,
@@ -18,7 +17,7 @@ import {
   TrendingUp,
   LogOut
 } from 'lucide-react'
-import { collection, getDocs, query } from 'firebase/firestore'
+import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'firebase/firestore'
 import { db, auth } from './firebase-config'
 import { signOut, onAuthStateChanged } from 'firebase/auth'
 import ClientList from './components/ClientList'
@@ -31,6 +30,8 @@ import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
 import Login from './components/Login'
 
+const LEDGER_EXPORT_PAGE_SIZE = 500
+
 function App() {
   const [activeTab, setActiveTab] = useState('orders')
   const [editOrder, setEditOrder] = useState(null)
@@ -40,13 +41,16 @@ function App() {
   const [paymentPrefill, setPaymentPrefill] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
-  const [ledgerClientId, setLedgerClientId] = useState('all')
+  const [ledgerClientId, setLedgerClientId] = useState('')
   const [ledgerDateRange, setLedgerDateRange] = useState('current-month')
+  // ─────────────────────────────────────────
+  // AUTH — DO NOT MODIFY WITHOUT TEAM REVIEW
+  // ─────────────────────────────────────────
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const { fetchClients, fetchOrders, fetchStock, fetchStockTotal, orders, clients } = useClientStore()
 
-  // Monitor Firebase auth state
+  // AUTH: monitors login/logout state — removing this breaks the entire auth flow
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
@@ -55,9 +59,9 @@ function App() {
     return unsubAuth
   }, [])
 
-  // Fetch data when user is authenticated
+  // AUTH: data is only fetched when user is signed in — do not remove the guard
   useEffect(() => {
-    if (!user) return undefined
+    if (!user) return undefined // AUTH: do not remove — prevents data fetch for unauthenticated users
 
     const unsubClients = fetchClients()
     const unsubOrders = fetchOrders()
@@ -71,6 +75,7 @@ function App() {
     }
   }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, user])
 
+  // AUTH: signs out the current user and clears session
   const handleLogout = async () => {
     try {
       await signOut(auth)
@@ -82,9 +87,9 @@ function App() {
 
   const navItems = [
     { id: 'orders', label: 'Orders', icon: <ShoppingCart size={20} /> },
-    { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
     { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
     { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
+    { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
   ]
 
   const drawerNavItems = navItems
@@ -180,96 +185,113 @@ function App() {
     return true
   }
 
-  const openInvoiceWindow = ({ title, order, clientName, mobile }) => {
-    const reportWindow = window.open('', '_blank', 'width=900,height=700')
-    if (!reportWindow) {
-      toast.error('Popup blocked. Please allow popups to generate PDF report.')
-      return
-    }
-
-    const generatedAt = new Date().toLocaleString('en-IN')
-    const qty = Number(order.qty) || 0
-    const rate = Number(order.rate) || 0
-    const total = qty * rate
-    const invoiceNumber = order.orderId || order.id || '-'
-    const invoiceDate = order.date || '-'
-    const invoiceTime = order.time || '-'
-    const invoiceStatus = order.status || '-'
-
-    reportWindow.document.write(`
-      <html>
-        <head>
-          <title>${title}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
-            .invoice { border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; }
-            .head { padding: 16px 20px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
-            h1 { margin: 0; font-size: 24px; letter-spacing: .4px; }
-            .muted { color: #6b7280; font-size: 12px; margin-top: 4px; }
-            .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 18px 20px; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
-            .label { color: #6b7280; font-size: 11px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: .4px; }
-            .value { color: #111827; font-weight: 600; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; text-align: left; font-size: 13px; }
-            th { font-size: 11px; text-transform: uppercase; color: #6b7280; background: #fafafa; letter-spacing: .3px; }
-            .total-wrap { padding: 16px 20px; display: flex; justify-content: flex-end; }
-            .total-box { width: 260px; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
-            .total-line { display: flex; justify-content: space-between; padding: 10px 12px; font-size: 13px; }
-            .total-line + .total-line { border-top: 1px solid #f3f4f6; }
-            .grand { background: #111827; color: white; font-weight: 700; }
-          </style>
-        </head>
-        <body>
-          <div class="invoice">
-            <div class="head">
-              <h1>Invoice</h1>
-              <div class="muted">Generated: ${generatedAt}</div>
-            </div>
-            <div class="grid">
-              <div><div class="label">Invoice Number</div><div class="value">${invoiceNumber}</div></div>
-              <div><div class="label">Status</div><div class="value">${invoiceStatus}</div></div>
-              <div><div class="label">Invoice Date</div><div class="value">${invoiceDate}</div></div>
-              <div><div class="label">Invoice Time</div><div class="value">${invoiceTime}</div></div>
-              <div><div class="label">Bill To</div><div class="value">${clientName}</div></div>
-              <div><div class="label">Mobile</div><div class="value">${mobile || '-'}</div></div>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Description</th>
-                  <th>Qty</th>
-                  <th>Rate</th>
-                  <th>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Water Box Supply</td>
-                  <td>${qty} Boxes</td>
-                  <td>₹${rate.toLocaleString('en-IN')}</td>
-                  <td>₹${total.toLocaleString('en-IN')}</td>
-                </tr>
-              </tbody>
-            </table>
-            <div class="total-wrap">
-              <div class="total-box">
-                <div class="total-line"><span>Subtotal</span><span>₹${total.toLocaleString('en-IN')}</span></div>
-                <div class="total-line grand"><span>Total</span><span>₹${total.toLocaleString('en-IN')}</span></div>
-              </div>
-            </div>
-          </div>
-          <script>
-            window.onload = () => {
-              window.print();
-            }
-          </script>
-        </body>
-      </html>
-    `)
-    reportWindow.document.close()
-  }
 
   const escapePdfText = (text) => String(text || '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+
+  // Builds a raw single-page PDF from tabular data — works inside Capacitor WebView
+  const createPdfFile = (pdfText, filename) => {
+    const bytes = new TextEncoder().encode(pdfText)
+    const blob = new Blob([bytes], { type: 'application/pdf' })
+    try {
+      return new File([blob], filename, { type: 'application/pdf' })
+    } catch (_) {
+      // Older WebViews may not support File constructor.
+      blob.name = filename
+      return blob
+    }
+  }
+
+  const buildTabularReportPdf = ({ title, columns, rows, metadata = [], filename = 'report.pdf' }) => {
+    const san = (t) => String(t ?? '').replace(/₹/g, 'Rs.').replace(/[^\x20-\x7E]/g, '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)').slice(0, 60)
+    const txt = (x, y, size, t) => `BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${san(t)}) Tj ET`
+    const pW = 595, pH = 842, mg = 36, usableW = pW - mg * 2
+    const colW = usableW / Math.max(columns.length, 1)
+    const rH = 18
+    const lines = []
+    let y = pH - mg - 20
+
+    lines.push(txt(mg, y, 14, title))
+    y -= 20
+    lines.push('0.5 0.5 0.5 rg')
+    lines.push(txt(mg, y, 8, `Generated: ${new Date().toLocaleString('en-IN').replace(/[^\x20-\x7E]/g, '')}`))
+    lines.push('0 0 0 rg')
+    y -= 14
+    for (const m of metadata.filter(Boolean)) {
+      lines.push('0.5 0.5 0.5 rg')
+      lines.push(txt(mg, y, 8, m))
+      lines.push('0 0 0 rg')
+      y -= 12
+    }
+    y -= 6
+    lines.push('0.2 0.2 0.2 rg')
+    lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
+    lines.push('1 1 1 rg')
+    columns.forEach((col, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, col)))
+    lines.push('0 0 0 rg')
+    y -= rH
+    for (let ri = 0; ri < rows.length; ri++) {
+      if (y < mg + rH) break
+      if (ri % 2 === 0) {
+        lines.push('0.95 0.95 0.95 rg')
+        lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
+        lines.push('0 0 0 rg')
+      }
+      rows[ri].forEach((cell, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, cell)))
+      y -= rH
+    }
+    const stream = lines.join('\n')
+    const objs = [
+      '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
+      '2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj',
+      `3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pW} ${pH}] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj`,
+      `4 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream endobj`,
+      '5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj',
+    ]
+    let pdf = '%PDF-1.4\n'
+    const offsets = [0]
+    objs.forEach((obj) => { offsets.push(pdf.length); pdf += `${obj}\n` })
+    const xrefStart = pdf.length
+    pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`
+    for (let i = 1; i <= objs.length; i++) pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`
+    pdf += `trailer << /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`
+    return createPdfFile(pdf, filename)
+  }
+
+  // Share PDF via native share sheet (WhatsApp, Drive, etc.) or fall back to download
+  const shareOrDownloadPdf = async (file, shareTitle = '', shareText = '') => {
+    try {
+      const canShareWithFile = Boolean(
+        navigator.share &&
+        (!navigator.canShare || navigator.canShare({ files: [file] }))
+      )
+      if (canShareWithFile) {
+        await navigator.share({ title: shareTitle, text: shareText, files: [file] })
+        toast.success('PDF ready — select WhatsApp or any app to share.')
+        return
+      }
+    } catch (err) {
+      if (err?.name === 'AbortError') return
+    }
+    const url = URL.createObjectURL(file)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = file?.name || 'invoice.pdf'
+    a.target = '_blank'
+    a.rel = 'noopener'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    // Android WebView/Chrome can ignore downloads from blob URLs; open in a new tab as fallback.
+    setTimeout(() => {
+      if (!document.hidden) {
+        window.open(url, '_blank', 'noopener')
+      }
+    }, 150)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    toast.success('PDF generated.')
+  }
+
+  const isMobileOrNative = Boolean(window?.Capacitor?.isNativePlatform?.()) || /Android|iPhone|iPad/i.test(navigator.userAgent)
 
   const buildSimpleInvoicePdfFile = ({ order, clientName, mobile }) => {
     const qty = Number(order.qty) || 0
@@ -340,7 +362,7 @@ function App() {
       pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`
     }
     pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`
-    return new File([pdf], `invoice-${orderId}.pdf`, { type: 'application/pdf' })
+    return createPdfFile(pdf, `invoice-${orderId}.pdf`)
   }
 
   const handleRecordPaymentFromOrder = (order) => {
@@ -365,61 +387,25 @@ function App() {
     const mobile = client?.mobile || order.mobile || order.phone || ''
     const amount = ((Number(order.qty) || 0) * (Number(order.rate) || 0)).toLocaleString('en-IN')
     const pdfFile = buildSimpleInvoicePdfFile({ order, clientName, mobile })
-    const msg = `Invoice ${order.orderId || order.id || ''}\nClient: ${clientName}\nAmount: ₹${amount}`
+    const invoiceTitle = `Invoice ${order.orderId || order.id || ''}`
+    const msg = `${invoiceTitle}\nClient: ${clientName}\nAmount: Rs.${amount}`
 
+    // Try native share sheet (opens WhatsApp, Drive, etc. on Android)
     try {
-      if (navigator.share && navigator.canShare?.({ files: [pdfFile] })) {
-        await navigator.share({
-          title: `Invoice ${order.orderId || order.id || ''}`,
-          text: msg,
-          files: [pdfFile]
-        })
-        toast.success('Invoice PDF attached. Select WhatsApp and hit send.')
+      if (navigator.share) {
+        await navigator.share({ title: invoiceTitle, text: msg, files: [pdfFile] })
+        toast.success('Invoice PDF ready — select WhatsApp to send.')
         return
       }
-    } catch (error) {
-      if (error?.name === 'AbortError') return
-      console.error(error)
+    } catch (err) {
+      if (err?.name === 'AbortError') return
     }
 
-    window.open(`https://wa.me/?text=${encodeURIComponent(`${msg}\n\nDirect PDF attachment works only when your browser supports file share (mostly mobile).`)}`, '_blank')
-    openInvoiceWindow({
-      title: `Order Invoice (PDF) - ${order.orderId || order.id || 'Invoice'}`,
-      order,
-      clientName,
-      mobile
-    })
-    toast('Direct WhatsApp attachment is browser-limited. Invoice preview opened for print/share.', { icon: 'ℹ️' })
-  }
-
-  const handleOrderPrintPdf = () => {
-    if (orders.length === 0) {
-      toast.error('No orders available for report.')
-      return
+    // Desktop fallback: download PDF + open WhatsApp with text
+    await shareOrDownloadPdf(pdfFile, invoiceTitle, msg)
+    if (mobile) {
+      window.open(`https://wa.me/91${mobile}?text=${encodeURIComponent(msg)}`, '_blank')
     }
-
-    const rows = orders.map((order) => {
-      const clientName = clients.find((c) => c.id === order.clientId)?.name
-        || order.clientName
-        || order.customerName
-        || 'Unknown Client'
-      const total = (Number(order.qty) || 0) * (Number(order.rate) || 0)
-      return [
-        order.orderId || order.id,
-        clientName,
-        order.date || '-',
-        order.time || '-',
-        order.status || '-',
-        `${order.qty || 0} Boxes`,
-        `₹${total.toLocaleString('en-IN')}`
-      ]
-    })
-
-    openReportWindow({
-      title: 'Order Print Report (PDF)',
-      columns: ['Order ID', 'Client', 'Date', 'Time', 'Status', 'Qty', 'Amount'],
-      rows
-    })
   }
 
   const getLedgerDateRange = (rangeKey) => {
@@ -445,46 +431,50 @@ function App() {
   }
 
   const handleLedgerStatementPdf = async () => {
-    const reportWindow = window.open('', '_blank', 'width=900,height=700')
-    if (!reportWindow) {
-      toast.error('Popup blocked. Please allow popups to generate PDF report.')
-      return
-    }
-
-    reportWindow.document.write('<p style="font-family:Arial,sans-serif;padding:16px;">Preparing ledger statement...</p>')
-    reportWindow.document.close()
-
     try {
-      const selectedClient = ledgerClientId === 'all'
-        ? { id: 'all', name: 'All Clients' }
-        : clients.find((client) => client.id === ledgerClientId)
+      const selectedClient = clients.find((client) => client.id === ledgerClientId)
 
       if (!selectedClient) {
         toast.error('Please select a valid client.')
-        reportWindow.close()
         return
       }
 
       const { startDate, endDate, label: dateRangeLabel } = getLedgerDateRange(ledgerDateRange)
 
-      const paymentsSnap = await getDocs(query(collection(db, 'payments')))
-      const payments = paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+      const payments = []
+      let lastVisibleDoc = null
+
+      while (true) {
+        const constraints = [
+          where('createdAt', '>=', startDate),
+          where('createdAt', '<=', endDate),
+          orderBy('createdAt', 'desc'),
+          limit(LEDGER_EXPORT_PAGE_SIZE)
+        ]
+
+        if (selectedClient.id !== 'all') {
+          constraints.splice(2, 0, where('clientId', '==', selectedClient.id))
+        }
+
+        if (lastVisibleDoc) {
+          constraints.push(startAfter(lastVisibleDoc))
+        }
+
+        const paymentsSnap = await getDocs(query(collection(db, 'payments'), ...constraints))
+        if (paymentsSnap.empty) break
+
+        payments.push(...paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
+        if (paymentsSnap.docs.length < LEDGER_EXPORT_PAGE_SIZE) break
+
+        lastVisibleDoc = paymentsSnap.docs[paymentsSnap.docs.length - 1]
+      }
+
       if (payments.length === 0) {
         toast.error('No ledger entries available for report.')
-        reportWindow.close()
         return
       }
 
       const rows = payments
-        .filter((tx) => {
-          if (selectedClient.id !== 'all' && tx.clientId !== selectedClient.id) return false
-
-          const txDateRaw = tx.date?.toDate?.() || tx.createdAt?.toDate?.() || null
-          if (!txDateRaw) return false
-          if (txDateRaw < startDate) return false
-          if (txDateRaw > endDate) return false
-          return true
-        })
         .sort((a, b) => {
           const aTime = a.date?.toMillis?.() || a.createdAt?.toMillis?.() || 0
           const bTime = b.date?.toMillis?.() || b.createdAt?.toMillis?.() || 0
@@ -500,37 +490,34 @@ function App() {
             txDate,
             tx.type || '-',
             tx.method || 'SYSTEM',
-            `₹${Number(tx.amount || 0).toLocaleString('en-IN')}`,
+            `Rs.${Number(tx.amount || 0).toLocaleString('en-IN')}`,
             tx.narration || '-'
           ]
         })
 
       if (rows.length === 0) {
         toast.error('No ledger entries found for the selected client/date range.')
-        reportWindow.close()
         return
       }
 
-      openReportWindow({
-        reportWindow,
-        title: 'Ledger Statement Report (PDF)',
-        columns: ['Client', 'Date', 'Type', 'Method', 'Amount', 'Narration'],
-        rows,
-        metadata: [
-          `Client: ${selectedClient.name}`,
-          `Date Range: ${dateRangeLabel}`
-        ]
-      })
+      const columns = ['Client', 'Date', 'Type', 'Method', 'Amount', 'Narration']
+      const metadata = [`Client: ${selectedClient.name}`, `Date Range: ${dateRangeLabel}`]
+
+      if (isMobileOrNative) {
+        const file = buildTabularReportPdf({ title: 'Ledger Statement', columns, rows, metadata, filename: 'ledger.pdf' })
+        await shareOrDownloadPdf(file, 'Ledger Statement')
+      } else {
+        openReportWindow({ title: 'Ledger Statement Report (PDF)', columns, rows, metadata })
+      }
 
       setLedgerModalOpen(false)
     } catch (error) {
       toast.error('Unable to generate ledger statement report.')
-      reportWindow.close()
       console.error(error)
     }
   }
 
-  const handleOrderSpecificPrintPdf = () => {
+  const handleOrderSpecificPrintPdf = async () => {
     if (orders.length === 0) {
       toast.error('No orders available for report.')
       return
@@ -568,24 +555,11 @@ function App() {
     const clientName = client?.name || order.clientName || order.customerName || 'Unknown Client'
     const mobile = client?.mobile || order.mobile || order.phone || '-'
 
-    openInvoiceWindow({
-      title: `Order Invoice (PDF) - ${order.orderId || order.id || searchValue.trim()}`,
-      order,
-      clientName,
-      mobile
-    })
+    const pdfFile = buildSimpleInvoicePdfFile({ order, clientName, mobile })
+    await shareOrDownloadPdf(pdfFile, `Invoice ${order.orderId || order.id || ''}`)
   }
 
   const drawerReports = [
-    {
-      id: 'report-order-print',
-      label: 'Order Print (PDF)',
-      icon: <Printer size={18} />,
-      onClick: () => {
-        handleOrderPrintPdf()
-        setDrawerOpen(false)
-      }
-    },
     {
       id: 'report-order-specific',
       label: 'Order Specific Print (PDF)',
@@ -600,12 +574,19 @@ function App() {
       label: 'Ledger Statement (PDF)',
       icon: <BookText size={18} />,
       onClick: () => {
+        if (clients.length === 0) {
+          toast.error('No clients available for ledger statement.')
+          setDrawerOpen(false)
+          return
+        }
+        setLedgerClientId((prev) => prev || clients[0]?.id || '')
         setDrawerOpen(false)
         setLedgerModalOpen(true)
       }
     }
   ]
 
+  // AUTH: show loading screen while Firebase resolves the auth state on startup
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#f8f9fa] font-sans flex items-center justify-center px-4">
@@ -617,6 +598,7 @@ function App() {
     )
   }
 
+  // AUTH: gate — unauthenticated users see login screen only, do not remove
   if (!user) {
     return <Login />
   }
@@ -639,6 +621,7 @@ function App() {
             <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
           </div>
         </div>
+        {/* AUTH: user email + logout button — do not remove */}
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-600 hidden sm:inline">{user?.email}</span>
           <button
@@ -835,7 +818,6 @@ function App() {
                   onChange={(e) => setLedgerClientId(e.target.value)}
                   className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
                 >
-                  <option value="all">All Clients</option>
                   {clients.map((client) => (
                     <option key={client.id} value={client.id}>
                       {client.name || 'Unnamed Client'}

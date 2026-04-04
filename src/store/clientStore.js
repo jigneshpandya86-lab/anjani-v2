@@ -8,6 +8,7 @@ import { db } from '../firebase-config';
 let stockUnsubscribe = null;
 let stockSubscriberCount = 0;
 const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary');
+const RECENT_STOCK_ENTRIES_LIMIT = 15;
 
 const getOrderClientName = async (order, clients = []) => {
   const normalizeName = (value) => {
@@ -128,7 +129,8 @@ export const useClientStore = create((set, get) => ({
             if (primaryDiff !== 0) return primaryDiff;
 
             return getTime(b.createdAt) - getTime(a.createdAt);
-          });
+          })
+          .slice(0, RECENT_STOCK_ENTRIES_LIMIT);
         set({ stockEntries });
       });
     }
@@ -168,6 +170,7 @@ export const useClientStore = create((set, get) => ({
 
   addStockManual: async (qty, narration) => {
     const parsedQty = Number(qty) || 0;
+    const entryDate = new Date();
     await addDoc(collection(db, 'stock'), {
       qty: parsedQty,
       narration: narration || 'Manual Addition',
@@ -244,7 +247,7 @@ export const useClientStore = create((set, get) => ({
   },
 
   fetchClients: () => {
-    const q = query(collection(db, 'customers'));
+    const q = query(collection(db, 'customers'), orderBy('name'), limit(200));
     return onSnapshot(q, (snapshot) => {
       const clients = snapshot.docs.map(doc => ({ 
         id: doc.id, ...doc.data(),
@@ -304,11 +307,17 @@ export const useClientStore = create((set, get) => ({
   },
 
   updateOrder: async (id, data) => {
-    const existing = get().orders.find(o => o.id === id);
-    if (existing && data.status === 'Delivered' && existing.status !== 'Delivered') {
-      const qty = Number(existing.qty);
-      const rate = Number(existing.rate);
-      const orderRef = existing.orderId || id;
+    const orderRef = doc(db, 'orders', id);
+    const localExisting = get().orders.find((o) => o.id === id);
+    const orderSnap = await getDoc(orderRef);
+    const remoteExisting = orderSnap.exists() ? { id, ...orderSnap.data() } : null;
+    const existing = localExisting || remoteExisting;
+    const previousStatus = remoteExisting?.status || localExisting?.status || '';
+
+    if (existing && data.status === 'Delivered' && previousStatus !== 'Delivered') {
+      const qty = Number(existing.qty || existing.boxes || existing.quantity) || 0;
+      const rate = Number(existing.rate) || 0;
+      const orderCode = existing.orderId || id;
       const clientName = await getOrderClientName(existing, get().clients);
       const deliveredNarration = formatOrderNarration('Order Delivered', orderRef, clientName);
 
@@ -323,7 +332,7 @@ export const useClientStore = create((set, get) => ({
       await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(-qty) }, { merge: true });
 
       // 2. Create invoice transaction in payments
-      const amount = qty * rate;
+      const amount = Math.abs(qty) * rate;
       if (existing.clientId && amount > 0) {
         await addDoc(collection(db, 'payments'), {
           clientId: existing.clientId,
@@ -340,7 +349,7 @@ export const useClientStore = create((set, get) => ({
         });
       }
     }
-    await updateDoc(doc(db, 'orders', id), data);
+    await updateDoc(orderRef, data);
   },
 
   deleteOrder: async (id) => {
@@ -351,16 +360,37 @@ export const useClientStore = create((set, get) => ({
         const existing = orderSnap.data();
         if (existing.status === 'Delivered') {
           const reversalQty = Math.abs(Number(existing.qty || 0));
+          const reversalRate = Number(existing.rate || 0);
+          const reversalAmount = reversalQty * reversalRate;
+          const reversalClientId = existing.clientId || existing.customerId || '';
           const orderRef = existing.orderId || id;
           const clientName = await getOrderClientName(existing, get().clients);
           const reversalNarration = formatOrderNarration('Order Deleted (Reversal)', orderRef, clientName);
+          const stockEntryDate = new Date();
           await addDoc(collection(db, 'stock'), {
             qty: reversalQty,
             narration: reversalNarration,
             type: 'reversal',
-            date: serverTimestamp()
+            date: stockEntryDate,
+            createdAt: serverTimestamp()
           });
           await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(reversalQty) }, { merge: true });
+
+          if (reversalClientId && reversalAmount > 0) {
+            await addDoc(collection(db, 'payments'), {
+              clientId: reversalClientId,
+              amount: reversalAmount,
+              type: 'adjustment',
+              method: 'SYSTEM',
+              narration: reversalNarration,
+              date: serverTimestamp(),
+              createdAt: serverTimestamp()
+            });
+
+            await updateDoc(doc(db, 'customers', reversalClientId), {
+              outstanding: increment(-reversalAmount)
+            });
+          }
         }
       }
       await deleteDoc(orderRef);

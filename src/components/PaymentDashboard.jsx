@@ -51,8 +51,8 @@ export default function PaymentDashboard() {
   return (
     <div className="space-y-4 pb-20">
       <div className="flex items-center justify-between px-1">
-        <h2 className="text-xl font-black text-gray-800 uppercase tracking-tight">Payment Ledger</h2>
-        <div className="flex items-center gap-1 text-[10px] bg-[#ff9900]/10 text-[#ff9900] px-2 py-1 rounded-full font-black uppercase">
+        <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Payment Ledger</h2>
+        <div className="flex items-center gap-1 text-[10px] bg-[#ff9900]/10 text-[#ff9900] px-2 py-1 rounded-full font-black uppercase shadow-sm">
           <Clock size={12} /> Recent: {TRANSACTION_FEED_LIMIT}
         </div>
       </div>
@@ -93,30 +93,33 @@ export default function PaymentDashboard() {
         const orderId = getOrderId(tx);
 
         return (
-          <div key={tx.id} className={`bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center border-l-4 ${borderColor}`}>
-            <div className="flex gap-3 items-center">
-              <div className={`p-2 rounded-full ${iconBg}`}>
+          <div
+            key={tx.id}
+            className={`bg-white/95 p-4 rounded-2xl shadow-[0_6px_20px_rgba(15,23,42,0.05)] border border-gray-100 flex justify-between items-start border-l-4 ${borderColor} transition-all`}
+          >
+            <div className="flex gap-3 items-start min-w-0">
+              <div className={`p-2.5 rounded-2xl ${iconBg} shrink-0`}>
                 <Icon size={18} />
               </div>
-              <div>
-                <p className="font-bold text-gray-900 leading-tight flex items-center gap-2">
-                  <span>{getClientName(tx.clientId)}</span>
+              <div className="min-w-0">
+                <p className="font-extrabold text-gray-900 leading-tight flex items-center gap-2 flex-wrap">
+                  <span className="truncate">{getClientName(tx.clientId)}</span>
                   {orderId && (
-                    <span className="text-[10px] font-medium text-gray-400 tracking-wide">
+                    <span className="text-[10px] font-semibold text-gray-500 tracking-wide bg-gray-100 px-2 py-0.5 rounded-full">
                       {orderId}
                     </span>
                   )}
                 </p>
-                <p className="text-[10px] text-gray-400 flex items-center gap-1 uppercase tracking-widest font-black mt-1">
-                  <Calendar size={10} /> {formatDate(tx)} • {tx.method || 'SYSTEM'}
+                <p className="text-[11px] text-gray-500 flex items-center gap-1 uppercase tracking-wide font-bold mt-1">
+                  <Calendar size={11} /> {formatDate(tx)} • {tx.method || 'SYSTEM'}
                 </p>
               </div>
             </div>
-            <div className="text-right">
-              <p className={`font-black text-lg italic ${amountColor}`}>
+            <div className="text-right pl-3 shrink-0">
+              <p className={`font-black text-2xl leading-none ${amountColor}`}>
                 {sign}₹{tx.amount}
               </p>
-              <p className="text-[9px] text-gray-400 font-bold uppercase tracking-tighter">
+              <p className="mt-2 inline-flex text-[10px] text-gray-600 font-extrabold uppercase tracking-wide bg-gray-100 px-2 py-0.5 rounded-full">
                 {label}
               </p>
             </div>

@@ -41,7 +41,28 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Ensure Android permissions (SMS, Location, Camera)
+      - name: Create missing kotlin-alignment.init.gradle
+        run: |
+          FILE="android/kotlin-alignment.init.gradle"
+          if [ ! -f "$FILE" ]; then
+            cat > "$FILE" << 'EOF'
+          // Auto-generated: aligns all Kotlin stdlib transitive dependencies to one version
+          allprojects {
+              configurations.all {
+                  resolutionStrategy.eachDependency { details ->
+                      if (details.requested.group == 'org.jetbrains.kotlin') {
+                          details.useVersion "1.9.24"
+                      }
+                  }
+              }
+          }
+          EOF
+            echo "Created $FILE"
+          else
+            echo "$FILE already exists, skipping"
+          fi
+
+      - name: Ensure Android permissions (File, Camera, Location, Notifications)
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
 
@@ -52,16 +73,32 @@ jobs:
             fi
           }
 
-          add_permission "android.permission.SEND_SMS"
+          # Camera
           add_permission "android.permission.CAMERA"
+
+          # Location
           add_permission "android.permission.ACCESS_COARSE_LOCATION"
           add_permission "android.permission.ACCESS_FINE_LOCATION"
+
+          # File / Storage (pre-Android 13)
+          add_permission "android.permission.READ_EXTERNAL_STORAGE"
+          add_permission "android.permission.WRITE_EXTERNAL_STORAGE"
+
+          # File / Storage (Android 13+)
+          add_permission "android.permission.READ_MEDIA_IMAGES"
+          add_permission "android.permission.READ_MEDIA_VIDEO"
+          add_permission "android.permission.READ_MEDIA_AUDIO"
+
+          # Notifications (Android 13+)
+          add_permission "android.permission.POST_NOTIFICATIONS"
+          add_permission "android.permission.VIBRATE"
+          add_permission "android.permission.RECEIVE_BOOT_COMPLETED"
 
           echo "Updated permissions in $MANIFEST"
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: ./gradlew -I kotlin-alignment.init.gradle assembleDebug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

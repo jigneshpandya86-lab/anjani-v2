@@ -1,3 +1,8 @@
+// ─────────────────────────────────────────────────────────────
+// AUTH — DO NOT MODIFY WITHOUT TEAM REVIEW
+// This file initialises Firebase and exports the auth instance.
+// Changes here affect authentication and all Firestore access.
+// ─────────────────────────────────────────────────────────────
 import { initializeApp } from "firebase/app";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
@@ -19,4 +24,5 @@ export const db = initializeFirestore(app, {
   })
 });
 
+// AUTH: do not remove — shared auth instance used across the entire app
 export const auth = getAuth(app);
