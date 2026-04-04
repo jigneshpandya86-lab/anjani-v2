@@ -9,7 +9,6 @@ import {
   ClipboardPlus,
   UserPlus,
   HandCoins,
-  Printer,
   BookText,
   Search,
   Package,
@@ -40,7 +39,7 @@ function App() {
   const [paymentPrefill, setPaymentPrefill] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
-  const [ledgerClientId, setLedgerClientId] = useState('all')
+  const [ledgerClientId, setLedgerClientId] = useState('')
   const [ledgerDateRange, setLedgerDateRange] = useState('current-month')
   // ─────────────────────────────────────────
   // AUTH — DO NOT MODIFY WITHOUT TEAM REVIEW
@@ -383,38 +382,6 @@ function App() {
     }
   }
 
-  const handleOrderPrintPdf = async () => {
-    if (orders.length === 0) {
-      toast.error('No orders available for report.')
-      return
-    }
-
-    const rows = orders.map((order) => {
-      const clientName = clients.find((c) => c.id === order.clientId)?.name
-        || order.clientName
-        || order.customerName
-        || 'Unknown Client'
-      const total = (Number(order.qty) || 0) * (Number(order.rate) || 0)
-      return [
-        order.orderId || order.id,
-        clientName,
-        order.date || '-',
-        order.time || '-',
-        order.status || '-',
-        `${order.qty || 0} Boxes`,
-        `Rs.${total.toLocaleString('en-IN')}`
-      ]
-    })
-
-    const columns = ['Order ID', 'Client', 'Date', 'Time', 'Status', 'Qty', 'Amount']
-    if (isMobileOrNative) {
-      const file = buildTabularReportPdf({ title: 'Order Report', columns, rows, filename: 'orders.pdf' })
-      await shareOrDownloadPdf(file, 'Order Report')
-    } else {
-      openReportWindow({ title: 'Order Print Report (PDF)', columns, rows })
-    }
-  }
-
   const getLedgerDateRange = (rangeKey) => {
     const now = new Date()
     const endDate = new Date(now)
@@ -439,9 +406,7 @@ function App() {
 
   const handleLedgerStatementPdf = async () => {
     try {
-      const selectedClient = ledgerClientId === 'all'
-        ? { id: 'all', name: 'All Clients' }
-        : clients.find((client) => client.id === ledgerClientId)
+      const selectedClient = clients.find((client) => client.id === ledgerClientId)
 
       if (!selectedClient) {
         toast.error('Please select a valid client.')
@@ -459,7 +424,7 @@ function App() {
 
       const rows = payments
         .filter((tx) => {
-          if (selectedClient.id !== 'all' && tx.clientId !== selectedClient.id) return false
+          if (tx.clientId !== selectedClient.id) return false
           const txDateRaw = tx.date?.toDate?.() || tx.createdAt?.toDate?.() || null
           if (!txDateRaw) return false
           if (txDateRaw < startDate) return false
@@ -552,15 +517,6 @@ function App() {
 
   const drawerReports = [
     {
-      id: 'report-order-print',
-      label: 'Order Print (PDF)',
-      icon: <Printer size={18} />,
-      onClick: () => {
-        handleOrderPrintPdf()
-        setDrawerOpen(false)
-      }
-    },
-    {
       id: 'report-order-specific',
       label: 'Order Specific Print (PDF)',
       icon: <Search size={18} />,
@@ -574,6 +530,12 @@ function App() {
       label: 'Ledger Statement (PDF)',
       icon: <BookText size={18} />,
       onClick: () => {
+        if (clients.length === 0) {
+          toast.error('No clients available for ledger statement.')
+          setDrawerOpen(false)
+          return
+        }
+        setLedgerClientId((prev) => prev || clients[0]?.id || '')
         setDrawerOpen(false)
         setLedgerModalOpen(true)
       }
@@ -812,7 +774,6 @@ function App() {
                   onChange={(e) => setLedgerClientId(e.target.value)}
                   className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
                 >
-                  <option value="all">All Clients</option>
                   {clients.map((client) => (
                     <option key={client.id} value={client.id}>
                       {client.name || 'Unnamed Client'}
