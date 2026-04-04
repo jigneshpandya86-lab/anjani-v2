@@ -32,6 +32,7 @@ import PaymentModal from './components/PaymentModal'
 import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
 import SmsAutomationSettings from './components/SmsAutomationSettings'
+import SmsJobsMonitor from './components/SmsJobsMonitor'
 import Login from './components/Login'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
@@ -120,7 +121,8 @@ function App() {
 
   const drawerNavItems = [
     ...navItems,
-    { id: 'sms-settings', label: 'SMS Settings', icon: <MessageSquare size={20} /> }
+    { id: 'sms-settings', label: 'SMS Settings', icon: <MessageSquare size={20} /> },
+    { id: 'sms-jobs', label: 'SMS Jobs', icon: <MessageSquare size={20} /> }
   ]
 
   const drawerQuickActions = [
@@ -691,6 +693,7 @@ function App() {
           )}
           {activeTab === 'leads' && <LeadsDashboard />}
           {activeTab === 'sms-settings' && <SmsAutomationSettings />}
+          {activeTab === 'sms-jobs' && <SmsJobsMonitor />}
         </div>
       </div>
 
