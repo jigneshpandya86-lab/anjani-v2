@@ -5,7 +5,9 @@ const getCapacitorPlugins = () => {
 
 const getSmsPlugin = () => {
   const plugins = getCapacitorPlugins()
-  return plugins.SmsBackground || plugins.SMSBackground || window?.SmsBackground || null
+  // Only check official Capacitor plugins registry (case-sensitive)
+  // Priority: SmsBackground is the canonical name defined in @CapacitorPlugin annotation
+  return plugins.SmsBackground || null
 }
 
 export const isNativeSmsAvailable = () => {
