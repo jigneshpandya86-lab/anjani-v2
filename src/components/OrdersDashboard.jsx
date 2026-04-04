@@ -57,6 +57,7 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
     return 'bg-gray-100 text-gray-700'; 
   };
 
+
   return (
     <div className="space-y-3 pb-20">
       <div className="relative">
@@ -74,7 +75,7 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
         {['All', 'Pending', 'Confirmed', 'Delivered'].map(f => (
           <button key={f} onClick={() => setFilter(f)} 
             className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${filter === f ? 'bg-[#131921] text-[#ff9900]' : 'bg-white text-gray-400 border border-gray-200'}`}>
-            {f}
+            {f === 'Delivered' ? 'DEL' : f}
           </button>
         ))}
         <button onClick={shareDispatchPlan} className="bg-[#25D366] text-white px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95">
