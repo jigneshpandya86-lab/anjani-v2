@@ -21,6 +21,7 @@ import {
 import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'firebase/firestore'
 import { db, auth } from './firebase-config'
 import { signOut, onAuthStateChanged } from 'firebase/auth'
+import { processDueSmsJobs } from './sms/smsSender'
 import ClientList from './components/ClientList'
 import AddClient from './components/AddClient'
 import OrdersDashboard from './components/OrdersDashboard'
@@ -76,6 +77,27 @@ function App() {
       if (unsubStockTotal) unsubStockTotal()
     }
   }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, user])
+
+  useEffect(() => {
+    if (!user) return undefined
+
+    let stopped = false
+    const runSmsProcessor = async () => {
+      if (stopped) return
+      try {
+        await processDueSmsJobs({ db })
+      } catch (error) {
+        console.error('SMS background processor failed', error)
+      }
+    }
+
+    runSmsProcessor()
+    const timer = window.setInterval(runSmsProcessor, 60 * 1000)
+    return () => {
+      stopped = true
+      window.clearInterval(timer)
+    }
+  }, [user])
 
   // AUTH: signs out the current user and clears session
   const handleLogout = async () => {
