@@ -16,11 +16,14 @@ export default function LeadsDashboard() {
     const unsub = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      const sorted = docs.sort((a, b) => {
-        const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt || a.date || 0);
-        const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt || b.date || 0);
-        return dateB - dateA;
-      });
+      const getLeadDate = (lead) => {
+        const rawDate = lead.createdAt || lead.createdDate || lead.date;
+        if (!rawDate) return new Date(0);
+        if (rawDate?.toDate) return rawDate.toDate();
+        return new Date(rawDate);
+      };
+
+      const sorted = docs.sort((a, b) => getLeadDate(b) - getLeadDate(a));
       
       setLeads(sorted);
     });
@@ -80,7 +83,7 @@ export default function LeadsDashboard() {
 
   // Advanced Date Formatter to catch old and new formats
   const formatDate = (lead) => {
-    const rawDate = lead.createdAt || lead.date;
+    const rawDate = lead.createdAt || lead.createdDate || lead.date;
     if (!rawDate) return "No Date Recorded";
     if (rawDate.toDate) return rawDate.toDate().toLocaleDateString('en-IN');
     if (typeof rawDate === 'string') return rawDate;
