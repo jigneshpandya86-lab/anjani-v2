@@ -2,6 +2,9 @@ name: Build Android APK (Capacitor)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build_apk:
@@ -25,6 +28,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Lint
+        run: npm run lint
 
       - name: Install Capacitor tooling
         run: npm install --no-save @capacitor/core @capacitor/cli @capacitor/android
@@ -62,7 +68,7 @@ jobs:
             echo "$FILE already exists, skipping"
           fi
 
-      - name: Ensure Android permissions (File, Camera, Location, Notifications)
+      - name: Ensure Android permissions (SMS, File, Camera, Location, Notifications)
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
 
@@ -72,6 +78,11 @@ jobs:
               sed -i '/<application/i \    <uses-permission android:name="'"$permission"'" />' "$MANIFEST"
             fi
           }
+
+          # SMS
+          add_permission "android.permission.SEND_SMS"
+          add_permission "android.permission.READ_SMS"
+          add_permission "android.permission.RECEIVE_SMS"
 
           # Camera
           add_permission "android.permission.CAMERA"

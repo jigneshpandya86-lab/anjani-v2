@@ -80,27 +80,6 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
     return 'bg-gray-100 text-gray-700'; 
   };
 
-  const handleDeleteOrder = async (order) => {
-    const orderRef = order.orderId || order.id;
-    const firstConfirm = window.confirm(
-      `Delete order ${orderRef}? This will also run stock/payment reversal logic.`
-    );
-    if (!firstConfirm) return;
-
-    const secondConfirm = window.confirm(
-      `Final confirmation: permanently delete ${orderRef}?`
-    );
-    if (!secondConfirm) return;
-
-    try {
-      await deleteOrder(order.id);
-      toast.success(`Order ${orderRef} deleted`);
-    } catch (error) {
-      console.error('Order delete failed', error);
-      toast.error('Failed to delete order');
-    }
-  };
-
   const attachDeliveryProof = (orderId) => {
     proofInputRefs.current[orderId]?.click();
   };
