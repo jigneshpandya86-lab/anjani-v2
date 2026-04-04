@@ -10,24 +10,11 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore'
+import { isNativeSmsAvailable, sendSmsNative } from './nativeSmsBridge'
 
 const MAX_ATTEMPTS = 3
 const BATCH_LIMIT = 20
 const RETRY_MINUTES = [5, 30, 120]
-
-const getSmsPlugin = () => {
-  const plugins = window?.Capacitor?.Plugins || {}
-  return plugins.SmsBackground || plugins.SMSBackground || null
-}
-
-const sendSmsWithNativePlugin = async ({ to, body }) => {
-  const plugin = getSmsPlugin()
-  if (!plugin?.send) {
-    throw new Error('Native SMS background plugin not available')
-  }
-
-  await plugin.send({ to, body })
-}
 
 const buildSmsText = (job) => {
   if (job.messageIntent === 'ask_to_buy') {
@@ -104,6 +91,10 @@ const fetchDuePendingJobs = async ({ db, now, maxJobs = BATCH_LIMIT }) => {
 }
 
 export const processDueSmsJobs = async ({ db, now = new Date(), maxJobs = BATCH_LIMIT }) => {
+  if (!isNativeSmsAvailable()) {
+    return { processed: 0, sent: 0, failed: 0, retried: 0, skipped: true }
+  }
+
   const dueJobs = await fetchDuePendingJobs({ db, now, maxJobs })
   if (dueJobs.length === 0) {
     return { processed: 0, sent: 0, failed: 0, retried: 0 }
@@ -116,7 +107,7 @@ export const processDueSmsJobs = async ({ db, now = new Date(), maxJobs = BATCH_
   for (const job of dueJobs) {
     try {
       await markJobProcessing({ db, jobId: job.id })
-      await sendSmsWithNativePlugin({
+      await sendSmsNative({
         to: job.recipientMobile,
         body: buildSmsText(job),
       })

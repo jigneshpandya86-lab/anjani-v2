@@ -22,6 +22,7 @@ import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'f
 import { db, auth } from './firebase-config'
 import { signOut, onAuthStateChanged } from 'firebase/auth'
 import { processDueSmsJobs } from './sms/smsSender'
+import { isNativeSmsAvailable } from './sms/nativeSmsBridge'
 import ClientList from './components/ClientList'
 import AddClient from './components/AddClient'
 import OrdersDashboard from './components/OrdersDashboard'
@@ -80,6 +81,7 @@ function App() {
 
   useEffect(() => {
     if (!user) return undefined
+    if (!isNativeSmsAvailable()) return undefined
 
     let stopped = false
     const runSmsProcessor = async () => {
