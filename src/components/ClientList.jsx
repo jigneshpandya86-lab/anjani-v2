@@ -4,12 +4,12 @@ import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, FileTex
 import toast from 'react-hot-toast';
 
 export default function ClientList({ onEdit, onPay, onOrder }) {
-  const { clients, updateClient, generateLegacyClientIds } = useClientStore();
+  const { clients, updateClient, applyLegacyRateFallback } = useClientStore();
   const [search, setSearch] = useState('');
   const [sortByDue, setSortByDue] = useState(false);
-  const [isGeneratingIds, setIsGeneratingIds] = useState(false);
+  const [isFixingRates, setIsFixingRates] = useState(false);
 
-  const legacyCount = (clients || []).filter((client) => !client.shortId || String(client.shortId).trim() === '').length;
+  const missingRateCount = (clients || []).filter((client) => !Number.isFinite(Number(client.rate)) || Number(client.rate) <= 0).length;
 
   const filtered = (clients || [])
     .filter(c => 
@@ -25,17 +25,17 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
     updateClient(client.id, { active: !client.active });
   };
 
-  const handleGenerateLegacyIds = async () => {
-    if (legacyCount === 0 || isGeneratingIds) return;
+  const handleFixLegacyRates = async () => {
+    if (missingRateCount === 0 || isFixingRates) return;
 
     try {
-      setIsGeneratingIds(true);
-      const updatedCount = await generateLegacyClientIds();
-      toast.success(`Generated IDs for ${updatedCount} legacy client${updatedCount === 1 ? '' : 's'}`);
+      setIsFixingRates(true);
+      const updatedCount = await applyLegacyRateFallback();
+      toast.success(`Updated rate to ₹140 for ${updatedCount} client${updatedCount === 1 ? '' : 's'}`);
     } catch (error) {
-      toast.error(`Unable to generate IDs: ${error.message}`);
+      toast.error(`Unable to update rates: ${error.message}`);
     } finally {
-      setIsGeneratingIds(false);
+      setIsFixingRates(false);
     }
   };
 
@@ -62,18 +62,18 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
           <Flag className="w-4 h-4" />
         </button>
         <button
-          onClick={handleGenerateLegacyIds}
-          disabled={legacyCount === 0 || isGeneratingIds}
+          onClick={handleFixLegacyRates}
+          disabled={missingRateCount === 0 || isFixingRates}
           className={`h-10 px-3 rounded-lg border flex-shrink-0 transition-colors flex items-center gap-1.5 text-xs font-semibold ${
-            legacyCount > 0 && !isGeneratingIds
+            missingRateCount > 0 && !isFixingRates
               ? 'bg-white border-gray-300 text-gray-600 hover:border-[#ff9900] hover:text-[#ff9900]'
               : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
           }`}
-          aria-label="Generate IDs for legacy clients"
-          title={legacyCount > 0 ? `Generate IDs for ${legacyCount} legacy clients` : 'All clients already have IDs'}
+          aria-label="Fix default rate for legacy clients"
+          title={missingRateCount > 0 ? `Update rate to ₹140 for ${missingRateCount} client${missingRateCount === 1 ? '' : 's'}` : 'All clients already have rates'}
         >
           <Fingerprint className="w-4 h-4" />
-          <span>{isGeneratingIds ? 'Generating...' : `Fix IDs (${legacyCount})`}</span>
+          <span>{isFixingRates ? 'Updating...' : `Fix Rates (${missingRateCount})`}</span>
         </button>
       </div>
 

@@ -255,16 +255,17 @@ export const useClientStore = create((set, get) => ({
     });
   },
 
-  generateLegacyClientIds: async () => {
+  applyLegacyRateFallback: async () => {
+    const fallbackRate = 140;
     const customersSnapshot = await getDocs(query(collection(db, 'customers')));
     const updates = customersSnapshot.docs
       .filter((customerDoc) => {
-        const shortId = customerDoc.data()?.shortId;
-        return !shortId || String(shortId).trim() === '';
+        const rate = Number(customerDoc.data()?.rate);
+        return !Number.isFinite(rate) || rate <= 0;
       })
       .map((customerDoc) =>
         updateDoc(doc(db, 'customers', customerDoc.id), {
-          shortId: buildClientShortId(customerDoc.id)
+          rate: fallbackRate
         })
       );
 
