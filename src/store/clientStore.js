@@ -8,6 +8,7 @@ import { db } from '../firebase-config';
 let stockUnsubscribe = null;
 let stockSubscriberCount = 0;
 const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary');
+const RECENT_STOCK_ENTRIES_LIMIT = 15;
 
 const getOrderClientName = async (order, clients = []) => {
   const normalizeName = (value) => {
@@ -128,7 +129,8 @@ export const useClientStore = create((set, get) => ({
             if (primaryDiff !== 0) return primaryDiff;
 
             return getTime(b.createdAt) - getTime(a.createdAt);
-          });
+          })
+          .slice(0, RECENT_STOCK_ENTRIES_LIMIT);
         set({ stockEntries });
       });
     }
