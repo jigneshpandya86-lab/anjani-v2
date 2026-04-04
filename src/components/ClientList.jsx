@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, FileText, UserX, UserCheck, Flag, Fingerprint } from 'lucide-react';
+import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, UserX, UserCheck, Flag, Fingerprint, MessageCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function ClientList({ onEdit, onPay, onOrder }) {
@@ -37,6 +37,15 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
     } finally {
       setIsGeneratingIds(false);
     }
+  };
+
+  const getOutstandingMessage = (client) => {
+    const pendingAmount = Number(client.outstanding || 0).toLocaleString();
+    const clientName = client.name || 'there';
+
+    return encodeURIComponent(
+      `Hi ${clientName}, this is a gentle reminder for your pending payment of ₹${pendingAmount}. Kindly share the payment at your convenience. Thank you.`
+    );
   };
 
   return (
@@ -100,9 +109,20 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
           </div>
 
           <div className="flex justify-between items-center gap-3">
-             <div className="grid grid-cols-5 gap-2 flex-1">
+             <div className="grid grid-cols-6 gap-2 flex-1">
                <a href={`tel:${client.mobile}`} className="flex justify-center p-2 bg-blue-50 text-blue-600 rounded-md"><Phone className="w-4 h-4" /></a>
-               <a href={`https://wa.me/91${client.mobile}`} className="flex justify-center p-2 bg-green-50 text-green-600 rounded-md"><MessageSquare className="w-4 h-4" /></a>
+               <a
+                 href={`https://wa.me/91${client.mobile}?text=${getOutstandingMessage(client)}`}
+                 className="flex justify-center p-2 bg-green-50 text-green-600 rounded-md"
+               >
+                 <MessageSquare className="w-4 h-4" />
+               </a>
+               <a
+                 href={`sms:+91${client.mobile}?body=${getOutstandingMessage(client)}`}
+                 className="flex justify-center p-2 bg-teal-50 text-teal-600 rounded-md"
+               >
+                 <MessageCircle className="w-4 h-4" />
+               </a>
                <button
                  onClick={() => onOrder(client)}
                  className="flex justify-center p-2 bg-orange-50 text-orange-600 rounded-md"
@@ -110,7 +130,6 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
                  <ShoppingCart className="w-4 h-4" />
                </button>
                <button onClick={() => onPay(client)} className="flex justify-center p-2 bg-purple-50 text-purple-600 rounded-md"><IndianRupee className="w-4 h-4" /></button>
-               <button className="flex justify-center p-2 bg-gray-50 text-gray-600 rounded-md"><FileText className="w-4 h-4" /></button>
              </div>
              <div className="text-right min-w-[80px]">
                 <p className="text-[9px] uppercase font-bold text-gray-400 leading-none">Balance</p>
