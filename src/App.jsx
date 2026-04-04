@@ -95,7 +95,9 @@ function App() {
     }
 
     runSmsProcessor()
-    const timer = window.setInterval(runSmsProcessor, 60 * 1000)
+    // Rate limiting: process SMS every 2 minutes (120s) to avoid carrier throttling
+    // This limits max throughput to ~600 SMS/hour (batch size 20, interval 120s)
+    const timer = window.setInterval(runSmsProcessor, 120 * 1000)
     return () => {
       stopped = true
       window.clearInterval(timer)
