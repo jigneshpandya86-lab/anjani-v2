@@ -44,3 +44,20 @@ This repo includes a GitHub Actions workflow at `.github/workflows/android-apk.y
 1. Run the workflow manually from the **Actions** tab (`Build Android APK (Capacitor)`).
 2. Download the `app-debug-apk` artifact.
 3. Install the APK manually on your phone (sideload). This is suitable for personal/internal use and does not require Play Store publishing.
+
+## Firestore data location (orders)
+
+Order details are stored in the `orders` top-level collection in Cloud Firestore (project `anjaniappnew`).
+
+- Create order: app writes to `collection(db, 'orders')`.
+- Read orders list: app queries `collection(db, 'orders')` ordered by `createdAt` (latest first).
+- Update/Delete order: app targets `doc(db, 'orders', <documentId>)`.
+
+The app supports both newer and legacy field names when reading orders:
+
+- Quantity: `qty` (fallback: `boxes`, `quantity`)
+- Date: `date` (fallback: `deliveryDate`, `orderDate`)
+- Time: `time` (fallback: `deliveryTime`)
+- Client ID: `clientId` (fallback: `customerId`)
+- Address: `address` (fallback: `deliveryAddress`, `location`)
+- Map link: `mapLink` (fallback: `googleMap`)
