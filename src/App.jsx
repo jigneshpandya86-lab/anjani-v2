@@ -194,7 +194,7 @@ function App() {
     const blob = new Blob([bytes], { type: 'application/pdf' })
     try {
       return new File([blob], filename, { type: 'application/pdf' })
-    } catch (_) {
+    } catch {
       // Older WebViews may not support File constructor.
       blob.name = filename
       return blob

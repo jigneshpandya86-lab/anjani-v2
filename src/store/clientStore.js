@@ -170,7 +170,6 @@ export const useClientStore = create((set, get) => ({
 
   addStockManual: async (qty, narration) => {
     const parsedQty = Number(qty) || 0;
-    const entryDate = new Date();
     await addDoc(collection(db, 'stock'), {
       qty: parsedQty,
       narration: narration || 'Manual Addition',
@@ -317,9 +316,8 @@ export const useClientStore = create((set, get) => ({
     if (existing && data.status === 'Delivered' && previousStatus !== 'Delivered') {
       const qty = Number(existing.qty || existing.boxes || existing.quantity) || 0;
       const rate = Number(existing.rate) || 0;
-      const orderCode = existing.orderId || id;
       const clientName = await getOrderClientName(existing, get().clients);
-      const deliveredNarration = formatOrderNarration('Order Delivered', orderRef, clientName);
+      const deliveredNarration = formatOrderNarration('Order Delivered', existing.orderId || id, clientName);
 
       // 1. Debit stock
       await addDoc(collection(db, 'stock'), {
@@ -354,46 +352,49 @@ export const useClientStore = create((set, get) => ({
 
   deleteOrder: async (id) => {
     try {
-      const orderRef = doc(db, 'orders', id);
-      const orderSnap = await getDoc(orderRef);
+      const orderDocRef = doc(db, 'orders', id);
+      const orderSnap = await getDoc(orderDocRef);
       if (orderSnap.exists()) {
         const existing = orderSnap.data();
         if (existing.status === 'Delivered') {
-          const reversalQty = Math.abs(Number(existing.qty || 0));
-          const reversalRate = Number(existing.rate || 0);
-          const reversalAmount = reversalQty * reversalRate;
+          const qty = Math.abs(Number(existing.qty || 0));
+          const rate = Number(existing.rate || 0);
+          const amount = qty * rate;
           const reversalClientId = existing.clientId || existing.customerId || '';
           const orderRef = existing.orderId || id;
           const clientName = await getOrderClientName(existing, get().clients);
           const reversalNarration = formatOrderNarration('Order Deleted (Reversal)', orderRef, clientName);
-          const stockEntryDate = new Date();
-          await addDoc(collection(db, 'stock'), {
-            qty: reversalQty,
-            narration: reversalNarration,
-            type: 'reversal',
-            date: stockEntryDate,
-            createdAt: serverTimestamp()
-          });
-          await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(reversalQty) }, { merge: true });
 
-          if (reversalClientId && reversalAmount > 0) {
-            await addDoc(collection(db, 'payments'), {
-              clientId: reversalClientId,
-              amount: reversalAmount,
-              type: 'adjustment',
-              method: 'SYSTEM',
+          // 1. Reverse stock debit
+          if (qty > 0) {
+            await addDoc(collection(db, 'stock'), {
+              qty,
               narration: reversalNarration,
-              date: serverTimestamp(),
+              type: 'reversal',
+              date: new Date(),
               createdAt: serverTimestamp()
             });
+            await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(qty) }, { merge: true });
+          }
 
+          // 2. Reverse payment and customer outstanding
+          if (reversalClientId && amount > 0) {
+            await addDoc(collection(db, 'payments'), {
+              clientId: reversalClientId,
+              amount: -amount,
+              type: 'reversal',
+              method: 'SYSTEM',
+              narration: reversalNarration,
+              date: new Date(),
+              createdAt: serverTimestamp()
+            });
             await updateDoc(doc(db, 'customers', reversalClientId), {
-              outstanding: increment(-reversalAmount)
+              outstanding: increment(-amount)
             });
           }
         }
       }
-      await deleteDoc(orderRef);
+      await deleteDoc(orderDocRef);
     } catch (err) {
       console.error('Delete failed:', err);
       throw err;

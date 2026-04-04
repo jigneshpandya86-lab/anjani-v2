@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
+import toast from 'react-hot-toast';
 import { useClientStore } from '../store/clientStore';
 import { Clock, Copy, Edit2, Trash2, Smartphone, Search, HandCoins, FileText, Paperclip, Loader2 } from 'lucide-react';
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 import { app } from '../firebase-config';
-import toast from 'react-hot-toast';
 
 export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
   const { orders, clients, updateOrder, deleteOrder } = useClientStore();
@@ -54,6 +54,21 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
       msg += `${i+1}. ${getDisplayName(o)} - ${o.qty} Bxs - ${o.date} ${o.time}\n`;
     });
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
+  const handleDelete = async (order) => {
+    const label = order.orderId || order.id;
+    const isDelivered = order.status === 'Delivered';
+    const msg = isDelivered
+      ? `Delete delivered order ${label}? Stock and payment will be reversed.`
+      : `Delete order ${label}? This cannot be undone.`;
+    if (!window.confirm(msg)) return;
+    try {
+      await deleteOrder(order.id);
+      toast.success('Order deleted');
+    } catch {
+      toast.error('Failed to delete order');
+    }
   };
 
   const getStatusColor = (status) => {
@@ -186,9 +201,7 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
                   <button onClick={() => onEdit(order)} className="bg-blue-50 text-blue-500 p-2 rounded-xl"><Edit2 size={16} /></button>
                 )}
                 <button onClick={() => onCopy(order)} className="bg-gray-100 text-gray-500 p-2 rounded-xl"><Copy size={16} /></button>
-                {order.status !== 'Delivered' && (
-                  <button onClick={() => deleteOrder(order.id)} className="bg-red-50 text-red-500 p-2 rounded-xl"><Trash2 size={16} /></button>
-                )}
+                <button onClick={() => handleDelete(order)} className="bg-red-50 text-red-500 p-2 rounded-xl"><Trash2 size={16} /></button>
               </div>
 
               {order.status === 'Pending' && (
