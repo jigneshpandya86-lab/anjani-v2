@@ -41,6 +41,27 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Create missing kotlin-alignment.init.gradle
+        run: |
+          FILE="android/kotlin-alignment.init.gradle"
+          if [ ! -f "$FILE" ]; then
+            cat > "$FILE" << 'EOF'
+          // Auto-generated: aligns all Kotlin stdlib transitive dependencies to one version
+          allprojects {
+              configurations.all {
+                  resolutionStrategy.eachDependency { details ->
+                      if (details.requested.group == 'org.jetbrains.kotlin') {
+                          details.useVersion "1.9.24"
+                      }
+                  }
+              }
+          }
+          EOF
+            echo "Created $FILE"
+          else
+            echo "$FILE already exists, skipping"
+          fi
+
       - name: Ensure Android permissions (File, Camera, Location, Notifications)
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
