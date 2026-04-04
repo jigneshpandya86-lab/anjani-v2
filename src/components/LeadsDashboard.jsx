@@ -36,7 +36,7 @@ export default function LeadsDashboard() {
   const sendSMS = (lead) => {
     const displayName = lead.name || 'there';
     const msg = `Hi ${displayName}, refresh your guests with Annapurna Foods 200ml water bottles. Premium quality for events in Vadodara. Call us now!`;
-    window.open(`sms:+91${lead.mobile}?body=${encodeURIComponent(msg)}`, '_blank');
+    window.location.href = `sms:+91${lead.mobile}?body=${encodeURIComponent(msg)}`;
   };
 
 
