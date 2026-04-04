@@ -15,11 +15,13 @@ import {
   CreditCard,
   Users,
   TrendingUp,
-  LogOut
+  LogOut,
+  MessageSquare
 } from 'lucide-react'
 import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'firebase/firestore'
 import { db, auth } from './firebase-config'
 import { signOut, onAuthStateChanged } from 'firebase/auth'
+import { processDueSmsJobs } from './sms/smsSender'
 import ClientList from './components/ClientList'
 import AddClient from './components/AddClient'
 import OrdersDashboard from './components/OrdersDashboard'
@@ -28,6 +30,7 @@ import PaymentDashboard from './components/PaymentDashboard'
 import PaymentModal from './components/PaymentModal'
 import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
+import SmsAutomationSettings from './components/SmsAutomationSettings'
 import Login from './components/Login'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
@@ -75,6 +78,27 @@ function App() {
     }
   }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, user])
 
+  useEffect(() => {
+    if (!user) return undefined
+
+    let stopped = false
+    const runSmsProcessor = async () => {
+      if (stopped) return
+      try {
+        await processDueSmsJobs({ db })
+      } catch (error) {
+        console.error('SMS background processor failed', error)
+      }
+    }
+
+    runSmsProcessor()
+    const timer = window.setInterval(runSmsProcessor, 60 * 1000)
+    return () => {
+      stopped = true
+      window.clearInterval(timer)
+    }
+  }, [user])
+
   // AUTH: signs out the current user and clears session
   const handleLogout = async () => {
     try {
@@ -92,7 +116,10 @@ function App() {
     { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
   ]
 
-  const drawerNavItems = navItems
+  const drawerNavItems = [
+    ...navItems,
+    { id: 'sms-settings', label: 'SMS Settings', icon: <MessageSquare size={20} /> }
+  ]
 
   const drawerQuickActions = [
     {
@@ -661,6 +688,7 @@ function App() {
             </div>
           )}
           {activeTab === 'leads' && <LeadsDashboard />}
+          {activeTab === 'sms-settings' && <SmsAutomationSettings />}
         </div>
       </div>
 
