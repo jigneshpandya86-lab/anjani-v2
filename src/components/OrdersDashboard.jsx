@@ -1,11 +1,17 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Clock, Copy, Edit2, Trash2, Smartphone, Search, HandCoins, FileText } from 'lucide-react';
+import { Clock, Copy, Edit2, Trash2, Smartphone, Search, HandCoins, FileText, Paperclip, Loader2 } from 'lucide-react';
+import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
+import { app } from '../firebase-config';
+import toast from 'react-hot-toast';
 
 export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
   const { orders, clients, updateOrder, deleteOrder } = useClientStore();
   const [filter, setFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [uploadingProofOrderId, setUploadingProofOrderId] = useState('');
+  const proofInputRefs = useRef({});
+  const storage = getStorage(app);
 
   // Robust Client Fetcher
   const getDisplayName = (order) => {
@@ -55,6 +61,37 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
     if(status === 'Confirmed') return 'bg-blue-100 text-blue-700';
     if(status === 'Delivered') return 'bg-green-100 text-green-700';
     return 'bg-gray-100 text-gray-700'; 
+  };
+
+  const attachDeliveryProof = (orderId) => {
+    proofInputRefs.current[orderId]?.click();
+  };
+
+  const uploadDeliveryProof = async (order, event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadingProofOrderId(order.id);
+    try {
+      const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const proofPath = `delivery-proofs/${order.id}/${Date.now()}-${sanitizedName}`;
+      const proofRef = ref(storage, proofPath);
+
+      await uploadBytes(proofRef, file);
+      const proofUrl = await getDownloadURL(proofRef);
+      await updateOrder(order.id, {
+        proofUrl,
+        proofFileName: file.name,
+        proofUploadedAt: new Date().toISOString(),
+      });
+      toast.success('Delivery proof attached');
+    } catch (error) {
+      console.error('Proof upload failed', error);
+      toast.error('Failed to upload delivery proof');
+    } finally {
+      setUploadingProofOrderId('');
+      event.target.value = '';
+    }
   };
 
 
@@ -128,6 +165,23 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
             <div className="flex justify-between items-center gap-2">
               <div className="flex gap-2">
                 <button onClick={() => shareOrder(order)} className="bg-[#25D366]/10 text-[#25D366] p-2 rounded-xl"><Smartphone size={16} /></button>
+                <button
+                  onClick={() => attachDeliveryProof(order.id)}
+                  disabled={uploadingProofOrderId === order.id}
+                  className={`${order.proofUrl ? 'bg-blue-100 text-blue-600' : 'bg-amber-50 text-amber-600'} p-2 rounded-xl`}
+                  title={order.proofUrl ? 'Replace delivery proof photo' : 'Attach delivery proof photo'}
+                >
+                  {uploadingProofOrderId === order.id ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
+                </button>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  ref={(el) => {
+                    proofInputRefs.current[order.id] = el;
+                  }}
+                  onChange={(event) => uploadDeliveryProof(order, event)}
+                />
                 {order.status !== 'Delivered' && (
                   <button onClick={() => onEdit(order)} className="bg-blue-50 text-blue-500 p-2 rounded-xl"><Edit2 size={16} /></button>
                 )}
@@ -143,8 +197,8 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
               {order.status === 'Confirmed' && (
                 <button onClick={() => updateOrder(order.id, {status: 'Delivered'})} className="bg-green-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-sm">Mark Delivered</button>
               )}
-              {order.status === 'Delivered' && order.proofUrl && (
-                <a href={order.proofUrl} target="_blank" className="text-[10px] font-black text-blue-500 underline">View Proof</a>
+              {order.proofUrl && (
+                <a href={order.proofUrl} target="_blank" rel="noreferrer" className="text-[10px] font-black text-blue-500 underline">View Proof</a>
               )}
             </div>
           </div>
