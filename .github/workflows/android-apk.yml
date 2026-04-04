@@ -41,6 +41,16 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Align Kotlin dependency versions
+        run: |
+          BUILD_GRADLE="android/build.gradle"
+
+          if ! grep -q "resolutionStrategy.eachDependency" "$BUILD_GRADLE"; then
+            perl -0pi -e 's/allprojects \{\n    repositories \{\n        google\(\)\n        mavenCentral\(\)\n    \}\n\}/allprojects {\n    repositories {\n        google()\n        mavenCentral()\n    }\n\n    configurations.all {\n        resolutionStrategy.eachDependency { details ->\n            if (details.requested.group == "org.jetbrains.kotlin") {\n                details.useVersion rootProject.ext.kotlin_version\n            }\n        }\n    }\n}/s' "$BUILD_GRADLE"
+          fi
+
+          echo "Kotlin dependency alignment configured in $BUILD_GRADLE"
+
       - name: Ensure Android permissions (SMS, Location, Camera)
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
