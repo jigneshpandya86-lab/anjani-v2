@@ -18,7 +18,7 @@ import {
   TrendingUp,
   LogOut
 } from 'lucide-react'
-import { collection, getDocs, query } from 'firebase/firestore'
+import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore'
 import { db, auth } from './firebase-config'
 import { signOut, onAuthStateChanged } from 'firebase/auth'
 import ClientList from './components/ClientList'
@@ -450,7 +450,7 @@ function App() {
 
       const { startDate, endDate, label: dateRangeLabel } = getLedgerDateRange(ledgerDateRange)
 
-      const paymentsSnap = await getDocs(query(collection(db, 'payments')))
+      const paymentsSnap = await getDocs(query(collection(db, 'payments'), orderBy('date', 'desc'), limit(500)))
       const payments = paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
       if (payments.length === 0) {
         toast.error('No ledger entries available for report.')
