@@ -70,7 +70,7 @@ export const useClientStore = create((set, get) => ({
     stockSubscriberCount += 1;
 
     if (!stockUnsubscribe) {
-      const q = query(collection(db, 'stock'));
+      const q = query(collection(db, 'stock'), orderBy('date', 'desc'), limit(300));
       stockUnsubscribe = onSnapshot(q, (snapshot) => {
         const getTime = (value) => {
           if (!value) return 0;
@@ -245,7 +245,7 @@ export const useClientStore = create((set, get) => ({
   },
 
   fetchClients: () => {
-    const q = query(collection(db, 'customers'));
+    const q = query(collection(db, 'customers'), orderBy('name'), limit(200));
     return onSnapshot(q, (snapshot) => {
       const clients = snapshot.docs.map(doc => ({ 
         id: doc.id, ...doc.data(),
