@@ -349,6 +349,9 @@ export const useClientStore = create((set, get) => ({
         const existing = orderSnap.data();
         if (existing.status === 'Delivered') {
           const reversalQty = Math.abs(Number(existing.qty || 0));
+          const reversalRate = Number(existing.rate || 0);
+          const reversalAmount = reversalQty * reversalRate;
+          const reversalClientId = existing.clientId || existing.customerId || '';
           const orderRef = existing.orderId || id;
           const clientName = await getOrderClientName(existing, get().clients);
           const reversalNarration = formatOrderNarration('Order Deleted (Reversal)', orderRef, clientName);
@@ -359,6 +362,22 @@ export const useClientStore = create((set, get) => ({
             date: serverTimestamp()
           });
           await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(reversalQty) }, { merge: true });
+
+          if (reversalClientId && reversalAmount > 0) {
+            await addDoc(collection(db, 'payments'), {
+              clientId: reversalClientId,
+              amount: reversalAmount,
+              type: 'adjustment',
+              method: 'SYSTEM',
+              narration: reversalNarration,
+              date: serverTimestamp(),
+              createdAt: serverTimestamp()
+            });
+
+            await updateDoc(doc(db, 'customers', reversalClientId), {
+              outstanding: increment(-reversalAmount)
+            });
+          }
         }
       }
       await deleteDoc(orderRef);
