@@ -75,7 +75,7 @@ export default function PaymentDashboard() {
     .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
 
   return (
-    <div className="space-y-4 pb-20">
+    <div className="space-y-2.5 pb-20">
       <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#0f1f46] via-[#143366] to-[#1e4a88] p-6 text-white shadow-[0_20px_40px_rgba(15,31,70,0.3)]">
         <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/10 blur-[2px]" />
         <div className="pointer-events-none absolute -left-16 bottom-2 h-28 w-28 rounded-full bg-white/10" />
@@ -105,7 +105,7 @@ export default function PaymentDashboard() {
         </div>
       )}
 
-      {history.map(tx => {
+      {history.map((tx, index) => {
         const isCharge = tx.type === 'invoice';
         const isAdjustment = tx.type === 'adjustment';
         
@@ -134,44 +134,46 @@ export default function PaymentDashboard() {
 
         const orderId = getOrderId(tx);
 
+        const isAlternateRow = index % 2 === 1;
+
         return (
           <div
             key={tx.id}
-            className={`relative overflow-hidden bg-gradient-to-r from-white via-white to-slate-50/90 p-4 rounded-[1.6rem] shadow-[0_10px_24px_rgba(15,23,42,0.08)] border border-white/70 flex justify-between items-start border-l-[5px] ${borderColor} transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(15,23,42,0.12)]`}
+            className={`relative overflow-hidden ${isAlternateRow ? 'bg-slate-50/95' : 'bg-white'} px-3 py-2.5 rounded-2xl shadow-[0_6px_18px_rgba(15,23,42,0.06)] border border-white/80 flex justify-between items-start border-l-4 ${borderColor} transition-all hover:-translate-y-0.5 hover:shadow-[0_10px_20px_rgba(15,23,42,0.1)]`}
           >
-            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.6),transparent_35%,rgba(148,163,184,0.06))]" />
-            <div className="flex gap-3 items-start min-w-0">
-              <div className={`p-2.5 rounded-2xl shadow-inner ${iconBg} shrink-0`}>
-                <Icon size={18} />
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.5),transparent_35%,rgba(148,163,184,0.04))]" />
+            <div className="flex gap-2.5 items-start min-w-0">
+              <div className={`p-2 rounded-xl shadow-inner ${iconBg} shrink-0`}>
+                <Icon size={15} />
               </div>
               <div className="min-w-0 relative">
-                <p className="font-extrabold text-gray-900 leading-tight flex items-center gap-2 flex-wrap">
+                <p className="font-extrabold text-base text-gray-900 leading-tight flex items-center gap-1.5 flex-wrap">
                   <span className="truncate">{getClientName(tx.clientId)}</span>
                   {orderId && (
-                    <span className="text-[10px] font-semibold text-gray-500 tracking-wide bg-gray-100 px-2 py-0.5 rounded-full">
+                    <span className="text-[10px] font-semibold text-gray-500 tracking-wide bg-gray-100 px-1.5 py-0.5 rounded-full">
                       {orderId}
                     </span>
                   )}
                 </p>
-                <p className="text-[11px] text-gray-500 flex items-center gap-1 uppercase tracking-wide font-bold mt-1">
-                  <Calendar size={11} /> {formatDate(tx)} • {tx.method || 'SYSTEM'}
+                <p className="text-[11px] text-gray-500 flex items-center gap-1 uppercase tracking-wide font-bold mt-0.5">
+                  <Calendar size={10} /> {formatDate(tx)} • {tx.method || 'SYSTEM'}
                 </p>
               </div>
             </div>
-            <div className="text-right pl-3 shrink-0 relative">
+            <div className="text-right pl-2 shrink-0 relative">
               <button
                 type="button"
                 onClick={() => handleDeletePayment(tx)}
-                className="ml-auto mb-2 flex items-center justify-center rounded-lg bg-red-50 p-1.5 text-red-500 transition-colors hover:bg-red-100"
+                className="ml-auto mb-1.5 flex items-center justify-center rounded-lg bg-red-50 p-1 text-red-500 transition-colors hover:bg-red-100"
                 title="Delete transaction"
                 aria-label={`Delete transaction ${orderId || tx.id}`}
               >
-                <Trash2 size={14} />
+                <Trash2 size={13} />
               </button>
-              <p className={`font-black text-2xl leading-none ${amountColor}`}>
+              <p className={`font-black text-xl leading-none ${amountColor}`}>
                 {sign}₹{tx.amount}
               </p>
-              <p className="mt-2 inline-flex text-[10px] text-gray-600 font-extrabold uppercase tracking-wide bg-gray-100 px-2 py-0.5 rounded-full">
+              <p className="mt-1 inline-flex text-[9px] text-gray-600 font-extrabold uppercase tracking-wide bg-gray-100 px-1.5 py-0.5 rounded-full">
                 {label}
               </p>
             </div>
