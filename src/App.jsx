@@ -189,6 +189,18 @@ function App() {
   const escapePdfText = (text) => String(text || '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
 
   // Builds a raw single-page PDF from tabular data — works inside Capacitor WebView
+  const createPdfFile = (pdfText, filename) => {
+    const bytes = new TextEncoder().encode(pdfText)
+    const blob = new Blob([bytes], { type: 'application/pdf' })
+    try {
+      return new File([blob], filename, { type: 'application/pdf' })
+    } catch (_) {
+      // Older WebViews may not support File constructor.
+      blob.name = filename
+      return blob
+    }
+  }
+
   const buildTabularReportPdf = ({ title, columns, rows, metadata = [], filename = 'report.pdf' }) => {
     const san = (t) => String(t ?? '').replace(/₹/g, 'Rs.').replace(/[^\x20-\x7E]/g, '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)').slice(0, 60)
     const txt = (x, y, size, t) => `BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${san(t)}) Tj ET`
@@ -242,13 +254,17 @@ function App() {
     pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`
     for (let i = 1; i <= objs.length; i++) pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`
     pdf += `trailer << /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`
-    return new File([pdf], filename, { type: 'application/pdf' })
+    return createPdfFile(pdf, filename)
   }
 
   // Share PDF via native share sheet (WhatsApp, Drive, etc.) or fall back to download
   const shareOrDownloadPdf = async (file, shareTitle = '', shareText = '') => {
     try {
-      if (navigator.share) {
+      const canShareWithFile = Boolean(
+        navigator.share &&
+        (!navigator.canShare || navigator.canShare({ files: [file] }))
+      )
+      if (canShareWithFile) {
         await navigator.share({ title: shareTitle, text: shareText, files: [file] })
         toast.success('PDF ready — select WhatsApp or any app to share.')
         return
@@ -259,12 +275,20 @@ function App() {
     const url = URL.createObjectURL(file)
     const a = document.createElement('a')
     a.href = url
-    a.download = file.name
+    a.download = file?.name || 'invoice.pdf'
+    a.target = '_blank'
+    a.rel = 'noopener'
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
+    // Android WebView/Chrome can ignore downloads from blob URLs; open in a new tab as fallback.
+    setTimeout(() => {
+      if (!document.hidden) {
+        window.open(url, '_blank', 'noopener')
+      }
+    }, 150)
     setTimeout(() => URL.revokeObjectURL(url), 1000)
-    toast.success('PDF downloaded.')
+    toast.success('PDF generated.')
   }
 
   const isMobileOrNative = Boolean(window?.Capacitor?.isNativePlatform?.()) || /Android|iPhone|iPad/i.test(navigator.userAgent)
@@ -338,7 +362,7 @@ function App() {
       pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`
     }
     pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`
-    return new File([pdf], `invoice-${orderId}.pdf`, { type: 'application/pdf' })
+    return createPdfFile(pdf, `invoice-${orderId}.pdf`)
   }
 
   const handleRecordPaymentFromOrder = (order) => {

@@ -51,8 +51,8 @@ export default function PaymentDashboard() {
   return (
     <div className="space-y-4 pb-20">
       <div className="flex items-center justify-between px-1">
-        <h2 className="text-xl font-black text-gray-800 uppercase tracking-tight">Payment Ledger</h2>
-        <div className="flex items-center gap-1 text-[10px] bg-[#ff9900]/10 text-[#ff9900] px-2 py-1 rounded-full font-black uppercase">
+        <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Payment Ledger</h2>
+        <div className="flex items-center gap-1 text-[10px] bg-[#ff9900]/10 text-[#ff9900] px-2 py-1 rounded-full font-black uppercase shadow-sm">
           <Clock size={12} /> Recent: {TRANSACTION_FEED_LIMIT}
         </div>
       </div>
