@@ -51,8 +51,8 @@ export default function PaymentDashboard() {
   return (
     <div className="space-y-4 pb-20">
       <div className="flex items-center justify-between px-1">
-        <h2 className="text-xl font-black text-gray-800 uppercase tracking-tight">Payment Ledger</h2>
-        <div className="flex items-center gap-1 text-[10px] bg-[#ff9900]/10 text-[#ff9900] px-2 py-1 rounded-full font-black uppercase">
+        <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Payment Ledger</h2>
+        <div className="flex items-center gap-1 text-[10px] bg-[#ff9900]/10 text-[#ff9900] px-2 py-1 rounded-full font-black uppercase shadow-sm">
           <Clock size={12} /> Recent: {TRANSACTION_FEED_LIMIT}
         </div>
       </div>
@@ -93,30 +93,33 @@ export default function PaymentDashboard() {
         const orderId = getOrderId(tx);
 
         return (
-          <div key={tx.id} className={`bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center border-l-4 ${borderColor}`}>
-            <div className="flex gap-3 items-center">
-              <div className={`p-2 rounded-full ${iconBg}`}>
-                <Icon size={18} />
+          <div
+            key={tx.id}
+            className={`bg-white/95 backdrop-blur-sm p-4 rounded-2xl shadow-[0_8px_24px_rgba(15,23,42,0.05)] border border-slate-100 flex justify-between items-center border-l-[5px] ${borderColor} transition-all duration-200 hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)] hover:-translate-y-0.5`}
+          >
+            <div className="flex gap-3 items-center min-w-0">
+              <div className={`p-2.5 rounded-xl ring-1 ring-black/5 ${iconBg}`}>
+                <Icon size={17} />
               </div>
-              <div>
-                <p className="font-bold text-gray-900 leading-tight flex items-center gap-2">
-                  <span>{getClientName(tx.clientId)}</span>
+              <div className="min-w-0">
+                <p className="font-extrabold text-slate-900 leading-tight flex items-center gap-2 min-w-0">
+                  <span className="truncate">{getClientName(tx.clientId)}</span>
                   {orderId && (
-                    <span className="text-[10px] font-medium text-gray-400 tracking-wide">
+                    <span className="text-[10px] font-semibold text-slate-400 tracking-wide bg-slate-100 px-2 py-0.5 rounded-full shrink-0">
                       {orderId}
                     </span>
                   )}
                 </p>
-                <p className="text-[10px] text-gray-400 flex items-center gap-1 uppercase tracking-widest font-black mt-1">
+                <p className="text-[10px] text-slate-500 flex items-center gap-1 uppercase tracking-wider font-bold mt-1">
                   <Calendar size={10} /> {formatDate(tx)} • {tx.method || 'SYSTEM'}
                 </p>
               </div>
             </div>
             <div className="text-right">
-              <p className={`font-black text-lg italic ${amountColor}`}>
+              <p className={`font-black text-2xl leading-none tabular-nums ${amountColor}`}>
                 {sign}₹{tx.amount}
               </p>
-              <p className="text-[9px] text-gray-400 font-bold uppercase tracking-tighter">
+              <p className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wide mt-1">
                 {label}
               </p>
             </div>
