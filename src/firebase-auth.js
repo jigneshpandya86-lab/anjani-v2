@@ -1,5 +1,6 @@
 import {
   GoogleAuthProvider,
+  createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
@@ -32,6 +33,10 @@ export const signInWithEmailPassword = async (email, password) => {
   return result.user
 }
 
+export const signUpWithEmailPassword = async (email, password) => {
+  const result = await createUserWithEmailAndPassword(auth, email, password)
+  return result.user
+}
 
 export const signOutUser = async () => {
   await signOut(auth)
