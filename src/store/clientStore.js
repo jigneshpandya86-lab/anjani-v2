@@ -399,8 +399,8 @@ export const useClientStore = create((set, get) => ({
       if (orderSnap.exists()) {
         const existing = orderSnap.data();
         if (existing.status === 'Delivered') {
-          const reversalQty = Math.abs(Number(existing.qty || 0));
-          const reversalRate = Number(existing.rate || 0);
+          const reversalQty = Math.abs(Number(existing.qty || existing.boxes || existing.quantity || 0));
+          const reversalRate = Number(existing.rate || existing.price || 0);
           const reversalAmount = reversalQty * reversalRate;
           const reversalClientId = existing.clientId || existing.customerId || '';
           const orderRef = existing.orderId || id;

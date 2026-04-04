@@ -36,9 +36,11 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
     const mobile = getDisplayMobile(o);
     const matchesStatus = filter === 'All' || o.status === filter;
     const searchLower = searchQuery.toLowerCase();
+    const qtyText = String(o.qty ?? o.boxes ?? o.quantity ?? '');
     const matchesSearch = name.toLowerCase().includes(searchLower) ||
                           (o.orderId || '').toLowerCase().includes(searchLower) ||
-                          mobile.includes(searchLower);
+                          mobile.includes(searchLower) ||
+                          qtyText.includes(searchLower);
     return matchesStatus && matchesSearch;
   });
 
@@ -61,6 +63,27 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
     if(status === 'Confirmed') return 'bg-blue-100 text-blue-700';
     if(status === 'Delivered') return 'bg-green-100 text-green-700';
     return 'bg-gray-100 text-gray-700'; 
+  };
+
+  const handleDeleteOrder = async (order) => {
+    const orderRef = order.orderId || order.id;
+    const firstConfirm = window.confirm(
+      `Delete order ${orderRef}? This will also run stock/payment reversal logic.`
+    );
+    if (!firstConfirm) return;
+
+    const secondConfirm = window.confirm(
+      `Final confirmation: permanently delete ${orderRef}?`
+    );
+    if (!secondConfirm) return;
+
+    try {
+      await deleteOrder(order.id);
+      toast.success(`Order ${orderRef} deleted`);
+    } catch (error) {
+      console.error('Order delete failed', error);
+      toast.error('Failed to delete order');
+    }
   };
 
   const attachDeliveryProof = (orderId) => {
@@ -131,6 +154,9 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
                 <h3 className="font-black text-gray-900 text-lg mt-2 leading-none">{getDisplayName(order)}</h3>
                 <div className="mt-1 flex items-center gap-2 flex-wrap">
                   <p className="text-[10px] text-gray-400 font-bold">ID: {order.orderId || 'OLD RECORD'}</p>
+                  <p className="text-[10px] text-gray-400 font-semibold">
+                    Doc: {order.id}
+                  </p>
                   <button
                     type="button"
                     onClick={() => onRecordPayment?.(order)}
@@ -187,7 +213,7 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
                 )}
                 <button onClick={() => onCopy(order)} className="bg-gray-100 text-gray-500 p-2 rounded-xl"><Copy size={16} /></button>
                 {order.status !== 'Delivered' && (
-                  <button onClick={() => deleteOrder(order.id)} className="bg-red-50 text-red-500 p-2 rounded-xl"><Trash2 size={16} /></button>
+                  <button onClick={() => handleDeleteOrder(order)} className="bg-red-50 text-red-500 p-2 rounded-xl"><Trash2 size={16} /></button>
                 )}
               </div>
 
