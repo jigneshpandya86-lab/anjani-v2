@@ -2,9 +2,13 @@ import {
   addDoc,
   collection,
   doc,
+  getDocs,
   getDoc,
+  query,
   serverTimestamp,
   Timestamp,
+  updateDoc,
+  where,
 } from 'firebase/firestore'
 
 export const TASK_TYPES = {
@@ -131,4 +135,33 @@ export const enqueueSmsJobsForEvent = async ({
   }
 
   return { queuedCount: jobs.length, jobs }
+}
+
+export const cancelPendingSmsJobsForEntity = async ({
+  db,
+  taskType,
+  entityId,
+  reason = 'cancelled_by_business_rule',
+}) => {
+  if (!taskType || !entityId) {
+    return { cancelledCount: 0 }
+  }
+
+  const q = query(
+    collection(db, 'sms_jobs'),
+    where('taskType', '==', taskType),
+    where('entityId', '==', entityId),
+    where('status', '==', 'pending')
+  )
+  const snap = await getDocs(q)
+
+  for (const row of snap.docs) {
+    await updateDoc(row.ref, {
+      status: 'cancelled',
+      cancelReason: reason,
+      updatedAt: serverTimestamp(),
+    })
+  }
+
+  return { cancelledCount: snap.size }
 }
