@@ -3,6 +3,7 @@ import { collection, query, onSnapshot, deleteDoc, doc, addDoc, serverTimestamp 
 import { db } from '../firebase-config';
 import { MessageSquare, Send, User, Phone, Sparkles, Trash2, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { TASK_TYPES, cancelPendingSmsJobsForEntity, enqueueSmsJobsForEvent } from '../sms/smsScheduler';
 
 export default function LeadsDashboard() {
   const [leads, setLeads] = useState([]);
@@ -45,6 +46,12 @@ export default function LeadsDashboard() {
 
   const deleteLead = async (leadId) => {
     try {
+      await cancelPendingSmsJobsForEntity({
+        db,
+        taskType: TASK_TYPES.LEADS,
+        entityId: leadId,
+        reason: 'lead_deleted',
+      });
       await deleteDoc(doc(db, 'leads', leadId));
     } catch (error) {
       console.error('Failed to delete lead:', error);
@@ -63,11 +70,18 @@ export default function LeadsDashboard() {
 
     setIsSavingLead(true);
     try {
-      await addDoc(collection(db, 'leads'), {
+      const leadRef = await addDoc(collection(db, 'leads'), {
         name,
         mobile,
         source: 'manual',
         createdAt: serverTimestamp(),
+      });
+      await enqueueSmsJobsForEvent({
+        db,
+        taskType: TASK_TYPES.LEADS,
+        entityId: leadRef.id,
+        recipientMobile: mobile,
+        occurredAt: new Date(),
       });
       toast.success('Lead added successfully');
       setNewLeadName('');
