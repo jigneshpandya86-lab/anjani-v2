@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useClientStore } from '../store/clientStore';
+import toast from 'react-hot-toast';
 import { collection, query, onSnapshot, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase-config';
-import { IndianRupee, Calendar, Clock, ShoppingBag, RotateCcw } from 'lucide-react';
+import { IndianRupee, Calendar, Clock, ShoppingBag, RotateCcw, Trash2 } from 'lucide-react';
 
 const TRANSACTION_FEED_LIMIT = 15;
 
 export default function PaymentDashboard() {
   const [history, setHistory] = useState([]);
-  const { clients } = useClientStore();
+  const { clients, deletePayment } = useClientStore();
 
   useEffect(() => {
     const q = query(
@@ -40,6 +41,27 @@ export default function PaymentDashboard() {
     return match ? match[0].toUpperCase() : '';
   };
 
+
+  const handleDeletePayment = async (tx) => {
+    const transactionRef = tx.orderId || tx.id;
+    const firstConfirm = window.confirm(
+      `Delete transaction ${transactionRef}? This will update the client balance.`
+    );
+    if (!firstConfirm) return;
+
+    const secondConfirm = window.confirm(
+      `Final confirmation: permanently delete ${transactionRef}?`
+    );
+    if (!secondConfirm) return;
+
+    try {
+      await deletePayment(tx.id);
+      toast.success(`Transaction ${transactionRef} deleted`);
+    } catch (error) {
+      console.error('Payment delete failed', error);
+      toast.error('Failed to delete transaction');
+    }
+  };
   const formatDate = (tx) => {
     const rawDate = tx.date || tx.paymentDate || tx.createdAt;
     if (!rawDate) return "No Date Found";
@@ -116,6 +138,15 @@ export default function PaymentDashboard() {
               </div>
             </div>
             <div className="text-right pl-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => handleDeletePayment(tx)}
+                className="ml-auto mb-2 flex items-center justify-center rounded-lg bg-red-50 p-1.5 text-red-500 transition-colors hover:bg-red-100"
+                title="Delete transaction"
+                aria-label={`Delete transaction ${orderId || tx.id}`}
+              >
+                <Trash2 size={14} />
+              </button>
               <p className={`font-black text-2xl leading-none ${amountColor}`}>
                 {sign}₹{tx.amount}
               </p>

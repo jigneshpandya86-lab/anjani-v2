@@ -265,6 +265,30 @@ export const useClientStore = create((set, get) => ({
     }
   },
 
+  deletePayment: async (paymentId) => {
+    const paymentRef = doc(db, 'payments', paymentId);
+    const paymentSnap = await getDoc(paymentRef);
+    if (!paymentSnap.exists()) return;
+
+    const payment = paymentSnap.data();
+    const amount = Number(payment.amount) || 0;
+
+    let outstandingDelta = -amount;
+    if (payment.type === 'invoice') {
+      outstandingDelta = amount;
+    } else if (payment.type === 'reversal') {
+      outstandingDelta = amount;
+    }
+
+    if (payment.clientId && outstandingDelta !== 0) {
+      await updateDoc(doc(db, 'customers', payment.clientId), {
+        outstanding: increment(-outstandingDelta)
+      });
+    }
+
+    await deleteDoc(paymentRef);
+  },
+
   fetchClients: () => {
     const q = query(collection(db, 'customers'), orderBy('name'), limit(200));
     return onSnapshot(q, (snapshot) => {
