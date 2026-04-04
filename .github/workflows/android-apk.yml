@@ -41,30 +41,7 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Prepare Gradle init script for Kotlin alignment
-        run: |
-          KOTLIN_VERSION="$(grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' android/variables.gradle | head -n1)"
-          KOTLIN_VERSION="${KOTLIN_VERSION:-1.8.22}"
-
-          cat > android/kotlin-alignment.init.gradle <<EOF
-
-// kotlin-version-alignment-init
-gradle.projectsLoaded {
-    rootProject.allprojects { project ->
-        project.configurations.configureEach {
-            resolutionStrategy.eachDependency { details ->
-                if (details.requested.group == "org.jetbrains.kotlin") {
-                    details.useVersion("$KOTLIN_VERSION")
-                }
-            }
-        }
-    }
-}
-EOF
-
-          echo "Kotlin alignment init script prepared with version: $KOTLIN_VERSION"
-
-      - name: Ensure Android permissions (SMS, Location, Camera)
+      - name: Ensure Android permissions (File, Camera, Location, Notifications)
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
 
@@ -75,10 +52,26 @@ EOF
             fi
           }
 
-          add_permission "android.permission.SEND_SMS"
+          # Camera
           add_permission "android.permission.CAMERA"
+
+          # Location
           add_permission "android.permission.ACCESS_COARSE_LOCATION"
           add_permission "android.permission.ACCESS_FINE_LOCATION"
+
+          # File / Storage (pre-Android 13)
+          add_permission "android.permission.READ_EXTERNAL_STORAGE"
+          add_permission "android.permission.WRITE_EXTERNAL_STORAGE"
+
+          # File / Storage (Android 13+)
+          add_permission "android.permission.READ_MEDIA_IMAGES"
+          add_permission "android.permission.READ_MEDIA_VIDEO"
+          add_permission "android.permission.READ_MEDIA_AUDIO"
+
+          # Notifications (Android 13+)
+          add_permission "android.permission.POST_NOTIFICATIONS"
+          add_permission "android.permission.VIBRATE"
+          add_permission "android.permission.RECEIVE_BOOT_COMPLETED"
 
           echo "Updated permissions in $MANIFEST"
 
