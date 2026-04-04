@@ -49,7 +49,6 @@ function App() {
 
   // Monitor Firebase auth state
   useEffect(() => {
-    setAuthLoading(true)
     const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
       setAuthLoading(false)
@@ -77,7 +76,7 @@ function App() {
     try {
       await signOut(auth)
       toast.success('Signed out successfully')
-    } catch (error) {
+    } catch {
       toast.error('Failed to sign out')
     }
   }

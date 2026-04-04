@@ -316,7 +316,8 @@ export const useClientStore = create((set, get) => ({
         qty: -qty,
         narration: deliveredNarration,
         type: 'dispatch',
-        date: serverTimestamp()
+        date: new Date(),
+        createdAt: serverTimestamp()
       });
       await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(-qty) }, { merge: true });
 
