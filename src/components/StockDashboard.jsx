@@ -116,8 +116,8 @@ export default function StockDashboard() {
   return (
     <div className="space-y-4 pb-20">
       {/* Stock Summary + Date Range Filter (single line, light theme) */}
-      <div className="bg-white p-2.5 rounded-2xl border border-gray-100 shadow-sm flex items-end gap-2">
-        <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 min-w-[115px]">
+      <div className="bg-white/95 backdrop-blur p-3 rounded-2xl border border-gray-200 shadow-sm flex items-end gap-2">
+        <div className="bg-gradient-to-br from-amber-50 to-amber-100/70 border border-amber-200 rounded-xl px-3 py-2.5 min-w-[124px] shadow-inner">
           <p className="text-[9px] font-black uppercase tracking-widest text-amber-700 mb-0.5">Live Total</p>
           <h2 className="text-[1.35rem] leading-none font-black whitespace-nowrap text-gray-900">
             {totalStock.toLocaleString()} <span className="text-[10px] font-semibold text-gray-500">Boxes</span>
@@ -125,12 +125,12 @@ export default function StockDashboard() {
         </div>
         <div className="flex-1 flex items-end gap-2">
           <div className="flex-1 min-w-0">
-            <label className="text-[8px] font-black text-gray-400 uppercase ml-1">Start</label>
-            <input type="date" className="w-full bg-gray-50 px-2 py-1.5 rounded-lg text-[12px] font-bold outline-none border border-gray-100" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            <label className="text-[8px] font-black text-gray-500 uppercase ml-1">Start</label>
+            <input type="date" className="w-full bg-gray-50 px-2 py-1.5 rounded-lg text-[12px] font-bold outline-none border border-gray-200 focus:ring-2 focus:ring-amber-200 focus:border-amber-300 transition" value={startDate} onChange={e => setStartDate(e.target.value)} />
           </div>
           <div className="flex-1 min-w-0">
-            <label className="text-[8px] font-black text-gray-400 uppercase ml-1">End</label>
-            <input type="date" className="w-full bg-gray-50 px-2 py-1.5 rounded-lg text-[12px] font-bold outline-none border border-gray-100" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            <label className="text-[8px] font-black text-gray-500 uppercase ml-1">End</label>
+            <input type="date" className="w-full bg-gray-50 px-2 py-1.5 rounded-lg text-[12px] font-bold outline-none border border-gray-200 focus:ring-2 focus:ring-amber-200 focus:border-amber-300 transition" value={endDate} onChange={e => setEndDate(e.target.value)} />
           </div>
           {(startDate || endDate) && (
             <button
@@ -148,7 +148,7 @@ export default function StockDashboard() {
       </div>
 
       {/* Ledger Entries */}
-      <div className="space-y-1.5 pb-6">
+      <div className="space-y-2 pb-6">
         <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 flex items-center justify-between gap-2 mt-3">
           <span className="flex items-center gap-2">
           <History size={12}/> Movement Log
@@ -158,28 +158,28 @@ export default function StockDashboard() {
           </span>
         </h3>
         {filtered.slice(0, MIN_VISIBLE_ITEMS).map(entry => (
-          <div key={entry.id} className="bg-white p-3 rounded-xl border border-gray-100 flex justify-between items-center shadow-sm">
-            <div className="flex gap-3 items-center">
-              <div className={`p-1.5 rounded-full flex-shrink-0 ${entry.qty > 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
+          <div key={entry.id} className="bg-white px-3.5 py-3 rounded-2xl border border-gray-200 flex justify-between items-center shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex gap-3 items-center min-w-0">
+              <div className={`p-2 rounded-xl flex-shrink-0 ${entry.qty > 0 ? 'bg-green-50 text-green-600 border border-green-100' : 'bg-red-50 text-red-500 border border-red-100'}`}>
                 {entry.qty > 0 ? <ArrowUpRight size={14} /> : <ArrowDownLeft size={14} />}
               </div>
-              <div>
-                <p className="font-bold text-gray-900 leading-tight text-[13px]">
+              <div className="min-w-0">
+                <p className="font-bold text-gray-900 leading-tight text-[14px] truncate">
                   {entry.narration || entry.note || 'Adjustment'}
                 </p>
-                <p className="text-[9px] text-gray-400 font-bold uppercase mt-1 flex items-center gap-1">
+                <p className="text-[10px] text-gray-500 font-semibold uppercase mt-1 flex items-center gap-1 tracking-wide">
                   <Tag size={8}/> {entry.type || 'entry'} • {entry.date?.toDate ? entry.date.toDate().toLocaleDateString('en-IN') : 'Recent'}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <p className={`font-black text-lg leading-none flex-shrink-0 ${entry.qty > 0 ? 'text-green-600' : 'text-red-500'}`}>
+            <div className="flex items-center gap-2.5 pl-2">
+              <p className={`font-black text-[1.9rem] leading-none flex-shrink-0 tracking-tight ${entry.qty > 0 ? 'text-green-600' : 'text-red-500'}`}>
                 {entry.qty > 0 ? '+' : ''}{entry.qty}
               </p>
               <button
                 type="button"
                 onClick={() => handleDelete(entry)}
-                className="h-8 w-8 rounded-lg border border-red-100 bg-red-50 text-red-500 hover:bg-red-100 active:scale-95 transition-all flex items-center justify-center"
+                className="h-9 w-9 rounded-xl border border-red-100 bg-red-50 text-red-500 hover:bg-red-100 active:scale-95 transition-all flex items-center justify-center"
                 aria-label={`Delete ${entry.narration || entry.note || 'stock entry'}`}
                 title="Delete stock entry"
               >
