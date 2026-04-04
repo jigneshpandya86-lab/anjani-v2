@@ -5,7 +5,7 @@ const getCapacitorPlugins = () => {
 
 const getSmsPlugin = () => {
   const plugins = getCapacitorPlugins()
-  return plugins.SmsBackground || plugins.SMSBackground || null
+  return plugins.SmsBackground || plugins.SMSBackground || window?.SmsBackground || null
 }
 
 export const isNativeSmsAvailable = () => {
@@ -15,9 +15,10 @@ export const isNativeSmsAvailable = () => {
 
 export const sendSmsNative = async ({ to, body }) => {
   const plugin = getSmsPlugin()
-  if (!plugin?.send) {
+  const sendMethod = plugin?.send || plugin?.sendSms
+  if (!sendMethod) {
     throw new Error('Native SMS plugin bridge unavailable')
   }
 
-  await plugin.send({ to, body })
+  await sendMethod.call(plugin, { to, body })
 }
