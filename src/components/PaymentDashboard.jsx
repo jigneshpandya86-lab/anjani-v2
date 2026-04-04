@@ -70,12 +70,32 @@ export default function PaymentDashboard() {
     return new Date(rawDate).toLocaleDateString('en-IN');
   };
 
+  const totalBilled = history
+    .filter((tx) => tx.type === 'invoice')
+    .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+
   return (
     <div className="space-y-4 pb-20">
-      <div className="flex items-center justify-between px-1">
-        <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Payment Ledger</h2>
-        <div className="flex items-center gap-1 text-[10px] bg-[#ff9900]/10 text-[#ff9900] px-2 py-1 rounded-full font-black uppercase shadow-sm">
-          <Clock size={12} /> Recent: {TRANSACTION_FEED_LIMIT}
+      <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#0f1f46] via-[#143366] to-[#1e4a88] p-6 text-white shadow-[0_20px_40px_rgba(15,31,70,0.3)]">
+        <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/10 blur-[2px]" />
+        <div className="pointer-events-none absolute -left-16 bottom-2 h-28 w-28 rounded-full bg-white/10" />
+
+        <div className="relative flex items-center justify-between">
+          <h2 className="text-xs font-extrabold uppercase tracking-[0.2em] text-white/70">
+            Payment Ledger
+          </h2>
+          <div className="flex items-center gap-1.5 text-[11px] bg-white/20 text-white px-3 py-1.5 rounded-full font-black uppercase shadow-sm backdrop-blur-sm">
+            <Clock size={12} /> {TRANSACTION_FEED_LIMIT} Recent
+          </div>
+        </div>
+
+        <div className="relative mt-5 flex items-end justify-between gap-2">
+          <div>
+            <p className="text-5xl font-black leading-none">₹{totalBilled.toLocaleString('en-IN')}</p>
+            <p className="mt-2 text-sm text-white/70 font-semibold tracking-wide">
+              {history.length} transactions · {new Date().toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -117,13 +137,14 @@ export default function PaymentDashboard() {
         return (
           <div
             key={tx.id}
-            className={`bg-white/95 p-4 rounded-2xl shadow-[0_6px_20px_rgba(15,23,42,0.05)] border border-gray-100 flex justify-between items-start border-l-4 ${borderColor} transition-all`}
+            className={`relative overflow-hidden bg-gradient-to-r from-white via-white to-slate-50/90 p-4 rounded-[1.6rem] shadow-[0_10px_24px_rgba(15,23,42,0.08)] border border-white/70 flex justify-between items-start border-l-[5px] ${borderColor} transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(15,23,42,0.12)]`}
           >
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.6),transparent_35%,rgba(148,163,184,0.06))]" />
             <div className="flex gap-3 items-start min-w-0">
-              <div className={`p-2.5 rounded-2xl ${iconBg} shrink-0`}>
+              <div className={`p-2.5 rounded-2xl shadow-inner ${iconBg} shrink-0`}>
                 <Icon size={18} />
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 relative">
                 <p className="font-extrabold text-gray-900 leading-tight flex items-center gap-2 flex-wrap">
                   <span className="truncate">{getClientName(tx.clientId)}</span>
                   {orderId && (
@@ -137,7 +158,7 @@ export default function PaymentDashboard() {
                 </p>
               </div>
             </div>
-            <div className="text-right pl-3 shrink-0">
+            <div className="text-right pl-3 shrink-0 relative">
               <button
                 type="button"
                 onClick={() => handleDeletePayment(tx)}
