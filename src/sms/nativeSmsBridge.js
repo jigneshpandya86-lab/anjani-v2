@@ -20,5 +20,13 @@ export const sendSmsNative = async ({ to, body }) => {
     throw new Error('Native SMS plugin bridge unavailable')
   }
 
-  await sendMethod.call(plugin, { to, body })
+  const result = await sendMethod.call(plugin, { to, body })
+  if (result && typeof result === 'object') {
+    return {
+      success: result.success !== false,
+      message: result.message || '',
+    }
+  }
+
+  return { success: true, message: '' }
 }

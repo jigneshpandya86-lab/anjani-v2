@@ -11,7 +11,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore'
-import { isNativeSmsAvailable, sendSmsNative } from './nativeSmsBridge'
+import { isNativeSmsAvailable, sendSmsNative } from './nativeSmsBridge.js'
 
 const MAX_ATTEMPTS = 3
 const BATCH_LIMIT = 20
@@ -117,10 +117,13 @@ export const processDueSmsJobs = async ({ db, now = new Date(), maxJobs = BATCH_
   for (const job of dueJobs) {
     try {
       await markJobProcessing({ db, jobId: job.id })
-      await sendSmsNative({
+      const sendResult = await sendSmsNative({
         to: job.recipientMobile,
         body: buildSmsText(job),
       })
+      if (sendResult?.success === false) {
+        throw new Error(sendResult.message || 'Native SMS send rejected')
+      }
       await markJobSuccess({ db, jobId: job.id })
       sent += 1
     } catch (error) {
@@ -142,4 +145,8 @@ export const processDueSmsJobs = async ({ db, now = new Date(), maxJobs = BATCH_
     failed,
     retried,
   }
+}
+
+export const __testables = {
+  buildSmsText,
 }
