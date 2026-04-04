@@ -1,13 +1,19 @@
 import { useState } from 'react'
-import toast from 'react-hot-toast'
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  GoogleAuthProvider
-} from 'firebase/auth'
-import { auth } from '../firebase-config'
+import toast, { Toaster } from 'react-hot-toast'
+import { signInWithGoogle, signInWithEmailPassword, signUpWithEmailPassword } from '../firebase-auth'
 import { Mail, Lock, LogIn } from 'lucide-react'
+
+const AUTH_ERRORS = {
+  'auth/email-already-in-use': 'Email already in use',
+  'auth/weak-password': 'Password must be at least 6 characters',
+  'auth/invalid-email': 'Invalid email address',
+  'auth/user-not-found': 'No account found with this email',
+  'auth/wrong-password': 'Incorrect password',
+  'auth/invalid-credential': 'Incorrect email or password',
+  'auth/too-many-requests': 'Too many attempts. Please try again later.',
+  'auth/user-disabled': 'This account has been disabled',
+  'auth/operation-not-allowed': 'Email/password sign-in is not enabled. Contact admin.',
+}
 
 export default function Login() {
   const [isSignUp, setIsSignUp] = useState(false)
@@ -25,28 +31,16 @@ export default function Login() {
     setLoading(true)
     try {
       if (isSignUp) {
-        await createUserWithEmailAndPassword(auth, email, password)
+        await signUpWithEmailPassword(email, password)
         toast.success('Account created successfully')
       } else {
-        await signInWithEmailAndPassword(auth, email, password)
+        await signInWithEmailPassword(email, password)
         toast.success('Signed in successfully')
       }
       setEmail('')
       setPassword('')
     } catch (error) {
-      const errorMessage = error.code === 'auth/email-already-in-use'
-        ? 'Email already in use'
-        : error.code === 'auth/weak-password'
-        ? 'Password must be at least 6 characters'
-        : error.code === 'auth/invalid-email'
-        ? 'Invalid email address'
-        : error.code === 'auth/user-not-found'
-        ? 'No account found with this email'
-        : error.code === 'auth/wrong-password'
-        ? 'Incorrect password'
-        : error.message
-
-      toast.error(errorMessage)
+      toast.error(AUTH_ERRORS[error.code] || error.message || 'Authentication failed')
     } finally {
       setLoading(false)
     }
@@ -55,14 +49,11 @@ export default function Login() {
   const handleGoogleSignIn = async () => {
     setLoading(true)
     try {
-      const provider = new GoogleAuthProvider()
-      await signInWithPopup(auth, provider)
+      await signInWithGoogle()
       toast.success('Signed in with Google')
     } catch (error) {
-      if (error.code === 'auth/popup-closed-by-user') {
-        // User closed the popup, no error needed
-      } else {
-        toast.error('Failed to sign in with Google')
+      if (error.code !== 'auth/popup-closed-by-user') {
+        toast.error(AUTH_ERRORS[error.code] || 'Failed to sign in with Google')
       }
     } finally {
       setLoading(false)
@@ -71,6 +62,8 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] font-sans flex items-center justify-center px-4">
+      <Toaster position="top-center" toastOptions={{ style: { background: '#ffffff', color: '#131921', border: '1px solid #e5e7eb', borderRadius: '12px', fontWeight: '900', fontSize: '14px', padding: '16px 24px' } }} />
+
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
