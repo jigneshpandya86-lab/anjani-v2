@@ -3,6 +3,7 @@ import {
   collection,
   doc,
   getDocs,
+  getDoc,
   limit,
   orderBy,
   query,
@@ -90,8 +91,17 @@ const fetchDuePendingJobs = async ({ db, now, maxJobs = BATCH_LIMIT }) => {
   return snap.docs.map((row) => ({ id: row.id, ...row.data() }))
 }
 
+const isAutomationEnabled = async (db) => {
+  const settingsSnap = await getDoc(doc(db, 'settings', 'smsAutomation'))
+  if (!settingsSnap.exists()) return true
+  return settingsSnap.data()?.enabled !== false
+}
+
 export const processDueSmsJobs = async ({ db, now = new Date(), maxJobs = BATCH_LIMIT }) => {
   if (!isNativeSmsAvailable()) {
+    return { processed: 0, sent: 0, failed: 0, retried: 0, skipped: true }
+  }
+  if (!(await isAutomationEnabled(db))) {
     return { processed: 0, sent: 0, failed: 0, retried: 0, skipped: true }
   }
 

@@ -30,6 +30,7 @@ const SCHEDULE_COLUMNS = [
 ]
 
 const createDefaultSettings = () => ({
+  enabled: true,
   leads: {
     active: true,
     atEvent: true,
@@ -73,7 +74,7 @@ export default function SmsAutomationSettings() {
       }
 
       const data = snapshot.data() || {}
-      const merged = { ...defaults }
+      const merged = { ...defaults, enabled: data.enabled !== false }
 
       TASK_ROWS.forEach((task) => {
         const docRow = data[task.key] || {}
@@ -124,6 +125,7 @@ export default function SmsAutomationSettings() {
       await setDoc(
         SETTINGS_DOC,
         {
+          enabled: settings.enabled !== false,
           ...settings,
           updatedAt: serverTimestamp(),
         },
@@ -145,6 +147,17 @@ export default function SmsAutomationSettings() {
         <p className="text-xs text-gray-500 mt-1 font-semibold">
           Tick schedule columns for each task type. SMS jobs will be created for checked timings only.
         </p>
+        <label className="mt-3 inline-flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={Boolean(settings.enabled)}
+            onChange={() => setSettings((prev) => ({ ...prev, enabled: !prev.enabled }))}
+            className="h-4 w-4 rounded border-gray-300 text-[#ff9900] focus:ring-[#ff9900]"
+          />
+          <span className="text-xs font-bold text-gray-700">
+            {settings.enabled ? 'Automation Enabled' : 'Automation Disabled'}
+          </span>
+        </label>
       </div>
 
       {loading ? (

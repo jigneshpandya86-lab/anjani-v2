@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore'
+import { Timestamp, collection, doc, limit, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase-config'
+import toast from 'react-hot-toast'
 
 const FILTERS = ['all', 'pending', 'processing', 'sent', 'failed', 'cancelled']
 
@@ -36,6 +37,35 @@ export default function SmsJobsMonitor() {
     if (statusFilter === 'all') return jobs
     return jobs.filter((job) => job.status === statusFilter)
   }, [jobs, statusFilter])
+
+  const retryNow = async (job) => {
+    try {
+      await updateDoc(doc(db, 'sms_jobs', job.id), {
+        status: 'pending',
+        scheduledFor: Timestamp.fromDate(new Date()),
+        lastError: '',
+        updatedAt: serverTimestamp(),
+      })
+      toast.success('Job moved to pending queue')
+    } catch (error) {
+      console.error(error)
+      toast.error('Failed to retry job')
+    }
+  }
+
+  const cancelPending = async (job) => {
+    try {
+      await updateDoc(doc(db, 'sms_jobs', job.id), {
+        status: 'cancelled',
+        cancelReason: 'manual_cancel',
+        updatedAt: serverTimestamp(),
+      })
+      toast.success('Pending job cancelled')
+    } catch (error) {
+      console.error(error)
+      toast.error('Failed to cancel job')
+    }
+  }
 
   return (
     <div className="space-y-3 pb-24">
@@ -82,6 +112,27 @@ export default function SmsJobsMonitor() {
                 <p>Attempts: {Number(job.attemptCount || 0)}</p>
                 <p className="sm:col-span-2">Entity: {job.entityId || '-'}</p>
                 {job.lastError ? <p className="sm:col-span-2 text-red-600">Error: {job.lastError}</p> : null}
+              </div>
+
+              <div className="mt-3 flex gap-2 flex-wrap">
+                {(job.status === 'failed' || job.status === 'cancelled') && (
+                  <button
+                    type="button"
+                    onClick={() => retryNow(job)}
+                    className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-black uppercase tracking-wide"
+                  >
+                    Retry Now
+                  </button>
+                )}
+                {(job.status === 'pending' || job.status === 'processing') && (
+                  <button
+                    type="button"
+                    onClick={() => cancelPending(job)}
+                    className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 border border-red-200 text-[10px] font-black uppercase tracking-wide"
+                  >
+                    Cancel Pending
+                  </button>
+                )}
               </div>
             </div>
           ))}

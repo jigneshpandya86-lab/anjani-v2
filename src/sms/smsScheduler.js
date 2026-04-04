@@ -109,6 +109,9 @@ export const enqueueSmsJobsForEvent = async ({
   const [settingsCollection, settingsDocId] = settingsDocPath.split('/')
   const settingsSnap = await getDoc(doc(db, settingsCollection, settingsDocId))
   const settings = settingsSnap.exists() ? settingsSnap.data() : {}
+  if (settings.enabled === false) {
+    return { queuedCount: 0, jobs: [] }
+  }
   const taskConfig = settings?.[taskType] || null
 
   const jobs = buildSmsJobsFromConfig({
