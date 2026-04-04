@@ -170,13 +170,11 @@ export const useClientStore = create((set, get) => ({
 
   addStockManual: async (qty, narration) => {
     const parsedQty = Number(qty) || 0;
-    const entryDate = new Date();
     await addDoc(collection(db, 'stock'), {
       qty: parsedQty,
       narration: narration || 'Manual Addition',
       type: 'addition',
-      date: entryDate,
-      createdAt: serverTimestamp()
+      date: serverTimestamp()
     });
     await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(parsedQty) }, { merge: true });
   },
@@ -316,13 +314,11 @@ export const useClientStore = create((set, get) => ({
       const deliveredNarration = formatOrderNarration('Order Delivered', orderRef, clientName);
 
       // 1. Debit stock
-      const stockEntryDate = new Date();
       await addDoc(collection(db, 'stock'), {
         qty: -qty,
         narration: deliveredNarration,
         type: 'dispatch',
-        date: stockEntryDate,
-        createdAt: serverTimestamp()
+        date: serverTimestamp()
       });
       await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(-qty) }, { merge: true });
 
@@ -361,13 +357,11 @@ export const useClientStore = create((set, get) => ({
           const orderRef = existing.orderId || id;
           const clientName = await getOrderClientName(existing, get().clients);
           const reversalNarration = formatOrderNarration('Order Deleted (Reversal)', orderRef, clientName);
-          const stockEntryDate = new Date();
           await addDoc(collection(db, 'stock'), {
             qty: reversalQty,
             narration: reversalNarration,
             type: 'reversal',
-            date: stockEntryDate,
-            createdAt: serverTimestamp()
+            date: serverTimestamp()
           });
           await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(reversalQty) }, { merge: true });
 
