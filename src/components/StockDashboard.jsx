@@ -116,16 +116,16 @@ export default function StockDashboard() {
   return (
     <div className="space-y-3 pb-20">
       {/* Stock Summary + Date Range Filter */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#f59e0b] via-[#fbbf24] to-[#fde68a] p-3 text-white shadow-[0_12px_24px_rgba(217,119,6,0.24)]">
-        <div className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/20 blur-[2px]" />
-        <div className="pointer-events-none absolute -left-16 bottom-1 h-24 w-24 rounded-full bg-white/15" />
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-50 via-amber-100 to-yellow-100 p-2.5 text-slate-900 shadow-[0_8px_18px_rgba(148,163,184,0.18)] border border-amber-100/80">
+        <div className="pointer-events-none absolute -right-10 -top-12 h-28 w-28 rounded-full bg-white/30 blur-[2px]" />
+        <div className="pointer-events-none absolute -left-14 bottom-0 h-20 w-20 rounded-full bg-white/25" />
         <div className="relative flex items-center justify-between gap-2">
-          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/80">Live Stock</p>
-          <h2 className="text-[1.65rem] leading-none font-black whitespace-nowrap">
-            {totalStock.toLocaleString()} <span className="text-[9px] font-bold text-white/85 uppercase tracking-[0.08em]">Boxes</span>
+          <p className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-amber-700/80">Live Stock</p>
+          <h2 className="text-[1.45rem] leading-none font-black whitespace-nowrap text-slate-900">
+            {totalStock.toLocaleString()} <span className="text-[9px] font-bold text-slate-500 uppercase tracking-[0.08em]">Boxes</span>
           </h2>
         </div>
-        <div className="relative mt-1.5 flex flex-col gap-1">
+        <div className="relative mt-1 flex flex-col gap-1">
           {(startDate || endDate) && (
             <button
               onClick={() => {
@@ -133,19 +133,19 @@ export default function StockDashboard() {
                 setStartDate(start);
                 setEndDate(end);
               }}
-              className="self-end text-[9px] font-semibold text-white/90 uppercase px-1"
+              className="self-end text-[9px] font-semibold text-amber-700 uppercase px-1"
             >
               Clear
             </button>
           )}
           <div className="flex items-end gap-2">
             <div className="flex-1 min-w-0">
-              <label className="text-[8px] font-semibold text-white/80 uppercase ml-1 tracking-[0.16em]">Start</label>
-              <input type="date" className="w-full bg-white/92 px-2 py-1.5 rounded-lg text-[11px] font-semibold text-slate-700 outline-none border border-white/80 focus:ring-2 focus:ring-amber-100 focus:border-amber-200 transition" value={startDate} onChange={e => setStartDate(e.target.value)} />
+              <label className="text-[8px] font-semibold text-slate-500 uppercase ml-1 tracking-[0.16em]">Start</label>
+              <input type="date" className="w-full bg-white px-2 py-1 rounded-lg text-[11px] font-semibold text-slate-700 outline-none border border-amber-100 focus:ring-2 focus:ring-amber-100 focus:border-amber-200 transition" value={startDate} onChange={e => setStartDate(e.target.value)} />
             </div>
             <div className="flex-1 min-w-0">
-              <label className="text-[8px] font-semibold text-white/80 uppercase ml-1 tracking-[0.16em]">End</label>
-              <input type="date" className="w-full bg-white/92 px-2 py-1.5 rounded-lg text-[11px] font-semibold text-slate-700 outline-none border border-white/80 focus:ring-2 focus:ring-amber-100 focus:border-amber-200 transition" value={endDate} onChange={e => setEndDate(e.target.value)} />
+              <label className="text-[8px] font-semibold text-slate-500 uppercase ml-1 tracking-[0.16em]">End</label>
+              <input type="date" className="w-full bg-white px-2 py-1 rounded-lg text-[11px] font-semibold text-slate-700 outline-none border border-amber-100 focus:ring-2 focus:ring-amber-100 focus:border-amber-200 transition" value={endDate} onChange={e => setEndDate(e.target.value)} />
             </div>
           </div>
         </div>
