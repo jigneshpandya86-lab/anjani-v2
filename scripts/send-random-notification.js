@@ -1,5 +1,5 @@
-const admin = require('firebase-admin');
-const crypto = require('crypto');
+import admin from 'firebase-admin';
+import crypto from 'crypto';
 
 // Notification prompts
 const PROMPTS = [
@@ -154,3 +154,4 @@ async function sendRandomNotification() {
 }
 
 sendRandomNotification();
+
