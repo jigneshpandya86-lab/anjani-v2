@@ -24,11 +24,30 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
     e.preventDefault();
     if (!amount || amount <= 0 || !selectedClient) return;
 
+    const paymentAmount = parseFloat(amount);
+    const outstandingAmount = selectedClient?.outstanding || 0;
+    const isExcessPayment = outstandingAmount >= 0 && paymentAmount > outstandingAmount;
+
+    if (isExcessPayment) {
+      const overpaidBy = paymentAmount - outstandingAmount;
+      const firstConfirmation = window.confirm(
+        `This payment is ₹${overpaidBy.toLocaleString()} more than the due amount. Do you want to continue?`
+      );
+
+      if (!firstConfirmation) return;
+
+      const secondConfirmation = window.confirm(
+        'Please confirm again: this will save an excess payment and create a negative balance.'
+      );
+
+      if (!secondConfirmation) return;
+    }
+
     setLoading(true);
     try {
       await addPayment({
         clientId: selectedClient.id,
-        amount: parseFloat(amount),
+        amount: paymentAmount,
         type: 'payment',
         method,
         note,
