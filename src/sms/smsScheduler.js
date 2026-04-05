@@ -52,15 +52,6 @@ const createDedupeKey = ({ taskType, entityId, scheduleType, scheduledFor }) => 
   return `${taskType}:${entityId}:${scheduleType}:${stamp}`
 }
 
-const jobAlreadyExists = async (db, dedupeKey) => {
-  const q = query(
-    collection(db, 'sms_jobs'),
-    where('dedupeKey', '==', dedupeKey)
-  )
-  const snap = await getDocs(q)
-  return snap.size > 0
-}
-
 // Batch check for existing jobs - OPTIMIZED for cost reduction
 // Instead of N queries (one per dedupeKey), uses 1 query for all keys
 // Firestore 'in' operator supports up to 10 values per query, so we batch

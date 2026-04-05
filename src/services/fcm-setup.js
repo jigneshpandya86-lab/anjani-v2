@@ -1,4 +1,3 @@
-import { initializeApp } from 'firebase/app';
 import {
   getMessaging,
   getToken,
@@ -19,8 +18,7 @@ export async function initializeFcm(userId) {
       return false;
     }
 
-    // Get the default Firebase app instance
-    const app = initializeApp;
+    // Initialize messaging
     messaging = getMessaging();
 
     // Request notification permission
@@ -31,8 +29,8 @@ export async function initializeFcm(userId) {
     }
 
     // Get FCM token
-    const vapidKey = process.env.REACT_APP_VAPID_PUBLIC_KEY
-    const tokenOptions = vapidKey ? { vapidKey } : {}
+    const vapidKey = import.meta.env.REACT_APP_VAPID_PUBLIC_KEY;
+    const tokenOptions = vapidKey ? { vapidKey } : {};
     const token = await getToken(messaging, tokenOptions);
 
     if (!token) {
