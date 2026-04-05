@@ -119,13 +119,29 @@ export default function StockDashboard() {
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0f1f46] via-[#143366] to-[#1e4a88] p-3.5 text-white shadow-[0_16px_30px_rgba(15,31,70,0.25)]">
         <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/10 blur-[2px]" />
         <div className="pointer-events-none absolute -left-16 bottom-2 h-28 w-28 rounded-full bg-white/10" />
-        <div className="relative flex items-center justify-between gap-2">
+        <div className="relative flex items-start justify-between gap-2">
           <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-white/70">Stock Ledger</p>
+          <div className="flex items-center gap-1.5 text-[10px] bg-white/20 text-white px-2 py-1 rounded-full font-black uppercase shadow-sm backdrop-blur-sm">
+            <span className="opacity-80">Range</span>
+            <input
+              type="date"
+              className="w-[96px] bg-transparent text-white text-[10px] font-bold outline-none"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+            />
+            <span className="text-white/70">—</span>
+            <input
+              type="date"
+              className="w-[96px] bg-transparent text-white text-[10px] font-bold outline-none"
+              value={endDate}
+              onChange={e => setEndDate(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="relative mt-2 flex items-end justify-between gap-2">
           <h2 className="text-3xl leading-none font-black whitespace-nowrap text-white">
             {totalStock.toLocaleString()} <span className="text-[10px] font-bold text-white/80 uppercase tracking-[0.08em]">Boxes</span>
           </h2>
-        </div>
-        <div className="relative mt-2 flex flex-col gap-1.5">
           {(startDate || endDate) && (
             <button
               onClick={() => {
@@ -133,21 +149,11 @@ export default function StockDashboard() {
                 setStartDate(start);
                 setEndDate(end);
               }}
-              className="self-end text-[10px] font-semibold text-white/80 uppercase px-1.5"
+              className="text-[10px] font-semibold text-white/80 uppercase px-1.5"
             >
               Clear
             </button>
           )}
-          <div className="flex items-end gap-2">
-            <div className="flex-1 min-w-0">
-              <label className="text-[8px] font-semibold text-white/70 uppercase ml-1 tracking-[0.18em]">Start</label>
-              <input type="date" className="w-full bg-white/90 px-2.5 py-2 rounded-xl text-[12px] font-semibold text-slate-700 outline-none border border-white/70 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-200 transition" value={startDate} onChange={e => setStartDate(e.target.value)} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <label className="text-[8px] font-semibold text-white/70 uppercase ml-1 tracking-[0.18em]">End</label>
-              <input type="date" className="w-full bg-white/90 px-2.5 py-2 rounded-xl text-[12px] font-semibold text-slate-700 outline-none border border-white/70 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-200 transition" value={endDate} onChange={e => setEndDate(e.target.value)} />
-            </div>
-          </div>
         </div>
       </div>
 
