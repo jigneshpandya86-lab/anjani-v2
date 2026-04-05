@@ -10,6 +10,7 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
   const [filter, setFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [uploadingProofOrderId, setUploadingProofOrderId] = useState('');
+  const [statusUpdatingOrderId, setStatusUpdatingOrderId] = useState('');
   const proofInputRefs = useRef({});
   const storage = getStorage(app);
 
@@ -108,6 +109,20 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
     } finally {
       setUploadingProofOrderId('');
       event.target.value = '';
+    }
+  };
+
+  const handleStatusUpdate = async (order, status) => {
+    if (!order?.id || !status) return;
+    setStatusUpdatingOrderId(order.id);
+    try {
+      await updateOrder(order.id, { status });
+      toast.success(`Order marked ${status}`);
+    } catch (error) {
+      console.error('Order status update failed', error);
+      toast.error(`Failed to mark ${status.toLowerCase()}`);
+    } finally {
+      setStatusUpdatingOrderId('');
     }
   };
 
@@ -210,10 +225,22 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
               </div>
 
               {order.status === 'Pending' && (
-                <button onClick={() => updateOrder(order.id, {status: 'Confirmed'})} className="bg-blue-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-sm">Confirm</button>
+                <button
+                  onClick={() => handleStatusUpdate(order, 'Confirmed')}
+                  disabled={statusUpdatingOrderId === order.id}
+                  className="bg-blue-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-sm disabled:opacity-60"
+                >
+                  {statusUpdatingOrderId === order.id ? 'Updating...' : 'Confirm'}
+                </button>
               )}
               {order.status === 'Confirmed' && (
-                <button onClick={() => updateOrder(order.id, {status: 'Delivered'})} className="bg-green-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-sm">Mark Delivered</button>
+                <button
+                  onClick={() => handleStatusUpdate(order, 'Delivered')}
+                  disabled={statusUpdatingOrderId === order.id}
+                  className="bg-green-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-sm disabled:opacity-60"
+                >
+                  {statusUpdatingOrderId === order.id ? 'Updating...' : 'Mark Delivered'}
+                </button>
               )}
               {order.proofUrl && (
                 <a href={order.proofUrl} target="_blank" rel="noreferrer" className="text-[10px] font-black text-blue-500 underline">View Proof</a>

@@ -9,27 +9,7 @@ import { TASK_TYPES, enqueueSmsJobsForEvent, cancelPendingSmsJobsForEntity } fro
 let stockUnsubscribe = null;
 let stockSubscriberCount = 0;
 const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary');
-const RECENT_STOCK_ENTRIES_LIMIT = 15;
-
-const getTimestampMillis = (value) => {
-  if (!value) return 0;
-  if (value?.toMillis) return value.toMillis();
-  if (value?.seconds) return value.seconds * 1000;
-  if (value instanceof Date) return value.getTime();
-  if (typeof value === 'string') {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
-  }
-  return 0;
-};
-
-const sortStockEntries = (entries) => {
-  return [...entries].sort((a, b) => {
-    const primaryDiff = getTimestampMillis(b.date) - getTimestampMillis(a.date);
-    if (primaryDiff !== 0) return primaryDiff;
-    return getTimestampMillis(b.createdAt) - getTimestampMillis(a.createdAt);
-  });
-};
+const RECENT_STOCK_ENTRIES_LIMIT = 50;
 
 const getOrderClientName = async (order, clients = []) => {
   const normalizeName = (value) => {
@@ -91,7 +71,7 @@ export const useClientStore = create((set, get) => ({
     stockSubscriberCount += 1;
 
     if (!stockUnsubscribe) {
-      const q = query(collection(db, 'stock'), orderBy('date', 'desc'), limit(20));
+      const q = query(collection(db, 'stock'), orderBy('date', 'desc'), limit(100));
       stockUnsubscribe = onSnapshot(q, (snapshot) => {
         const getTime = (value) => {
           if (!value) return 0;
@@ -365,8 +345,18 @@ export const useClientStore = create((set, get) => ({
     const remoteExisting = orderSnap.exists() ? { id, ...orderSnap.data() } : null;
     const existing = localExisting || remoteExisting;
     const previousStatus = remoteExisting?.status || localExisting?.status || '';
+    const shouldMarkDelivered = data.status === 'Delivered';
+    const alreadyPostedToStock = Boolean(
+      remoteExisting?.stockPostedAt ||
+      remoteExisting?.stockEntryId
+    );
+    let extraOrderPatch = {};
 
-    if (existing && data.status === 'Delivered' && previousStatus !== 'Delivered') {
+    if (
+      existing &&
+      shouldMarkDelivered &&
+      (!alreadyPostedToStock || previousStatus !== 'Delivered')
+    ) {
       const qty = Number(existing.qty || existing.boxes || existing.quantity) || 0;
       const rate = Number(existing.rate) || 0;
       const stockDelta = -Math.abs(qty);
@@ -375,34 +365,24 @@ export const useClientStore = create((set, get) => ({
       const deliveredNarration = formatOrderNarration('Order Delivered', existing.orderId || id, clientName);
 
       // 1. Debit stock
-      await addDoc(collection(db, 'stock'), {
+      const stockDocRef = await addDoc(collection(db, 'stock'), {
         qty: stockDelta,
         narration: deliveredNarration,
         type: 'dispatch',
         date: stockEntryDate,
         createdAt: serverTimestamp()
       });
+      extraOrderPatch = {
+        stockEntryId: stockDocRef.id,
+        stockPostedAt: serverTimestamp(),
+      };
       await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(stockDelta) }, { merge: true });
 
-      // Keep dashboard totals + movement log responsive even before snapshot roundtrip.
-      set((state) => {
-        const nextEntries = sortStockEntries([
-          {
-            id: `local-delivery-${id}-${Date.now()}`,
-            qty: stockDelta,
-            narration: deliveredNarration,
-            type: 'dispatch',
-            date: stockEntryDate,
-            createdAt: stockEntryDate,
-          },
-          ...state.stockEntries,
-        ]).slice(0, RECENT_STOCK_ENTRIES_LIMIT);
-
-        return {
-          stockEntries: nextEntries,
-          stockTotal: (Number(state.stockTotal) || 0) + stockDelta,
-        };
-      });
+      // Keep stock total responsive; movement list should come from persisted snapshot
+      // so we don't show temporary in-memory rows that later disappear on sync failure.
+      set((state) => ({
+        stockTotal: (Number(state.stockTotal) || 0) + stockDelta,
+      }));
 
       // 2. Create invoice transaction in payments
       const amount = Math.abs(qty) * rate;
@@ -439,7 +419,10 @@ export const useClientStore = create((set, get) => ({
         occurredAt: new Date(),
       });
     }
-    await updateDoc(orderRef, data);
+    await updateDoc(orderRef, {
+      ...data,
+      ...extraOrderPatch,
+    });
   },
 
   deleteOrder: async (id) => {
