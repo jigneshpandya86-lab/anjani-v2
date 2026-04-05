@@ -11,26 +11,6 @@ let stockSubscriberCount = 0;
 const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary');
 const RECENT_STOCK_ENTRIES_LIMIT = 50;
 
-const getTimestampMillis = (value) => {
-  if (!value) return 0;
-  if (value?.toMillis) return value.toMillis();
-  if (value?.seconds) return value.seconds * 1000;
-  if (value instanceof Date) return value.getTime();
-  if (typeof value === 'string') {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
-  }
-  return 0;
-};
-
-const sortStockEntries = (entries) => {
-  return [...entries].sort((a, b) => {
-    const primaryDiff = getTimestampMillis(b.date) - getTimestampMillis(a.date);
-    if (primaryDiff !== 0) return primaryDiff;
-    return getTimestampMillis(b.createdAt) - getTimestampMillis(a.createdAt);
-  });
-};
-
 const getOrderClientName = async (order, clients = []) => {
   const normalizeName = (value) => {
     if (typeof value !== 'string') return '';
@@ -398,25 +378,11 @@ export const useClientStore = create((set, get) => ({
       };
       await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(stockDelta) }, { merge: true });
 
-      // Keep dashboard totals + movement log responsive even before snapshot roundtrip.
-      set((state) => {
-        const nextEntries = sortStockEntries([
-          {
-            id: `local-delivery-${id}-${Date.now()}`,
-            qty: stockDelta,
-            narration: deliveredNarration,
-            type: 'dispatch',
-            date: stockEntryDate,
-            createdAt: stockEntryDate,
-          },
-          ...state.stockEntries,
-        ]).slice(0, RECENT_STOCK_ENTRIES_LIMIT);
-
-        return {
-          stockEntries: nextEntries,
-          stockTotal: (Number(state.stockTotal) || 0) + stockDelta,
-        };
-      });
+      // Keep stock total responsive; movement list should come from persisted snapshot
+      // so we don't show temporary in-memory rows that later disappear on sync failure.
+      set((state) => ({
+        stockTotal: (Number(state.stockTotal) || 0) + stockDelta,
+      }));
 
       // 2. Create invoice transaction in payments
       const amount = Math.abs(qty) * rate;
