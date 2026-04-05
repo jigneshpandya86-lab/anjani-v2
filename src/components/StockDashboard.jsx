@@ -29,7 +29,7 @@ export default function StockDashboard() {
 
   const [startDate, setStartDate] = useState(() => getDefaultDateRange().start);
   const [endDate, setEndDate] = useState(() => getDefaultDateRange().end);
-  const MIN_VISIBLE_ITEMS = 15;
+  const MIN_VISIBLE_ITEMS = 50;
 
   useEffect(() => {
     const unsub = fetchStock();
@@ -77,7 +77,7 @@ export default function StockDashboard() {
   // Filters ONLY the visual transaction log
   const filtered = stockEntries.filter(entry => {
     if (!startDate && !endDate) return true;
-    const entryDate = toDateKey(entry.date);
+    const entryDate = toDateKey(entry.date || entry.createdAt);
     if (!entryDate) return false;
     
     if (startDate && entryDate < startDate) return false;
@@ -175,7 +175,7 @@ export default function StockDashboard() {
                   {entry.narration || entry.note || 'Adjustment'}
                 </p>
                 <p className="text-[10px] text-slate-500 font-medium uppercase mt-1 flex items-center gap-1 tracking-wide">
-                  <Tag size={8}/> {entry.type || 'entry'} • {entry.date?.toDate ? entry.date.toDate().toLocaleDateString('en-IN') : 'Recent'}
+                  <Tag size={8}/> {entry.type || 'entry'} • {(entry.date?.toDate ? entry.date : entry.createdAt)?.toDate ? (entry.date?.toDate ? entry.date : entry.createdAt).toDate().toLocaleDateString('en-IN') : 'Recent'}
                 </p>
               </div>
             </div>
