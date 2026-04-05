@@ -23,6 +23,7 @@ import { db, auth } from './firebase-config'
 import { signOut, onAuthStateChanged } from 'firebase/auth'
 import { processDueSmsJobs } from './sms/smsSender'
 import { isNativeSmsAvailable } from './sms/nativeSmsBridge'
+import { initializeFcm } from './services/fcm-setup'
 import ClientList from './components/ClientList'
 import AddClient from './components/AddClient'
 import OrdersDashboard from './components/OrdersDashboard'
@@ -102,6 +103,24 @@ function App() {
       stopped = true
       window.clearInterval(timer)
     }
+  }, [user])
+
+  // FCM: Initialize push notifications for logged-in users
+  useEffect(() => {
+    if (!user) return undefined
+
+    const initFcm = async () => {
+      try {
+        const success = await initializeFcm(user.uid)
+        if (success) {
+          console.log('FCM initialized successfully')
+        }
+      } catch (error) {
+        console.error('FCM initialization failed:', error)
+      }
+    }
+
+    initFcm()
   }, [user])
 
   // AUTH: signs out the current user and clears session
