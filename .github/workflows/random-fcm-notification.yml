@@ -20,8 +20,8 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install dependencies
-        run: npm install
+      - name: Install firebase-admin (for notification script)
+        run: npm install firebase-admin --no-save
 
       - name: Verify Firebase credentials
         env:
