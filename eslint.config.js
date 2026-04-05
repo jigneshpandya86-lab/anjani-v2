@@ -6,9 +6,10 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
   globalIgnores(['dist']),
+  globalIgnores(['public/firebase-messaging-sw.js']),
   {
     files: ['**/*.{js,jsx}'],
-    ignores: ['scripts/**/*.js'],
+    ignores: ['scripts/**/*.js', 'public/**/*.js'],
     extends: [
       js.configs.recommended,
       reactHooks.configs.flat.recommended,

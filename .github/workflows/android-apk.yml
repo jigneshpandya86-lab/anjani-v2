@@ -5,6 +5,18 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'src/**'
+      - 'native/android/**'
+      - 'android/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'capacitor.config.json'
+      - '.github/workflows/android-apk.yml'
+    paths-ignore:
+      - '.github/workflows/random-fcm-notification.yml'
+      - 'scripts/**'
+      - '**.md'
 
 jobs:
   build_apk:
