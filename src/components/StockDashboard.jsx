@@ -114,18 +114,18 @@ export default function StockDashboard() {
   };
 
   return (
-    <div className="space-y-4 pb-20">
+    <div className="space-y-3 pb-20">
       {/* Stock Summary + Date Range Filter */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#7c2d12] via-[#b45309] to-[#f59e0b] p-3.5 text-white shadow-[0_16px_30px_rgba(146,64,14,0.24)]">
-        <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/10 blur-[2px]" />
-        <div className="pointer-events-none absolute -left-16 bottom-2 h-28 w-28 rounded-full bg-white/10" />
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#f59e0b] via-[#fbbf24] to-[#fde68a] p-3 text-white shadow-[0_12px_24px_rgba(217,119,6,0.24)]">
+        <div className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/20 blur-[2px]" />
+        <div className="pointer-events-none absolute -left-16 bottom-1 h-24 w-24 rounded-full bg-white/15" />
         <div className="relative flex items-center justify-between gap-2">
-          <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-white/70">Live Stock</p>
-          <h2 className="text-[1.85rem] leading-none font-black whitespace-nowrap">
-            {totalStock.toLocaleString()} <span className="text-[10px] font-bold text-white/80 uppercase tracking-[0.08em]">Boxes</span>
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/80">Live Stock</p>
+          <h2 className="text-[1.65rem] leading-none font-black whitespace-nowrap">
+            {totalStock.toLocaleString()} <span className="text-[9px] font-bold text-white/85 uppercase tracking-[0.08em]">Boxes</span>
           </h2>
         </div>
-        <div className="relative mt-2 flex flex-col gap-1.5">
+        <div className="relative mt-1.5 flex flex-col gap-1">
           {(startDate || endDate) && (
             <button
               onClick={() => {
@@ -133,19 +133,19 @@ export default function StockDashboard() {
                 setStartDate(start);
                 setEndDate(end);
               }}
-              className="self-end text-[10px] font-semibold text-white/85 uppercase px-1.5"
+              className="self-end text-[9px] font-semibold text-white/90 uppercase px-1"
             >
               Clear
             </button>
           )}
           <div className="flex items-end gap-2">
             <div className="flex-1 min-w-0">
-              <label className="text-[8px] font-semibold text-white/70 uppercase ml-1 tracking-[0.18em]">Start</label>
-              <input type="date" className="w-full bg-white/90 px-2.5 py-2 rounded-xl text-[12px] font-semibold text-slate-700 outline-none border border-white/70 focus:ring-2 focus:ring-amber-100 focus:border-amber-200 transition" value={startDate} onChange={e => setStartDate(e.target.value)} />
+              <label className="text-[8px] font-semibold text-white/80 uppercase ml-1 tracking-[0.16em]">Start</label>
+              <input type="date" className="w-full bg-white/92 px-2 py-1.5 rounded-lg text-[11px] font-semibold text-slate-700 outline-none border border-white/80 focus:ring-2 focus:ring-amber-100 focus:border-amber-200 transition" value={startDate} onChange={e => setStartDate(e.target.value)} />
             </div>
             <div className="flex-1 min-w-0">
-              <label className="text-[8px] font-semibold text-white/70 uppercase ml-1 tracking-[0.18em]">End</label>
-              <input type="date" className="w-full bg-white/90 px-2.5 py-2 rounded-xl text-[12px] font-semibold text-slate-700 outline-none border border-white/70 focus:ring-2 focus:ring-amber-100 focus:border-amber-200 transition" value={endDate} onChange={e => setEndDate(e.target.value)} />
+              <label className="text-[8px] font-semibold text-white/80 uppercase ml-1 tracking-[0.16em]">End</label>
+              <input type="date" className="w-full bg-white/92 px-2 py-1.5 rounded-lg text-[11px] font-semibold text-slate-700 outline-none border border-white/80 focus:ring-2 focus:ring-amber-100 focus:border-amber-200 transition" value={endDate} onChange={e => setEndDate(e.target.value)} />
             </div>
           </div>
         </div>
@@ -164,19 +164,19 @@ export default function StockDashboard() {
         {filtered.slice(0, MIN_VISIBLE_ITEMS).map((entry, index) => (
           <div
             key={entry.id}
-            className={`relative overflow-hidden ${index % 2 === 0 ? 'bg-slate-50/95' : 'bg-white'} px-2.5 py-2 rounded-xl shadow-[0_4px_12px_rgba(15,23,42,0.05)] border border-white/80 border-l-[3px] ${entry.qty > 0 ? 'border-l-emerald-500' : 'border-l-rose-500'} transition-all hover:-translate-y-0.5 hover:shadow-[0_8px_16px_rgba(15,23,42,0.08)]`}
+            className={`relative overflow-hidden ${index % 2 === 0 ? 'bg-slate-50/95' : 'bg-white'} px-2.5 py-1.5 rounded-xl shadow-[0_3px_10px_rgba(15,23,42,0.05)] border border-white/80 border-l-[3px] ${entry.qty > 0 ? 'border-l-emerald-500' : 'border-l-rose-500'} transition-all hover:-translate-y-0.5 hover:shadow-[0_8px_16px_rgba(15,23,42,0.08)]`}
           >
             <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.5),transparent_35%,rgba(148,163,184,0.04))]" />
             <div className="relative flex justify-between items-center">
               <div className="flex gap-2 items-center min-w-0">
-              <div className={`p-1.5 rounded-lg shadow-inner flex-shrink-0 ${entry.qty > 0 ? 'bg-emerald-50 text-emerald-500' : 'bg-rose-50 text-rose-400'}`}>
-                {entry.qty > 0 ? <ArrowUpRight size={14} /> : <ArrowDownLeft size={14} />}
+              <div className={`p-1 rounded-md shadow-inner flex-shrink-0 ${entry.qty > 0 ? 'bg-emerald-50 text-emerald-500' : 'bg-rose-50 text-rose-400'}`}>
+                {entry.qty > 0 ? <ArrowUpRight size={13} /> : <ArrowDownLeft size={13} />}
               </div>
               <div className="min-w-0">
-                <p className="font-extrabold text-slate-900 leading-tight text-sm truncate">
+                <p className="font-extrabold text-slate-900 leading-tight text-[13px] truncate">
                   {entry.narration || entry.note || 'Adjustment'}
                 </p>
-                <p className="text-[10px] text-slate-500 font-bold uppercase mt-1 flex items-center gap-1 tracking-wide">
+                <p className="text-[9px] text-slate-500 font-bold uppercase mt-0.5 flex items-center gap-1 tracking-wide">
                   <Tag size={8}/> {entry.type || 'entry'} • {(entry.date?.toDate ? entry.date : entry.createdAt)?.toDate ? (entry.date?.toDate ? entry.date : entry.createdAt).toDate().toLocaleDateString('en-IN') : 'Recent'}
                 </p>
               </div>
@@ -191,7 +191,7 @@ export default function StockDashboard() {
               >
                 <Trash2 size={12} />
               </button>
-              <p className={`font-black text-lg leading-none flex-shrink-0 ${entry.qty > 0 ? 'text-emerald-500' : 'text-rose-400'}`}>
+              <p className={`font-black text-[16px] leading-none flex-shrink-0 ${entry.qty > 0 ? 'text-emerald-500' : 'text-rose-400'}`}>
                 {entry.qty > 0 ? '+' : ''}{entry.qty}
               </p>
             </div>
