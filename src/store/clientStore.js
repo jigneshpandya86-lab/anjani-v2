@@ -71,7 +71,7 @@ export const useClientStore = create((set, get) => ({
     stockSubscriberCount += 1;
 
     if (!stockUnsubscribe) {
-      const q = query(collection(db, 'stock'), orderBy('date', 'desc'), limit(100));
+      const q = query(collection(db, 'stock'), orderBy('createdAt', 'desc'), limit(200));
       stockUnsubscribe = onSnapshot(q, (snapshot) => {
         const getTime = (value) => {
           if (!value) return 0;
@@ -175,7 +175,7 @@ export const useClientStore = create((set, get) => ({
       qty: parsedQty,
       narration: narration || 'Manual Addition',
       type: 'addition',
-      date: new Date(),
+      date: serverTimestamp(),
       createdAt: serverTimestamp()
     });
     await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(parsedQty) }, { merge: true });
@@ -360,7 +360,6 @@ export const useClientStore = create((set, get) => ({
       const qty = Number(existing.qty || existing.boxes || existing.quantity) || 0;
       const rate = Number(existing.rate) || 0;
       const stockDelta = -Math.abs(qty);
-      const stockEntryDate = new Date();
       const clientName = await getOrderClientName(existing, get().clients);
       const deliveredNarration = formatOrderNarration('Order Delivered', existing.orderId || id, clientName);
 
@@ -369,7 +368,7 @@ export const useClientStore = create((set, get) => ({
         qty: stockDelta,
         narration: deliveredNarration,
         type: 'dispatch',
-        date: stockEntryDate,
+        date: serverTimestamp(),
         createdAt: serverTimestamp()
       });
       extraOrderPatch = {
@@ -446,7 +445,7 @@ export const useClientStore = create((set, get) => ({
               qty,
               narration: reversalNarration,
               type: 'reversal',
-              date: new Date(),
+              date: serverTimestamp(),
               createdAt: serverTimestamp()
             });
             await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(qty) }, { merge: true });
