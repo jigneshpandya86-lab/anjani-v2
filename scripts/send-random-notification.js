@@ -49,6 +49,7 @@ async function sendRandomNotification() {
       let serviceAccount;
       try {
         serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+        console.log(`✅ Firebase credentials loaded for project: ${serviceAccount.project_id}`);
       } catch (parseError) {
         console.error('Error: Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY');
         console.error('Make sure it is a valid JSON string');
@@ -60,9 +61,11 @@ async function sendRandomNotification() {
         credential: admin.credential.cert(serviceAccount),
         projectId: process.env.FIREBASE_PROJECT_ID
       });
+      console.log(`✅ Firebase Admin SDK initialized`);
     }
 
     const db = admin.firestore();
+    console.log(`✅ Firestore database connected`);
 
     // Calculate target hour based on date (deterministic)
     const dateStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
@@ -91,19 +94,27 @@ async function sendRandomNotification() {
     const tokensSnapshot = await db.collectionGroup('tokens').get();
     const tokens = [];
 
+    console.log(`Total token documents found: ${tokensSnapshot.size}`);
+
     tokensSnapshot.forEach(doc => {
-      const token = doc.data().token;
+      const data = doc.data();
+      const token = data.token;
+      console.log(`Token doc: ${doc.ref.path}, has token: ${!!token}`);
       if (token) {
         tokens.push(token);
+        console.log(`Added token: ${token.substring(0, 20)}...`);
       }
     });
 
+    console.log(`Total valid tokens: ${tokens.length}`);
+
     if (tokens.length === 0) {
-      console.log('No FCM tokens found');
+      console.log('⚠️ No FCM tokens found in Firestore!');
+      console.log('Check if userDevices/{userId}/tokens/ collection has documents');
       return;
     }
 
-    console.log(`Found ${tokens.length} FCM tokens`);
+    console.log(`✅ Found ${tokens.length} FCM tokens to send to`);
 
     // Select random prompt
     const randomIndex = Math.floor(Math.random() * PROMPTS.length);

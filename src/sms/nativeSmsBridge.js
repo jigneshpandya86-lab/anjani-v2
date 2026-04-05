@@ -1,18 +1,25 @@
 const getCapacitorPlugins = () => {
   if (typeof window === 'undefined') return {}
-  return window?.Capacitor?.Plugins || {}
+  const plugins = window?.Capacitor?.Plugins || {}
+  console.log('🔍 Capacitor Plugins available:', Object.keys(plugins))
+  return plugins
 }
 
 const getSmsPlugin = () => {
   const plugins = getCapacitorPlugins()
-  // Only check official Capacitor plugins registry (case-sensitive)
-  // Priority: SmsBackground is the canonical name defined in @CapacitorPlugin annotation
-  return plugins.SmsBackground || null
+  const plugin = plugins.SmsBackground || null
+  console.log('📱 SmsBackground plugin found:', !!plugin)
+  if (plugin) {
+    console.log('✅ Plugin has send method:', typeof plugin.send === 'function')
+  }
+  return plugin
 }
 
 export const isNativeSmsAvailable = () => {
   const plugin = getSmsPlugin()
-  return Boolean(plugin && typeof plugin.send === 'function')
+  const available = Boolean(plugin && typeof plugin.send === 'function')
+  console.log('🔌 Native SMS Available:', available)
+  return available
 }
 
 export const sendSmsNative = async ({ to, body }) => {
