@@ -122,7 +122,6 @@ export default function StockDashboard() {
         <div className="relative flex items-start justify-between gap-2">
           <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-white/70">Stock Ledger</p>
           <div className="flex items-center gap-1.5 text-[10px] bg-white/20 text-white px-2 py-1 rounded-full font-black uppercase shadow-sm backdrop-blur-sm">
-            <span className="opacity-80">Range</span>
             <input
               type="date"
               className="w-[96px] bg-transparent text-white text-[10px] font-bold outline-none"
