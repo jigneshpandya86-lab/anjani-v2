@@ -28,6 +28,9 @@ jobs:
           FCM_TARGET_TOKEN: ${{ secrets.FCM_TARGET_TOKEN }}
           FCM_TARGET_TOPIC: ${{ secrets.FCM_TARGET_TOPIC }}
           RANDOM_SEED: ${{ secrets.RANDOM_SEED }}
+          LOCAL_TIMEZONE: ${{ secrets.LOCAL_TIMEZONE }}
+          DAY_START_HOUR: ${{ secrets.DAY_START_HOUR }}
+          DAY_END_HOUR: ${{ secrets.DAY_END_HOUR }}
           NOTIFICATION_TITLE: ${{ secrets.NOTIFICATION_TITLE }}
           NOTIFICATION_BODY: ${{ secrets.NOTIFICATION_BODY }}
         run: |
@@ -37,19 +40,42 @@ jobs:
           import admin from "firebase-admin";
 
           const now = new Date();
-          const utcDate = now.toISOString().slice(0, 10); // YYYY-MM-DD
-          const currentUtcHour = now.getUTCHours();
+          const timezone = process.env.LOCAL_TIMEZONE || "Asia/Kolkata";
+          const startHour = Number.parseInt(process.env.DAY_START_HOUR || "7", 10);
+          const endHour = Number.parseInt(process.env.DAY_END_HOUR || "22", 10);
+          if (!Number.isInteger(startHour) || !Number.isInteger(endHour) || startHour < 0 || endHour > 23 || startHour > endHour) {
+            throw new Error("Invalid DAY_START_HOUR/DAY_END_HOUR. Expected 0-23 and start <= end.");
+          }
+
+          const dateFormatter = new Intl.DateTimeFormat("en-CA", {
+            timeZone: timezone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          });
+          const hourFormatter = new Intl.DateTimeFormat("en-US", {
+            timeZone: timezone,
+            hour: "2-digit",
+            hour12: false,
+          });
+          const localDate = dateFormatter.format(now); // YYYY-MM-DD in selected timezone
+          const currentLocalHour = Number.parseInt(hourFormatter.format(now), 10);
+
           const seed = process.env.RANDOM_SEED || "anjani-random-seed";
           const hashHex = crypto
             .createHash("sha256")
-            .update(`${seed}:${utcDate}`)
+            .update(`${seed}:${localDate}`)
             .digest("hex");
-          const targetUtcHour = parseInt(hashHex.slice(0, 8), 16) % 24;
+          const daytimeRange = endHour - startHour + 1;
+          const targetLocalHour = startHour + (parseInt(hashHex.slice(0, 8), 16) % daytimeRange);
+          const actionIndex = parseInt(hashHex.slice(8, 16), 16);
 
-          console.log(`UTC date=${utcDate}, currentUtcHour=${currentUtcHour}, targetUtcHour=${targetUtcHour}`);
+          console.log(
+            `timezone=${timezone}, localDate=${localDate}, currentLocalHour=${currentLocalHour}, targetLocalHour=${targetLocalHour}, dayWindow=${startHour}-${endHour}`
+          );
 
-          if (currentUtcHour !== targetUtcHour) {
-            console.log("Not the random hour for today. Skipping send.");
+          if (currentLocalHour !== targetLocalHour) {
+            console.log("Not the random daytime hour for today. Skipping send.");
             process.exit(0);
           }
 
@@ -74,8 +100,19 @@ jobs:
             projectId,
           });
 
-          const title = process.env.NOTIFICATION_TITLE || "Anjani Update";
-          const body = process.env.NOTIFICATION_BODY || "This is your random daily notification.";
+          const actionTexts = [
+            "Please ask pending clients for payment today.",
+            "Please check current stock and update low items.",
+            "Send welcome leads SMS to newly added leads.",
+            "Follow up with clients who missed last payment.",
+            "Review today's order list and confirm deliveries.",
+            "Call top clients and collect outstanding amounts.",
+            "Check warehouse stock movement and reconcile entries.",
+            "Send lead follow-up messages for hot prospects.",
+          ];
+          const autoActionBody = actionTexts[actionIndex % actionTexts.length];
+          const title = process.env.NOTIFICATION_TITLE || "Today's Action Reminder";
+          const body = process.env.NOTIFICATION_BODY || autoActionBody;
 
           const message = {
             notification: { title, body },
@@ -86,7 +123,7 @@ jobs:
               },
             },
             data: {
-              utcDate,
+              localDate,
               sentAt: now.toISOString(),
             },
             ...(token ? { token } : { topic }),

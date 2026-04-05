@@ -64,14 +64,19 @@ The app supports both newer and legacy field names when reading orders:
 
 ## Random daily Firebase notification from GitHub Actions
 
-This repo includes `.github/workflows/random-fcm-notification.yml` to send an FCM push notification once per day at a random UTC hour.
+This repo includes `.github/workflows/random-fcm-notification.yml` to send an FCM push notification once per day at a random **daytime** hour.
 
 - Workflow trigger:
-  - Runs hourly (`cron`) and only sends when the current hour matches that day's deterministic random hour.
+  - Runs hourly (`cron`) and only sends when the current local hour matches that day's deterministic random hour inside the daytime window.
   - Can also be run manually using **Actions → Send Random Daily FCM Notification**.
+- Daytime window:
+  - Default is `7` to `22` (7 AM to 10 PM) in `Asia/Kolkata`.
+  - Configure timezone and window using secrets: `LOCAL_TIMEZONE`, `DAY_START_HOUR`, `DAY_END_HOUR`.
 - Delivery target:
   - Use a single device token (`FCM_TARGET_TOKEN`) or a topic (`FCM_TARGET_TOPIC`).
   - At least one must be set in repository secrets.
+- Message text:
+  - If `NOTIFICATION_BODY` is not set, the workflow picks one auto-action text (for example: ask client for money, check stock, send leads welcome, and similar business reminders).
 
 ### Required GitHub secrets
 
@@ -87,6 +92,9 @@ This repo includes `.github/workflows/random-fcm-notification.yml` to send an FC
 ### Optional GitHub secrets
 
 - `RANDOM_SEED` (changes how the random hour is selected each day)
+- `LOCAL_TIMEZONE` (IANA timezone like `Asia/Kolkata`)
+- `DAY_START_HOUR` (default `7`)
+- `DAY_END_HOUR` (default `22`)
 - `NOTIFICATION_TITLE`
 - `NOTIFICATION_BODY`
 
