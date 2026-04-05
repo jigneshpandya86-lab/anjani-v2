@@ -31,9 +31,31 @@ const PROMPTS = [
 
 async function sendRandomNotification() {
   try {
+    // Validate environment variables
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+      console.error('Error: FIREBASE_SERVICE_ACCOUNT_KEY environment variable is not set');
+      console.error('Please add FIREBASE_SERVICE_ACCOUNT_KEY to GitHub Secrets');
+      process.exit(1);
+    }
+
+    if (!process.env.FIREBASE_PROJECT_ID) {
+      console.error('Error: FIREBASE_PROJECT_ID environment variable is not set');
+      console.error('Please add FIREBASE_PROJECT_ID to GitHub Secrets');
+      process.exit(1);
+    }
+
     // Initialize Firebase Admin SDK
     if (!admin.apps.length) {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+      let serviceAccount;
+      try {
+        serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+      } catch (parseError) {
+        console.error('Error: Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY');
+        console.error('Make sure it is a valid JSON string');
+        console.error('Error details:', parseError.message);
+        process.exit(1);
+      }
+
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
         projectId: process.env.FIREBASE_PROJECT_ID

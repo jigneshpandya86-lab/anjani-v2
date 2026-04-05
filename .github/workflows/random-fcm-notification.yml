@@ -21,7 +21,22 @@ jobs:
           node-version: '18'
 
       - name: Install dependencies
-        run: npm install firebase-admin
+        run: npm install
+
+      - name: Verify Firebase credentials
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+        run: |
+          if [ -z "$FIREBASE_PROJECT_ID" ]; then
+            echo "❌ Error: FIREBASE_PROJECT_ID secret is not set"
+            exit 1
+          fi
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_KEY" ]; then
+            echo "❌ Error: FIREBASE_SERVICE_ACCOUNT_KEY secret is not set"
+            exit 1
+          fi
+          echo "✅ Firebase credentials are configured"
 
       - name: Send random notification
         env:
