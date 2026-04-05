@@ -1,4 +1,3 @@
-/* eslint-env node */
 import admin from 'firebase-admin';
 import crypto from 'crypto';
 
