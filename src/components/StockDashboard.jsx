@@ -123,15 +123,7 @@ export default function StockDashboard() {
             {totalStock.toLocaleString()} <span className="text-[10px] font-medium text-slate-500">Boxes</span>
           </h2>
         </div>
-        <div className="flex-1 flex items-end gap-2">
-          <div className="flex-1 min-w-0">
-            <label className="text-[8px] font-semibold text-slate-500 uppercase ml-1 tracking-[0.18em]">Start</label>
-            <input type="date" className="w-full bg-slate-50/90 px-2.5 py-2 rounded-xl text-[12px] font-semibold text-slate-700 outline-none border border-slate-200 focus:ring-2 focus:ring-amber-100 focus:border-amber-200 transition" value={startDate} onChange={e => setStartDate(e.target.value)} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <label className="text-[8px] font-semibold text-slate-500 uppercase ml-1 tracking-[0.18em]">End</label>
-            <input type="date" className="w-full bg-slate-50/90 px-2.5 py-2 rounded-xl text-[12px] font-semibold text-slate-700 outline-none border border-slate-200 focus:ring-2 focus:ring-amber-100 focus:border-amber-200 transition" value={endDate} onChange={e => setEndDate(e.target.value)} />
-          </div>
+        <div className="flex-1 flex flex-col gap-1.5">
           {(startDate || endDate) && (
             <button
               onClick={() => {
@@ -139,11 +131,21 @@ export default function StockDashboard() {
                 setStartDate(start);
                 setEndDate(end);
               }}
-              className="text-[10px] font-semibold text-rose-400 uppercase px-1.5 pb-1"
+              className="self-end text-[10px] font-semibold text-rose-400 uppercase px-1.5"
             >
               Clear
             </button>
           )}
+          <div className="flex items-end gap-2">
+            <div className="flex-1 min-w-0">
+              <label className="text-[8px] font-semibold text-slate-500 uppercase ml-1 tracking-[0.18em]">Start</label>
+              <input type="date" className="w-full bg-slate-50/90 px-2.5 py-2 rounded-xl text-[12px] font-semibold text-slate-700 outline-none border border-slate-200 focus:ring-2 focus:ring-amber-100 focus:border-amber-200 transition" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <label className="text-[8px] font-semibold text-slate-500 uppercase ml-1 tracking-[0.18em]">End</label>
+              <input type="date" className="w-full bg-slate-50/90 px-2.5 py-2 rounded-xl text-[12px] font-semibold text-slate-700 outline-none border border-slate-200 focus:ring-2 focus:ring-amber-100 focus:border-amber-200 transition" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            </div>
+          </div>
         </div>
       </div>
 
