@@ -1,8 +1,10 @@
-// Import Firebase scripts
+// eslint-disable-next-line no-undef
 importScripts('https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js');
+// eslint-disable-next-line no-undef
 importScripts('https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js');
 
 // Initialize Firebase in service worker (matches src/firebase-config.js)
+// eslint-disable-next-line no-undef
 firebase.initializeApp({
   apiKey: 'AIzaSyANmqfdu8rccsTrfTF_-m4D2aeRHRNaqsU',
   authDomain: 'anjaniappnew.firebaseapp.com',
@@ -36,6 +38,7 @@ messaging.onBackgroundMessage((payload) => {
     ]
   };
 
+  // eslint-disable-next-line no-undef
   self.registration.showNotification(
     notification.title || 'Anjani',
     notificationOptions
@@ -43,12 +46,14 @@ messaging.onBackgroundMessage((payload) => {
 });
 
 // Handle notification clicks
+// eslint-disable-next-line no-undef
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const link = event.notification.data?.link || '/';
 
   event.waitUntil(
+    // eslint-disable-next-line no-undef
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(
       (clientList) => {
         // Check if app window is already open
@@ -65,7 +70,9 @@ self.addEventListener('notificationclick', (event) => {
           }
         }
         // Open new window if not open
+        // eslint-disable-next-line no-undef
         if (clients.openWindow) {
+          // eslint-disable-next-line no-undef
           return clients.openWindow(link);
         }
       }
