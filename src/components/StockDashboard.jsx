@@ -114,16 +114,18 @@ export default function StockDashboard() {
   };
 
   return (
-    <div className="space-y-4 pb-20">
-      {/* Stock Summary + Date Range Filter (single line, light theme) */}
-      <div className="bg-white/90 backdrop-blur-sm p-3.5 rounded-[26px] border border-slate-200/80 shadow-[0_8px_24px_rgba(148,163,184,0.12)] flex items-end gap-2.5">
-        <div className="bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-100/80 border border-amber-200/70 rounded-[20px] px-3.5 py-2.5 min-w-[124px] shadow-inner">
-          <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-amber-700 mb-0.5">Live Total</p>
-          <h2 className="text-[1.35rem] leading-none font-black whitespace-nowrap text-gray-900">
-            {totalStock.toLocaleString()} <span className="text-[10px] font-medium text-slate-500">Boxes</span>
+    <div className="space-y-3 pb-20">
+      {/* Stock Summary + Date Range Filter */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-50 via-amber-100 to-yellow-100 p-2.5 text-slate-900 shadow-[0_8px_18px_rgba(148,163,184,0.18)] border border-amber-100/80">
+        <div className="pointer-events-none absolute -right-10 -top-12 h-28 w-28 rounded-full bg-white/30 blur-[2px]" />
+        <div className="pointer-events-none absolute -left-14 bottom-0 h-20 w-20 rounded-full bg-white/25" />
+        <div className="relative flex items-center justify-between gap-2">
+          <p className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-amber-700/80">Live Stock</p>
+          <h2 className="text-[1.45rem] leading-none font-black whitespace-nowrap text-slate-900">
+            {totalStock.toLocaleString()} <span className="text-[9px] font-bold text-slate-500 uppercase tracking-[0.08em]">Boxes</span>
           </h2>
         </div>
-        <div className="flex-1 flex flex-col gap-1.5">
+        <div className="relative mt-1 flex flex-col gap-1">
           {(startDate || endDate) && (
             <button
               onClick={() => {
@@ -131,19 +133,19 @@ export default function StockDashboard() {
                 setStartDate(start);
                 setEndDate(end);
               }}
-              className="self-end text-[10px] font-semibold text-rose-400 uppercase px-1.5"
+              className="self-end text-[9px] font-semibold text-amber-700 uppercase px-1"
             >
               Clear
             </button>
           )}
           <div className="flex items-end gap-2">
             <div className="flex-1 min-w-0">
-              <label className="text-[8px] font-semibold text-slate-500 uppercase ml-1 tracking-[0.18em]">Start</label>
-              <input type="date" className="w-full bg-slate-50/90 px-2.5 py-2 rounded-xl text-[12px] font-semibold text-slate-700 outline-none border border-slate-200 focus:ring-2 focus:ring-amber-100 focus:border-amber-200 transition" value={startDate} onChange={e => setStartDate(e.target.value)} />
+              <label className="text-[8px] font-semibold text-slate-500 uppercase ml-1 tracking-[0.16em]">Start</label>
+              <input type="date" className="w-full bg-white px-2 py-1 rounded-lg text-[11px] font-semibold text-slate-700 outline-none border border-amber-100 focus:ring-2 focus:ring-amber-100 focus:border-amber-200 transition" value={startDate} onChange={e => setStartDate(e.target.value)} />
             </div>
             <div className="flex-1 min-w-0">
-              <label className="text-[8px] font-semibold text-slate-500 uppercase ml-1 tracking-[0.18em]">End</label>
-              <input type="date" className="w-full bg-slate-50/90 px-2.5 py-2 rounded-xl text-[12px] font-semibold text-slate-700 outline-none border border-slate-200 focus:ring-2 focus:ring-amber-100 focus:border-amber-200 transition" value={endDate} onChange={e => setEndDate(e.target.value)} />
+              <label className="text-[8px] font-semibold text-slate-500 uppercase ml-1 tracking-[0.16em]">End</label>
+              <input type="date" className="w-full bg-white px-2 py-1 rounded-lg text-[11px] font-semibold text-slate-700 outline-none border border-amber-100 focus:ring-2 focus:ring-amber-100 focus:border-amber-200 transition" value={endDate} onChange={e => setEndDate(e.target.value)} />
             </div>
           </div>
         </div>
@@ -162,38 +164,37 @@ export default function StockDashboard() {
         {filtered.slice(0, MIN_VISIBLE_ITEMS).map((entry, index) => (
           <div
             key={entry.id}
-            className={`px-3.5 py-3.5 rounded-[22px] border flex justify-between items-center shadow-sm hover:shadow-md transition-all ${
-              index % 2 === 0
-                ? 'bg-slate-50/85 border-slate-200/90'
-                : 'bg-white border-slate-200'
-            }`}
+            className={`relative overflow-hidden ${index % 2 === 0 ? 'bg-slate-50/95' : 'bg-white'} px-2.5 py-1.5 rounded-xl shadow-[0_3px_10px_rgba(15,23,42,0.05)] border border-white/80 border-l-[3px] ${entry.qty > 0 ? 'border-l-emerald-500' : 'border-l-rose-500'} transition-all hover:-translate-y-0.5 hover:shadow-[0_8px_16px_rgba(15,23,42,0.08)]`}
           >
-            <div className="flex gap-3 items-center min-w-0">
-              <div className={`p-2 rounded-2xl flex-shrink-0 ${entry.qty > 0 ? 'bg-emerald-50 text-emerald-500 border border-emerald-100' : 'bg-rose-50 text-rose-400 border border-rose-100'}`}>
-                {entry.qty > 0 ? <ArrowUpRight size={14} /> : <ArrowDownLeft size={14} />}
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.5),transparent_35%,rgba(148,163,184,0.04))]" />
+            <div className="relative flex justify-between items-center">
+              <div className="flex gap-2 items-center min-w-0">
+              <div className={`p-1 rounded-md shadow-inner flex-shrink-0 ${entry.qty > 0 ? 'bg-emerald-50 text-emerald-500' : 'bg-rose-50 text-rose-400'}`}>
+                {entry.qty > 0 ? <ArrowUpRight size={13} /> : <ArrowDownLeft size={13} />}
               </div>
               <div className="min-w-0">
-                <p className="font-semibold text-slate-800 leading-tight text-[14px] truncate">
+                <p className="font-extrabold text-slate-900 leading-tight text-[13px] truncate">
                   {entry.narration || entry.note || 'Adjustment'}
                 </p>
-                <p className="text-[10px] text-slate-500 font-medium uppercase mt-1 flex items-center gap-1 tracking-wide">
+                <p className="text-[9px] text-slate-500 font-bold uppercase mt-0.5 flex items-center gap-1 tracking-wide">
                   <Tag size={8}/> {entry.type || 'entry'} • {(entry.date?.toDate ? entry.date : entry.createdAt)?.toDate ? (entry.date?.toDate ? entry.date : entry.createdAt).toDate().toLocaleDateString('en-IN') : 'Recent'}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2.5 pl-2">
-              <p className={`font-bold text-[1.85rem] leading-none flex-shrink-0 tracking-tight ${entry.qty > 0 ? 'text-emerald-500' : 'text-rose-400'}`}>
-                {entry.qty > 0 ? '+' : ''}{entry.qty}
-              </p>
+            <div className="flex items-center gap-2 pl-2">
               <button
                 type="button"
                 onClick={() => handleDelete(entry)}
-                className="h-9 w-9 rounded-2xl border border-rose-100 bg-rose-50 text-rose-400 hover:bg-rose-100 active:scale-95 transition-all flex items-center justify-center"
+                className="shrink-0 flex items-center justify-center rounded-md bg-rose-50 p-1 text-rose-500 transition-colors hover:bg-rose-100"
                 aria-label={`Delete ${entry.narration || entry.note || 'stock entry'}`}
                 title="Delete stock entry"
               >
-                <Trash2 size={14} />
+                <Trash2 size={12} />
               </button>
+              <p className={`font-black text-[16px] leading-none flex-shrink-0 ${entry.qty > 0 ? 'text-emerald-500' : 'text-rose-400'}`}>
+                {entry.qty > 0 ? '+' : ''}{entry.qty}
+              </p>
+            </div>
             </div>
           </div>
         ))}
