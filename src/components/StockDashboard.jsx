@@ -29,7 +29,7 @@ export default function StockDashboard() {
 
   const [startDate, setStartDate] = useState(() => getDefaultDateRange().start);
   const [endDate, setEndDate] = useState(() => getDefaultDateRange().end);
-  const MIN_VISIBLE_ITEMS = 15;
+  const MIN_VISIBLE_ITEMS = 50;
 
   useEffect(() => {
     const unsub = fetchStock();
