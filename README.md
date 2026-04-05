@@ -61,3 +61,35 @@ The app supports both newer and legacy field names when reading orders:
 - Client ID: `clientId` (fallback: `customerId`)
 - Address: `address` (fallback: `deliveryAddress`, `location`)
 - Map link: `mapLink` (fallback: `googleMap`)
+
+## Random daily Firebase notification from GitHub Actions
+
+This repo includes `.github/workflows/random-fcm-notification.yml` to send an FCM push notification once per day at a random UTC hour.
+
+- Workflow trigger:
+  - Runs hourly (`cron`) and only sends when the current hour matches that day's deterministic random hour.
+  - Can also be run manually using **Actions → Send Random Daily FCM Notification**.
+- Delivery target:
+  - Use a single device token (`FCM_TARGET_TOKEN`) or a topic (`FCM_TARGET_TOPIC`).
+  - At least one must be set in repository secrets.
+
+### Required GitHub secrets
+
+1. `FIREBASE_SERVICE_ACCOUNT_JSON`
+   - Value is the full JSON from Firebase service account key.
+   - Generate in **Firebase Console → Project settings → Service accounts → Generate new private key**.
+2. `FIREBASE_PROJECT_ID`
+   - Firebase project ID string.
+3. One of:
+   - `FCM_TARGET_TOKEN` (device registration token), or
+   - `FCM_TARGET_TOPIC` (topic name without `/topics/` prefix, e.g. `all-users`).
+
+### Optional GitHub secrets
+
+- `RANDOM_SEED` (changes how the random hour is selected each day)
+- `NOTIFICATION_TITLE`
+- `NOTIFICATION_BODY`
+
+### App-side requirement for token-based sends
+
+If you use `FCM_TARGET_TOKEN`, your Android app must fetch and log/send its FCM registration token to your backend/admin so you can store it as a GitHub secret.
