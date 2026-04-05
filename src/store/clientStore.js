@@ -9,7 +9,7 @@ import { TASK_TYPES, enqueueSmsJobsForEvent, cancelPendingSmsJobsForEntity } fro
 let stockUnsubscribe = null;
 let stockSubscriberCount = 0;
 const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary');
-const RECENT_STOCK_ENTRIES_LIMIT = 15;
+const RECENT_STOCK_ENTRIES_LIMIT = 50;
 
 const getTimestampMillis = (value) => {
   if (!value) return 0;
@@ -91,7 +91,7 @@ export const useClientStore = create((set, get) => ({
     stockSubscriberCount += 1;
 
     if (!stockUnsubscribe) {
-      const q = query(collection(db, 'stock'), orderBy('date', 'desc'), limit(20));
+      const q = query(collection(db, 'stock'), orderBy('date', 'desc'), limit(100));
       stockUnsubscribe = onSnapshot(q, (snapshot) => {
         const getTime = (value) => {
           if (!value) return 0;
@@ -365,8 +365,18 @@ export const useClientStore = create((set, get) => ({
     const remoteExisting = orderSnap.exists() ? { id, ...orderSnap.data() } : null;
     const existing = localExisting || remoteExisting;
     const previousStatus = remoteExisting?.status || localExisting?.status || '';
+    const shouldMarkDelivered = data.status === 'Delivered';
+    const alreadyPostedToStock = Boolean(
+      remoteExisting?.stockPostedAt ||
+      remoteExisting?.stockEntryId
+    );
+    let extraOrderPatch = {};
 
-    if (existing && data.status === 'Delivered' && previousStatus !== 'Delivered') {
+    if (
+      existing &&
+      shouldMarkDelivered &&
+      (!alreadyPostedToStock || previousStatus !== 'Delivered')
+    ) {
       const qty = Number(existing.qty || existing.boxes || existing.quantity) || 0;
       const rate = Number(existing.rate) || 0;
       const stockDelta = -Math.abs(qty);
@@ -375,13 +385,17 @@ export const useClientStore = create((set, get) => ({
       const deliveredNarration = formatOrderNarration('Order Delivered', existing.orderId || id, clientName);
 
       // 1. Debit stock
-      await addDoc(collection(db, 'stock'), {
+      const stockDocRef = await addDoc(collection(db, 'stock'), {
         qty: stockDelta,
         narration: deliveredNarration,
         type: 'dispatch',
         date: stockEntryDate,
         createdAt: serverTimestamp()
       });
+      extraOrderPatch = {
+        stockEntryId: stockDocRef.id,
+        stockPostedAt: serverTimestamp(),
+      };
       await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(stockDelta) }, { merge: true });
 
       // Keep dashboard totals + movement log responsive even before snapshot roundtrip.
@@ -439,7 +453,10 @@ export const useClientStore = create((set, get) => ({
         occurredAt: new Date(),
       });
     }
-    await updateDoc(orderRef, data);
+    await updateDoc(orderRef, {
+      ...data,
+      ...extraOrderPatch,
+    });
   },
 
   deleteOrder: async (id) => {
