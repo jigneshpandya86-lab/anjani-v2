@@ -83,15 +83,23 @@ function App() {
 
   useEffect(() => {
     if (!user) return undefined
-    if (!isNativeSmsAvailable()) return undefined
+
+    console.log('📋 SMS Processor: Checking if native SMS available...')
+    if (!isNativeSmsAvailable()) {
+      console.log('⚠️ SMS Processor: Native SMS NOT available - SMS processor will not run')
+      return undefined
+    }
+
+    console.log('✅ SMS Processor: Native SMS available - Starting SMS processor')
 
     let stopped = false
     const runSmsProcessor = async () => {
       if (stopped) return
       try {
+        console.log('🔄 SMS Processor: Running due SMS jobs...')
         await processDueSmsJobs({ db })
       } catch (error) {
-        console.error('SMS background processor failed', error)
+        console.error('❌ SMS background processor failed', error)
       }
     }
 
@@ -99,6 +107,7 @@ function App() {
     // Rate limiting: process SMS every 2 minutes (120s) to avoid carrier throttling
     // This limits max throughput to ~600 SMS/hour (batch size 20, interval 120s)
     const timer = window.setInterval(runSmsProcessor, 120 * 1000)
+    console.log('⏱️ SMS Processor: Scheduled to run every 120 seconds')
     return () => {
       stopped = true
       window.clearInterval(timer)
