@@ -34,7 +34,6 @@ This repo includes a GitHub Actions workflow at `.github/workflows/android-apk.y
 - Builds the web app (`npm run build`).
 - Creates/syncs the Capacitor Android project.
 - Ensures these permissions are present in `android/app/src/main/AndroidManifest.xml`:
-  - `android.permission.SEND_SMS`
   - `android.permission.CAMERA`
   - `android.permission.ACCESS_COARSE_LOCATION`
   - `android.permission.ACCESS_FINE_LOCATION`
