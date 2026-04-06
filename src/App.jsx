@@ -22,7 +22,8 @@ import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'f
 import { db, auth } from './firebase-config'
 import { signOut, onAuthStateChanged } from 'firebase/auth'
 import { processDueSmsJobs } from './sms/smsSender'
-import { isNativeSmsAvailable } from './sms/nativeSmsBridge'
+import { isNativeSmsAvailable, getPluginDetectionInfo } from './sms/nativeSmsBridge'
+import { writeDebugLog } from './sms/debugLogger'
 import { initializeFcm } from './services/fcm-setup'
 import ClientList from './components/ClientList'
 import AddClient from './components/AddClient'
@@ -85,21 +86,43 @@ function App() {
     if (!user) return undefined
 
     console.log('📋 SMS Processor: Checking if native SMS available...')
-    if (!isNativeSmsAvailable()) {
+    writeDebugLog(db, user.uid, 'processor_init', 'SMS processor initialization check started')
+
+    const pluginInfo = getPluginDetectionInfo()
+    const smsAvailable = isNativeSmsAvailable()
+
+    if (!smsAvailable) {
       console.log('⚠️ SMS Processor: Native SMS NOT available - SMS processor will not run')
+      writeDebugLog(db, user.uid, 'plugin_check', 'Native SMS plugin NOT detected', {
+        smsAvailable: false,
+        ...pluginInfo,
+      })
       return undefined
     }
 
     console.log('✅ SMS Processor: Native SMS available - Starting SMS processor')
+    writeDebugLog(db, user.uid, 'plugin_check', 'Native SMS plugin detected successfully', {
+      smsAvailable: true,
+      ...pluginInfo,
+    })
 
     let stopped = false
     const runSmsProcessor = async () => {
       if (stopped) return
       try {
         console.log('🔄 SMS Processor: Running due SMS jobs...')
-        await processDueSmsJobs({ db })
+        writeDebugLog(db, user.uid, 'processor_run', 'SMS processor cycle started')
+        const result = await processDueSmsJobs({ db, userId: user.uid })
+        if (result.processed > 0) {
+          writeDebugLog(db, user.uid, 'processor_run', 'SMS processor cycle completed', {
+            ...result,
+          })
+        }
       } catch (error) {
         console.error('❌ SMS background processor failed', error)
+        writeDebugLog(db, user.uid, 'error', 'SMS processor failed', {
+          error: error?.message || String(error),
+        })
       }
     }
 
