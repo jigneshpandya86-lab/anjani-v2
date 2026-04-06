@@ -4,22 +4,153 @@
  */
 
 const admin = require('firebase-admin');
+const express = require('express');
 
 // Initialize Firebase Admin SDK
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-// Export all Cloud Functions
-const { smsDeliveryWebhook, processStaleSmsJobs } = require('./smsDeliveryWebhook.js');
+const db = admin.firestore();
+
+// ============================================================================
+// smsDeliveryWebhook - HTTP endpoint for SMS delivery status updates
+// ============================================================================
+const deliveryApp = express();
+deliveryApp.use(express.json());
+
+/**
+ * POST /
+ * Update SMS job with delivery status
+ */
+deliveryApp.post('/', async (req, res) => {
+  try {
+    const { jobId, status, timestamp } = req.body;
+
+    // Validate required fields
+    if (!jobId || !status) {
+      return res.status(400).json({
+        error: 'Missing required fields: jobId, status',
+      });
+    }
+
+    // Validate status
+    const validStatuses = ['delivered', 'failed', 'undelivered'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+      });
+    }
+
+    // Get job reference
+    const jobRef = db.collection('sms_jobs').doc(jobId);
+    const jobSnap = await jobRef.get();
+
+    if (!jobSnap.exists()) {
+      return res.status(404).json({
+        error: `SMS job not found: ${jobId}`,
+      });
+    }
+
+    const updateData = {
+      deliveryStatus: status,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    // Add timestamp if provided
+    if (timestamp) {
+      updateData.deliveredAt = new admin.firestore.Timestamp(
+        Math.floor(timestamp / 1000),
+        (timestamp % 1000) * 1000000
+      );
+    } else if (status === 'delivered') {
+      updateData.deliveredAt = admin.firestore.FieldValue.serverTimestamp();
+    }
+
+    // If failed, mark as failed
+    if (status === 'failed' || status === 'undelivered') {
+      updateData.deliveryFailedAt = admin.firestore.FieldValue.serverTimestamp();
+    }
+
+    // Update job document
+    await jobRef.update(updateData);
+
+    console.log(`Delivery status updated - jobId: ${jobId}, status: ${status}`);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Delivery status updated',
+      jobId,
+      status,
+    });
+  } catch (error) {
+    console.error('Error updating delivery status:', error);
+    return res.status(500).json({
+      error: 'Failed to update delivery status',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * GET /health
+ * Health check endpoint for Cloud Functions
+ */
+deliveryApp.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
+exports.smsDeliveryWebhook = deliveryApp;
+
+// ============================================================================
+// processStaleSmsJobs - Mark old SMS as undelivered (scheduled function)
+// ============================================================================
+exports.processStaleSmsJobs = async (message, context) => {
+  try {
+    // Mark SMS jobs as undelivered if they've been pending for more than 24 hours
+    const twentyFourHoursAgo = admin.firestore.Timestamp.fromDate(
+      new Date(Date.now() - 24 * 60 * 60 * 1000)
+    );
+
+    const staleSnap = await db
+      .collection('sms_jobs')
+      .where('deliveryStatus', '==', 'pending')
+      .where('sentAt', '<', twentyFourHoursAgo)
+      .limit(500)
+      .get();
+
+    let updated = 0;
+    const batch = db.batch();
+
+    staleSnap.docs.forEach((doc) => {
+      batch.update(doc.ref, {
+        deliveryStatus: 'undelivered',
+        deliveryFailedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      updated += 1;
+    });
+
+    if (updated > 0) {
+      await batch.commit();
+      console.log(`Marked ${updated} stale SMS jobs as undelivered`);
+    }
+
+    return { marked_undelivered: updated };
+  } catch (error) {
+    console.error('Error processing stale SMS jobs:', error);
+    throw error;
+  }
+};
+
+// ============================================================================
+// Import and export remaining functions from processSmsJobs.js
+// ============================================================================
 const {
   processSmsJobsScheduled,
   cleanupSmsProcessingQueue,
 } = require('./processSmsJobs.js');
 
-// Export functions
-exports.smsDeliveryWebhook = smsDeliveryWebhook;
-exports.processStaleSmsJobs = processStaleSmsJobs;
 exports.processSmsJobsScheduled = processSmsJobsScheduled;
 exports.cleanupSmsProcessingQueue = cleanupSmsProcessingQueue;
 
