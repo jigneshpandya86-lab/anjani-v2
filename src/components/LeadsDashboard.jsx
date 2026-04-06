@@ -108,7 +108,11 @@ export default function LeadsDashboard() {
     <div className="space-y-4 pb-20">
       <div className="flex items-center justify-between px-1">
         <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter flex items-center gap-2">
-          <Sparkles className="text-[#ff9900]" size={20} /> Inquiries
+          <Sparkles className="text-[#ff9900]" size={20} />
+          <span>Inquiries</span>
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-[#ff9900]/40 bg-[#fff4e6] text-[#ff9900] font-extrabold tracking-[0.14em]">
+            CONNECT
+          </span>
         </h2>
         <span className="bg-orange-100 text-[#ff9900] px-2 py-0.5 rounded-lg text-[10px] font-black italic">
           {leads.length} LEADS
