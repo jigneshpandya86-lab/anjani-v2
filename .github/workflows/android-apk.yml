@@ -52,15 +52,15 @@ jobs:
             npx cap add android
           fi
 
-      - name: Sync Capacitor
-        run: npx cap sync android
-
-      - name: Register SMS Background Plugin
+      - name: Register SMS Background Plugin (before sync)
         run: |
           PLUGIN_DIR="android/app/src/main/java/com/anjani/app/sms"
           mkdir -p "$PLUGIN_DIR"
           cp native/android/SmsBackgroundPlugin.kt "$PLUGIN_DIR/"
-          echo "SMS Background Plugin registered at $PLUGIN_DIR/SmsBackgroundPlugin.kt"
+          echo "SMS Background Plugin copied to $PLUGIN_DIR/SmsBackgroundPlugin.kt"
+
+      - name: Sync Capacitor (after plugin registration)
+        run: npx cap sync android
 
       - name: Create missing kotlin-alignment.init.gradle
         run: |
