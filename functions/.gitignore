@@ -1,7 +1,0 @@
-node_modules/
-*.log
-.DS_Store
-serviceAccountKey.json
-.env
-.env.local
-.env.*.local

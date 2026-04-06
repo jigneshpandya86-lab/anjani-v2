@@ -15,14 +15,11 @@ import {
   CreditCard,
   Users,
   TrendingUp,
-  LogOut,
-  MessageSquare
+  LogOut
 } from 'lucide-react'
 import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'firebase/firestore'
 import { db, auth } from './firebase-config'
 import { signOut, onAuthStateChanged } from 'firebase/auth'
-import { processDueSmsJobs } from './sms/smsSender'
-import { isNativeSmsAvailable } from './sms/nativeSmsBridge'
 import ClientList from './components/ClientList'
 import AddClient from './components/AddClient'
 import OrdersDashboard from './components/OrdersDashboard'
@@ -31,8 +28,6 @@ import PaymentDashboard from './components/PaymentDashboard'
 import PaymentModal from './components/PaymentModal'
 import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
-import SmsAutomationSettings from './components/SmsAutomationSettings'
-import SmsJobsMonitor from './components/SmsJobsMonitor'
 import Login from './components/Login'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
@@ -80,29 +75,6 @@ function App() {
     }
   }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, user])
 
-  useEffect(() => {
-    if (!user) return undefined
-    if (!isNativeSmsAvailable()) return undefined
-
-    let stopped = false
-    const runSmsProcessor = async () => {
-      if (stopped) return
-      try {
-        await processDueSmsJobs({ db })
-      } catch (error) {
-        console.error('SMS background processor failed', error)
-      }
-    }
-
-    runSmsProcessor()
-    const timer = window.setInterval(runSmsProcessor, 120 * 1000)
-    return () => {
-      stopped = true
-      window.clearInterval(timer)
-    }
-  }, [user])
-
-
   // AUTH: signs out the current user and clears session
   const handleLogout = async () => {
     try {
@@ -122,8 +94,6 @@ function App() {
 
   const drawerNavItems = [
     ...navItems,
-    { id: 'sms-settings', label: 'SMS Settings', icon: <MessageSquare size={20} /> },
-    { id: 'sms-jobs', label: 'SMS Jobs', icon: <MessageSquare size={20} /> }
   ]
 
   const drawerQuickActions = [
@@ -693,8 +663,6 @@ function App() {
             </div>
           )}
           {activeTab === 'leads' && <LeadsDashboard />}
-          {activeTab === 'sms-settings' && <SmsAutomationSettings />}
-          {activeTab === 'sms-jobs' && <SmsJobsMonitor />}
         </div>
       </div>
 
