@@ -26,9 +26,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm ci
+          npm install
           cd functions
-          npm ci
+          npm install
           cd ..
 
       - name: Install Firebase CLI
