@@ -10,37 +10,61 @@
  * Or: Service account key file at ./serviceAccountKey.json
  */
 
-const admin = require('firebase-admin');
-const fs = require('fs');
-const path = require('path');
+import admin from 'firebase-admin';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Load service account key
 let serviceAccountKey;
 
 if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-  // Parse from environment variable (JSON string)
-  serviceAccountKey = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+  try {
+    // Parse from environment variable (JSON string)
+    serviceAccountKey = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+    console.log('  ✓ Using service account from FIREBASE_SERVICE_ACCOUNT_KEY env var\n');
+  } catch (e) {
+    console.error('❌ Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY:', e.message);
+    process.exit(1);
+  }
+} else if (process.env.GOOGLE_APPLICATION_CREDENTIALS && fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS)) {
+  try {
+    serviceAccountKey = JSON.parse(
+      fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'utf-8')
+    );
+    console.log('  ✓ Using service account from GOOGLE_APPLICATION_CREDENTIALS\n');
+  } catch (e) {
+    console.error('❌ Failed to parse GOOGLE_APPLICATION_CREDENTIALS:', e.message);
+    process.exit(1);
+  }
 } else if (fs.existsSync(path.join(__dirname, '../serviceAccountKey.json'))) {
-  // Load from file
-  serviceAccountKey = JSON.parse(
-    fs.readFileSync(path.join(__dirname, '../serviceAccountKey.json'), 'utf-8')
-  );
+  try {
+    serviceAccountKey = JSON.parse(
+      fs.readFileSync(path.join(__dirname, '../serviceAccountKey.json'), 'utf-8')
+    );
+    console.log('  ✓ Using service account from serviceAccountKey.json file\n');
+  } catch (e) {
+    console.error('❌ Failed to parse serviceAccountKey.json:', e.message);
+    process.exit(1);
+  }
 } else {
   console.error('❌ Error: Firebase service account key not found');
-  console.error('Please provide one of:');
-  console.error('  1. Set FIREBASE_SERVICE_ACCOUNT_KEY environment variable');
-  console.error('  2. Create ./serviceAccountKey.json file');
-  console.error('\nTo get service account key:');
-  console.error('  1. Firebase Console > Project Settings > Service Accounts');
-  console.error('  2. Click "Generate New Private Key"');
-  console.error('  3. Save as ./serviceAccountKey.json or set env variable');
   process.exit(1);
 }
 
 // Initialize Firebase Admin
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccountKey),
-});
+try {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccountKey),
+  });
+  console.log('  ✓ Firebase Admin SDK initialized\n');
+} catch (e) {
+  console.error('❌ Failed to initialize Firebase Admin:', e.message);
+  process.exit(1);
+}
 
 const db = admin.firestore();
 
