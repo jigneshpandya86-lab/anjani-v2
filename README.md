@@ -61,6 +61,15 @@ The app supports both newer and legacy field names when reading orders:
 - Address: `address` (fallback: `deliveryAddress`, `location`)
 - Map link: `mapLink` (fallback: `googleMap`)
 
+## Leads "Connect" SMS flow (in-app, manual trigger)
+
+The SMS connect flow is now handled directly inside the React app (`LeadsDashboard`) when the user presses the **Connect** button.
+
+- No standalone Google Apps Script (`.gs`) file is required for this flow.
+- On click, the app fetches up to 5 leads with `Tag == null`.
+- For each matching lead, the app calls the MacroDroid webhook and then updates Firestore with `Tag = "SMS_SENT"` plus `smsSentAt`.
+- Webhook URL is read from `VITE_MACRO_URL` (with app fallback if env is not set).
+
 ## Random daily Firebase notification from GitHub Actions
 
 This repo includes `.github/workflows/random-fcm-notification.yml` to send an FCM push notification once per day at a random **daytime** hour.
