@@ -109,46 +109,48 @@ exports.smsDeliveryWebhook = functions.https.onRequest(async (req, res) => {
 
 // ============================================================================
 // processStaleSmsJobs - Mark old SMS as undelivered (scheduled function)
+// NOTE: Disabled due to Firebase CLI parsing issue with scheduled functions
+// Will be implemented in Phase 2 as separate function
 // ============================================================================
-exports.processStaleSmsJobs = functions.pubsub.schedule('0 2 * * *')
-  .timeZone('UTC')
-  .onRun(async (context) => {
-    try {
-      // Mark SMS jobs as undelivered if they've been pending for more than 24 hours
-      const twentyFourHoursAgo = admin.firestore.Timestamp.fromDate(
-        new Date(Date.now() - 24 * 60 * 60 * 1000)
-      );
+// exports.processStaleSmsJobs = functions.pubsub.schedule('0 2 * * *')
+//   .timeZone('UTC')
+//   .onRun(async (context) => {
+//     try {
+//       // Mark SMS jobs as undelivered if they've been pending for more than 24 hours
+//       const twentyFourHoursAgo = admin.firestore.Timestamp.fromDate(
+//         new Date(Date.now() - 24 * 60 * 60 * 1000)
+//       );
 
-      const staleSnap = await db
-        .collection('sms_jobs')
-        .where('deliveryStatus', '==', 'pending')
-        .where('sentAt', '<', twentyFourHoursAgo)
-        .limit(500)
-        .get();
+//       const staleSnap = await db
+//         .collection('sms_jobs')
+//         .where('deliveryStatus', '==', 'pending')
+//         .where('sentAt', '<', twentyFourHoursAgo)
+//         .limit(500)
+//         .get();
 
-      let updated = 0;
-      const batch = db.batch();
+//       let updated = 0;
+//       const batch = db.batch();
 
-      staleSnap.docs.forEach((doc) => {
-        batch.update(doc.ref, {
-          deliveryStatus: 'undelivered',
-          deliveryFailedAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-        updated += 1;
-      });
+//       staleSnap.docs.forEach((doc) => {
+//         batch.update(doc.ref, {
+//           deliveryStatus: 'undelivered',
+//           deliveryFailedAt: admin.firestore.FieldValue.serverTimestamp(),
+//           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//         });
+//         updated += 1;
+//       });
 
-      if (updated > 0) {
-        await batch.commit();
-        console.log(`Marked ${updated} stale SMS jobs as undelivered`);
-      }
+//       if (updated > 0) {
+//         await batch.commit();
+//         console.log(`Marked ${updated} stale SMS jobs as undelivered`);
+//       }
 
-      return { marked_undelivered: updated };
-    } catch (error) {
-      console.error('Error processing stale SMS jobs:', error);
-      throw error;
-    }
-  });
+//       return { marked_undelivered: updated };
+//     } catch (error) {
+//       console.error('Error processing stale SMS jobs:', error);
+//       throw error;
+//     }
+//   });
 
 // ============================================================================
 // Import and export remaining functions from processSmsJobs.js
