@@ -1,15 +1,32 @@
 import { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, deleteDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  collection,
+  query,
+  onSnapshot,
+  deleteDoc,
+  doc,
+  addDoc,
+  serverTimestamp,
+  where,
+  limit,
+  getDocs,
+  updateDoc,
+} from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { MessageSquare, User, Phone, Sparkles, Trash2, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function LeadsDashboard() {
+  const MACRO_URL =
+    import.meta.env.VITE_MACRO_URL ||
+    'https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms';
+
   const [leads, setLeads] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newLeadName, setNewLeadName] = useState('');
   const [newLeadMobile, setNewLeadMobile] = useState('');
   const [isSavingLead, setIsSavingLead] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, 'leads'));
@@ -74,6 +91,63 @@ export default function LeadsDashboard() {
     }
   };
 
+  const sendBackgroundSms = async (phone, message) => {
+    let cleanPhone = String(phone || '').replace(/\D/g, '');
+    if (cleanPhone.length === 10) cleanPhone = `91${cleanPhone}`;
+
+    const packet = `${cleanPhone}@@@${message}`;
+    const finalUrl = `${MACRO_URL}?data=${encodeURIComponent(packet)}`;
+    const response = await fetch(finalUrl, { method: 'GET' });
+    if (!response.ok) throw new Error(`Webhook failed with status ${response.status}`);
+  };
+
+  const connectTopFiveUntaggedLeads = async () => {
+    // Manual in-app flow: operator presses Connect to trigger SMS for top 5 untagged leads.
+    // This does not depend on any external Apps Script (.gs) runner.
+    if (isConnecting) return;
+
+    setIsConnecting(true);
+    try {
+      const q = query(collection(db, 'leads'), where('Tag', '==', null), limit(5));
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        toast('No untagged leads found');
+        return;
+      }
+
+      let sentCount = 0;
+
+      for (const leadDoc of snapshot.docs) {
+        const lead = leadDoc.data();
+        const mobile = lead.mobile || lead.phone || '';
+        if (!mobile) continue;
+
+        const displayName = lead.name || 'Sir/Madam';
+        const msg = `Hello ${displayName}, Greetings from Annapurna Foods, Vadodara! Planning an event? Ask for our 200ml Packaged Water Bottles.`;
+
+        await sendBackgroundSms(mobile, msg);
+        await updateDoc(doc(db, 'leads', leadDoc.id), {
+          Tag: 'SMS_SENT',
+          smsSentAt: serverTimestamp(),
+        });
+        sentCount += 1;
+      }
+
+      if (sentCount === 0) {
+        toast('No valid phone numbers found in selected leads');
+        return;
+      }
+
+      toast.success(`Connected ${sentCount} lead${sentCount > 1 ? 's' : ''}`);
+    } catch (error) {
+      console.error('Failed to connect leads:', error);
+      toast.error('Failed to send SMS for leads');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
   // Advanced Date Formatter to catch old and new formats
   const formatDate = (lead) => {
     const rawDate = lead.createdAt || lead.createdDate || lead.date;
@@ -89,9 +163,15 @@ export default function LeadsDashboard() {
         <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter flex items-center gap-2">
           <Sparkles className="text-[#ff9900]" size={20} />
           <span>Inquiries</span>
-          <span className="inline-flex items-center rounded-full border border-[#ff9900]/25 bg-[#ff9900]/10 px-2 py-[2px] text-[8px] font-bold leading-none text-[#ff9900] shadow-sm shadow-orange-100/60">
-            Connect
-          </span>
+          <button
+            type="button"
+            disabled={isConnecting}
+            onClick={connectTopFiveUntaggedLeads}
+            className="inline-flex items-center rounded-full border border-[#ff9900]/25 bg-[#ff9900]/10 px-2 py-[2px] text-[8px] font-bold leading-none text-[#ff9900] shadow-sm shadow-orange-100/60 disabled:opacity-60"
+            title="Send SMS to top 5 untagged leads"
+          >
+            {isConnecting ? 'Connecting...' : 'Connect'}
+          </button>
         </h2>
         <span className="bg-orange-100 text-[#ff9900] px-2 py-0.5 rounded-lg text-[10px] font-black italic">
           {leads.length} LEADS
