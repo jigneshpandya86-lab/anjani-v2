@@ -22,9 +22,7 @@ import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'f
 import { db, auth } from './firebase-config'
 import { signOut, onAuthStateChanged } from 'firebase/auth'
 import { processDueSmsJobs } from './sms/smsSender'
-import { isNativeSmsAvailable, getPluginDetectionInfo } from './sms/nativeSmsBridge'
-import { writeDebugLog } from './sms/debugLogger'
-import { initializeFcm } from './services/fcm-setup'
+import { isNativeSmsAvailable } from './sms/nativeSmsBridge'
 import ClientList from './components/ClientList'
 import AddClient from './components/AddClient'
 import OrdersDashboard from './components/OrdersDashboard'
@@ -84,76 +82,26 @@ function App() {
 
   useEffect(() => {
     if (!user) return undefined
-
-    console.log('📋 SMS Processor: Checking if native SMS available...')
-    writeDebugLog(db, user.uid, 'processor_init', 'SMS processor initialization check started')
-
-    const pluginInfo = getPluginDetectionInfo()
-    const smsAvailable = isNativeSmsAvailable()
-
-    if (!smsAvailable) {
-      console.log('⚠️ SMS Processor: Native SMS NOT available - SMS processor will not run')
-      writeDebugLog(db, user.uid, 'plugin_check', 'Native SMS plugin NOT detected', {
-        smsAvailable: false,
-        ...pluginInfo,
-      })
-      return undefined
-    }
-
-    console.log('✅ SMS Processor: Native SMS available - Starting SMS processor')
-    writeDebugLog(db, user.uid, 'plugin_check', 'Native SMS plugin detected successfully', {
-      smsAvailable: true,
-      ...pluginInfo,
-    })
+    if (!isNativeSmsAvailable()) return undefined
 
     let stopped = false
     const runSmsProcessor = async () => {
       if (stopped) return
       try {
-        console.log('🔄 SMS Processor: Running due SMS jobs...')
-        writeDebugLog(db, user.uid, 'processor_run', 'SMS processor cycle started')
-        const result = await processDueSmsJobs({ db, userId: user.uid })
-        if (result.processed > 0) {
-          writeDebugLog(db, user.uid, 'processor_run', 'SMS processor cycle completed', {
-            ...result,
-          })
-        }
+        await processDueSmsJobs({ db })
       } catch (error) {
-        console.error('❌ SMS background processor failed', error)
-        writeDebugLog(db, user.uid, 'error', 'SMS processor failed', {
-          error: error?.message || String(error),
-        })
+        console.error('SMS background processor failed', error)
       }
     }
 
     runSmsProcessor()
-    // Rate limiting: process SMS every 2 minutes (120s) to avoid carrier throttling
-    // This limits max throughput to ~600 SMS/hour (batch size 20, interval 120s)
     const timer = window.setInterval(runSmsProcessor, 120 * 1000)
-    console.log('⏱️ SMS Processor: Scheduled to run every 120 seconds')
     return () => {
       stopped = true
       window.clearInterval(timer)
     }
   }, [user])
 
-  // FCM: Initialize push notifications for logged-in users
-  useEffect(() => {
-    if (!user) return undefined
-
-    const initFcm = async () => {
-      try {
-        const success = await initializeFcm(user.uid)
-        if (success) {
-          console.log('FCM initialized successfully')
-        }
-      } catch (error) {
-        console.error('FCM initialization failed:', error)
-      }
-    }
-
-    initFcm()
-  }, [user])
 
   // AUTH: signs out the current user and clears session
   const handleLogout = async () => {
