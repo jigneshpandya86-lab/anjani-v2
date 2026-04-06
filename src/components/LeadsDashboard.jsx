@@ -230,7 +230,7 @@ export default function LeadsDashboard() {
               type="button"
               disabled={isConnecting || isRemessaging}
               onClick={connectTopFiveUntaggedLeads}
-              className="inline-flex items-center rounded-full border border-[#ff9900]/25 bg-[#ff9900]/10 px-2.5 py-1 text-[9px] font-bold leading-none text-[#ff9900] shadow-sm shadow-orange-100/60 disabled:opacity-60"
+              className="inline-flex items-center rounded-full border border-[#ff9900]/25 bg-[#ff9900]/10 px-3 py-1.5 text-[10px] font-bold leading-none text-[#ff9900] shadow-sm shadow-orange-100/60 disabled:opacity-60"
               title="Send SMS to top 5 untagged leads"
             >
               {isConnecting ? 'Connecting...' : 'Connect'}
@@ -239,7 +239,7 @@ export default function LeadsDashboard() {
               type="button"
               disabled={isConnecting || isRemessaging}
               onClick={sendDueFollowUpSms}
-              className="inline-flex items-center rounded-full border border-blue-300/40 bg-blue-50 px-2.5 py-1 text-[9px] font-bold leading-none text-blue-700 shadow-sm disabled:opacity-60"
+              className="inline-flex items-center rounded-full border border-blue-300/40 bg-blue-50 px-3 py-1.5 text-[10px] font-bold leading-none text-blue-700 shadow-sm disabled:opacity-60"
               title="Send due follow-up SMS for SMS_SENT leads"
             >
               {isRemessaging ? 'Sending...' : 'Re-message due'}
