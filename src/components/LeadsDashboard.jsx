@@ -15,6 +15,15 @@ import {
 import { db } from '../firebase-config';
 import { MessageSquare, User, Phone, Sparkles, Trash2, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
+import {
+  buildFollowUpSmsMessage,
+  buildFollowUpUpdate,
+  buildInitialSmsMessage,
+  buildInitialSmsUpdate,
+  getDueReminderContext,
+  getLeadPhone,
+  sendBackgroundSms,
+} from '../services/leadSmsService';
 
 export default function LeadsDashboard() {
   const MACRO_URL =
@@ -27,6 +36,7 @@ export default function LeadsDashboard() {
   const [newLeadMobile, setNewLeadMobile] = useState('');
   const [isSavingLead, setIsSavingLead] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isRemessaging, setIsRemessaging] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, 'leads'));
@@ -77,6 +87,7 @@ export default function LeadsDashboard() {
         name,
         mobile,
         source: 'manual',
+        Tag: null,
         createdAt: serverTimestamp(),
       });
       toast.success('Lead added successfully');
@@ -89,16 +100,6 @@ export default function LeadsDashboard() {
     } finally {
       setIsSavingLead(false);
     }
-  };
-
-  const sendBackgroundSms = async (phone, message) => {
-    let cleanPhone = String(phone || '').replace(/\D/g, '');
-    if (cleanPhone.length === 10) cleanPhone = `91${cleanPhone}`;
-
-    const packet = `${cleanPhone}@@@${message}`;
-    const finalUrl = `${MACRO_URL}?data=${encodeURIComponent(packet)}`;
-    const response = await fetch(finalUrl, { method: 'GET' });
-    if (!response.ok) throw new Error(`Webhook failed with status ${response.status}`);
   };
 
   const connectTopFiveUntaggedLeads = async () => {
@@ -120,17 +121,15 @@ export default function LeadsDashboard() {
 
       for (const leadDoc of snapshot.docs) {
         const lead = leadDoc.data();
-        const mobile = lead.mobile || lead.phone || '';
+        const mobile = getLeadPhone(lead);
         if (!mobile) continue;
 
-        const displayName = lead.name || 'Sir/Madam';
-        const msg = `Hello ${displayName}, Greetings from Annapurna Foods, Vadodara! Planning an event? Ask for our 200ml Packaged Water Bottles.`;
-
-        await sendBackgroundSms(mobile, msg);
-        await updateDoc(doc(db, 'leads', leadDoc.id), {
-          Tag: 'SMS_SENT',
-          smsSentAt: serverTimestamp(),
+        await sendBackgroundSms({
+          macroUrl: MACRO_URL,
+          phone: mobile,
+          message: buildInitialSmsMessage(lead.name),
         });
+        await updateDoc(doc(db, 'leads', leadDoc.id), buildInitialSmsUpdate(new Date()));
         sentCount += 1;
       }
 
@@ -145,6 +144,70 @@ export default function LeadsDashboard() {
       toast.error('Failed to send SMS for leads');
     } finally {
       setIsConnecting(false);
+    }
+  };
+
+  const sendDueFollowUpSms = async () => {
+    if (isRemessaging) return;
+
+    setIsRemessaging(true);
+    try {
+      const q = query(collection(db, 'leads'), where('Tag', '==', 'SMS_SENT'), limit(100));
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        toast('No SMS sent leads found');
+        return;
+      }
+
+      const now = new Date();
+      let sentCount = 0;
+
+      for (const leadDoc of snapshot.docs) {
+        const lead = leadDoc.data();
+        const mobile = getLeadPhone(lead);
+        if (!mobile) continue;
+
+        const context = getDueReminderContext(lead, now);
+        if (!context) continue;
+
+        if (context.shouldMarkComplete) {
+          await updateDoc(doc(db, 'leads', leadDoc.id), { Tag: 'FOLLOWUP_DONE' });
+          continue;
+        }
+
+        await sendBackgroundSms({
+          macroUrl: MACRO_URL,
+          phone: mobile,
+          message: buildFollowUpSmsMessage({
+            name: lead.name,
+            reminderDay: context.reminderDay,
+          }),
+        });
+
+        await updateDoc(
+          doc(db, 'leads', leadDoc.id),
+          buildFollowUpUpdate({
+            lead,
+            reminderDay: context.reminderDay,
+            nextStep: context.nextStep,
+            now,
+          }),
+        );
+        sentCount += 1;
+      }
+
+      if (sentCount === 0) {
+        toast('No follow-ups are due right now');
+        return;
+      }
+
+      toast.success(`Sent ${sentCount} follow-up SMS`);
+    } catch (error) {
+      console.error('Failed to send follow-up SMS:', error);
+      toast.error('Failed to send due follow-up SMS');
+    } finally {
+      setIsRemessaging(false);
     }
   };
 
@@ -163,15 +226,26 @@ export default function LeadsDashboard() {
         <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter flex items-center gap-2">
           <Sparkles className="text-[#ff9900]" size={20} />
           <span>Inquiries</span>
-          <button
-            type="button"
-            disabled={isConnecting}
-            onClick={connectTopFiveUntaggedLeads}
-            className="inline-flex items-center rounded-full border border-[#ff9900]/25 bg-[#ff9900]/10 px-2 py-[2px] text-[8px] font-bold leading-none text-[#ff9900] shadow-sm shadow-orange-100/60 disabled:opacity-60"
-            title="Send SMS to top 5 untagged leads"
-          >
-            {isConnecting ? 'Connecting...' : 'Connect'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={isConnecting || isRemessaging}
+              onClick={connectTopFiveUntaggedLeads}
+              className="inline-flex items-center rounded-full border border-[#ff9900]/25 bg-[#ff9900]/10 px-2 py-[2px] text-[8px] font-bold leading-none text-[#ff9900] shadow-sm shadow-orange-100/60 disabled:opacity-60"
+              title="Send SMS to top 5 untagged leads"
+            >
+              {isConnecting ? 'Connecting...' : 'Connect'}
+            </button>
+            <button
+              type="button"
+              disabled={isConnecting || isRemessaging}
+              onClick={sendDueFollowUpSms}
+              className="inline-flex items-center rounded-full border border-blue-300/40 bg-blue-50 px-2 py-[2px] text-[8px] font-bold leading-none text-blue-700 shadow-sm disabled:opacity-60"
+              title="Send due follow-up SMS for SMS_SENT leads"
+            >
+              {isRemessaging ? 'Sending...' : 'Re-message due'}
+            </button>
+          </div>
         </h2>
         <span className="bg-orange-100 text-[#ff9900] px-2 py-0.5 rounded-lg text-[10px] font-black italic">
           {leads.length} LEADS
