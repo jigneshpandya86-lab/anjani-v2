@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { collection, query, onSnapshot, deleteDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase-config';
-import { MessageSquare, Send, User, Phone, Sparkles, Trash2, Plus } from 'lucide-react';
+import { MessageSquare, User, Phone, Sparkles, Trash2, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { TASK_TYPES, cancelPendingSmsJobsForEntity, enqueueSmsJobsForEvent } from '../sms/smsScheduler';
 
 export default function LeadsDashboard() {
   const [leads, setLeads] = useState([]);
@@ -37,21 +36,8 @@ export default function LeadsDashboard() {
     window.open(`https://wa.me/91${lead.mobile}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
-  const sendSMS = (lead) => {
-    const displayName = lead.name || 'there';
-    const msg = `Hi ${displayName}, refresh your guests with Annapurna Foods 200ml water bottles. Premium quality for events in Vadodara. Call us now!`;
-    window.location.href = `sms:+91${lead.mobile}?body=${encodeURIComponent(msg)}`;
-  };
-
-
   const deleteLead = async (leadId) => {
     try {
-      await cancelPendingSmsJobsForEntity({
-        db,
-        taskType: TASK_TYPES.LEADS,
-        entityId: leadId,
-        reason: 'lead_deleted',
-      });
       await deleteDoc(doc(db, 'leads', leadId));
     } catch (error) {
       console.error('Failed to delete lead:', error);
@@ -70,18 +56,11 @@ export default function LeadsDashboard() {
 
     setIsSavingLead(true);
     try {
-      const leadRef = await addDoc(collection(db, 'leads'), {
+      await addDoc(collection(db, 'leads'), {
         name,
         mobile,
         source: 'manual',
         createdAt: serverTimestamp(),
-      });
-      await enqueueSmsJobsForEvent({
-        db,
-        taskType: TASK_TYPES.LEADS,
-        entityId: leadRef.id,
-        recipientMobile: mobile,
-        occurredAt: new Date(),
       });
       toast.success('Lead added successfully');
       setNewLeadName('');
@@ -202,9 +181,6 @@ export default function LeadsDashboard() {
               <div className="flex items-center gap-2 shrink-0">
                 <button onClick={() => sendWhatsApp(lead)} className="flex items-center justify-center gap-1 bg-[#25D366] text-white px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-wider active:scale-[0.98] transition-transform whitespace-nowrap">
                   <MessageSquare size={14} /> WA
-                </button>
-                <button onClick={() => sendSMS(lead)} className="flex items-center justify-center gap-1 bg-gray-900 text-white px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-wider active:scale-[0.98] transition-transform whitespace-nowrap">
-                  <Send size={14} /> SMS
                 </button>
                 <a href={`tel:${lead.mobile}`} className="text-blue-500 p-2 bg-blue-50 rounded-xl active:scale-90 transition-transform"><Phone size={18} /></a>
                 <button
