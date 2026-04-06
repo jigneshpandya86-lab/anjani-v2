@@ -10,7 +10,13 @@ const getSmsPlugin = () => {
 
 export const isNativeSmsAvailable = () => {
   const plugin = getSmsPlugin()
-  return Boolean(plugin && typeof plugin.send === 'function')
+  return Boolean(
+    plugin &&
+    (
+      typeof plugin.send === 'function' ||
+      typeof plugin.sendSms === 'function'
+    )
+  )
 }
 
 export const sendSmsNative = async ({ to, body }) => {

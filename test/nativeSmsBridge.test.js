@@ -16,6 +16,20 @@ test('isNativeSmsAvailable detects plugin send function', () => {
   assert.equal(isNativeSmsAvailable(), true)
 })
 
+test('isNativeSmsAvailable detects plugin sendSms fallback function', () => {
+  globalThis.window = {
+    Capacitor: {
+      Plugins: {
+        SmsBackground: {
+          sendSms: async () => ({ success: true, message: 'ok' }),
+        },
+      },
+    },
+  }
+
+  assert.equal(isNativeSmsAvailable(), true)
+})
+
 test('sendSmsNative normalizes object response', async () => {
   globalThis.window = {
     Capacitor: {

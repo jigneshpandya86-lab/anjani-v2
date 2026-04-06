@@ -7,6 +7,7 @@ import {
   limit,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   updateDoc,
   where,
@@ -71,15 +72,23 @@ const retryDbOperation = async (operation, maxRetries = MAX_DB_RETRIES) => {
   throw lastError
 }
 
-const markJobProcessing = async ({ db, jobId }) => {
-  await retryDbOperation(() =>
-    updateDoc(doc(db, 'sms_jobs', jobId), {
-      status: 'processing',
-      processingAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+const claimJobForProcessing = async ({ db, jobId }) =>
+  retryDbOperation(() =>
+    runTransaction(db, async (transaction) => {
+      const jobRef = doc(db, 'sms_jobs', jobId)
+      const snap = await transaction.get(jobRef)
+
+      if (!snap.exists()) return false
+      if (snap.data()?.status !== 'pending') return false
+
+      transaction.update(jobRef, {
+        status: 'processing',
+        processingAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+      return true
     })
   )
-}
 
 const markJobSuccess = async ({ db, jobId }) => {
   await retryDbOperation(() =>
@@ -171,15 +180,14 @@ export const processDueSmsJobs = async ({ db, now = new Date(), maxJobs = BATCH_
       }
 
       try {
-        // Idempotency check: verify job is still pending (could have been processed elsewhere)
-        const currentJobSnap = await getDoc(doc(db, 'sms_jobs', job.id))
-        if (!currentJobSnap.exists() || currentJobSnap.data().status !== 'pending') {
-          console.log(`Job ${job.id} is no longer pending, skipping (status: ${currentJobSnap.data()?.status || 'deleted'})`)
+        // Atomic claim: protects against duplicate sends across tabs/devices
+        const claimed = await claimJobForProcessing({ db, jobId: job.id })
+        if (!claimed) {
+          console.log(`Job ${job.id} is no longer pending, skipping`)
           skipped += 1
           continue
         }
 
-          await markJobProcessing({ db, jobId: job.id })
         const sendResult = await sendSmsNative({
           to: job.recipientMobile,
           body: buildSmsText(job),
