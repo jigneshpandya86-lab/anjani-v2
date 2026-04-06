@@ -62,6 +62,11 @@ jobs:
       - name: Sync Capacitor (after plugin registration)
         run: npx cap sync android
 
+      - name: Register SmsBackground plugin in MainActivity
+        run: |
+          cp native/android/MainActivity.java android/app/src/main/java/com/anjani/app/MainActivity.java
+          echo "Custom MainActivity with registerPlugin(SmsBackgroundPlugin.class) copied"
+
       - name: Create missing kotlin-alignment.init.gradle
         run: |
           FILE="android/kotlin-alignment.init.gradle"
