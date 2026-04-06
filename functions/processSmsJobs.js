@@ -6,6 +6,7 @@
  */
 
 const admin = require('firebase-admin');
+const functions = require('firebase-functions');
 
 // Initialize Firebase Admin SDK
 if (!admin.apps.length) {
@@ -189,9 +190,10 @@ const markJobFailure = async (job, reason, errorCode, errorCategory) => {
 
 /**
  * Main scheduled function to process SMS jobs
- * Triggered via Pub/Sub topic
+ * Triggered on schedule: every 2 minutes
  */
-exports.processSmsJobsScheduled = async (message, context) => {
+exports.processSmsJobsScheduled = functions.pubsub.schedule('every 2 minutes')
+  .onRun(async (context) => {
     console.log('SMS job processor started')
 
     // Check if server-side processing is enabled
@@ -293,13 +295,15 @@ exports.processSmsJobsScheduled = async (message, context) => {
       console.error('Fatal error in SMS job processor:', error)
       throw error;
     }
-};
+  });
 
 /**
  * Cleanup function: Remove old notification entries
- * Triggered via Pub/Sub topic
+ * Triggered on schedule: daily at 3 AM UTC
  */
-exports.cleanupSmsProcessingQueue = async (message, context) => {
+exports.cleanupSmsProcessingQueue = functions.pubsub.schedule('0 3 * * *')
+  .timeZone('UTC')
+  .onRun(async (context) => {
     const fiveMinutesAgoMs = Date.now() - 5 * 60 * 1000
     const fiveMinutesAgoTimestamp = admin.firestore.Timestamp.fromDate(
       new Date(fiveMinutesAgoMs)
@@ -330,4 +334,4 @@ exports.cleanupSmsProcessingQueue = async (message, context) => {
       console.error('Error cleaning up SMS processing queue:', error);
       throw error;
     }
-};
+  });
