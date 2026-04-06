@@ -3,13 +3,14 @@
  *
  * Server-side job processor for SMS sending
  * Triggered on a schedule (every 2 minutes) to process due SMS jobs
- *
- * This complements client-side processing when app is not active
- * Uses same atomic transaction logic to prevent duplicate sends
  */
 
-const functions = require('firebase-functions')
-const admin = require('firebase-admin')
+const admin = require('firebase-admin');
+
+// Initialize Firebase Admin SDK
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
 
 const db = admin.firestore()
 
@@ -188,11 +189,9 @@ const markJobFailure = async (job, reason, errorCode, errorCategory) => {
 
 /**
  * Main scheduled function to process SMS jobs
- * Runs every 2 minutes
+ * Triggered via Pub/Sub topic
  */
-exports.processSmsJobsScheduled = functions.pubsub
-  .schedule('every 2 minutes')
-  .onRun(async (context) => {
+exports.processSmsJobsScheduled = async (message, context) => {
     console.log('SMS job processor started')
 
     // Check if server-side processing is enabled
@@ -289,20 +288,18 @@ exports.processSmsJobsScheduled = functions.pubsub
       }
 
       console.log(`SMS job processing complete: ${JSON.stringify(result)}`)
-      return result
+      return result;
     } catch (error) {
       console.error('Fatal error in SMS job processor:', error)
-      throw error
+      throw error;
     }
-  })
+};
 
 /**
- * Cleanup function: Remove old notification entries from sms_processing_queue
- * Runs daily to clean up stale entries
+ * Cleanup function: Remove old notification entries
+ * Triggered via Pub/Sub topic
  */
-exports.cleanupSmsProcessingQueue = functions.pubsub
-  .schedule('every 24 hours')
-  .onRun(async (context) => {
+exports.cleanupSmsProcessingQueue = async (message, context) => {
     const fiveMinutesAgoMs = Date.now() - 5 * 60 * 1000
     const fiveMinutesAgoTimestamp = admin.firestore.Timestamp.fromDate(
       new Date(fiveMinutesAgoMs)
@@ -324,13 +321,13 @@ exports.cleanupSmsProcessingQueue = functions.pubsub
       })
 
       if (deleted > 0) {
-        await batch.commit()
-        console.log(`Cleaned up ${deleted} old SMS processing queue entries`)
+        await batch.commit();
+        console.log(`Cleaned up ${deleted} old SMS processing queue entries`);
       }
 
-      return { cleaned: deleted }
+      return { cleaned: deleted };
     } catch (error) {
-      console.error('Error cleaning up SMS processing queue:', error)
-      throw error
+      console.error('Error cleaning up SMS processing queue:', error);
+      throw error;
     }
-  })
+};
