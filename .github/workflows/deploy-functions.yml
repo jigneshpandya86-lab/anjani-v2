@@ -36,13 +36,17 @@ jobs:
 
       - name: Deploy Cloud Functions
         run: |
+          # Write service account key to temporary file
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}' > /tmp/serviceAccountKey.json
+
+          # Deploy using service account
           firebase deploy \
             --only functions \
             --project anjaniappnew \
-            --token "${{ secrets.FIREBASE_CI_TOKEN }}" \
             --non-interactive
         env:
           NODE_ENV: production
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccountKey.json
 
       - name: Deployment Success
         run: |
