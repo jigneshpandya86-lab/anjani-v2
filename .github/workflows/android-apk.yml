@@ -32,7 +32,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - name: Install dependencies
         run: npm ci
@@ -40,22 +40,91 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Install Capacitor tooling
+        run: npm install --no-save @capacitor/core @capacitor/cli @capacitor/android
+
       - name: Build web app
         run: npm run build
 
-      - name: Install pinned Capacitor tooling
-        run: npm install --no-save @capacitor/core@6.2.0 @capacitor/cli@6.2.0 @capacitor/android@6.2.0
-
-      - name: Ensure committed Android project exists
+      - name: Initialize Android platform (if missing)
         run: |
-          test -d android || (echo "android/ directory is required. Generate and commit it locally." && exit 1)
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
 
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Register SMS Background Plugin
+        run: |
+          PLUGIN_DIR="android/app/src/main/java/com/anjani/app/sms"
+          mkdir -p "$PLUGIN_DIR"
+          cp native/android/SmsBackgroundPlugin.kt "$PLUGIN_DIR/"
+          echo "SMS Background Plugin registered at $PLUGIN_DIR/SmsBackgroundPlugin.kt"
+
+      - name: Create missing kotlin-alignment.init.gradle
+        run: |
+          FILE="android/kotlin-alignment.init.gradle"
+          if [ ! -f "$FILE" ]; then
+            cat > "$FILE" << 'EOF'
+          // Auto-generated: aligns all Kotlin stdlib transitive dependencies to one version
+          allprojects {
+              configurations.all {
+                  resolutionStrategy.eachDependency { details ->
+                      if (details.requested.group == 'org.jetbrains.kotlin') {
+                          details.useVersion "1.9.24"
+                      }
+                  }
+              }
+          }
+          EOF
+            echo "Created $FILE"
+          else
+            echo "$FILE already exists, skipping"
+          fi
+
+      - name: Ensure Android permissions (SMS, File, Camera, Location, Notifications)
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+
+          add_permission() {
+            local permission="$1"
+            if ! grep -q "$permission" "$MANIFEST"; then
+              sed -i '/<application/i \    <uses-permission android:name="'"$permission"'" />' "$MANIFEST"
+            fi
+          }
+
+          # SMS
+          add_permission "android.permission.SEND_SMS"
+          add_permission "android.permission.READ_SMS"
+          add_permission "android.permission.RECEIVE_SMS"
+
+          # Camera
+          add_permission "android.permission.CAMERA"
+
+          # Location
+          add_permission "android.permission.ACCESS_COARSE_LOCATION"
+          add_permission "android.permission.ACCESS_FINE_LOCATION"
+
+          # File / Storage (pre-Android 13)
+          add_permission "android.permission.READ_EXTERNAL_STORAGE"
+          add_permission "android.permission.WRITE_EXTERNAL_STORAGE"
+
+          # File / Storage (Android 13+)
+          add_permission "android.permission.READ_MEDIA_IMAGES"
+          add_permission "android.permission.READ_MEDIA_VIDEO"
+          add_permission "android.permission.READ_MEDIA_AUDIO"
+
+          # Notifications (Android 13+)
+          add_permission "android.permission.POST_NOTIFICATIONS"
+          add_permission "android.permission.VIBRATE"
+          add_permission "android.permission.RECEIVE_BOOT_COMPLETED"
+
+          echo "Updated permissions in $MANIFEST"
+
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: ./gradlew -I kotlin-alignment.init.gradle assembleDebug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
