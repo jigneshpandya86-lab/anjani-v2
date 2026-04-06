@@ -4,7 +4,6 @@ import {
   updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
-import { TASK_TYPES, enqueueSmsJobsForEvent, cancelPendingSmsJobsForEntity } from '../sms/smsScheduler';
 
 let stockUnsubscribe = null;
 let stockSubscriberCount = 0;
@@ -237,14 +236,6 @@ export const useClientStore = create((set, get) => ({
     });
 
     if (data.clientId) {
-      await cancelPendingSmsJobsForEntity({
-        db,
-        taskType: TASK_TYPES.PAYMENTS,
-        entityId: data.clientId,
-        reason: 'payment_received',
-      });
-    }
-    if (data.clientId) {
       const amount = Number(data.amount) || 0;
       if (amount > 0) {
         await updateDoc(doc(db, 'customers', data.clientId), {
@@ -400,23 +391,6 @@ export const useClientStore = create((set, get) => ({
           outstanding: increment(amount)
         });
       }
-
-      const selectedClient = get().clients.find((client) => client.id === existing.clientId);
-      await enqueueSmsJobsForEvent({
-        db,
-        taskType: TASK_TYPES.ORDER_DELIVERED,
-        entityId: id,
-        recipientMobile: selectedClient?.mobile || existing.mobile || '',
-        occurredAt: new Date(),
-      });
-
-      await enqueueSmsJobsForEvent({
-        db,
-        taskType: TASK_TYPES.PAYMENTS,
-        entityId: existing.clientId || id,
-        recipientMobile: selectedClient?.mobile || existing.mobile || '',
-        occurredAt: new Date(),
-      });
     }
     await updateDoc(orderRef, {
       ...data,
@@ -469,12 +443,6 @@ export const useClientStore = create((set, get) => ({
         }
       }
       await deleteDoc(orderDocRef);
-      await cancelPendingSmsJobsForEntity({
-        db,
-        taskType: TASK_TYPES.ORDER_DELIVERED,
-        entityId: id,
-        reason: 'order_deleted',
-      });
     } catch (err) {
       console.error('Delete failed:', err);
       throw err;
