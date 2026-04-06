@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# SMS Cloud Functions Deployment Script
+# Run this in Codespaces or any terminal with Node.js
+
+set -e
+
+echo "🚀 Deploying Cloud Functions..."
+echo ""
+
+# Create service account key file
+cat > /tmp/firebase-sa-key.json << 'SAKEY'
+{
+  "type": "service_account",
+  "project_id": "anjaniappnew",
+  "private_key_id": "81d4f1ab210b904aae04b8e1366cc5d2027443d7",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDmFQ9TFrjqq3op\nj1oV5udL4UMSkFlJ/4e+v1JmNogun2b/pPVc6aBxcwb5p64q72pc0r6jmC+lvZJW\nsu/gAUjGymvZAQc/4YqA9FzFBzAZzD7AWegb8Ec8S1Z6XAjg/qYTP86s4sZ0HqY5\nTa1B7539QZrFjFkrDOLJYuc7U3PeSmFIHw2/sFaHxXgLCdXMv0tyL9PM82B9CDWC\nYRAGkNa6RmgCliQz6y1I5IuJgPerJnuNeqmpszZDuXP0zU1ieaOGQDNCZTio8gZM\nZ5ZS3m+D4KqoXeb8C+2UJkoH2GCrmX0kSYJ9+kV8eS1W9El8AMTeSo0owAlDHMdq\nirJ2CVU5AgMBAAECggEAFo4Zt5zegZXQFt8oVwWQ5tfFQB6BvE72JxlBGgdORBjJ\nC3ZnvcUi3wBGXqbFHI0mHYWk3et7P0mVXRWzTX++u0sodahjxivFbMUXy5Jb8Sl8\nPNXLeuKsDxF5H6tiTPE1xWUPzRO5nfRLugoe+hvj/mnmIufSbXWYzWJ6Vc7laNTs\n7LaeVFYbzasKySMe3c9BZb6y2128KGCb2kGgX5VJ3ao+evJiMhA3jPS4qoKORATb\nN94nJB1yKbSvnoOMW5OT2rvgK4oHWyUZxXlH3vPmE+lngVP1ZHGMNpHXjESXfx2j\ngN3lDgog2o8fzZSn6OvGAFQ+2hNi+nVXR3B0QvqFoQKBgQD/rlL+ui0sugJTMA+j\nQ2udhviwxsQbHe+FqILQVUJEPWkQBuOlalOoEMhxf0SvjW0vMqfe/FOBQ9IyJRx5\n20IczWk5hOCUZegt7qu7XoDaEJbVQPKb/mDw/PQqCl1bITj4fEEwgvXrV3CR6j4R\nFBK7dmJ8MO/C1sxzl6bD/nb22QKBgQDmXo7tW50RaqFAUAQIz02BPZ6Vr3WslHIM\ng9CqdqGW/0xhcbQiHbySwVNwXRPuUZHH4/dEGW37Ijox6NPKuNp/OTJZCsILabx9\nvKQ8xNPjKzyCGaefOw3a4XAcm9h7QRqB/xOf99T5Q9Iv4Vg8wZPbWVe5c6/6KahQ\nfETx+KYVYQKBgGFvfmNicbq8vAwVoa/3Dni+qeE8LhmjY9cMq6VXCGTW/kXESlaM\nWYsPskNGW9eGztgQttaMVApL3TuM1vg9LUmqofHwiGElIMD4VmuWDQaNEd383TfD\nThAoZafrwT3sQDi5qWIiVjM0ZErG+JYrjyPvboKjZ4tZrhpS7ZN9UrqpAoGBAKdk\njEyy5jXSmmtF+TiBkdrYcJRp04LctuabHZPP8ejrh4/C9FZZ7z1gFwYtzB6+zMRH\nxNOJ+t2h6FF90e+bVMFfSVNkOs3aPinLWjgB+ck3EJeklqVgXtfuOe2/3JTrIJzX\nQWZayjl564/5GYnES3D2wYSzKGsJvBEHy31b5SrhAoGBAO4UlmYzkzZlAL4+UPA0\nhsT59G/ryeWHPjMV4SvI9ncfefMBtMGPemM1WLxruqCFzGXpf3cThGX1NBQRH1vM\nQeY8cv9rEC87eQXFFZcjpqKUcWWaafrzx2cY6RPO+ryDwawoH9NXT88mNIomZl6P\nyhQZ69o/CmAM1tvh+0pFQxau\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@anjaniappnew.iam.gserviceaccount.com",
+  "client_id": "111940172002673506203",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40anjaniappnew.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
+SAKEY
+
+echo "✓ Service account key configured"
+echo ""
+
+# Set credentials
+export GOOGLE_APPLICATION_CREDENTIALS="/tmp/firebase-sa-key.json"
+echo "✓ GOOGLE_APPLICATION_CREDENTIALS set"
+echo ""
+
+# Deploy
+echo "📤 Deploying functions..."
+firebase deploy --only functions --project anjaniappnew --non-interactive
+
+echo ""
+echo "✅ Deployment complete!"
+echo ""
+echo "Functions deployed:"
+echo "  ✓ smsDeliveryWebhook"
+echo "  ✓ processStaleSmsJobs"
+echo "  ✓ processSmsJobsScheduled"
+echo "  ✓ cleanupSmsProcessingQueue"
+echo ""
+echo "🎉 Cloud Functions are live!"
+
+# Cleanup
+rm -f /tmp/firebase-sa-key.json
+echo "✓ Temporary credentials file cleaned up"
