@@ -2,5 +2,10 @@
   "appId": "com.anjani.app",
   "appName": "Anjani",
   "webDir": "dist",
-  "bundledWebRuntime": false
+  "bundledWebRuntime": false,
+  "plugins": {
+    "SmsBackground": {
+      "class": "com.anjani.app.sms.SmsBackgroundPlugin"
+    }
+  }
 }
