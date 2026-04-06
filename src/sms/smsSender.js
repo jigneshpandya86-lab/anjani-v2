@@ -12,7 +12,6 @@ import {
   where,
 } from 'firebase/firestore'
 import { isNativeSmsAvailable, sendSmsNative } from './nativeSmsBridge.js'
-import { writeDebugLog } from './debugLogger.js'
 
 const MAX_ATTEMPTS = 3
 const BATCH_LIMIT = 20
@@ -144,30 +143,15 @@ const releaseProcessingLock = (jobId) => {
   processingJobIds.delete(jobId)
 }
 
-export const processDueSmsJobs = async ({ db, userId = null, now = new Date(), maxJobs = BATCH_LIMIT }) => {
+export const processDueSmsJobs = async ({ db, now = new Date(), maxJobs = BATCH_LIMIT }) => {
   if (!isNativeSmsAvailable()) {
-    if (userId) {
-      await writeDebugLog(db, userId, 'processor_run', 'Native SMS not available, skipping', {
-        reason: 'plugin_unavailable',
-      })
-    }
     return { processed: 0, sent: 0, failed: 0, retried: 0, skipped: true }
   }
   if (!(await isAutomationEnabled(db))) {
-    if (userId) {
-      await writeDebugLog(db, userId, 'processor_run', 'SMS automation disabled, skipping', {
-        reason: 'automation_disabled',
-      })
-    }
     return { processed: 0, sent: 0, failed: 0, retried: 0, skipped: true }
   }
 
   const dueJobs = await fetchDuePendingJobs({ db, now, maxJobs })
-  if (userId && dueJobs.length > 0) {
-    await writeDebugLog(db, userId, 'processor_run', `Found ${dueJobs.length} due SMS jobs`, {
-      jobCount: dueJobs.length,
-    })
-  }
   if (dueJobs.length === 0) {
     return { processed: 0, sent: 0, failed: 0, retried: 0 }
   }
@@ -206,13 +190,6 @@ export const processDueSmsJobs = async ({ db, userId = null, now = new Date(), m
         await markJobSuccess({ db, jobId: job.id })
         sent += 1
         console.log(`SMS sent successfully - jobId: ${job.id}, recipient: ${job.recipientMobile}, entity: ${job.entityId}`)
-        if (userId) {
-          await writeDebugLog(db, userId, 'send_success', `SMS sent to ${job.recipientMobile}`, {
-            jobId: job.id,
-            recipient: job.recipientMobile,
-            intent: job.messageIntent,
-          })
-        }
       } finally {
         releaseProcessingLock(job.id)
       }
@@ -222,17 +199,6 @@ export const processDueSmsJobs = async ({ db, userId = null, now = new Date(), m
       const isMaxAttemptsReached = nextAttemptCount >= MAX_ATTEMPTS
 
       console.error(`SMS send failed - jobId: ${job.id}, recipient: ${job.recipientMobile}, entity: ${job.entityId}, attempt: ${nextAttemptCount}/${MAX_ATTEMPTS}, error: ${reason}`)
-
-      if (userId) {
-        await writeDebugLog(db, userId, 'send_error', `SMS send failed for ${job.recipientMobile}`, {
-          jobId: job.id,
-          recipient: job.recipientMobile,
-          attempt: nextAttemptCount,
-          maxAttempts: MAX_ATTEMPTS,
-          error: reason,
-          isMaxAttemptsReached,
-        })
-      }
 
       if (isMaxAttemptsReached) {
         failed += 1
