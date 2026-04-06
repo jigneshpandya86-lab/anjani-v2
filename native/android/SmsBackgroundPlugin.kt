@@ -3,6 +3,7 @@ package com.anjani.app.sms
 import android.Manifest
 import android.content.pm.PackageManager
 import android.telephony.SmsManager
+import android.util.Log
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.PermissionState
@@ -27,6 +28,14 @@ import com.getcapacitor.annotation.PermissionCallback
   ]
 )
 class SmsBackgroundPlugin : Plugin() {
+  override fun load() {
+    try {
+      super.load()
+    } catch (error: Throwable) {
+      Log.e("SmsBackgroundPlugin", "Failed to initialize SmsBackgroundPlugin", error)
+    }
+  }
+
   @PluginMethod
   fun send(call: PluginCall) {
     val to = call.getString("to", "")?.trim().orEmpty()
