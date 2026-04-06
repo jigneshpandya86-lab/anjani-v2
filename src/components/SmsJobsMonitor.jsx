@@ -3,7 +3,8 @@ import { Timestamp, collection, doc, limit, onSnapshot, orderBy, query, serverTi
 import { db } from '../firebase-config'
 import toast from 'react-hot-toast'
 
-const FILTERS = ['all', 'pending', 'processing', 'sent', 'failed', 'cancelled']
+const STATUS_FILTERS = ['all', 'pending', 'processing', 'sent', 'failed', 'cancelled']
+const DELIVERY_FILTERS = ['all-delivery', 'delivery-pending', 'delivery-delivered', 'delivery-failed']
 
 const getDateLabel = (value) => {
   if (!value) return '-'
@@ -21,9 +22,23 @@ const badgeClassByStatus = (status) => {
   return 'bg-amber-100 text-amber-700 border-amber-200'
 }
 
+const badgeClassByErrorCategory = (category) => {
+  if (category === 'terminal') return 'bg-red-100 text-red-700'
+  if (category === 'retryable') return 'bg-yellow-100 text-yellow-700'
+  if (category === 'rate_limit') return 'bg-orange-100 text-orange-700'
+  return 'bg-gray-100 text-gray-700'
+}
+
+const badgeClassByDeliveryStatus = (status) => {
+  if (status === 'delivered') return 'bg-green-100 text-green-700'
+  if (status === 'failed' || status === 'undelivered') return 'bg-red-100 text-red-700'
+  return 'bg-blue-100 text-blue-700'
+}
+
 export default function SmsJobsMonitor() {
   const [jobs, setJobs] = useState([])
   const [statusFilter, setStatusFilter] = useState('all')
+  const [deliveryFilter, setDeliveryFilter] = useState('all-delivery')
 
   useEffect(() => {
     const q = query(collection(db, 'sms_jobs'), orderBy('createdAt', 'desc'), limit(50))
@@ -34,9 +49,26 @@ export default function SmsJobsMonitor() {
   }, [])
 
   const filteredJobs = useMemo(() => {
-    if (statusFilter === 'all') return jobs
-    return jobs.filter((job) => job.status === statusFilter)
-  }, [jobs, statusFilter])
+    let filtered = jobs
+
+    // Apply status filter
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter((job) => job.status === statusFilter)
+    }
+
+    // Apply delivery filter
+    if (deliveryFilter === 'delivery-pending') {
+      filtered = filtered.filter((job) => job.deliveryStatus === 'pending')
+    } else if (deliveryFilter === 'delivery-delivered') {
+      filtered = filtered.filter((job) => job.deliveryStatus === 'delivered')
+    } else if (deliveryFilter === 'delivery-failed') {
+      filtered = filtered.filter(
+        (job) => job.deliveryStatus === 'failed' || job.deliveryStatus === 'undelivered'
+      )
+    }
+
+    return filtered
+  }, [jobs, statusFilter, deliveryFilter])
 
   const retryNow = async (job) => {
     try {
@@ -76,17 +108,34 @@ export default function SmsJobsMonitor() {
         </p>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {FILTERS.map((filter) => (
-          <button
-            key={filter}
-            type="button"
-            onClick={() => setStatusFilter(filter)}
-            className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider whitespace-nowrap ${statusFilter === filter ? 'bg-[#131921] text-[#ff9900]' : 'bg-white text-gray-500 border border-gray-200'}`}
-          >
-            {filter}
-          </button>
-        ))}
+      <div className="space-y-2">
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          <span className="text-[10px] font-black text-gray-600 self-center whitespace-nowrap">Status:</span>
+          {STATUS_FILTERS.map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => setStatusFilter(filter)}
+              className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider whitespace-nowrap ${statusFilter === filter ? 'bg-[#131921] text-[#ff9900]' : 'bg-white text-gray-500 border border-gray-200'}`}
+            >
+              {filter}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          <span className="text-[10px] font-black text-gray-600 self-center whitespace-nowrap">Delivery:</span>
+          {DELIVERY_FILTERS.map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => setDeliveryFilter(filter)}
+              className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider whitespace-nowrap ${deliveryFilter === filter ? 'bg-[#131921] text-[#ff9900]' : 'bg-white text-gray-500 border border-gray-200'}`}
+            >
+              {filter.replace('delivery-', '')}
+            </button>
+          ))}
+        </div>
       </div>
 
       {filteredJobs.length === 0 ? (
@@ -111,6 +160,33 @@ export default function SmsJobsMonitor() {
                 <p>Scheduled: {getDateLabel(job.scheduledFor)}</p>
                 <p>Attempts: {Number(job.attemptCount || 0)}</p>
                 <p className="sm:col-span-2">Entity: {job.entityId || '-'}</p>
+
+                {/* Delivery Status */}
+                {job.deliveryStatus && (
+                  <div className="sm:col-span-2">
+                    <p className="text-gray-500 mb-1">Delivery Status:</p>
+                    <span className={`px-2 py-1 rounded-full text-[10px] font-black border ${badgeClassByDeliveryStatus(job.deliveryStatus)}`}>
+                      {job.deliveryStatus}
+                    </span>
+                  </div>
+                )}
+
+                {/* Error Code and Category */}
+                {job.errorCode && (
+                  <div className="sm:col-span-2">
+                    <p className="text-gray-500 mb-1">Error Details:</p>
+                    <div className="flex gap-2 flex-wrap">
+                      <span className={`px-2 py-1 rounded text-[10px] font-black border ${badgeClassByErrorCategory(job.errorCategory)}`}>
+                        {job.errorCode}
+                      </span>
+                      <span className="px-2 py-1 rounded text-[10px] font-black bg-gray-100 text-gray-700 border">
+                        {job.errorCategory || 'unknown'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Last Error Message */}
                 {job.lastError ? <p className="sm:col-span-2 text-red-600">Error: {job.lastError}</p> : null}
               </div>
 

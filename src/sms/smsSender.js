@@ -13,6 +13,8 @@ import {
   where,
 } from 'firebase/firestore'
 import { isNativeSmsAvailable, sendSmsNative } from './nativeSmsBridge.js'
+import { classifyError, isTerminalError, isRateLimitError, ERROR_CODES } from './errorClassifier.js'
+import { canSendToRecipient, calculateRateLimitRetryTime } from './rateLimiter.js'
 
 const MAX_ATTEMPTS = 3
 const BATCH_LIMIT = 20
@@ -95,24 +97,38 @@ const markJobSuccess = async ({ db, jobId }) => {
     updateDoc(doc(db, 'sms_jobs', jobId), {
       status: 'sent',
       sentAt: serverTimestamp(),
+      deliveryStatus: 'pending', // Waiting for delivery receipt
+      deliveryAttempts: 0,
+      errorCode: null,
+      errorCategory: null,
+      lastError: null,
       updatedAt: serverTimestamp(),
     })
   )
 }
 
-const markJobFailure = async ({ db, job, reason, now }) => {
+const markJobFailure = async ({ db, job, reason, now, errorCode, errorCategory }) => {
   const nextAttemptCount = Number(job.attemptCount || 0) + 1
+
+  // Terminal errors should not be retried
+  const isTerminal = isTerminalError(errorCode)
   const isMaxAttemptsReached = nextAttemptCount >= MAX_ATTEMPTS
+  const shouldFail = isTerminal || isMaxAttemptsReached
+
+  const updateData = {
+    status: shouldFail ? 'failed' : 'pending',
+    attemptCount: nextAttemptCount,
+    lastError: reason,
+    lastErrorAt: serverTimestamp(),
+    errorCode: errorCode || ERROR_CODES.UNKNOWN,
+    errorCategory: errorCategory || 'unknown',
+    ...(shouldFail && { failedAt: serverTimestamp() }),
+    ...(!shouldFail && { scheduledFor: computeRetryTimestamp(nextAttemptCount, now) }),
+    updatedAt: serverTimestamp(),
+  }
 
   await retryDbOperation(() =>
-    updateDoc(doc(db, 'sms_jobs', job.id), {
-      status: isMaxAttemptsReached ? 'failed' : 'pending',
-      attemptCount: nextAttemptCount,
-      lastError: reason,
-      ...(isMaxAttemptsReached && { failedAt: serverTimestamp() }),
-      ...(!isMaxAttemptsReached && { scheduledFor: computeRetryTimestamp(nextAttemptCount, now) }),
-      updatedAt: serverTimestamp(),
-    })
+    updateDoc(doc(db, 'sms_jobs', job.id), updateData)
   )
 
   return nextAttemptCount
@@ -135,6 +151,22 @@ const isAutomationEnabled = async (db) => {
   const settingsSnap = await getDoc(doc(db, 'settings', 'smsAutomation'))
   if (!settingsSnap.exists()) return true
   return settingsSnap.data()?.enabled !== false
+}
+
+const getRateLimitConfig = async (db) => {
+  try {
+    const configSnap = await getDoc(doc(db, 'settings', 'smsRateLimitConfig'))
+    if (configSnap.exists()) {
+      return configSnap.data()
+    }
+  } catch (error) {
+    console.warn('Failed to fetch rate limit config:', error.message)
+  }
+
+  return {
+    enabled: true,
+    minIntervalBetweenSmsMs: 3600000, // 1 hour default
+  }
 }
 
 // In-memory processing lock to prevent concurrent processing of same job
@@ -180,6 +212,31 @@ export const processDueSmsJobs = async ({ db, now = new Date(), maxJobs = BATCH_
       }
 
       try {
+        // Check rate limiting
+        const rateLimitCheck = await canSendToRecipient({ db, recipientMobile: job.recipientMobile })
+        if (!rateLimitCheck.allowed) {
+          console.log(`Job ${job.id} rate limited: ${rateLimitCheck.reason}`)
+          // Reschedule for after rate limit window
+          const retryTime = calculateRateLimitRetryTime(
+            (await getRateLimitConfig(db)).minIntervalBetweenSmsMs || 3600000,
+            rateLimitCheck.lastSentAt
+          )
+
+          await retryDbOperation(() =>
+            updateDoc(doc(db, 'sms_jobs', job.id), {
+              status: 'pending',
+              scheduledFor: Timestamp.fromDate(retryTime),
+              errorCode: ERROR_CODES.RATE_LIMIT,
+              errorCategory: 'rate_limit',
+              lastError: rateLimitCheck.reason,
+              lastErrorAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            })
+          )
+          skipped += 1
+          continue
+        }
+
         // Atomic claim: protects against duplicate sends across tabs/devices
         const claimed = await claimJobForProcessing({ db, jobId: job.id })
         if (!claimed) {
@@ -203,12 +260,22 @@ export const processDueSmsJobs = async ({ db, now = new Date(), maxJobs = BATCH_
       }
     } catch (error) {
       const reason = error?.message || 'SMS send failed'
-      const nextAttemptCount = await markJobFailure({ db, job, reason, now })
+      const { code: errorCode, category: errorCategory } = classifyError(error, { job })
+
+      const nextAttemptCount = await markJobFailure({
+        db,
+        job,
+        reason,
+        now,
+        errorCode,
+        errorCategory,
+      })
+      const isTerminal = isTerminalError(errorCode)
       const isMaxAttemptsReached = nextAttemptCount >= MAX_ATTEMPTS
 
-      console.error(`SMS send failed - jobId: ${job.id}, recipient: ${job.recipientMobile}, entity: ${job.entityId}, attempt: ${nextAttemptCount}/${MAX_ATTEMPTS}, error: ${reason}`)
+      console.error(`SMS send failed - jobId: ${job.id}, recipient: ${job.recipientMobile}, entity: ${job.entityId}, attempt: ${nextAttemptCount}/${MAX_ATTEMPTS}, errorCode: ${errorCode}, category: ${errorCategory}, error: ${reason}`)
 
-      if (isMaxAttemptsReached) {
+      if (isTerminal || isMaxAttemptsReached) {
         failed += 1
       } else {
         retried += 1
