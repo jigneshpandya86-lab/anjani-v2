@@ -77,6 +77,7 @@ export default function LeadsDashboard() {
         name,
         mobile,
         source: 'manual',
+        Tag: null,
         createdAt: serverTimestamp(),
       });
       toast.success('Lead added successfully');
