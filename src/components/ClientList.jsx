@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, UserX, UserCheck, Flag, Fingerprint, MessageCircle } from 'lucide-react';
+import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, UserX, UserCheck, Flag, Fingerprint } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function ClientList({ onEdit, onPay, onOrder }) {
@@ -109,19 +109,13 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
           </div>
 
           <div className="flex justify-between items-center gap-3">
-             <div className="grid grid-cols-6 gap-2 flex-1">
+             <div className="grid grid-cols-5 gap-2 flex-1">
                <a href={`tel:${client.mobile}`} className="flex justify-center p-2 bg-blue-50 text-blue-600 rounded-md"><Phone className="w-4 h-4" /></a>
                <a
                  href={`https://wa.me/91${client.mobile}?text=${getOutstandingMessage(client)}`}
                  className="flex justify-center p-2 bg-green-50 text-green-600 rounded-md"
                >
                  <MessageSquare className="w-4 h-4" />
-               </a>
-               <a
-                 href={`sms:+91${client.mobile}?body=${getOutstandingMessage(client)}`}
-                 className="flex justify-center p-2 bg-teal-50 text-teal-600 rounded-md"
-               >
-                 <MessageCircle className="w-4 h-4" />
                </a>
                <button
                  onClick={() => onOrder(client)}
