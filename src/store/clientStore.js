@@ -70,7 +70,7 @@ export const useClientStore = create((set, get) => ({
     stockSubscriberCount += 1;
 
     if (!stockUnsubscribe) {
-      const q = query(collection(db, 'stock'), orderBy('createdAt', 'desc'), limit(200));
+      const q = query(collection(db, 'stock'), orderBy('createdAt', 'desc'), limit(100));
       stockUnsubscribe = onSnapshot(q, (snapshot) => {
         const getTime = (value) => {
           if (!value) return 0;
