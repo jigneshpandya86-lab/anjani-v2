@@ -386,6 +386,12 @@ export default function LeadsDashboard() {
     }
   }, [isRemessaging]);
 
+  const connectAndSendDueFollowUps = useCallback(async () => {
+    if (isConnecting || isRemessaging) return;
+    await connectTopFiveUntaggedLeads();
+    await sendDueFollowUpSms();
+  }, [isConnecting, isRemessaging, connectTopFiveUntaggedLeads, sendDueFollowUpSms]);
+
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -463,6 +469,26 @@ export default function LeadsDashboard() {
             ) : (
               <span>Re-message</span>
             )}
+          </button>
+        </div>
+
+        <div className="h-px bg-gray-100 mx-4" />
+
+        <div className="flex items-center gap-4 px-4 py-4">
+          <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center">
+            <RefreshCw size={18} className="text-violet-500" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-900 leading-tight">Quick Action</p>
+            <p className="text-xs text-gray-400 mt-0.5">Connect + send due follow-ups</p>
+          </div>
+          <button
+            type="button"
+            disabled={isConnecting || isRemessaging}
+            onClick={connectAndSendDueFollowUps}
+            className="flex-shrink-0 inline-flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2 rounded-xl transition-all"
+          >
+            <span>Run Both</span>
           </button>
         </div>
       </div>
