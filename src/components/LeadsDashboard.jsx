@@ -187,7 +187,7 @@ const LeadCard = React.memo(function LeadCard({ lead, onWhatsApp, onDelete }) {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
-export default function LeadsDashboard() {
+export default function LeadsDashboard({ pendingAction = null, onPendingActionHandled }) {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -391,6 +391,21 @@ export default function LeadsDashboard() {
     await connectTopFiveUntaggedLeads();
     await sendDueFollowUpSms();
   }, [isConnecting, isRemessaging, connectTopFiveUntaggedLeads, sendDueFollowUpSms]);
+
+  useEffect(() => {
+    if (!pendingAction) return;
+
+    const runPendingAction = async () => {
+      if (pendingAction === 'connect') {
+        await connectTopFiveUntaggedLeads();
+      } else if (pendingAction === 'both') {
+        await connectAndSendDueFollowUps();
+      }
+      if (onPendingActionHandled) onPendingActionHandled();
+    };
+
+    runPendingAction();
+  }, [pendingAction, connectTopFiveUntaggedLeads, connectAndSendDueFollowUps, onPendingActionHandled]);
 
   // ── Render ───────────────────────────────────────────────────────────────
 
