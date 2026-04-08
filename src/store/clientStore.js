@@ -59,6 +59,13 @@ const buildClientShortId = (clientDocId) => {
   return `CLT-${safeId.slice(0, 6).padEnd(6, '0')}`;
 };
 
+const normalizeOrderWriteData = (data = {}) => ({
+  ...data,
+  address: data.address === undefined ? '' : String(data.address).trim(),
+  mapLink: data.mapLink === undefined ? '' : String(data.mapLink).trim(),
+  location: data.location === undefined ? '' : String(data.location).trim(),
+});
+
 export const useClientStore = create((set, get) => ({
   clients: [],
   orders: [],
@@ -216,14 +223,15 @@ export const useClientStore = create((set, get) => ({
   },
 
   addOrder: async (data) => {
+    const normalizedData = normalizeOrderWriteData(data);
     const orderId = `ORD-${Date.now()}`;
-    const selectedClient = get().clients.find((client) => client.id === data.clientId);
+    const selectedClient = get().clients.find((client) => client.id === normalizedData.clientId);
     await addDoc(collection(db, 'orders'), {
-      ...data,
+      ...normalizedData,
       orderId,
-      clientName: selectedClient?.name || data.clientName || '',
-      qty: Number(data.qty),
-      rate: Number(data.rate),
+      clientName: selectedClient?.name || normalizedData.clientName || '',
+      qty: Number(normalizedData.qty),
+      rate: Number(normalizedData.rate),
       status: 'Pending',
       createdAt: serverTimestamp()
     });
@@ -311,6 +319,7 @@ export const useClientStore = create((set, get) => ({
         clientId: raw.clientId || raw.customerId || '',
         address:  raw.address || raw.deliveryAddress || raw.location || '',
         mapLink:  raw.mapLink || raw.googleMap || '',
+        location: raw.location || raw.googleLocation || raw.locationName || '',
       });
 
       const getTime = (o) => {
@@ -330,13 +339,14 @@ export const useClientStore = create((set, get) => ({
   },
 
   updateOrder: async (id, data) => {
+    const normalizedData = normalizeOrderWriteData(data);
     const orderRef = doc(db, 'orders', id);
     const localExisting = get().orders.find((o) => o.id === id);
     const orderSnap = await getDoc(orderRef);
     const remoteExisting = orderSnap.exists() ? { id, ...orderSnap.data() } : null;
     const existing = localExisting || remoteExisting;
     const previousStatus = remoteExisting?.status || localExisting?.status || '';
-    const shouldMarkDelivered = data.status === 'Delivered';
+    const shouldMarkDelivered = normalizedData.status === 'Delivered';
     const alreadyPostedToStock = Boolean(
       remoteExisting?.stockPostedAt ||
       remoteExisting?.stockEntryId
@@ -393,7 +403,7 @@ export const useClientStore = create((set, get) => ({
       }
     }
     await updateDoc(orderRef, {
-      ...data,
+      ...normalizedData,
       ...extraOrderPatch,
     });
   },
