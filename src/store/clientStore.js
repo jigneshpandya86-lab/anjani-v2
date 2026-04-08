@@ -63,8 +63,7 @@ const normalizeOrderWriteData = (data = {}) => ({
   ...data,
   address: data.address === undefined ? '' : String(data.address).trim(),
   mapLink: data.mapLink === undefined ? '' : String(data.mapLink).trim(),
-  googleLocation:
-    data.googleLocation === undefined ? '' : String(data.googleLocation).trim(),
+  location: data.location === undefined ? '' : String(data.location).trim(),
 });
 
 export const useClientStore = create((set, get) => ({
@@ -320,7 +319,7 @@ export const useClientStore = create((set, get) => ({
         clientId: raw.clientId || raw.customerId || '',
         address:  raw.address || raw.deliveryAddress || raw.location || '',
         mapLink:  raw.mapLink || raw.googleMap || '',
-        googleLocation: raw.googleLocation || raw.locationName || '',
+        location: raw.location || raw.googleLocation || raw.locationName || '',
       });
 
       const getTime = (o) => {

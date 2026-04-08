@@ -7,7 +7,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
   const { clients, addOrder, updateOrder } = useClientStore();
   const [formData, setFormData] = useState({
     clientId: '', qty: '', rate: '', date: '', time: '', 
-    address: '', mapLink: '', googleLocation: '', proofUrl: ''
+    address: '', mapLink: '', location: '', proofUrl: ''
   });
   const [loading, setLoading] = useState(false);
 
@@ -22,7 +22,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
         time: orderToEdit.time || orderToEdit.deliveryTime || '',
         address: orderToEdit.address || orderToEdit.deliveryAddress || orderToEdit.location || '',
         mapLink: orderToEdit.mapLink || orderToEdit.googleMap || '',
-        googleLocation: orderToEdit.googleLocation || orderToEdit.locationName || '',
+        location: orderToEdit.location || orderToEdit.googleLocation || orderToEdit.locationName || '',
         proofUrl: orderToEdit.proofUrl || '',
       });
     } else {
@@ -34,7 +34,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
         time: '',
         address: '',
         mapLink: '',
-        googleLocation: '',
+        location: '',
         proofUrl: '',
       });
     }
@@ -62,7 +62,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
         ...formData,
         address: String(formData.address || '').trim(),
         mapLink: String(formData.mapLink || '').trim(),
-        googleLocation: String(formData.googleLocation || '').trim(),
+        location: String(formData.location || '').trim(),
         proofUrl: String(formData.proofUrl || '').trim(),
       };
 
@@ -154,14 +154,14 @@ export default function OrderModal({ orderToEdit, onClose }) {
         </div>
 
         <div>
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Google Location</label>
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Location</label>
           <input
             type="text"
-            placeholder="Ex: Plus Code / Place Name / Location Note"
+            placeholder="Ex: Plus Code / Place Name / Landmark"
             maxLength={150}
             className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm"
-            value={formData.googleLocation}
-            onChange={e => setFormData({ ...formData, googleLocation: e.target.value })}
+            value={formData.location}
+            onChange={e => setFormData({ ...formData, location: e.target.value })}
           />
         </div>
 
