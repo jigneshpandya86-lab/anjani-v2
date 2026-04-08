@@ -62,7 +62,6 @@ const buildClientShortId = (clientDocId) => {
 const normalizeOrderWriteData = (data = {}) => ({
   ...data,
   address: data.address === undefined ? '' : String(data.address).trim(),
-  mapLink: data.mapLink === undefined ? '' : String(data.mapLink).trim(),
   location: data.location === undefined ? '' : String(data.location).trim(),
 });
 
@@ -318,8 +317,7 @@ export const useClientStore = create((set, get) => ({
         time:     raw.time || raw.deliveryTime || '',
         clientId: raw.clientId || raw.customerId || '',
         address:  raw.address || raw.deliveryAddress || raw.location || '',
-        mapLink:  raw.mapLink || raw.googleMap || '',
-        location: raw.location || raw.googleLocation || raw.locationName || '',
+        location: raw.location || raw.googleLocation || raw.locationName || raw.mapLink || raw.googleMap || '',
       });
 
       const getTime = (o) => {
