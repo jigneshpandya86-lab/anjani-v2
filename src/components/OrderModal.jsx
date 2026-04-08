@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Save, MapPin, Package, Clock, IndianRupee, Image as ImageIcon } from 'lucide-react';
+import { Package, Clock, IndianRupee, Image as ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function OrderModal({ orderToEdit, onClose }) {
   const { clients, addOrder, updateOrder } = useClientStore();
   const [formData, setFormData] = useState({
     clientId: '', qty: '', rate: '', date: '', time: '', 
-    address: '', mapLink: '', proofUrl: ''
+    address: '', location: '', proofUrl: ''
   });
   const [loading, setLoading] = useState(false);
 
@@ -21,11 +21,20 @@ export default function OrderModal({ orderToEdit, onClose }) {
         date: orderToEdit.date || orderToEdit.deliveryDate || orderToEdit.orderDate || '',
         time: orderToEdit.time || orderToEdit.deliveryTime || '',
         address: orderToEdit.address || orderToEdit.deliveryAddress || orderToEdit.location || '',
-        mapLink: orderToEdit.mapLink || orderToEdit.googleMap || '',
+        location: orderToEdit.location || orderToEdit.googleLocation || orderToEdit.locationName || '',
         proofUrl: orderToEdit.proofUrl || '',
       });
     } else {
-      setFormData({ clientId: '', qty: '', rate: '', date: '', time: '', address: '', mapLink: '', proofUrl: '' });
+      setFormData({
+        clientId: '',
+        qty: '',
+        rate: '',
+        date: '',
+        time: '',
+        address: '',
+        location: '',
+        proofUrl: '',
+      });
     }
   }, [orderToEdit]);
 
@@ -47,11 +56,18 @@ export default function OrderModal({ orderToEdit, onClose }) {
     e.preventDefault();
     setLoading(true);
     try {
+      const payload = {
+        ...formData,
+        address: String(formData.address || '').trim(),
+        location: String(formData.location || '').trim(),
+        proofUrl: String(formData.proofUrl || '').trim(),
+      };
+
       if (orderToEdit && orderToEdit.id) {
-        await updateOrder(orderToEdit.id, formData);
+        await updateOrder(orderToEdit.id, payload);
         toast.success('Order updated successfully');
       } else {
-        await addOrder(formData);
+        await addOrder(payload);
         toast.success('Order created successfully');
       }
       onClose();
@@ -125,13 +141,17 @@ export default function OrderModal({ orderToEdit, onClose }) {
             value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
         </div>
 
+
         <div>
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Google Maps Link</label>
-          <div className="relative">
-            <MapPin className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-            <input type="url" placeholder="https://maps.google.com/..." className="w-full pl-9 pr-3 py-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm"
-              value={formData.mapLink} onChange={e => setFormData({...formData, mapLink: e.target.value})} />
-          </div>
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Location</label>
+          <input
+            type="text"
+            placeholder="Ex: Plus Code / Place Name / Landmark"
+            maxLength={150}
+            className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm"
+            value={formData.location}
+            onChange={e => setFormData({ ...formData, location: e.target.value })}
+          />
         </div>
 
         {orderToEdit?.status === 'Delivered' && (
