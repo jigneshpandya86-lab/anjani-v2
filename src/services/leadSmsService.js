@@ -31,14 +31,12 @@ export const sendBackgroundSms = async ({ macroUrl, phone, message }) => {
   }
 };
 
-export const buildInitialSmsMessage = (name) => {
-  const displayName = name || 'Sir/Madam';
-  return `Hello ${displayName}, Greetings from Annapurna Foods, Vadodara! Planning an event? Ask for our 200ml Packaged Water Bottles.`;
+export const buildInitialSmsMessage = () => {
+  return 'Hello Sir/Madam, Greetings from Annapurna Foods, Vadodara! Planning an event? Ask for our 200ml Packaged Water Bottles.';
 };
 
-export const buildFollowUpSmsMessage = ({ name, reminderDay }) => {
-  const displayName = name || 'Sir/Madam';
-  return `Hello ${displayName}, this is a gentle follow-up from Annapurna Foods, Vadodara. It's been ${reminderDay} day${reminderDay > 1 ? 's' : ''} since our last message. Can we help with your packaged water bottle requirement?`;
+export const buildFollowUpSmsMessage = ({ reminderDay }) => {
+  return `Hello Sir/Madam, this is a gentle follow-up from Annapurna Foods, Vadodara. It's been ${reminderDay} day${reminderDay > 1 ? 's' : ''} since our last message. Can we help with your packaged water bottle requirement?`;
 };
 
 export const buildInitialSmsUpdate = (now = new Date()) => ({
