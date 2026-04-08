@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Save, MapPin, Package, Clock, IndianRupee, Image as ImageIcon } from 'lucide-react';
+import { MapPin, Package, Clock, IndianRupee, Image as ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function OrderModal({ orderToEdit, onClose }) {
   const { clients, addOrder, updateOrder } = useClientStore();
   const [formData, setFormData] = useState({
     clientId: '', qty: '', rate: '', date: '', time: '', 
-    address: '', mapLink: '', proofUrl: ''
+    address: '', mapLink: '', googleLocation: '', proofUrl: ''
   });
   const [loading, setLoading] = useState(false);
 
@@ -22,10 +22,21 @@ export default function OrderModal({ orderToEdit, onClose }) {
         time: orderToEdit.time || orderToEdit.deliveryTime || '',
         address: orderToEdit.address || orderToEdit.deliveryAddress || orderToEdit.location || '',
         mapLink: orderToEdit.mapLink || orderToEdit.googleMap || '',
+        googleLocation: orderToEdit.googleLocation || orderToEdit.locationName || '',
         proofUrl: orderToEdit.proofUrl || '',
       });
     } else {
-      setFormData({ clientId: '', qty: '', rate: '', date: '', time: '', address: '', mapLink: '', proofUrl: '' });
+      setFormData({
+        clientId: '',
+        qty: '',
+        rate: '',
+        date: '',
+        time: '',
+        address: '',
+        mapLink: '',
+        googleLocation: '',
+        proofUrl: '',
+      });
     }
   }, [orderToEdit]);
 
@@ -47,11 +58,19 @@ export default function OrderModal({ orderToEdit, onClose }) {
     e.preventDefault();
     setLoading(true);
     try {
+      const payload = {
+        ...formData,
+        address: String(formData.address || '').trim(),
+        mapLink: String(formData.mapLink || '').trim(),
+        googleLocation: String(formData.googleLocation || '').trim(),
+        proofUrl: String(formData.proofUrl || '').trim(),
+      };
+
       if (orderToEdit && orderToEdit.id) {
-        await updateOrder(orderToEdit.id, formData);
+        await updateOrder(orderToEdit.id, payload);
         toast.success('Order updated successfully');
       } else {
-        await addOrder(formData);
+        await addOrder(payload);
         toast.success('Order created successfully');
       }
       onClose();
@@ -132,6 +151,18 @@ export default function OrderModal({ orderToEdit, onClose }) {
             <input type="url" placeholder="https://maps.google.com/..." className="w-full pl-9 pr-3 py-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm"
               value={formData.mapLink} onChange={e => setFormData({...formData, mapLink: e.target.value})} />
           </div>
+        </div>
+
+        <div>
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Google Location</label>
+          <input
+            type="text"
+            placeholder="Ex: Plus Code / Place Name / Location Note"
+            maxLength={150}
+            className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm"
+            value={formData.googleLocation}
+            onChange={e => setFormData({ ...formData, googleLocation: e.target.value })}
+          />
         </div>
 
         {orderToEdit?.status === 'Delivered' && (
