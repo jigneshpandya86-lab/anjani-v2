@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { 
   collection, addDoc, onSnapshot, query, doc, 
-  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs
+  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs, deleteField
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
 
@@ -63,6 +63,13 @@ const normalizeOrderWriteData = (data = {}) => ({
   ...data,
   address: data.address === undefined ? '' : String(data.address).trim(),
   location: data.location === undefined ? '' : String(data.location).trim(),
+});
+
+const getLegacyLocationCleanupPatch = () => ({
+  mapLink: deleteField(),
+  googleMap: deleteField(),
+  googleLocation: deleteField(),
+  locationName: deleteField(),
 });
 
 export const useClientStore = create((set, get) => ({
@@ -402,6 +409,7 @@ export const useClientStore = create((set, get) => ({
     }
     await updateDoc(orderRef, {
       ...normalizedData,
+      ...getLegacyLocationCleanupPatch(),
       ...extraOrderPatch,
     });
   },

@@ -20,7 +20,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
         rate: orderToEdit.rate || orderToEdit.price || orderToEdit.amount || '',
         date: orderToEdit.date || orderToEdit.deliveryDate || orderToEdit.orderDate || '',
         time: orderToEdit.time || orderToEdit.deliveryTime || '',
-        address: orderToEdit.address || orderToEdit.deliveryAddress || orderToEdit.location || '',
+        address: orderToEdit.address || orderToEdit.deliveryAddress || '',
         location: orderToEdit.location || orderToEdit.googleLocation || orderToEdit.locationName || '',
         proofUrl: orderToEdit.proofUrl || '',
       });
@@ -141,18 +141,6 @@ export default function OrderModal({ orderToEdit, onClose }) {
             value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
         </div>
 
-
-        <div>
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Location</label>
-          <input
-            type="text"
-            placeholder="Ex: Plus Code / Place Name / Landmark"
-            maxLength={150}
-            className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm"
-            value={formData.location}
-            onChange={e => setFormData({ ...formData, location: e.target.value })}
-          />
-        </div>
 
         <div>
           <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Location</label>
