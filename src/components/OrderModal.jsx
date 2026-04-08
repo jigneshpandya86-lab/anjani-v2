@@ -154,6 +154,18 @@ export default function OrderModal({ orderToEdit, onClose }) {
           />
         </div>
 
+        <div>
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Location</label>
+          <input
+            type="text"
+            placeholder="Ex: Plus Code / Place Name / Landmark"
+            maxLength={150}
+            className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm"
+            value={formData.location}
+            onChange={e => setFormData({ ...formData, location: e.target.value })}
+          />
+        </div>
+
         {orderToEdit?.status === 'Delivered' && (
           <div>
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Delivery Proof (Photo URL/Drive)</label>
