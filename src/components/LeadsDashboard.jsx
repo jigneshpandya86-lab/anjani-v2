@@ -298,16 +298,18 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
     if (isConnecting) return;
     setIsConnecting(true);
     try {
-      const q = query(collection(db, 'leads'), where('Tag', '==', null), limit(5));
+      // Fetch leads where Tag is null or empty string, limit to 5
+      const q = query(collection(db, 'leads'), where('Tag', 'in', [null, '']));
       const snapshot = await getDocs(q);
+      const untaggedLeads = snapshot.docs.slice(0, 5);
 
-      if (snapshot.empty) {
+      if (untaggedLeads.length === 0) {
         toast('No untagged leads found');
         return;
       }
 
       let sentCount = 0;
-      for (const leadDoc of snapshot.docs) {
+      for (const leadDoc of untaggedLeads) {
         const lead = leadDoc.data();
         const mobile = getLeadPhone(lead);
         if (!mobile) continue;
