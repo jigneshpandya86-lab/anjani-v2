@@ -111,10 +111,8 @@ export default function AddClient({ onDone, client }) {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Actual Location (Map Picker)</label>
+              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Actual Location (Type & Select)</label>
               <GoogleMapPicker
-                initialLat={locationLat}
-                initialLng={locationLng}
                 initialAddress={locationAddress}
                 onChange={handleLocationChange}
               />

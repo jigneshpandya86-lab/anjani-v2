@@ -198,11 +198,9 @@ export default function OrderModal({ orderToEdit, onClose }) {
 
 
         <div>
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Actual Location (Map Picker)</label>
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Actual Location (Type & Select)</label>
           <div className="mt-1 mb-2">
             <GoogleMapPicker
-              initialLat={formData.locationLat}
-              initialLng={formData.locationLng}
               initialAddress={formData.location}
               onChange={handleLocationChange}
             />
