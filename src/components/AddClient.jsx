@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useClientStore } from "../store/clientStore";
-import { UserPlus, CheckCircle } from "lucide-react";
+import { UserPlus, CheckCircle, MapPinned } from "lucide-react";
 import toast from 'react-hot-toast';
+import GoogleMapPicker from './GoogleMapPicker';
 
 export default function AddClient({ onDone, client }) {
   // If editing, fill in the blanks. If new, leave empty!
@@ -9,41 +10,70 @@ export default function AddClient({ onDone, client }) {
   const [phone, setPhone] = useState(client ? client.mobile : "");
   const [address, setAddress] = useState(client ? client.address : "");
   const [rate, setRate] = useState(client ? String(client.rate ?? "") : "");
+  const [locationAddress, setLocationAddress] = useState(
+    client?.location || client?.googleLocation || client?.locationName || ''
+  );
+  const [mapLink, setMapLink] = useState(client?.mapLink || client?.googleMap || '');
+  const [locationLat, setLocationLat] = useState(() => {
+    const parsed = Number(client?.locationLat ?? client?.lat);
+    return Number.isFinite(parsed) ? parsed : null;
+  });
+  const [locationLng, setLocationLng] = useState(() => {
+    const parsed = Number(client?.locationLng ?? client?.lng);
+    return Number.isFinite(parsed) ? parsed : null;
+  });
   const [status, setStatus] = useState("idle");
 
   const addClient = useClientStore((state) => state.addClient);
   const updateClient = useClientStore((state) => state.updateClient);
+
+  const handleLocationChange = useCallback(({ lat, lng, address: resolvedAddress, mapLink: resolvedMapLink }) => {
+    setLocationLat(lat);
+    setLocationLng(lng);
+    if (resolvedAddress) {
+      setLocationAddress(resolvedAddress);
+      setAddress((prev) => (prev.trim() ? prev : resolvedAddress));
+    }
+    if (resolvedMapLink) setMapLink(resolvedMapLink);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setStatus("saving");
 
     try {
+      const payload = {
+        name,
+        mobile: phone,
+        address,
+        rate: rate === "" ? 0 : Number(rate),
+        location: locationAddress || mapLink || '',
+        mapLink: mapLink || '',
+        locationLat: Number.isFinite(Number(locationLat)) ? Number(locationLat) : null,
+        locationLng: Number.isFinite(Number(locationLng)) ? Number(locationLng) : null,
+      };
+
       if (client) {
-        await updateClient(client.id, {
-          name,
-          mobile: phone,
-          address,
-          rate: rate === "" ? 0 : Number(rate),
-        });
+        await updateClient(client.id, payload);
         toast.success("Client updated successfully");
       } else {
         await addClient({
-          name,
+          ...payload,
           phone,
-          address,
-          rate: rate === "" ? 0 : Number(rate),
         });
         toast.success("Client created successfully");
       }
-      
-      // Removed setTimeOut memory leak
+
       setName("");
       setPhone("");
       setAddress("");
       setRate("");
+      setLocationAddress('');
+      setMapLink('');
+      setLocationLat(null);
+      setLocationLng(null);
       setStatus("idle");
-      if (onDone) onDone(); 
+      if (onDone) onDone();
     } catch (error) {
       toast.error("Failed to save client: " + error.message);
       setStatus("idle");
@@ -78,6 +108,31 @@ export default function AddClient({ onDone, client }) {
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Delivery Address</label>
               <textarea required rows="3" value={address} onChange={(e) => setAddress(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none" placeholder="Full delivery address..." />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Actual Location (Type & Select)</label>
+              <GoogleMapPicker
+                initialAddress={locationAddress}
+                onChange={handleLocationChange}
+              />
+              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+                <input
+                  type="text"
+                  value={locationAddress}
+                  onChange={(e) => setLocationAddress(e.target.value)}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
+                  placeholder="Location name/address from map"
+                />
+                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2">
+                  <MapPinned className="h-4 w-4 text-amz-orange" />
+                  {mapLink ? (
+                    <a className="text-xs text-blue-600 underline truncate" href={mapLink} target="_blank" rel="noreferrer">Open selected map link</a>
+                  ) : (
+                    <span className="text-xs text-gray-500">Pick a point to generate map link</span>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div>
