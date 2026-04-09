@@ -215,6 +215,10 @@ export const useClientStore = create((set, get) => ({
       mobile: data.phone,
       address: data.address,
       rate: Number(data.rate) || 0,
+      location: String(data.location || data.mapLink || '').trim(),
+      mapLink: String(data.mapLink || '').trim(),
+      locationLat: Number.isFinite(Number(data.locationLat)) ? Number(data.locationLat) : null,
+      locationLng: Number.isFinite(Number(data.locationLng)) ? Number(data.locationLng) : null,
       active: true,
       outstanding: 0,
       createdAt: serverTimestamp()
@@ -286,12 +290,20 @@ export const useClientStore = create((set, get) => ({
   fetchClients: () => {
     const q = query(collection(db, 'customers'), orderBy('name'), limit(200));
     return onSnapshot(q, (snapshot) => {
-      const clients = snapshot.docs.map(doc => ({ 
-        id: doc.id, ...doc.data(),
-        name: doc.data().name || 'Unnamed',
-        outstanding: doc.data().outstanding || 0,
-        rate: Number(doc.data().rate) || 0
-      }));
+      const clients = snapshot.docs.map(doc => {
+        const raw = doc.data();
+        return {
+          id: doc.id,
+          ...raw,
+          name: raw.name || 'Unnamed',
+          outstanding: raw.outstanding || 0,
+          rate: Number(raw.rate) || 0,
+          location: String(raw.location || raw.googleLocation || raw.locationName || raw.mapLink || raw.googleMap || '').trim(),
+          mapLink: String(raw.mapLink || raw.googleMap || '').trim(),
+          locationLat: Number.isFinite(Number(raw.locationLat ?? raw.lat)) ? Number(raw.locationLat ?? raw.lat) : null,
+          locationLng: Number.isFinite(Number(raw.locationLng ?? raw.lng)) ? Number(raw.locationLng ?? raw.lng) : null,
+        };
+      });
       set({ clients });
     });
   },
