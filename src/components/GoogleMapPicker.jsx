@@ -49,10 +49,12 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const onChangeRef = useRef(onChange);
   const sessionTokenRef = useRef(null);
+  const suppressNextSearchRef = useRef(false);
   const [searchTerm, setSearchTerm] = useState(initialAddress || '');
   const [predictions, setPredictions] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -87,6 +89,10 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
   useEffect(() => {
     if (!searchTerm.trim()) return;
     if (!window.google?.maps?.places?.AutocompleteSuggestion) return;
+    if (suppressNextSearchRef.current) {
+      suppressNextSearchRef.current = false;
+      return;
+    }
 
     const timer = setTimeout(async () => {
       setIsSearching(true);
@@ -139,9 +145,11 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
       const address = place.formattedAddress || suggestion?.placePrediction?.text?.text || '';
       const mapLink = `https://www.google.com/maps?q=${lat},${lng}`;
 
+      suppressNextSearchRef.current = true;
       setSearchTerm(address);
       setPredictions([]);
       setError('');
+      setIsFocused(false);
       onChangeRef.current?.({ lat, lng, address, mapLink });
 
       sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
@@ -156,15 +164,20 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
         <input
           type="text"
           value={searchTerm}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => {
+            window.setTimeout(() => setIsFocused(false), 120);
+          }}
           onChange={(e) => {
             const nextValue = e.target.value;
+            suppressNextSearchRef.current = false;
             setSearchTerm(nextValue);
             if (!nextValue.trim()) setPredictions([]);
           }}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amz-orange focus:border-amz-orange"
           placeholder="Type and select a place"
         />
-        {(isSearching || predictions.length > 0) && (
+        {isFocused && (isSearching || predictions.length > 0) && (
           <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
             {isSearching && <p className="px-3 py-2 text-xs text-gray-500">Searching...</p>}
             {!isSearching && predictions.map((item, index) => (
