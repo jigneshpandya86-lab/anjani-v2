@@ -32,11 +32,12 @@ export const sendBackgroundSms = async ({ macroUrl, phone, message }) => {
 };
 
 export const buildInitialSmsMessage = () => {
-  return 'Hello Sir/Madam, Greetings from Annapurna Foods, Vadodara! Planning an event? Ask for our 200ml Packaged Water Bottles.';
+  return 'Events in Vadodara? Serve Anjani Water 200ml bottles! Perfect size, zero waste. Special rates on bulk buys! Order here: https://wa.me/919925997750';
 };
 
-export const buildFollowUpSmsMessage = ({ reminderDay }) => {
-  return `Hello Sir/Madam, this is a gentle follow-up from Annapurna Foods, Vadodara. It's been ${reminderDay} day${reminderDay > 1 ? 's' : ''} since our last message. Can we help with your packaged water bottle requirement?`;
+export const buildFollowUpSmsMessage = ({ name, reminderDay }) => {
+  const displayName = name || 'Sir/Madam';
+  return `Hello ${displayName}, this is a gentle follow-up from Anjani Water, Vadodara. It's been ${reminderDay} day${reminderDay > 1 ? 's' : ''} since our last message. Can we help with your packaged water bottle requirement?`;
 };
 
 export const buildInitialSmsUpdate = ({ lead = {}, leadId, now = new Date() } = {}) => {
@@ -83,7 +84,7 @@ export const buildFollowUpUpdate = ({ lead, reminderDay, nextStep, now = new Dat
   const payload = {
     followUpStep: nextStep,
     lastSmsAt: serverTimestamp(),
-    smsCount: (Number(lead.smsCount) || 1) + 1,
+    smsCount: (Number(lead.smsCount) || 0) + 1,
     lastReminderDay: reminderDay,
   };
 
