@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 
 let mapsScriptPromise = null;
+const VADODARA_RESTRICTION = {
+  north: 22.45,
+  south: 22.2,
+  east: 73.3,
+  west: 72.95,
+};
+const VADODARA_ORIGIN = { lat: 22.3072, lng: 73.1812 };
 
 const loadGoogleMapsScript = (apiKey) => {
   if (!apiKey) {
@@ -91,6 +98,9 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
         const { suggestions } = await window.google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
           input: searchTerm,
           sessionToken: sessionTokenRef.current,
+          locationRestriction: VADODARA_RESTRICTION,
+          origin: VADODARA_ORIGIN,
+          includedRegionCodes: ['in'],
         });
 
         setPredictions(Array.isArray(suggestions) ? suggestions.slice(0, 6) : []);
@@ -171,7 +181,7 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
         )}
       </div>
 
-      <p className="text-[11px] text-gray-500">Start typing and select the exact location from suggestions.</p>
+      <p className="text-[11px] text-gray-500">Start typing and select a location (restricted to Vadodara, Gujarat).</p>
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );
