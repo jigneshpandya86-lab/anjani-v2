@@ -156,12 +156,8 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
         <div className="bg-white p-12 rounded-3xl text-center border-2 border-dashed border-gray-100 text-gray-400 font-bold italic">No orders found.</div>
       ) : (
         filteredOrders.map(order => (
-          <div
-            key={order.id}
-            className="rounded-[26px] p-3.5 shadow-md border border-orange-100 bg-gradient-to-br from-[#fff8ef] via-[#fff4dd] to-[#ffe8d2]"
-          >
-            <div className="rounded-[20px] border border-white/70 bg-white/90 backdrop-blur-sm p-3.5">
-              <div className="flex justify-between items-start mb-3 border-b border-orange-100 pb-3">
+          <div key={order.id} className="bg-white rounded-[24px] p-5 shadow-sm border border-gray-100">
+            <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-3">
               <div>
                 <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${getStatusColor(order.status)}`}>{order.status || 'LEGACY'}</span>
                 <h3 className="font-black text-gray-900 text-lg mt-2 leading-none">{getDisplayName(order)}</h3>
@@ -191,12 +187,12 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-xl font-black text-[#ef7d00]">{order.qty || 0} <span className="text-[10px] text-gray-400">BXS</span></p>
+                <p className="text-xl font-black text-[#ff9900]">{order.qty || 0} <span className="text-[10px] text-gray-400">BXS</span></p>
                 <p className="text-[10px] text-gray-400 font-bold mt-1 tracking-tighter">₹{((order.qty || 0) * (order.rate || 0)).toLocaleString()}</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-xs font-bold text-gray-600 mb-4 bg-gradient-to-r from-orange-50 to-amber-50 p-2 rounded-2xl border border-orange-100">
+            <div className="flex items-center gap-2 text-xs font-bold text-gray-500 mb-4 bg-gray-50 p-2 rounded-lg">
               <Clock size={14} className="text-blue-400" /> {order.date || 'No Date'} @ {order.time || '--:--'}
             </div>
 
@@ -249,7 +245,6 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
               {order.proofUrl && (
                 <a href={order.proofUrl} target="_blank" rel="noreferrer" className="text-[10px] font-black text-blue-500 underline">View Proof</a>
               )}
-            </div>
             </div>
           </div>
         ))
