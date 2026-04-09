@@ -76,6 +76,11 @@ const formatNextFollowUp = (lead) => {
   }
 };
 
+const isLeadUntagged = (lead = {}) => {
+  if (!Object.prototype.hasOwnProperty.call(lead, 'Tag')) return true;
+  return lead.Tag === null || lead.Tag === '';
+};
+
 // ─── Sub-components (memoized) ───────────────────────────────────────────────
 
 const ButtonSpinner = React.memo(function ButtonSpinner() {
@@ -298,10 +303,10 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
     if (isConnecting) return;
     setIsConnecting(true);
     try {
-      // Fetch leads where Tag is null or empty string, limit to 5
-      const q = query(collection(db, 'leads'), where('Tag', 'in', [null, '']));
+      // Fetch recent leads and include records where Tag is null, empty, or missing
+      const q = query(collection(db, 'leads'), limit(100));
       const snapshot = await getDocs(q);
-      const untaggedLeads = snapshot.docs.slice(0, 5);
+      const untaggedLeads = snapshot.docs.filter((leadDoc) => isLeadUntagged(leadDoc.data())).slice(0, 5);
 
       if (untaggedLeads.length === 0) {
         toast('No untagged leads found');
