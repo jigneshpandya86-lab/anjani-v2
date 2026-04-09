@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Package, Clock, IndianRupee, Image as ImageIcon } from 'lucide-react';
+import { Package, Clock, IndianRupee, Image as ImageIcon, MapPinned } from 'lucide-react';
 import toast from 'react-hot-toast';
+import GoogleMapPicker from './GoogleMapPicker';
 
 export default function OrderModal({ orderToEdit, onClose }) {
   const { clients, addOrder, updateOrder } = useClientStore();
   const [formData, setFormData] = useState({
     clientId: '', qty: '', rate: '', date: '', time: '', 
-    address: '', location: '', proofUrl: ''
+    address: '', location: '', mapLink: '', locationLat: null, locationLng: null, proofUrl: ''
   });
   const [loading, setLoading] = useState(false);
 
@@ -22,6 +23,13 @@ export default function OrderModal({ orderToEdit, onClose }) {
         time: orderToEdit.time || orderToEdit.deliveryTime || '',
         address: orderToEdit.address || orderToEdit.deliveryAddress || '',
         location: orderToEdit.location || orderToEdit.googleLocation || orderToEdit.locationName || '',
+        mapLink: orderToEdit.mapLink || orderToEdit.googleMap || '',
+        locationLat: Number.isFinite(Number(orderToEdit.locationLat ?? orderToEdit.lat))
+          ? Number(orderToEdit.locationLat ?? orderToEdit.lat)
+          : null,
+        locationLng: Number.isFinite(Number(orderToEdit.locationLng ?? orderToEdit.lng))
+          ? Number(orderToEdit.locationLng ?? orderToEdit.lng)
+          : null,
         proofUrl: orderToEdit.proofUrl || '',
       });
     } else {
@@ -33,6 +41,9 @@ export default function OrderModal({ orderToEdit, onClose }) {
         time: '',
         address: '',
         location: '',
+        mapLink: '',
+        locationLat: null,
+        locationLng: null,
         proofUrl: '',
       });
     }
@@ -45,12 +56,53 @@ export default function OrderModal({ orderToEdit, onClose }) {
     if (!selectedClient) return;
 
     setFormData((prev) => {
-      if (prev.rate !== '' && Number(prev.rate) > 0) return prev;
+      const next = { ...prev };
+      let changed = false;
+
       const nextRate = Number(selectedClient.rate) || 0;
-      if (!nextRate) return prev;
-      return { ...prev, rate: String(nextRate) };
+      if ((prev.rate === '' || Number(prev.rate) <= 0) && nextRate) {
+        next.rate = String(nextRate);
+        changed = true;
+      }
+
+      if (!String(prev.address || '').trim() && selectedClient.address) {
+        next.address = selectedClient.address;
+        changed = true;
+      }
+
+      if (!String(prev.location || '').trim() && (selectedClient.location || selectedClient.mapLink)) {
+        next.location = selectedClient.location || selectedClient.mapLink || '';
+        changed = true;
+      }
+
+      if (!String(prev.mapLink || '').trim() && selectedClient.mapLink) {
+        next.mapLink = selectedClient.mapLink;
+        changed = true;
+      }
+
+      if (!Number.isFinite(Number(prev.locationLat)) && Number.isFinite(Number(selectedClient.locationLat))) {
+        next.locationLat = Number(selectedClient.locationLat);
+        changed = true;
+      }
+
+      if (!Number.isFinite(Number(prev.locationLng)) && Number.isFinite(Number(selectedClient.locationLng))) {
+        next.locationLng = Number(selectedClient.locationLng);
+        changed = true;
+      }
+
+      return changed ? next : prev;
     });
   }, [clients, formData.clientId]);
+
+  const handleLocationChange = ({ lat, lng, address, mapLink }) => {
+    setFormData((prev) => ({
+      ...prev,
+      locationLat: Number.isFinite(Number(lat)) ? Number(lat) : prev.locationLat,
+      locationLng: Number.isFinite(Number(lng)) ? Number(lng) : prev.locationLng,
+      location: address || prev.location,
+      mapLink: mapLink || prev.mapLink,
+    }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -60,6 +112,9 @@ export default function OrderModal({ orderToEdit, onClose }) {
         ...formData,
         address: String(formData.address || '').trim(),
         location: String(formData.location || '').trim(),
+        mapLink: String(formData.mapLink || '').trim(),
+        locationLat: Number.isFinite(Number(formData.locationLat)) ? Number(formData.locationLat) : null,
+        locationLng: Number.isFinite(Number(formData.locationLng)) ? Number(formData.locationLng) : null,
         proofUrl: String(formData.proofUrl || '').trim(),
       };
 
@@ -143,15 +198,33 @@ export default function OrderModal({ orderToEdit, onClose }) {
 
 
         <div>
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Location</label>
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Actual Location (Map Picker)</label>
+          <div className="mt-1 mb-2">
+            <GoogleMapPicker
+              initialLat={formData.locationLat}
+              initialLng={formData.locationLng}
+              initialAddress={formData.location}
+              onChange={handleLocationChange}
+            />
+          </div>
           <input
             type="text"
-            placeholder="Ex: Plus Code / Place Name / Landmark"
+            placeholder="Resolved location / place"
             maxLength={150}
             className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm"
             value={formData.location}
             onChange={e => setFormData({ ...formData, location: e.target.value })}
           />
+          <div className="mt-2 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2">
+            <MapPinned className="h-4 w-4 text-amz-orange" />
+            {formData.mapLink ? (
+              <a className="text-xs text-blue-600 underline truncate" href={formData.mapLink} target="_blank" rel="noreferrer">
+                Open selected map link
+              </a>
+            ) : (
+              <span className="text-xs text-gray-500">Pick a point to generate map link</span>
+            )}
+          </div>
         </div>
 
         {orderToEdit?.status === 'Delivered' && (

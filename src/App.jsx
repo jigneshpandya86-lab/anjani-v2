@@ -726,7 +726,16 @@ function App() {
                   setPaymentPrefill(null)
                   setPayClient(client)
                 }}
-                onOrder={(client) => setEditOrder({ clientId: client.id, clientName: client.name || '', address: client.address || '', location: client.location || client.mapLink || '', rate: Number(client.rate) || 0 })}
+                onOrder={(client) => setEditOrder({
+                  clientId: client.id,
+                  clientName: client.name || '',
+                  address: client.address || '',
+                  location: client.location || client.mapLink || '',
+                  mapLink: client.mapLink || '',
+                  locationLat: Number.isFinite(Number(client.locationLat)) ? Number(client.locationLat) : null,
+                  locationLng: Number.isFinite(Number(client.locationLng)) ? Number(client.locationLng) : null,
+                  rate: Number(client.rate) || 0
+                })}
               />
             </div>
           )}

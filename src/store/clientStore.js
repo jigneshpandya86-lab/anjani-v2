@@ -63,6 +63,9 @@ const normalizeOrderWriteData = (data = {}) => ({
   ...data,
   address: data.address === undefined ? '' : String(data.address).trim(),
   location: data.location === undefined ? '' : String(data.location).trim(),
+  mapLink: data.mapLink === undefined ? '' : String(data.mapLink).trim(),
+  locationLat: Number.isFinite(Number(data.locationLat)) ? Number(data.locationLat) : null,
+  locationLng: Number.isFinite(Number(data.locationLng)) ? Number(data.locationLng) : null,
 });
 
 const getLegacyLocationCleanupPatch = () => ({
@@ -337,6 +340,9 @@ export const useClientStore = create((set, get) => ({
         clientId: raw.clientId || raw.customerId || '',
         address:  raw.address || raw.deliveryAddress || raw.location || '',
         location: raw.location || raw.googleLocation || raw.locationName || raw.mapLink || raw.googleMap || '',
+        mapLink: raw.mapLink || raw.googleMap || '',
+        locationLat: Number.isFinite(Number(raw.locationLat ?? raw.lat)) ? Number(raw.locationLat ?? raw.lat) : null,
+        locationLng: Number.isFinite(Number(raw.locationLng ?? raw.lng)) ? Number(raw.locationLng ?? raw.lng) : null,
       });
 
       const getTime = (o) => {
