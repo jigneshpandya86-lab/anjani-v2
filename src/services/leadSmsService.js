@@ -39,14 +39,25 @@ export const buildFollowUpSmsMessage = ({ reminderDay }) => {
   return `Hello Sir/Madam, this is a gentle follow-up from Annapurna Foods, Vadodara. It's been ${reminderDay} day${reminderDay > 1 ? 's' : ''} since our last message. Can we help with your packaged water bottle requirement?`;
 };
 
-export const buildInitialSmsUpdate = (now = new Date()) => ({
-  Tag: 'SMS_SENT',
-  smsSentAt: serverTimestamp(),
-  lastSmsAt: serverTimestamp(),
-  followUpStep: 0,
-  smsCount: 1,
-  nextFollowUpAt: new Date(now.getTime() + FOLLOW_UP_DAYS[0] * DAY_IN_MS),
-});
+export const buildInitialSmsUpdate = ({ lead = {}, leadId, now = new Date() } = {}) => {
+  const payload = {
+    Tag: 'SMS_SENT',
+    smsSentAt: serverTimestamp(),
+    lastSmsAt: serverTimestamp(),
+    followUpStep: 0,
+    smsCount: 1,
+    nextFollowUpAt: new Date(now.getTime() + FOLLOW_UP_DAYS[0] * DAY_IN_MS),
+    id: lead.id || leadId || null,
+    source: lead.source || 'manual',
+  };
+
+  const normalizedPhone = getLeadPhone(lead);
+  if (normalizedPhone) payload.mobile = normalizedPhone;
+  if (lead.name) payload.name = lead.name;
+  if (lead.createdAt) payload.createdAt = lead.createdAt;
+
+  return payload;
+};
 
 export const getDueReminderContext = (lead, now = new Date()) => {
   const step = Number.isInteger(lead.followUpStep) ? lead.followUpStep : 0;

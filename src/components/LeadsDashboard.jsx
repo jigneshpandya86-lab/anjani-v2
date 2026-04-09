@@ -323,7 +323,10 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
           phone: mobile,
           message: buildInitialSmsMessage(lead.name),
         });
-        await updateDoc(doc(db, 'leads', leadDoc.id), buildInitialSmsUpdate(new Date()));
+        await updateDoc(
+          doc(db, 'leads', leadDoc.id),
+          buildInitialSmsUpdate({ lead, leadId: leadDoc.id, now: new Date() }),
+        );
         sentCount += 1;
       }
 
