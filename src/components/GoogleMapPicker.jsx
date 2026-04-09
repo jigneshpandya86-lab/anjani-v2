@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 let mapsScriptPromise = null;
 
@@ -41,14 +41,11 @@ const loadGoogleMapsScript = (apiKey) => {
 export default function GoogleMapPicker({ initialAddress = '', onChange }) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const onChangeRef = useRef(onChange);
-  const placesServiceRef = useRef(null);
-  const autocompleteServiceRef = useRef(null);
+  const sessionTokenRef = useRef(null);
   const [searchTerm, setSearchTerm] = useState(initialAddress || '');
   const [predictions, setPredictions] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState('');
-
-  const requestOptions = useMemo(() => ({ types: ['geocode'] }), []);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -62,8 +59,11 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
         await loadGoogleMapsScript(apiKey);
         if (!isActive) return;
 
-        autocompleteServiceRef.current = new window.google.maps.places.AutocompleteService();
-        placesServiceRef.current = new window.google.maps.places.PlacesService(document.createElement('div'));
+        if (!window.google.maps.places.AutocompleteSuggestion) {
+          setError('Places API (New) is not enabled for this key/project.');
+          return;
+        }
+        sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
       } catch (err) {
         if (!isActive) return;
         setError(err.message || 'Unable to load location search.');
@@ -79,54 +79,65 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
 
   useEffect(() => {
     if (!searchTerm.trim()) return;
-    if (!autocompleteServiceRef.current) return;
+    if (!window.google?.maps?.places?.AutocompleteSuggestion) return;
 
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       setIsSearching(true);
-      autocompleteServiceRef.current.getPlacePredictions(
-        {
-          input: searchTerm,
-          ...requestOptions,
-        },
-        (results, status) => {
-          setIsSearching(false);
-          if (status !== 'OK' || !results) {
-            setPredictions([]);
-            return;
-          }
-          setPredictions(results.slice(0, 6));
+      try {
+        if (!sessionTokenRef.current) {
+          sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
         }
-      );
+
+        const { suggestions } = await window.google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input: searchTerm,
+          sessionToken: sessionTokenRef.current,
+        });
+
+        setPredictions(Array.isArray(suggestions) ? suggestions.slice(0, 6) : []);
+        setError('');
+      } catch (err) {
+        setPredictions([]);
+        setError(err?.message || 'Location suggestions failed to load.');
+      } finally {
+        setIsSearching(false);
+      }
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [requestOptions, searchTerm]);
+  }, [searchTerm]);
 
-  const handleSelectPrediction = (prediction) => {
-    if (!placesServiceRef.current) return;
-
-    placesServiceRef.current.getDetails(
-      {
-        placeId: prediction.place_id,
-        fields: ['geometry', 'formatted_address', 'name'],
-      },
-      (place, status) => {
-        if (status !== 'OK' || !place?.geometry?.location) {
-          setError('Unable to fetch selected place details.');
-          return;
-        }
-
-        const lat = place.geometry.location.lat();
-        const lng = place.geometry.location.lng();
-        const address = place.formatted_address || prediction.description || '';
-        const mapLink = `https://www.google.com/maps?q=${lat},${lng}`;
-
-        setSearchTerm(address);
-        setPredictions([]);
-        setError('');
-        onChangeRef.current?.({ lat, lng, address, mapLink });
+  const handleSelectPrediction = async (suggestion) => {
+    try {
+      const place = suggestion?.placePrediction?.toPlace?.();
+      if (!place) {
+        setError('Unable to fetch selected place details.');
+        return;
       }
-    );
+
+      await place.fetchFields({
+        fields: ['displayName', 'formattedAddress', 'location'],
+      });
+
+      const lat = place.location?.lat?.();
+      const lng = place.location?.lng?.();
+
+      if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) {
+        setError('Selected place does not include coordinates.');
+        return;
+      }
+
+      const address = place.formattedAddress || suggestion?.placePrediction?.text?.text || '';
+      const mapLink = `https://www.google.com/maps?q=${lat},${lng}`;
+
+      setSearchTerm(address);
+      setPredictions([]);
+      setError('');
+      onChangeRef.current?.({ lat, lng, address, mapLink });
+
+      sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+    } catch (err) {
+      setError(err?.message || 'Unable to fetch selected place details.');
+    }
   };
 
   return (
@@ -146,14 +157,14 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
         {(isSearching || predictions.length > 0) && (
           <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
             {isSearching && <p className="px-3 py-2 text-xs text-gray-500">Searching...</p>}
-            {!isSearching && predictions.map((item) => (
+            {!isSearching && predictions.map((item, index) => (
               <button
                 type="button"
-                key={item.place_id}
+                key={item?.placePrediction?.placeId || index}
                 onClick={() => handleSelectPrediction(item)}
                 className="block w-full border-b border-gray-100 px-3 py-2 text-left text-xs hover:bg-gray-50"
               >
-                {item.description}
+                {item?.placePrediction?.text?.text || 'Unknown location'}
               </button>
             ))}
           </div>
