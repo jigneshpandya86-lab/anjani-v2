@@ -29,6 +29,7 @@ import PaymentModal from './components/PaymentModal'
 import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
 import Login from './components/Login'
+import SalesAnalyticsDashboard from './components/SalesAnalyticsDashboard'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
@@ -45,6 +46,7 @@ function App() {
   const [ledgerDateRange, setLedgerDateRange] = useState('current-month')
   const [leadQuickActionPromptOpen, setLeadQuickActionPromptOpen] = useState(false)
   const [pendingLeadAction, setPendingLeadAction] = useState(null)
+  const [analyticsModalOpen, setAnalyticsModalOpen] = useState(false)
   // ─────────────────────────────────────────
   // AUTH — DO NOT MODIFY WITHOUT TEAM REVIEW
   // ─────────────────────────────────────────
@@ -618,6 +620,15 @@ function App() {
 
   const drawerReports = [
     {
+      id: 'sales-analytics',
+      label: 'Sales Analytics',
+      icon: <TrendingUp size={18} />,
+      onClick: () => {
+        setAnalyticsModalOpen(true)
+        setDrawerOpen(false)
+      }
+    },
+    {
       id: 'report-order-specific',
       label: 'Order Specific Print (PDF)',
       icon: <Search size={18} />,
@@ -976,6 +987,11 @@ function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Sales Analytics Modal */}
+      {analyticsModalOpen && (
+        <SalesAnalyticsDashboard onClose={() => setAnalyticsModalOpen(false)} />
       )}
 
       {/* Bottom Navigation (all screen sizes) */}
