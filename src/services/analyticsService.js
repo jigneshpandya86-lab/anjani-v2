@@ -38,7 +38,7 @@ export const computeAnalyticsKpis = (orders = [], payments = [], clients = [], d
 
   // 1. Revenue - Sum of DELIVERED order amounts only
   const deliveredOrders = orders.filter(
-    (o) => isInRange(o.createdAt || o.date) && (o.status === 'delivered' || o.status === 'completed')
+    (o) => isInRange(o.createdAt || o.date) && (o.status === 'Delivered' || o.status === 'delivered' || o.status === 'completed')
   );
   const revenue = deliveredOrders.reduce((sum, o) => sum + Number(o.qty || 0) * Number(o.rate || 0), 0);
 
@@ -50,7 +50,7 @@ export const computeAnalyticsKpis = (orders = [], payments = [], clients = [], d
 
   // 4. Pending Orders - Orders not delivered
   const pendingOrderCount = orders.filter(
-    (o) => o.status !== 'delivered' && o.status !== 'completed'
+    (o) => o.status !== 'Delivered' && o.status !== 'delivered' && o.status !== 'completed'
   ).length;
 
   // 5. New Customers - New clients added in range
