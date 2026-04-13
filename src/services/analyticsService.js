@@ -1,5 +1,27 @@
 // KPI Computation Logic - All client-side, zero Firestore operations
 
+// Get today's date as YYYY-MM-DD string for matching order.date field
+const getTodayString = () => {
+  const now = new Date();
+  return now.toISOString().split('T')[0];
+};
+
+// Get week start date as YYYY-MM-DD string
+const getWeekStartString = () => {
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+  const weekStart = new Date(now.getFullYear(), now.getMonth(), diff);
+  return weekStart.toISOString().split('T')[0];
+};
+
+// Get month start date as YYYY-MM-DD string
+const getMonthStartString = () => {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  return monthStart.toISOString().split('T')[0];
+};
+
 export const getDateRangeForFilter = (filterType) => {
   const now = new Date();
   const startDate = new Date();
@@ -28,11 +50,26 @@ export const getDateRangeForFilter = (filterType) => {
 };
 
 export const computeAnalyticsKpis = (orders = [], payments = [], clients = [], dateRange = 'month') => {
+  // Get start date based on filter type
   const monthStart = getDateRangeForFilter(dateRange);
 
-  const isInRange = (date) => {
-    if (!date) return false;
-    const d = date.toDate ? date.toDate() : new Date(date);
+  // Helper to check if order date is in range
+  const isInRange = (orderDate) => {
+    if (!orderDate) return false;
+
+    // If orderDate is a string like "2026-04-13", convert to Date
+    let d;
+    if (typeof orderDate === 'string' && orderDate.length === 10) {
+      // String format "YYYY-MM-DD"
+      d = new Date(orderDate + 'T00:00:00');
+    } else if (orderDate.toDate) {
+      // Firestore Timestamp
+      d = orderDate.toDate();
+    } else {
+      // Regular Date or ISO string
+      d = new Date(orderDate);
+    }
+
     return d >= monthStart;
   };
 
@@ -43,9 +80,11 @@ export const computeAnalyticsKpis = (orders = [], payments = [], clients = [], d
   };
 
   // 1. Revenue - Sum of DELIVERED order amounts only
-  const deliveredOrders = orders.filter(
-    (o) => isInRange(o.createdAt || o.date) && isDelivered(o.status)
-  );
+  // Use order.date field (string "YYYY-MM-DD") for date filtering
+  const deliveredOrders = orders.filter((o) => {
+    const orderDate = o.date || o.createdAt; // Prefer 'date' field over 'createdAt'
+    return isInRange(orderDate) && isDelivered(o.status);
+  });
   const revenue = deliveredOrders.reduce((sum, o) => sum + Number(o.qty || 0) * Number(o.rate || 0), 0);
 
   // 2. Orders - Count of DELIVERED orders only
@@ -55,20 +94,30 @@ export const computeAnalyticsKpis = (orders = [], payments = [], clients = [], d
   const aov = orderCount > 0 ? revenue / orderCount : 0;
 
   // 4. Pending Orders - Orders not delivered in date range
-  const pendingOrderCount = orders.filter(
-    (o) => isInRange(o.createdAt || o.date) && !isDelivered(o.status)
-  ).length;
+  const pendingOrderCount = orders.filter((o) => {
+    const orderDate = o.date || o.createdAt;
+    return isInRange(orderDate) && !isDelivered(o.status);
+  }).length;
 
   // 5. New Customers - New clients added in range
-  const newCustomerCount = clients.filter((c) => isInRange(c.createdAt)).length;
+  const newCustomerCount = clients.filter((c) => {
+    const clientDate = c.date || c.createdAt;
+    return isInRange(clientDate);
+  }).length;
 
   // 6. Collection Rate - Collected vs Billed
   const billed = payments
-    .filter((p) => isInRange(p.createdAt) && (p.type === 'invoice' || p.type === 'order'))
+    .filter((p) => {
+      const paymentDate = p.date || p.createdAt;
+      return isInRange(paymentDate) && (p.type === 'invoice' || p.type === 'order');
+    })
     .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
   const collected = payments
-    .filter((p) => isInRange(p.createdAt) && p.type === 'payment')
+    .filter((p) => {
+      const paymentDate = p.date || p.createdAt;
+      return isInRange(paymentDate) && p.type === 'payment';
+    })
     .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
   const collectionRate = billed > 0 ? (collected / billed) * 100 : 0;
