@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X, TrendingUp, RefreshCw } from 'lucide-react';
+import { X, TrendingUp, RefreshCw, ChevronRight } from 'lucide-react';
 import { useClientStore } from '../store/clientStore';
 import { useAnalyticsStore } from '../store/analyticsStore';
 import { computeAnalyticsKpis, formatCurrency } from '../services/analyticsService';
@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 
 export default function SalesAnalyticsDashboard({ onClose }) {
   const [dateRange, setDateRange] = useState('month');
+  const [selectedTile, setSelectedTile] = useState(null);
   const { orders, clients } = useClientStore();
   const { payments, loading, subscribeToPayments, unsubscribeFromPayments } =
     useAnalyticsStore();
@@ -47,6 +48,92 @@ export default function SalesAnalyticsDashboard({ onClose }) {
         return 'This Month';
     }
   };
+
+  // Helper to check if order is in date range
+  const getDateRangeStart = () => {
+    const now = new Date();
+    const startDate = new Date();
+    switch (dateRange) {
+      case 'today': {
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      }
+      case 'week': {
+        const dayOfWeek = now.getDay();
+        const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+        startDate.setDate(diff);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      }
+      case 'month':
+      default: {
+        startDate.setDate(1);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      }
+    }
+    return startDate;
+  };
+
+  const isInRange = (dateStr) => {
+    if (!dateStr) return false;
+    const startDate = getDateRangeStart();
+    let d;
+    if (typeof dateStr === 'string' && dateStr.length === 10) {
+      d = new Date(dateStr + 'T00:00:00');
+    } else if (dateStr.toDate) {
+      d = dateStr.toDate();
+    } else {
+      d = new Date(dateStr);
+    }
+    return d >= startDate;
+  };
+
+  const isDelivered = (status) => {
+    const normalized = (status || '').trim().toLowerCase();
+    return normalized === 'delivered' || normalized === 'completed';
+  };
+
+  // Get detail data for each tile
+  const getDetailData = useMemo(() => {
+    return {
+      revenue: orders
+        .filter((o) => isInRange(o.date || o.createdAt) && isDelivered(o.status))
+        .map((o) => ({
+          customer: o.clientName || `Client ${o.clientId?.slice(0, 8)}`,
+          qty: o.qty,
+          rate: o.rate,
+          amount: Number(o.qty || 0) * Number(o.rate || 0),
+          date: o.date || o.createdAt,
+          status: o.status,
+        }))
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 10),
+      orders: orders
+        .filter((o) => isInRange(o.date || o.createdAt) && isDelivered(o.status))
+        .map((o) => ({
+          orderId: o.orderId,
+          customer: o.clientName || `Client ${o.clientId?.slice(0, 8)}`,
+          qty: o.qty,
+          rate: o.rate,
+          date: o.date || o.createdAt,
+          status: o.status,
+        }))
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 10),
+      pending: orders
+        .filter((o) => isInRange(o.date || o.createdAt) && !isDelivered(o.status))
+        .map((o) => ({
+          orderId: o.orderId,
+          customer: o.clientName || `Client ${o.clientId?.slice(0, 8)}`,
+          qty: o.qty,
+          status: o.status,
+          date: o.date || o.createdAt,
+        }))
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 10),
+    };
+  }, [orders, dateRange]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end sm:items-center sm:justify-center">
@@ -111,31 +198,49 @@ export default function SalesAnalyticsDashboard({ onClose }) {
             {/* KPI Cards Grid */}
             <div className="grid grid-cols-2 gap-3 mb-6">
               {/* Revenue */}
-              <div className="bg-gradient-to-br from-[#131921] to-[#1f2937] rounded-[16px] p-4 text-white">
+              <button
+                onClick={() => setSelectedTile('revenue')}
+                className="bg-gradient-to-br from-[#131921] to-[#1f2937] rounded-[16px] p-4 text-white hover:shadow-lg transition-all cursor-pointer text-left"
+              >
                 <p className="text-[10px] font-bold uppercase tracking-wide opacity-70">
                   Revenue {getRangeLabel()}
                 </p>
                 <p className="text-2xl font-black mt-2">{formatCurrency(kpis.revenue)}</p>
                 <p className="text-[10px] mt-1 opacity-60">{kpis.orderCount} orders</p>
-              </div>
+                <div className="flex justify-end mt-2">
+                  <ChevronRight size={14} className="opacity-50" />
+                </div>
+              </button>
 
               {/* Orders */}
-              <div className="bg-gradient-to-br from-[#ff9900] to-[#ffb84d] rounded-[16px] p-4 text-white">
+              <button
+                onClick={() => setSelectedTile('orders')}
+                className="bg-gradient-to-br from-[#ff9900] to-[#ffb84d] rounded-[16px] p-4 text-white hover:shadow-lg transition-all cursor-pointer text-left"
+              >
                 <p className="text-[10px] font-bold uppercase tracking-wide opacity-70">
                   Orders {getRangeLabel()}
                 </p>
                 <p className="text-2xl font-black mt-2">{kpis.orderCount}</p>
-              </div>
+                <div className="flex justify-end mt-3">
+                  <ChevronRight size={14} className="opacity-50" />
+                </div>
+              </button>
 
               {/* Pending */}
-              <div className="bg-white border border-yellow-200 rounded-[16px] p-4 bg-yellow-50">
+              <button
+                onClick={() => setSelectedTile('pending')}
+                className="bg-white border border-yellow-200 rounded-[16px] p-4 bg-yellow-50 hover:shadow-lg transition-all cursor-pointer text-left"
+              >
                 <p className="text-[10px] font-bold text-yellow-700 uppercase tracking-wide">
                   Pending Orders
                 </p>
                 <p className="text-2xl font-black text-yellow-700 mt-2">
                   {kpis.pendingOrderCount}
                 </p>
-              </div>
+                <div className="flex justify-end mt-3">
+                  <ChevronRight size={14} className="opacity-50" />
+                </div>
+              </button>
             </div>
 
             {/* Top Customers Chart */}
@@ -184,6 +289,118 @@ export default function SalesAnalyticsDashboard({ onClose }) {
           </>
         )}
       </div>
+
+      {/* Detail Modal */}
+      {selectedTile && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-end sm:items-center sm:justify-center">
+          <div className="bg-white w-full sm:w-full sm:max-w-3xl sm:rounded-[24px] rounded-t-[24px] p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-black text-[#131921]">
+                {selectedTile === 'revenue' && `Top Orders by Revenue`}
+                {selectedTile === 'orders' && `Delivered Orders`}
+                {selectedTile === 'pending' && `Pending Orders`}
+              </h3>
+              <button
+                onClick={() => setSelectedTile(null)}
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <X size={20} className="text-gray-600" />
+              </button>
+            </div>
+
+            {/* Detail Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    {selectedTile === 'revenue' && (
+                      <>
+                        <th className="px-3 py-2 text-left font-bold text-gray-700">Customer</th>
+                        <th className="px-3 py-2 text-right font-bold text-gray-700">Qty</th>
+                        <th className="px-3 py-2 text-right font-bold text-gray-700">Rate</th>
+                        <th className="px-3 py-2 text-right font-bold text-gray-700">Amount</th>
+                        <th className="px-3 py-2 text-center font-bold text-gray-700">Date</th>
+                      </>
+                    )}
+                    {selectedTile === 'orders' && (
+                      <>
+                        <th className="px-3 py-2 text-left font-bold text-gray-700">Order ID</th>
+                        <th className="px-3 py-2 text-left font-bold text-gray-700">Customer</th>
+                        <th className="px-3 py-2 text-right font-bold text-gray-700">Qty</th>
+                        <th className="px-3 py-2 text-right font-bold text-gray-700">Rate</th>
+                        <th className="px-3 py-2 text-center font-bold text-gray-700">Date</th>
+                      </>
+                    )}
+                    {selectedTile === 'pending' && (
+                      <>
+                        <th className="px-3 py-2 text-left font-bold text-gray-700">Order ID</th>
+                        <th className="px-3 py-2 text-left font-bold text-gray-700">Customer</th>
+                        <th className="px-3 py-2 text-right font-bold text-gray-700">Qty</th>
+                        <th className="px-3 py-2 text-left font-bold text-gray-700">Status</th>
+                        <th className="px-3 py-2 text-center font-bold text-gray-700">Date</th>
+                      </>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {selectedTile === 'revenue' &&
+                    getDetailData.revenue.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-3 py-3 text-gray-700">{item.customer}</td>
+                        <td className="px-3 py-3 text-right text-gray-700">{item.qty}</td>
+                        <td className="px-3 py-3 text-right text-gray-700">₹{item.rate}</td>
+                        <td className="px-3 py-3 text-right font-bold text-[#ff9900]">
+                          {formatCurrency(item.amount)}
+                        </td>
+                        <td className="px-3 py-3 text-center text-gray-600 text-[11px]">
+                          {typeof item.date === 'string' && item.date.length === 10 ? item.date : new Date(item.date).toISOString().split('T')[0]}
+                        </td>
+                      </tr>
+                    ))}
+                  {selectedTile === 'orders' &&
+                    getDetailData.orders.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-3 py-3 text-gray-700 font-bold text-[11px]">{item.orderId}</td>
+                        <td className="px-3 py-3 text-gray-700">{item.customer}</td>
+                        <td className="px-3 py-3 text-right text-gray-700">{item.qty}</td>
+                        <td className="px-3 py-3 text-right text-gray-700">₹{item.rate}</td>
+                        <td className="px-3 py-3 text-center text-gray-600 text-[11px]">
+                          {typeof item.date === 'string' && item.date.length === 10 ? item.date : new Date(item.date).toISOString().split('T')[0]}
+                        </td>
+                      </tr>
+                    ))}
+                  {selectedTile === 'pending' &&
+                    getDetailData.pending.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-3 py-3 text-gray-700 font-bold text-[11px]">{item.orderId}</td>
+                        <td className="px-3 py-3 text-gray-700">{item.customer}</td>
+                        <td className="px-3 py-3 text-right text-gray-700">{item.qty}</td>
+                        <td className="px-3 py-3 text-left">
+                          <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-[10px] font-bold rounded">
+                            {item.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-center text-gray-600 text-[11px]">
+                          {typeof item.date === 'string' && item.date.length === 10 ? item.date : new Date(item.date).toISOString().split('T')[0]}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Empty State */}
+            {((selectedTile === 'revenue' && getDetailData.revenue.length === 0) ||
+              (selectedTile === 'orders' && getDetailData.orders.length === 0) ||
+              (selectedTile === 'pending' && getDetailData.pending.length === 0)) && (
+              <div className="text-center py-8 text-gray-500">
+                No data available for this period
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
