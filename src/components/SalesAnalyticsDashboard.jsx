@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { X, TrendingUp, RefreshCw } from 'lucide-react';
 import { useClientStore } from '../store/clientStore';
 import { useAnalyticsStore } from '../store/analyticsStore';
@@ -6,6 +6,7 @@ import { computeAnalyticsKpis, formatCurrency } from '../services/analyticsServi
 import toast from 'react-hot-toast';
 
 export default function SalesAnalyticsDashboard({ onClose }) {
+  const [dateRange, setDateRange] = useState('month');
   const { orders, clients } = useClientStore();
   const { payments, loading, subscribeToPayments, unsubscribeFromPayments } =
     useAnalyticsStore();
@@ -18,8 +19,8 @@ export default function SalesAnalyticsDashboard({ onClose }) {
 
   // Compute KPIs - 100% client-side, zero Firestore operations
   const kpis = useMemo(() => {
-    return computeAnalyticsKpis(orders, payments, clients);
-  }, [orders, payments, clients]);
+    return computeAnalyticsKpis(orders, payments, clients, dateRange);
+  }, [orders, payments, clients, dateRange]);
 
   const handleRefresh = () => {
     toast.success('Data refreshed');
@@ -34,11 +35,24 @@ export default function SalesAnalyticsDashboard({ onClose }) {
     return `${Math.floor(diff / 3600)}h ago`;
   };
 
+  const getRangeLabel = () => {
+    switch (dateRange) {
+      case 'today':
+        return 'Today';
+      case 'week':
+        return 'This Week';
+      case 'month':
+        return 'This Month';
+      default:
+        return 'This Month';
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end sm:items-center sm:justify-center">
       <div className="bg-white w-full sm:w-full sm:max-w-2xl sm:rounded-[24px] rounded-t-[24px] p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <TrendingUp size={24} className="text-[#ff9900]" />
             <h2 className="text-2xl font-black text-[#131921]">Sales Analytics</h2>
@@ -48,6 +62,40 @@ export default function SalesAnalyticsDashboard({ onClose }) {
             className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
           >
             <X size={20} className="text-gray-600" />
+          </button>
+        </div>
+
+        {/* Date Range Filter */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setDateRange('today')}
+            className={`px-3 py-2 rounded-lg text-[11px] font-bold transition-colors ${
+              dateRange === 'today'
+                ? 'bg-[#ff9900] text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Today
+          </button>
+          <button
+            onClick={() => setDateRange('week')}
+            className={`px-3 py-2 rounded-lg text-[11px] font-bold transition-colors ${
+              dateRange === 'week'
+                ? 'bg-[#ff9900] text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            This Week
+          </button>
+          <button
+            onClick={() => setDateRange('month')}
+            className={`px-3 py-2 rounded-lg text-[11px] font-bold transition-colors ${
+              dateRange === 'month'
+                ? 'bg-[#ff9900] text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            This Month
           </button>
         </div>
 
@@ -65,7 +113,7 @@ export default function SalesAnalyticsDashboard({ onClose }) {
               {/* Revenue */}
               <div className="bg-gradient-to-br from-[#131921] to-[#1f2937] rounded-[16px] p-4 text-white">
                 <p className="text-[10px] font-bold uppercase tracking-wide opacity-70">
-                  Revenue MTD
+                  Revenue {getRangeLabel()}
                 </p>
                 <p className="text-2xl font-black mt-2">{formatCurrency(kpis.revenue)}</p>
                 <p className="text-[10px] mt-1 opacity-60">{kpis.orderCount} orders</p>
@@ -74,7 +122,7 @@ export default function SalesAnalyticsDashboard({ onClose }) {
               {/* Orders */}
               <div className="bg-gradient-to-br from-[#ff9900] to-[#ffb84d] rounded-[16px] p-4 text-white">
                 <p className="text-[10px] font-bold uppercase tracking-wide opacity-70">
-                  Orders MTD
+                  Orders {getRangeLabel()}
                 </p>
                 <p className="text-2xl font-black mt-2">{kpis.orderCount}</p>
                 <p className="text-[10px] mt-1 opacity-60">
@@ -105,7 +153,7 @@ export default function SalesAnalyticsDashboard({ onClose }) {
               {/* New Customers */}
               <div className="bg-white border border-green-200 rounded-[16px] p-4 bg-green-50">
                 <p className="text-[10px] font-bold text-green-700 uppercase tracking-wide">
-                  New Customers
+                  New Customers {getRangeLabel()}
                 </p>
                 <p className="text-2xl font-black text-green-700 mt-2">
                   {kpis.newCustomerCount}
@@ -115,7 +163,7 @@ export default function SalesAnalyticsDashboard({ onClose }) {
               {/* Collection Rate */}
               <div className="bg-white border border-gray-200 rounded-[16px] p-4">
                 <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
-                  Collection Rate
+                  Collection Rate {getRangeLabel()}
                 </p>
                 <p className="text-2xl font-black text-[#131921] mt-2">
                   {kpis.collectionRate}%
@@ -126,7 +174,9 @@ export default function SalesAnalyticsDashboard({ onClose }) {
             {/* Top Customers Chart */}
             {kpis.topCustomers.length > 0 && (
               <div className="bg-gray-50 rounded-[16px] p-4 mb-6">
-                <h3 className="text-sm font-bold text-[#131921] mb-4">Top Customers</h3>
+                <h3 className="text-sm font-bold text-[#131921] mb-4">
+                  Top Customers {getRangeLabel()}
+                </h3>
                 <div className="space-y-3">
                   {kpis.topCustomers.map((customer, idx) => {
                     const maxRevenue = kpis.topCustomers[0].revenue;
