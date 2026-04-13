@@ -36,9 +36,15 @@ export const computeAnalyticsKpis = (orders = [], payments = [], clients = [], d
     return d >= monthStart;
   };
 
+  // Check if order status is delivered (handle whitespace and case variations)
+  const isDelivered = (status) => {
+    const normalized = (status || '').trim().toLowerCase();
+    return normalized === 'delivered' || normalized === 'completed';
+  };
+
   // 1. Revenue - Sum of DELIVERED order amounts only
   const deliveredOrders = orders.filter(
-    (o) => isInRange(o.createdAt || o.date) && (o.status === 'Delivered' || o.status === 'delivered' || o.status === 'completed')
+    (o) => isInRange(o.createdAt || o.date) && isDelivered(o.status)
   );
   const revenue = deliveredOrders.reduce((sum, o) => sum + Number(o.qty || 0) * Number(o.rate || 0), 0);
 
@@ -48,9 +54,9 @@ export const computeAnalyticsKpis = (orders = [], payments = [], clients = [], d
   // 3. AOV - Average Order Value
   const aov = orderCount > 0 ? revenue / orderCount : 0;
 
-  // 4. Pending Orders - Orders not delivered
+  // 4. Pending Orders - Orders not delivered in date range
   const pendingOrderCount = orders.filter(
-    (o) => o.status !== 'Delivered' && o.status !== 'delivered' && o.status !== 'completed'
+    (o) => isInRange(o.createdAt || o.date) && !isDelivered(o.status)
   ).length;
 
   // 5. New Customers - New clients added in range
