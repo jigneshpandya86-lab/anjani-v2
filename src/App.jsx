@@ -147,6 +147,15 @@ function App() {
         setPaymentPrefill(null)
         setDrawerOpen(false)
       }
+    },
+    {
+      id: 'quick-sales-analytics',
+      label: 'Sales Analytics',
+      icon: <TrendingUp size={18} />,
+      onClick: () => {
+        setAnalyticsModalOpen(true)
+        setDrawerOpen(false)
+      }
     }
   ]
 
@@ -619,15 +628,6 @@ function App() {
   }
 
   const drawerReports = [
-    {
-      id: 'sales-analytics',
-      label: 'Sales Analytics',
-      icon: <TrendingUp size={18} />,
-      onClick: () => {
-        setAnalyticsModalOpen(true)
-        setDrawerOpen(false)
-      }
-    },
     {
       id: 'report-order-specific',
       label: 'Order Specific Print (PDF)',
