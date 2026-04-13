@@ -2,6 +2,7 @@ import { serverTimestamp } from 'firebase/firestore';
 
 const INDIA_COUNTRY_CODE = '91';
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const BUSINESS_WHATSAPP_NUMBER = import.meta.env.VITE_BUSINESS_WHATSAPP_NUMBER || '';
 
 export const FOLLOW_UP_DAYS = [3, 7, 10, 15];
 
@@ -32,7 +33,8 @@ export const sendBackgroundSms = async ({ macroUrl, phone, message }) => {
 };
 
 export const buildInitialSmsMessage = () => {
-  return 'Events in Vadodara? Serve Anjani Water 200ml bottles! Perfect size, zero waste. Special rates on bulk buys! Order here: https://wa.me/919925997750';
+  const waLink = BUSINESS_WHATSAPP_NUMBER ? `https://wa.me/${BUSINESS_WHATSAPP_NUMBER}` : '';
+  return `Events in Vadodara? Serve Anjani Water 200ml bottles! Perfect size, zero waste. Special rates on bulk buys! Order here: ${waLink}`;
 };
 
 export const buildFollowUpSmsMessage = ({ name, reminderDay }) => {

@@ -28,9 +28,7 @@ import {
 
 // ─── Module-level constants ──────────────────────────────────────────────────
 
-const MACRO_URL =
-  import.meta.env.VITE_MACRO_URL ||
-  'https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms';
+const MACRO_URL = import.meta.env.VITE_MACRO_URL || '';
 
 const TAG_CONFIG = {
   SMS_SENT: {

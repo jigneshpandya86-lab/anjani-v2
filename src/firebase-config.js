@@ -8,12 +8,12 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyANmqfdu8rccsTrfTF_-m4D2aeRHRNaqsU",
-  authDomain: "anjaniappnew.firebaseapp.com",
-  projectId: "anjaniappnew",
-  storageBucket: "anjaniappnew.firebasestorage.app",
-  messagingSenderId: "892497799371",
-  appId: "1:892497799371:web:5671e248e6c8f05d16934e"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || ""
 };
 
 export const app = initializeApp(firebaseConfig);
