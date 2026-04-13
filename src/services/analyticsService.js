@@ -1,23 +1,48 @@
 // KPI Computation Logic - All client-side, zero Firestore operations
 
-export const computeAnalyticsKpis = (orders = [], payments = [], clients = []) => {
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
+export const getDateRangeForFilter = (filterType) => {
+  const now = new Date();
+  const startDate = new Date();
 
-  const isThisMonth = (date) => {
+  switch (filterType) {
+    case 'today': {
+      startDate.setHours(0, 0, 0, 0);
+      break;
+    }
+    case 'week': {
+      const dayOfWeek = now.getDay();
+      const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+      startDate.setDate(diff);
+      startDate.setHours(0, 0, 0, 0);
+      break;
+    }
+    case 'month':
+    default: {
+      startDate.setDate(1);
+      startDate.setHours(0, 0, 0, 0);
+      break;
+    }
+  }
+
+  return startDate;
+};
+
+export const computeAnalyticsKpis = (orders = [], payments = [], clients = [], dateRange = 'month') => {
+  const monthStart = getDateRangeForFilter(dateRange);
+
+  const isInRange = (date) => {
     if (!date) return false;
     const d = date.toDate ? date.toDate() : new Date(date);
     return d >= monthStart;
   };
 
-  // 1. Revenue (MTD) - Sum of order amounts
+  // 1. Revenue - Sum of order amounts
   const revenue = orders
-    .filter((o) => isThisMonth(o.createdAt || o.date))
+    .filter((o) => isInRange(o.createdAt || o.date))
     .reduce((sum, o) => sum + Number(o.qty || 0) * Number(o.rate || 0), 0);
 
-  // 2. Orders (MTD) - Count of orders
-  const orderCount = orders.filter((o) => isThisMonth(o.createdAt || o.date)).length;
+  // 2. Orders - Count of orders
+  const orderCount = orders.filter((o) => isInRange(o.createdAt || o.date)).length;
 
   // 3. AOV - Average Order Value
   const aov = orderCount > 0 ? revenue / orderCount : 0;
@@ -27,16 +52,16 @@ export const computeAnalyticsKpis = (orders = [], payments = [], clients = []) =
     (o) => o.status !== 'delivered' && o.status !== 'completed'
   ).length;
 
-  // 5. New Customers (MTD) - New clients added this month
-  const newCustomerCount = clients.filter((c) => isThisMonth(c.createdAt)).length;
+  // 5. New Customers - New clients added in range
+  const newCustomerCount = clients.filter((c) => isInRange(c.createdAt)).length;
 
   // 6. Collection Rate - Collected vs Billed
   const billed = payments
-    .filter((p) => isThisMonth(p.createdAt) && (p.type === 'invoice' || p.type === 'order'))
+    .filter((p) => isInRange(p.createdAt) && (p.type === 'invoice' || p.type === 'order'))
     .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
   const collected = payments
-    .filter((p) => isThisMonth(p.createdAt) && p.type === 'payment')
+    .filter((p) => isInRange(p.createdAt) && p.type === 'payment')
     .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
   const collectionRate = billed > 0 ? (collected / billed) * 100 : 0;
@@ -44,7 +69,7 @@ export const computeAnalyticsKpis = (orders = [], payments = [], clients = []) =
   // 7. Top Customers - Top 5 by revenue
   const customerRevenue = {};
   orders
-    .filter((o) => isThisMonth(o.createdAt || o.date))
+    .filter((o) => isInRange(o.createdAt || o.date))
     .forEach((order) => {
       const clientId = order.clientId || order.customerId || order.client_id;
       if (!clientId) return;
