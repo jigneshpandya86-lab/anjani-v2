@@ -125,19 +125,6 @@ export default function SalesAnalyticsDashboard({ onClose }) {
                   Orders {getRangeLabel()}
                 </p>
                 <p className="text-2xl font-black mt-2">{kpis.orderCount}</p>
-                <p className="text-[10px] mt-1 opacity-60">
-                  {formatCurrency(kpis.aov)} avg
-                </p>
-              </div>
-
-              {/* AOV */}
-              <div className="bg-white border border-gray-200 rounded-[16px] p-4">
-                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
-                  Avg Order Value
-                </p>
-                <p className="text-2xl font-black text-[#131921] mt-2">
-                  {formatCurrency(kpis.aov)}
-                </p>
               </div>
 
               {/* Pending */}
@@ -147,26 +134,6 @@ export default function SalesAnalyticsDashboard({ onClose }) {
                 </p>
                 <p className="text-2xl font-black text-yellow-700 mt-2">
                   {kpis.pendingOrderCount}
-                </p>
-              </div>
-
-              {/* New Customers */}
-              <div className="bg-white border border-green-200 rounded-[16px] p-4 bg-green-50">
-                <p className="text-[10px] font-bold text-green-700 uppercase tracking-wide">
-                  New Customers {getRangeLabel()}
-                </p>
-                <p className="text-2xl font-black text-green-700 mt-2">
-                  {kpis.newCustomerCount}
-                </p>
-              </div>
-
-              {/* Collection Rate */}
-              <div className="bg-white border border-gray-200 rounded-[16px] p-4">
-                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
-                  Collection Rate {getRangeLabel()}
-                </p>
-                <p className="text-2xl font-black text-[#131921] mt-2">
-                  {kpis.collectionRate}%
                 </p>
               </div>
             </div>
