@@ -76,11 +76,31 @@ const getLegacyLocationCleanupPatch = () => ({
 });
 
 export const useClientStore = create((set, get) => ({
+  userRole: null,
   clients: [],
   orders: [],
   stockEntries: [], 
   stockTotal: 0,
   loading: false,
+
+  fetchUserRole: async (uid) => {
+    if (!uid) {
+      set({ userRole: null });
+      return;
+    }
+    try {
+      const userDoc = await getDoc(doc(db, 'users', uid));
+      if (userDoc.exists()) {
+        set({ userRole: userDoc.data().role || 'staff' });
+      } else {
+        // If no user document exists, default to 'staff' for safety
+        set({ userRole: 'staff' });
+      }
+    } catch (err) {
+      console.error('Failed to fetch user role:', err);
+      set({ userRole: 'staff' });
+    }
+  },
 
   fetchStock: () => {
     stockSubscriberCount += 1;
