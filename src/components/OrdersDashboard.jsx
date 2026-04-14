@@ -6,7 +6,7 @@ import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 import { app } from '../firebase-config';
 
 export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
-  const { orders, clients, updateOrder, deleteOrder } = useClientStore();
+  const { orders, clients, updateOrder, deleteOrder, userRole } = useClientStore();
   const [filter, setFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [uploadingProofOrderId, setUploadingProofOrderId] = useState('');
@@ -166,24 +166,28 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
                   <p className="text-[10px] text-gray-400 font-semibold">
                     Doc: {order.id}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => onRecordPayment?.(order)}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-200 text-[9px] font-black tracking-wide uppercase"
-                    title="Record payment"
-                  >
-                    <HandCoins size={12} />
-                    Pay
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onShareInvoice?.(order)}
-                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-black tracking-wide uppercase"
-                    title="Invoice PDF / WhatsApp"
-                  >
-                    <FileText size={14} />
-                    PDF
-                  </button>
+                  {userRole === 'admin' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => onRecordPayment?.(order)}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-200 text-[9px] font-black tracking-wide uppercase"
+                        title="Record payment"
+                      >
+                        <HandCoins size={12} />
+                        Pay
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onShareInvoice?.(order)}
+                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-black tracking-wide uppercase"
+                        title="Invoice PDF / WhatsApp"
+                      >
+                        <FileText size={14} />
+                        PDF
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="text-right">
@@ -200,31 +204,35 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
             <div className="flex justify-between items-center gap-2">
               <div className="flex gap-2">
                 <button onClick={() => shareOrder(order)} className="bg-[#25D366]/10 text-[#25D366] p-2 rounded-xl"><Smartphone size={16} /></button>
-                <button
-                  onClick={() => attachDeliveryProof(order.id)}
-                  disabled={uploadingProofOrderId === order.id}
-                  className={`${order.proofUrl ? 'bg-blue-100 text-blue-600' : 'bg-amber-50 text-amber-600'} p-2 rounded-xl`}
-                  title={order.proofUrl ? 'Replace delivery proof photo' : 'Attach delivery proof photo'}
-                >
-                  {uploadingProofOrderId === order.id ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
-                </button>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  ref={(el) => {
-                    proofInputRefs.current[order.id] = el;
-                  }}
-                  onChange={(event) => uploadDeliveryProof(order, event)}
-                />
-                {order.status !== 'Delivered' && (
-                  <button onClick={() => onEdit(order)} className="bg-blue-50 text-blue-500 p-2 rounded-xl"><Edit2 size={16} /></button>
+                {userRole === 'admin' && (
+                  <>
+                    <button
+                      onClick={() => attachDeliveryProof(order.id)}
+                      disabled={uploadingProofOrderId === order.id}
+                      className={`${order.proofUrl ? 'bg-blue-100 text-blue-600' : 'bg-amber-50 text-amber-600'} p-2 rounded-xl`}
+                      title={order.proofUrl ? 'Replace delivery proof photo' : 'Attach delivery proof photo'}
+                    >
+                      {uploadingProofOrderId === order.id ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
+                    </button>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      ref={(el) => {
+                        proofInputRefs.current[order.id] = el;
+                      }}
+                      onChange={(event) => uploadDeliveryProof(order, event)}
+                    />
+                    {order.status !== 'Delivered' && (
+                      <button onClick={() => onEdit(order)} className="bg-blue-50 text-blue-500 p-2 rounded-xl"><Edit2 size={16} /></button>
+                    )}
+                    <button onClick={() => onCopy(order)} className="bg-gray-100 text-gray-500 p-2 rounded-xl"><Copy size={16} /></button>
+                    <button onClick={() => handleDelete(order)} className="bg-red-50 text-red-500 p-2 rounded-xl"><Trash2 size={16} /></button>
+                  </>
                 )}
-                <button onClick={() => onCopy(order)} className="bg-gray-100 text-gray-500 p-2 rounded-xl"><Copy size={16} /></button>
-                <button onClick={() => handleDelete(order)} className="bg-red-50 text-red-500 p-2 rounded-xl"><Trash2 size={16} /></button>
               </div>
 
-              {order.status === 'Pending' && (
+              {userRole === 'admin' && order.status === 'Pending' && (
                 <button
                   onClick={() => handleStatusUpdate(order, 'Confirmed')}
                   disabled={statusUpdatingOrderId === order.id}
@@ -233,7 +241,7 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
                   {statusUpdatingOrderId === order.id ? 'Updating...' : 'Confirm'}
                 </button>
               )}
-              {order.status === 'Confirmed' && (
+              {userRole === 'admin' && order.status === 'Confirmed' && (
                 <button
                   onClick={() => handleStatusUpdate(order, 'Delivered')}
                   disabled={statusUpdatingOrderId === order.id}
