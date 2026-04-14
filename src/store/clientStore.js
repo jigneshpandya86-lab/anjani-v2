@@ -242,9 +242,10 @@ export const useClientStore = create((set, get) => ({
     await addDoc(collection(db, 'orders'), {
       ...normalizedData,
       orderId,
-      clientName: selectedClient?.name || normalizedData.clientName || '',
-      qty: Number(normalizedData.qty),
-      rate: Number(normalizedData.rate),
+      clientName: selectedClient?.name || data.clientName || '',
+      mobile: selectedClient?.mobile || data.mobile || '',
+      qty: Number(data.qty),
+      rate: Number(data.rate),
       status: 'Pending',
       createdAt: serverTimestamp()
     });

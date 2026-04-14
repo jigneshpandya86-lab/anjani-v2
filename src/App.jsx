@@ -59,6 +59,13 @@ function App() {
     const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
       setAuthLoading(false)
+
+      if (currentUser) {
+        // Initialize FCM for push notifications
+        import('./services/fcm-setup').then(({ initializeFcm }) => {
+          initializeFcm(currentUser.uid).catch(console.error)
+        })
+      }
     })
     return unsubAuth
   }, [])
