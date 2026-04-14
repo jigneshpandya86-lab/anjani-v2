@@ -223,6 +223,7 @@ export const useClientStore = create((set, get) => ({
       ...data,
       orderId,
       clientName: selectedClient?.name || data.clientName || '',
+      mobile: selectedClient?.mobile || data.mobile || '',
       qty: Number(data.qty),
       rate: Number(data.rate),
       status: 'Pending',
