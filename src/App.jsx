@@ -52,39 +52,48 @@ function App() {
   // ─────────────────────────────────────────
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
-  const { fetchClients, fetchOrders, fetchStock, fetchStockTotal, orders, clients } = useClientStore()
+  const { fetchClients, fetchOrders, fetchStock, fetchStockTotal, orders, clients, userRole, fetchUserRole } = useClientStore()
 
   // AUTH: monitors login/logout state — removing this breaks the entire auth flow
   useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
+    const unsubAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser)
-      setAuthLoading(false)
-
+      
       if (currentUser) {
+        await fetchUserRole(currentUser.uid)
         // Initialize FCM for push notifications
         import('./services/fcm-setup').then(({ initializeFcm }) => {
           initializeFcm(currentUser.uid).catch(console.error)
         })
+      } else {
+        await fetchUserRole(null)
       }
+      
+      setAuthLoading(false)
     })
     return unsubAuth
-  }, [])
+  }, [fetchUserRole])
 
   // AUTH: data is only fetched when user is signed in — do not remove the guard
   useEffect(() => {
     if (!user) return undefined // AUTH: do not remove — prevents data fetch for unauthenticated users
 
-    const unsubClients = fetchClients()
     const unsubOrders = fetchOrders()
-    const unsubStock = fetchStock()
-    const unsubStockTotal = fetchStockTotal()
+    let unsubClients, unsubStock, unsubStockTotal;
+
+    if (userRole === 'admin') {
+      unsubClients = fetchClients()
+      unsubStock = fetchStock()
+      unsubStockTotal = fetchStockTotal()
+    }
+
     return () => {
-      if (unsubClients) unsubClients()
       if (unsubOrders) unsubOrders()
+      if (unsubClients) unsubClients()
       if (unsubStock) unsubStock()
       if (unsubStockTotal) unsubStockTotal()
     }
-  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, user])
+  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, user, userRole])
 
   useEffect(() => {
     if (!user) return
@@ -108,7 +117,7 @@ function App() {
     { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
     { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
     { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
-  ]
+  ].filter(item => userRole === 'admin' || item.id === 'orders')
 
   const drawerNavItems = [
     ...navItems,
@@ -164,7 +173,7 @@ function App() {
         setDrawerOpen(false)
       }
     }
-  ]
+  ].filter(() => userRole === 'admin')
 
   const openReportWindow = ({ title, columns, rows, metadata = [], reportWindow: providedReportWindow = null }) => {
     const reportWindow = providedReportWindow || window.open('', '_blank', 'width=900,height=700')
@@ -659,7 +668,7 @@ function App() {
         setLedgerModalOpen(true)
       }
     }
-  ]
+  ].filter(() => userRole === 'admin')
 
   const dismissLeadPrompt = () => {
     setLeadQuickActionPromptOpen(false)
@@ -1023,7 +1032,7 @@ function App() {
       </nav>
 
       {/* FAB: New Order (Orders tab) */}
-      {activeTab === 'orders' && (
+      {activeTab === 'orders' && userRole === 'admin' && (
         <button
           onClick={() => setEditOrder({})}
           className="fixed bottom-24 right-4 z-[998] bg-[#ff9900] text-white w-14 h-14 rounded-full shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
@@ -1034,7 +1043,7 @@ function App() {
       )}
 
       {/* FAB: Add Client (Clients tab) */}
-      {activeTab === 'clients' && (
+      {activeTab === 'clients' && userRole === 'admin' && (
         <button
           onClick={() => setAddClientOpen(true)}
           className="fixed right-4 bottom-24 z-[998] h-14 w-14 rounded-full bg-[#ff9900] text-white shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
@@ -1045,7 +1054,7 @@ function App() {
       )}
 
       {/* FAB: Record Payment (Transactions tab) */}
-      {activeTab === 'payments' && (
+      {activeTab === 'payments' && userRole === 'admin' && (
         <button
           onClick={() => {
             setPaymentPrefill(null)
