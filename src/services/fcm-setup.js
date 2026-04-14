@@ -14,7 +14,6 @@ export async function initializeFcm(userId) {
     // Check if FCM is supported in this browser
     const supported = await isSupported();
     if (!supported) {
-      console.log('FCM not supported in this browser');
       return false;
     }
 
@@ -24,7 +23,6 @@ export async function initializeFcm(userId) {
     // Request notification permission
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
-      console.log('Notification permission denied');
       return false;
     }
 
@@ -34,11 +32,8 @@ export async function initializeFcm(userId) {
     const token = await getToken(messaging, tokenOptions);
 
     if (!token) {
-      console.log('Failed to get FCM token');
       return false;
     }
-
-    console.log('FCM token obtained:', token);
 
     // Store token in Firestore
     const tokenDocRef = doc(
@@ -56,11 +51,8 @@ export async function initializeFcm(userId) {
       lastActive: serverTimestamp()
     });
 
-    console.log('FCM token stored in Firestore');
-
     // Listen for messages when app is in foreground
     onMessage(messaging, (payload) => {
-      console.log('Message received:', payload);
       handleForegroundMessage(payload);
     });
 
@@ -75,7 +67,6 @@ function handleForegroundMessage(payload) {
   const { notification, data } = payload;
 
   if (!notification) {
-    console.log('No notification data');
     return;
   }
 
@@ -106,7 +97,6 @@ export async function cleanupFcm(userId, token) {
     );
 
     await deleteDoc(tokenDocRef);
-    console.log('FCM token removed from Firestore');
   } catch (error) {
     console.error('Error cleaning up FCM:', error);
   }

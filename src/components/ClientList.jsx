@@ -1,15 +1,11 @@
 import { useState } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, UserX, UserCheck, Flag, Fingerprint, MessageCircle } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, UserX, UserCheck, Flag } from 'lucide-react';
 
 export default function ClientList({ onEdit, onPay, onOrder }) {
-  const { clients, updateClient, generateLegacyClientIds } = useClientStore();
+  const { clients, updateClient } = useClientStore();
   const [search, setSearch] = useState('');
   const [sortByDue, setSortByDue] = useState(false);
-  const [isGeneratingIds, setIsGeneratingIds] = useState(false);
-
-  const legacyCount = (clients || []).filter((client) => !client.shortId || String(client.shortId).trim() === '').length;
 
   const filtered = (clients || [])
     .filter(c => 
@@ -23,20 +19,6 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
 
   const toggleStatus = (client) => {
     updateClient(client.id, { active: !client.active });
-  };
-
-  const handleGenerateLegacyIds = async () => {
-    if (legacyCount === 0 || isGeneratingIds) return;
-
-    try {
-      setIsGeneratingIds(true);
-      const updatedCount = await generateLegacyClientIds();
-      toast.success(`Generated IDs for ${updatedCount} legacy client${updatedCount === 1 ? '' : 's'}`);
-    } catch (error) {
-      toast.error(`Unable to generate IDs: ${error.message}`);
-    } finally {
-      setIsGeneratingIds(false);
-    }
   };
 
   const getOutstandingMessage = (client) => {
@@ -70,20 +52,6 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
         >
           <Flag className="w-4 h-4" />
         </button>
-        <button
-          onClick={handleGenerateLegacyIds}
-          disabled={legacyCount === 0 || isGeneratingIds}
-          className={`h-10 px-3 rounded-lg border flex-shrink-0 transition-colors flex items-center gap-1.5 text-xs font-semibold ${
-            legacyCount > 0 && !isGeneratingIds
-              ? 'bg-white border-gray-300 text-gray-600 hover:border-[#ff9900] hover:text-[#ff9900]'
-              : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
-          }`}
-          aria-label="Generate IDs for legacy clients"
-          title={legacyCount > 0 ? `Generate IDs for ${legacyCount} legacy clients` : 'All clients already have IDs'}
-        >
-          <Fingerprint className="w-4 h-4" />
-          <span>{isGeneratingIds ? 'Generating...' : `Fix IDs (${legacyCount})`}</span>
-        </button>
       </div>
 
       {filtered.length === 0 && search === '' && (
@@ -109,19 +77,13 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
           </div>
 
           <div className="flex justify-between items-center gap-3">
-             <div className="grid grid-cols-6 gap-2 flex-1">
+             <div className="grid grid-cols-5 gap-2 flex-1">
                <a href={`tel:${client.mobile}`} className="flex justify-center p-2 bg-blue-50 text-blue-600 rounded-md"><Phone className="w-4 h-4" /></a>
                <a
                  href={`https://wa.me/91${client.mobile}?text=${getOutstandingMessage(client)}`}
                  className="flex justify-center p-2 bg-green-50 text-green-600 rounded-md"
                >
                  <MessageSquare className="w-4 h-4" />
-               </a>
-               <a
-                 href={`sms:+91${client.mobile}?body=${getOutstandingMessage(client)}`}
-                 className="flex justify-center p-2 bg-teal-50 text-teal-600 rounded-md"
-               >
-                 <MessageCircle className="w-4 h-4" />
                </a>
                <button
                  onClick={() => onOrder(client)}

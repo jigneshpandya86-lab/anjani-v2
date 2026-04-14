@@ -44,6 +44,8 @@ jobs:
         run: npm install --no-save @capacitor/core @capacitor/cli @capacitor/android
 
       - name: Build web app
+        env:
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
         run: npm run build
 
       - name: Initialize Android platform (if missing)
@@ -54,13 +56,6 @@ jobs:
 
       - name: Sync Capacitor
         run: npx cap sync android
-
-      - name: Register SMS Background Plugin
-        run: |
-          PLUGIN_DIR="android/app/src/main/java/com/anjani/app/sms"
-          mkdir -p "$PLUGIN_DIR"
-          cp native/android/SmsBackgroundPlugin.kt "$PLUGIN_DIR/"
-          echo "SMS Background Plugin registered at $PLUGIN_DIR/SmsBackgroundPlugin.kt"
 
       - name: Create missing kotlin-alignment.init.gradle
         run: |
@@ -83,7 +78,7 @@ jobs:
             echo "$FILE already exists, skipping"
           fi
 
-      - name: Ensure Android permissions (SMS, File, Camera, Location, Notifications)
+      - name: Ensure Android permissions (File, Camera, Location, Notifications)
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
 
@@ -93,11 +88,6 @@ jobs:
               sed -i '/<application/i \    <uses-permission android:name="'"$permission"'" />' "$MANIFEST"
             fi
           }
-
-          # SMS
-          add_permission "android.permission.SEND_SMS"
-          add_permission "android.permission.READ_SMS"
-          add_permission "android.permission.RECEIVE_SMS"
 
           # Camera
           add_permission "android.permission.CAMERA"

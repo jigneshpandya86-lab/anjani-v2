@@ -29,6 +29,7 @@ import PaymentModal from './components/PaymentModal'
 import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
 import Login from './components/Login'
+import SalesAnalyticsDashboard from './components/SalesAnalyticsDashboard'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
@@ -43,6 +44,9 @@ function App() {
   const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
   const [ledgerClientId, setLedgerClientId] = useState('')
   const [ledgerDateRange, setLedgerDateRange] = useState('current-month')
+  const [leadQuickActionPromptOpen, setLeadQuickActionPromptOpen] = useState(false)
+  const [pendingLeadAction, setPendingLeadAction] = useState(null)
+  const [analyticsModalOpen, setAnalyticsModalOpen] = useState(false)
   // ─────────────────────────────────────────
   // AUTH — DO NOT MODIFY WITHOUT TEAM REVIEW
   // ─────────────────────────────────────────
@@ -81,6 +85,13 @@ function App() {
       if (unsubStockTotal) unsubStockTotal()
     }
   }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, user])
+
+  useEffect(() => {
+    if (!user) return
+    if (typeof window === 'undefined') return
+    const seen = window.sessionStorage.getItem('leadQuickActionPromptSeen')
+    if (!seen) setLeadQuickActionPromptOpen(true)
+  }, [user])
 
   // AUTH: signs out the current user and clears session
   const handleLogout = async () => {
@@ -141,6 +152,15 @@ function App() {
         setActiveTab('payments')
         setPayClient({})
         setPaymentPrefill(null)
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-sales-analytics',
+      label: 'Sales Analytics',
+      icon: <TrendingUp size={18} />,
+      onClick: () => {
+        setAnalyticsModalOpen(true)
         setDrawerOpen(false)
       }
     }
@@ -216,46 +236,91 @@ function App() {
     const pW = 595, pH = 842, mg = 36, usableW = pW - mg * 2
     const colW = usableW / Math.max(columns.length, 1)
     const rH = 18
-    const lines = []
-    let y = pH - mg - 20
 
-    lines.push(txt(mg, y, 14, title))
-    y -= 20
-    lines.push('0.5 0.5 0.5 rg')
-    lines.push(txt(mg, y, 8, `Generated: ${new Date().toLocaleString('en-IN').replace(/[^\x20-\x7E]/g, '')}`))
-    lines.push('0 0 0 rg')
-    y -= 14
-    for (const m of metadata.filter(Boolean)) {
-      lines.push('0.5 0.5 0.5 rg')
-      lines.push(txt(mg, y, 8, m))
-      lines.push('0 0 0 rg')
-      y -= 12
-    }
-    y -= 6
-    lines.push('0.2 0.2 0.2 rg')
-    lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
-    lines.push('1 1 1 rg')
-    columns.forEach((col, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, col)))
-    lines.push('0 0 0 rg')
-    y -= rH
-    for (let ri = 0; ri < rows.length; ri++) {
-      if (y < mg + rH) break
-      if (ri % 2 === 0) {
-        lines.push('0.95 0.95 0.95 rg')
-        lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
+    // Build content stream for a single page
+    const buildPageStream = (pageRows, isFirstPage) => {
+      const lines = []
+      let y = pH - mg - 20
+
+      if (isFirstPage) {
+        lines.push(txt(mg, y, 14, title))
+        y -= 20
+        lines.push('0.5 0.5 0.5 rg')
+        lines.push(txt(mg, y, 8, `Generated: ${new Date().toLocaleString('en-IN').replace(/[^\x20-\x7E]/g, '')}`))
         lines.push('0 0 0 rg')
+        y -= 14
+        for (const m of metadata.filter(Boolean)) {
+          lines.push('0.5 0.5 0.5 rg')
+          lines.push(txt(mg, y, 8, m))
+          lines.push('0 0 0 rg')
+          y -= 12
+        }
+        y -= 6
       }
-      rows[ri].forEach((cell, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, cell)))
+
+      // Column header bar
+      lines.push('0.2 0.2 0.2 rg')
+      lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
+      lines.push('1 1 1 rg')
+      columns.forEach((col, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, col)))
+      lines.push('0 0 0 rg')
       y -= rH
+
+      pageRows.forEach((row, ri) => {
+        if (ri % 2 === 0) {
+          lines.push('0.95 0.95 0.95 rg')
+          lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
+          lines.push('0 0 0 rg')
+        }
+        row.forEach((cell, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, cell)))
+        y -= rH
+      })
+
+      return lines.join('\n')
     }
-    const stream = lines.join('\n')
+
+    // Calculate how many rows fit on the first page (title + metadata take space)
+    const metaCount = metadata.filter(Boolean).length
+    // y after all first-page headers and column header: 842-36-20-20-14-(metaCount*12)-6-18 = 728-metaCount*12
+    const firstPageRowStartY = pH - mg - 20 - 20 - 14 - metaCount * 12 - 6 - rH
+    const rowsOnFirstPage = Math.max(1, Math.floor((firstPageRowStartY - (mg + rH)) / rH))
+
+    // Subsequent pages: column header at top, then rows fill the rest
+    // y after column header on subsequent pages: 842-36-20-18 = 768
+    const subseqRowStartY = pH - mg - 20 - rH
+    const rowsPerSubsequentPage = Math.max(1, Math.floor((subseqRowStartY - (mg + rH)) / rH))
+
+    // Partition rows into pages
+    const pages = []
+    pages.push(rows.slice(0, rowsOnFirstPage))
+    let offset = rowsOnFirstPage
+    while (offset < rows.length) {
+      pages.push(rows.slice(offset, offset + rowsPerSubsequentPage))
+      offset += rowsPerSubsequentPage
+    }
+
+    // Build one stream per page
+    const streams = pages.map((pageRows, i) => buildPageStream(pageRows, i === 0))
+
+    // PDF object layout:
+    //   1: Catalog, 2: Pages,
+    //   3+i*2: Page i, 4+i*2: Content stream i,
+    //   3+pages.length*2: Font
+    const fontObjNum = 3 + pages.length * 2
+    const pageKids = pages.map((_, i) => `${3 + i * 2} 0 R`).join(' ')
+
     const objs = [
       '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
-      '2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj',
-      `3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pW} ${pH}] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj`,
-      `4 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream endobj`,
-      '5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj',
+      `2 0 obj << /Type /Pages /Count ${pages.length} /Kids [${pageKids}] >> endobj`,
     ]
+    pages.forEach((_, i) => {
+      const pageObjNum = 3 + i * 2
+      const contentObjNum = 4 + i * 2
+      objs.push(`${pageObjNum} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pW} ${pH}] /Contents ${contentObjNum} 0 R /Resources << /Font << /F1 ${fontObjNum} 0 R >> >> >> endobj`)
+      objs.push(`${contentObjNum} 0 obj << /Length ${streams[i].length} >> stream\n${streams[i]}\nendstream endobj`)
+    })
+    objs.push(`${fontObjNum} 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj`)
+
     let pdf = '%PDF-1.4\n'
     const offsets = [0]
     objs.forEach((obj) => { offsets.push(pdf.length); pdf += `${obj}\n` })
@@ -483,6 +548,7 @@ function App() {
         return
       }
 
+      const clientMap = new Map(clients.map((c) => [c.id, c.name || 'Unknown Client']))
       const rows = payments
         .sort((a, b) => {
           const aTime = a.date?.toMillis?.() || a.createdAt?.toMillis?.() || 0
@@ -490,7 +556,7 @@ function App() {
           return bTime - aTime
         })
         .map((tx) => {
-          const clientName = clients.find((c) => c.id === tx.clientId)?.name || 'Unknown Client'
+          const clientName = clientMap.get(tx.clientId) || 'Unknown Client'
           const txDate = tx.date?.toDate?.()?.toLocaleDateString('en-IN')
             || tx.createdAt?.toDate?.()?.toLocaleDateString('en-IN')
             || '-'
@@ -595,6 +661,19 @@ function App() {
     }
   ]
 
+  const dismissLeadPrompt = () => {
+    setLeadQuickActionPromptOpen(false)
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('leadQuickActionPromptSeen', '1')
+    }
+  }
+
+  const triggerLeadQuickAction = (action) => {
+    setPendingLeadAction(action)
+    setActiveTab('leads')
+    dismissLeadPrompt()
+  }
+
   // AUTH: show loading screen while Firebase resolves the auth state on startup
   if (authLoading) {
     return (
@@ -665,13 +744,61 @@ function App() {
                   setPaymentPrefill(null)
                   setPayClient(client)
                 }}
-                onOrder={(client) => setEditOrder({ clientId: client.id })}
+                onOrder={(client) => setEditOrder({
+                  clientId: client.id,
+                  clientName: client.name || '',
+                  address: client.address || '',
+                  location: client.location || client.mapLink || '',
+                  mapLink: client.mapLink || '',
+                  locationLat: Number.isFinite(Number(client.locationLat)) ? Number(client.locationLat) : null,
+                  locationLng: Number.isFinite(Number(client.locationLng)) ? Number(client.locationLng) : null,
+                  rate: Number(client.rate) || 0
+                })}
               />
             </div>
           )}
-          {activeTab === 'leads' && <LeadsDashboard />}
+          {activeTab === 'leads' && (
+            <LeadsDashboard
+              pendingAction={pendingLeadAction}
+              onPendingActionHandled={() => setPendingLeadAction(null)}
+            />
+          )}
         </div>
       </div>
+
+      {leadQuickActionPromptOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={dismissLeadPrompt}>
+          <div className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="space-y-1">
+              <h3 className="text-base font-black text-gray-900 tracking-tight">Run Lead Actions</h3>
+              <p className="text-sm text-gray-500">You can run this from any page. We will switch to Leads automatically.</p>
+            </div>
+            <div className="grid grid-cols-1 gap-2">
+              <button
+                type="button"
+                onClick={() => triggerLeadQuickAction('connect')}
+                className="w-full rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm py-2.5"
+              >
+                Run Connect
+              </button>
+              <button
+                type="button"
+                onClick={() => triggerLeadQuickAction('both')}
+                className="w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold text-sm py-2.5"
+              >
+                Run Both
+              </button>
+              <button
+                type="button"
+                onClick={dismissLeadPrompt}
+                className="w-full rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-sm py-2.5"
+              >
+                Not Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Slide-in Drawer (all screen sizes) */}
       {drawerOpen && (
@@ -867,6 +994,11 @@ function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Sales Analytics Modal */}
+      {analyticsModalOpen && (
+        <SalesAnalyticsDashboard onClose={() => setAnalyticsModalOpen(false)} />
       )}
 
       {/* Bottom Navigation (all screen sizes) */}

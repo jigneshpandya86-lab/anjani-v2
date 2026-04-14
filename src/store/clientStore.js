@@ -1,10 +1,9 @@
 import { create } from 'zustand';
 import { 
   collection, addDoc, onSnapshot, query, doc, 
-  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs
+  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs, deleteField
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
-import { TASK_TYPES, enqueueSmsJobsForEvent, cancelPendingSmsJobsForEntity } from '../sms/smsScheduler';
 
 let stockUnsubscribe = null;
 let stockSubscriberCount = 0;
@@ -60,6 +59,22 @@ const buildClientShortId = (clientDocId) => {
   return `CLT-${safeId.slice(0, 6).padEnd(6, '0')}`;
 };
 
+const normalizeOrderWriteData = (data = {}) => ({
+  ...data,
+  address: data.address === undefined ? '' : String(data.address).trim(),
+  location: data.location === undefined ? '' : String(data.location).trim(),
+  mapLink: data.mapLink === undefined ? '' : String(data.mapLink).trim(),
+  locationLat: Number.isFinite(Number(data.locationLat)) ? Number(data.locationLat) : null,
+  locationLng: Number.isFinite(Number(data.locationLng)) ? Number(data.locationLng) : null,
+});
+
+const getLegacyLocationCleanupPatch = () => ({
+  mapLink: deleteField(),
+  googleMap: deleteField(),
+  googleLocation: deleteField(),
+  locationName: deleteField(),
+});
+
 export const useClientStore = create((set, get) => ({
   clients: [],
   orders: [],
@@ -71,7 +86,7 @@ export const useClientStore = create((set, get) => ({
     stockSubscriberCount += 1;
 
     if (!stockUnsubscribe) {
-      const q = query(collection(db, 'stock'), orderBy('createdAt', 'desc'), limit(200));
+      const q = query(collection(db, 'stock'), orderBy('createdAt', 'desc'), limit(100));
       stockUnsubscribe = onSnapshot(q, (snapshot) => {
         const getTime = (value) => {
           if (!value) return 0;
@@ -203,6 +218,10 @@ export const useClientStore = create((set, get) => ({
       mobile: data.phone,
       address: data.address,
       rate: Number(data.rate) || 0,
+      location: String(data.location || data.mapLink || '').trim(),
+      mapLink: String(data.mapLink || '').trim(),
+      locationLat: Number.isFinite(Number(data.locationLat)) ? Number(data.locationLat) : null,
+      locationLng: Number.isFinite(Number(data.locationLng)) ? Number(data.locationLng) : null,
       active: true,
       outstanding: 0,
       createdAt: serverTimestamp()
@@ -217,10 +236,11 @@ export const useClientStore = create((set, get) => ({
   },
 
   addOrder: async (data) => {
+    const normalizedData = normalizeOrderWriteData(data);
     const orderId = `ORD-${Date.now()}`;
-    const selectedClient = get().clients.find((client) => client.id === data.clientId);
+    const selectedClient = get().clients.find((client) => client.id === normalizedData.clientId);
     await addDoc(collection(db, 'orders'), {
-      ...data,
+      ...normalizedData,
       orderId,
       clientName: selectedClient?.name || data.clientName || '',
       mobile: selectedClient?.mobile || data.mobile || '',
@@ -237,14 +257,6 @@ export const useClientStore = create((set, get) => ({
       createdAt: serverTimestamp()
     });
 
-    if (data.clientId) {
-      await cancelPendingSmsJobsForEntity({
-        db,
-        taskType: TASK_TYPES.PAYMENTS,
-        entityId: data.clientId,
-        reason: 'payment_received',
-      });
-    }
     if (data.clientId) {
       const amount = Number(data.amount) || 0;
       if (amount > 0) {
@@ -282,12 +294,20 @@ export const useClientStore = create((set, get) => ({
   fetchClients: () => {
     const q = query(collection(db, 'customers'), orderBy('name'), limit(200));
     return onSnapshot(q, (snapshot) => {
-      const clients = snapshot.docs.map(doc => ({ 
-        id: doc.id, ...doc.data(),
-        name: doc.data().name || 'Unnamed',
-        outstanding: doc.data().outstanding || 0,
-        rate: Number(doc.data().rate) || 0
-      }));
+      const clients = snapshot.docs.map(doc => {
+        const raw = doc.data();
+        return {
+          id: doc.id,
+          ...raw,
+          name: raw.name || 'Unnamed',
+          outstanding: raw.outstanding || 0,
+          rate: Number(raw.rate) || 0,
+          location: String(raw.location || raw.googleLocation || raw.locationName || raw.mapLink || raw.googleMap || '').trim(),
+          mapLink: String(raw.mapLink || raw.googleMap || '').trim(),
+          locationLat: Number.isFinite(Number(raw.locationLat ?? raw.lat)) ? Number(raw.locationLat ?? raw.lat) : null,
+          locationLng: Number.isFinite(Number(raw.locationLng ?? raw.lng)) ? Number(raw.locationLng ?? raw.lng) : null,
+        };
+      });
       set({ clients });
     });
   },
@@ -320,7 +340,10 @@ export const useClientStore = create((set, get) => ({
         time:     raw.time || raw.deliveryTime || '',
         clientId: raw.clientId || raw.customerId || '',
         address:  raw.address || raw.deliveryAddress || raw.location || '',
-        mapLink:  raw.mapLink || raw.googleMap || '',
+        location: raw.location || raw.googleLocation || raw.locationName || raw.mapLink || raw.googleMap || '',
+        mapLink: raw.mapLink || raw.googleMap || '',
+        locationLat: Number.isFinite(Number(raw.locationLat ?? raw.lat)) ? Number(raw.locationLat ?? raw.lat) : null,
+        locationLng: Number.isFinite(Number(raw.locationLng ?? raw.lng)) ? Number(raw.locationLng ?? raw.lng) : null,
       });
 
       const getTime = (o) => {
@@ -340,13 +363,14 @@ export const useClientStore = create((set, get) => ({
   },
 
   updateOrder: async (id, data) => {
+    const normalizedData = normalizeOrderWriteData(data);
     const orderRef = doc(db, 'orders', id);
     const localExisting = get().orders.find((o) => o.id === id);
     const orderSnap = await getDoc(orderRef);
     const remoteExisting = orderSnap.exists() ? { id, ...orderSnap.data() } : null;
     const existing = localExisting || remoteExisting;
     const previousStatus = remoteExisting?.status || localExisting?.status || '';
-    const shouldMarkDelivered = data.status === 'Delivered';
+    const shouldMarkDelivered = normalizedData.status === 'Delivered';
     const alreadyPostedToStock = Boolean(
       remoteExisting?.stockPostedAt ||
       remoteExisting?.stockEntryId
@@ -401,26 +425,10 @@ export const useClientStore = create((set, get) => ({
           outstanding: increment(amount)
         });
       }
-
-      const selectedClient = get().clients.find((client) => client.id === existing.clientId);
-      await enqueueSmsJobsForEvent({
-        db,
-        taskType: TASK_TYPES.ORDER_DELIVERED,
-        entityId: id,
-        recipientMobile: selectedClient?.mobile || existing.mobile || '',
-        occurredAt: new Date(),
-      });
-
-      await enqueueSmsJobsForEvent({
-        db,
-        taskType: TASK_TYPES.PAYMENTS,
-        entityId: existing.clientId || id,
-        recipientMobile: selectedClient?.mobile || existing.mobile || '',
-        occurredAt: new Date(),
-      });
     }
     await updateDoc(orderRef, {
-      ...data,
+      ...normalizedData,
+      ...getLegacyLocationCleanupPatch(),
       ...extraOrderPatch,
     });
   },
@@ -470,12 +478,6 @@ export const useClientStore = create((set, get) => ({
         }
       }
       await deleteDoc(orderDocRef);
-      await cancelPendingSmsJobsForEntity({
-        db,
-        taskType: TASK_TYPES.ORDER_DELIVERED,
-        entityId: id,
-        reason: 'order_deleted',
-      });
     } catch (err) {
       console.error('Delete failed:', err);
       throw err;

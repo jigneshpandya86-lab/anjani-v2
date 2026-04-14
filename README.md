@@ -34,7 +34,6 @@ This repo includes a GitHub Actions workflow at `.github/workflows/android-apk.y
 - Builds the web app (`npm run build`).
 - Creates/syncs the Capacitor Android project.
 - Ensures these permissions are present in `android/app/src/main/AndroidManifest.xml`:
-  - `android.permission.SEND_SMS`
   - `android.permission.CAMERA`
   - `android.permission.ACCESS_COARSE_LOCATION`
   - `android.permission.ACCESS_FINE_LOCATION`
@@ -61,6 +60,15 @@ The app supports both newer and legacy field names when reading orders:
 - Client ID: `clientId` (fallback: `customerId`)
 - Address: `address` (fallback: `deliveryAddress`, `location`)
 - Map link: `mapLink` (fallback: `googleMap`)
+
+## Leads "Connect" SMS flow (in-app, manual trigger)
+
+The SMS connect flow is now handled directly inside the React app (`LeadsDashboard`) when the user presses the **Connect** button.
+
+- No standalone Google Apps Script (`.gs`) file is required for this flow.
+- On click, the app fetches up to 5 leads with `Tag == null`.
+- For each matching lead, the app calls the MacroDroid webhook and then updates Firestore with `Tag = "SMS_SENT"` plus `smsSentAt`.
+- Webhook URL is read from `VITE_MACRO_URL` (with app fallback if env is not set).
 
 ## Random daily Firebase notification from GitHub Actions
 
