@@ -116,12 +116,12 @@
 }
 
 .task-edit-form button:first-of-type {
-  background-color: #28a745;
+  background-color: #ff9900;
   color: white;
 }
 
 .task-edit-form button:first-of-type:hover {
-  background-color: #218838;
+  background-color: #ff8c00;
 }
 
 .task-edit-form button:last-of-type {
@@ -145,22 +145,25 @@
 }
 
 .new-task-btn {
-  padding: 8px;
-  background-color: #28a745;
+  width: 56px;
+  height: 56px;
+  background-color: #ff9900;
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 50%;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
   flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(255, 153, 0, 0.3);
 }
 
 .new-task-btn:hover {
-  background-color: #218838;
-  transform: scale(1.05);
+  background-color: #ff8c00;
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(255, 153, 0, 0.4);
 }
 
 .new-task-form {
@@ -168,7 +171,7 @@
   padding: 20px;
   border-radius: 8px;
   margin-bottom: 20px;
-  border-left: 4px solid #28a745;
+  border-left: 4px solid #ff9900;
 }
 
 .new-task-form h3 {
@@ -211,12 +214,12 @@
 }
 
 .save-btn {
-  background-color: #28a745;
+  background-color: #ff9900;
   color: white;
 }
 
 .save-btn:hover {
-  background-color: #218838;
+  background-color: #ff8c00;
 }
 
 .cancel-btn {
@@ -254,7 +257,8 @@
   }
 
   .new-task-btn {
-    padding: 8px;
+    width: 56px;
+    height: 56px;
   }
 
   .tasks-board {
