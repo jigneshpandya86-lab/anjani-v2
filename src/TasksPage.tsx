@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, addDoc } from 'firebase/firestore';
 import { db } from './firebase-config'; // Ensure you have this configured in your project
+import { Plus, Edit2, Clock, CheckCircle, Archive } from 'lucide-react';
 import './TasksPage.css'; // Optional CSS for styling
 
 interface Job {
@@ -107,6 +108,14 @@ const TasksPage: React.FC = () => {
     }
   };
 
+  const isOverdue = (dueDate: Timestamp): boolean => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const taskDate = dueDate.toDate();
+    taskDate.setHours(0, 0, 0, 0);
+    return taskDate < today;
+  };
+
   if (loading) return <div>Loading tasks...</div>;
 
   const renderTaskColumn = (stage: Job['stage'], title: string) => {
@@ -115,37 +124,71 @@ const TasksPage: React.FC = () => {
     return (
       <div className="task-column">
         <h3>{title} ({columnJobs.length})</h3>
-        {columnJobs.map((job) => (
-          <div key={job.id} className="task-card">
-            {editingId === job.id ? (
-              <div className="task-edit-form">
-                <textarea
-                  value={editForm.text}
-                  onChange={(e) => setEditForm({ ...editForm, text: e.target.value })}
-                />
-                <input
-                  type="date"
-                  value={editForm.dueDate}
-                  onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })}
-                />
-                <button onClick={() => saveEdit(job.id)}>Save</button>
-                <button onClick={() => setEditingId(null)}>Cancel</button>
-              </div>
-            ) : (
-              <>
-                <p><strong>{job.text}</strong></p>
-                <p>Due: {job.dueDate ? job.dueDate.toDate().toLocaleDateString() : 'No date'}</p>
-                <div className="task-actions">
-                  <button onClick={() => startEditing(job)}>Edit</button>
-                  {stage !== 'new' && <button onClick={() => handleStageChange(job.id, 'new')}>Set New</button>}
-                  {stage !== 'due' && <button onClick={() => handleStageChange(job.id, 'due')}>Set Due</button>}
-                  {stage !== 'complete' && <button onClick={() => handleStageChange(job.id, 'complete')}>Mark Complete</button>}
-                  <button onClick={() => archiveTask(job.id)} className="archive-btn">Archive</button>
+        {columnJobs.map((job) => {
+          const overdue = isOverdue(job.dueDate);
+          return (
+            <div key={job.id} className={`task-card ${overdue ? 'overdue' : ''}`}>
+              {editingId === job.id ? (
+                <div className="task-edit-form">
+                  <textarea
+                    value={editForm.text}
+                    onChange={(e) => setEditForm({ ...editForm, text: e.target.value })}
+                  />
+                  <input
+                    type="date"
+                    value={editForm.dueDate}
+                    onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })}
+                  />
+                  <button onClick={() => saveEdit(job.id)}>Save</button>
+                  <button onClick={() => setEditingId(null)}>Cancel</button>
                 </div>
-              </>
-            )}
-          </div>
-        ))}
+              ) : (
+                <>
+                  <p className="task-text"><strong>{job.text}</strong></p>
+                  <div className="task-footer">
+                    <p className="task-date">
+                      {job.dueDate ? job.dueDate.toDate().toLocaleDateString() : 'No date'}
+                    </p>
+                    <div className="task-actions">
+                      <button
+                        onClick={() => startEditing(job)}
+                        title="Edit task"
+                        className="icon-btn"
+                      >
+                        <Edit2 size={18} />
+                      </button>
+                      {stage !== 'due' && (
+                        <button
+                          onClick={() => handleStageChange(job.id, 'due')}
+                          title="Set due"
+                          className="icon-btn"
+                        >
+                          <Clock size={18} />
+                        </button>
+                      )}
+                      {stage !== 'complete' && (
+                        <button
+                          onClick={() => handleStageChange(job.id, 'complete')}
+                          title="Mark complete"
+                          className="icon-btn"
+                        >
+                          <CheckCircle size={18} />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => archiveTask(job.id)}
+                        title="Archive task"
+                        className="icon-btn archive-btn"
+                      >
+                        <Archive size={18} />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -154,8 +197,12 @@ const TasksPage: React.FC = () => {
     <div className="tasks-page">
       <div className="tasks-header">
         <h2>Staff Tasks Assignment</h2>
-        <button onClick={() => setShowNewTaskForm(!showNewTaskForm)} className="new-task-btn">
-          + New Task
+        <button
+          onClick={() => setShowNewTaskForm(!showNewTaskForm)}
+          className="new-task-btn"
+          title="Create new task"
+        >
+          <Plus size={24} />
         </button>
       </div>
 
