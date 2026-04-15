@@ -319,7 +319,7 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
         await sendBackgroundSms({
           macroUrl: MACRO_URL,
           phone: mobile,
-          message: buildInitialSmsMessage(lead.name),
+          message: buildInitialSmsMessage(),
         });
         await updateDoc(
           doc(db, 'leads', leadDoc.id),
@@ -372,7 +372,7 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
         await sendBackgroundSms({
           macroUrl: MACRO_URL,
           phone: mobile,
-          message: buildFollowUpSmsMessage({ name: lead.name, reminderDay: context.reminderDay }),
+          message: buildFollowUpSmsMessage({ reminderDay: context.reminderDay }),
         });
         await updateDoc(
           doc(db, 'leads', leadDoc.id),
