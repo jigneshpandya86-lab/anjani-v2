@@ -29,29 +29,66 @@
   border-radius: 6px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   margin-bottom: 15px;
+  border-left: 4px solid transparent;
+}
+
+.task-card.overdue {
+  border-left-color: #ffa500;
+  background-color: #fffbf0;
+}
+
+.task-text {
+  margin: 0 0 12px 0;
+  word-break: break-word;
+}
+
+.task-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.task-date {
+  margin: 0;
+  font-size: 13px;
+  color: #666;
+  flex-shrink: 0;
 }
 
 .task-actions {
   display: flex;
-  gap: 10px;
-  margin-top: 10px;
-  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
-.task-actions button {
-  padding: 5px 10px;
-  font-size: 12px;
+.icon-btn {
+  background-color: transparent;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 6px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0056b3;
+  transition: all 0.2s ease;
+}
+
+.icon-btn:hover {
   background-color: #007bff;
   color: white;
-  border: none;
-  border-radius: 4px;
-  flex: 1;
-  min-width: 60px;
+  border-color: #007bff;
 }
 
-.task-actions button:hover {
-  background-color: #0056b3;
+.icon-btn.archive-btn {
+  color: #fd7e14;
+}
+
+.icon-btn.archive-btn:hover {
+  background-color: #fd7e14;
+  color: white;
+  border-color: #fd7e14;
 }
 
 .task-edit-form {
@@ -108,18 +145,22 @@
 }
 
 .new-task-btn {
-  padding: 10px 20px;
+  padding: 8px;
   background-color: #28a745;
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 16px;
-  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 
 .new-task-btn:hover {
   background-color: #218838;
+  transform: scale(1.05);
 }
 
 .new-task-form {
@@ -203,17 +244,17 @@
   }
 
   .tasks-header {
-    flex-direction: column;
-    gap: 15px;
+    gap: 12px;
     margin-bottom: 15px;
   }
 
   .tasks-header h2 {
     font-size: 20px;
+    margin: 0;
   }
 
   .new-task-btn {
-    width: 100%;
+    padding: 8px;
   }
 
   .tasks-board {
@@ -237,20 +278,28 @@
     margin-bottom: 12px;
   }
 
-  .task-card p {
-    margin: 8px 0;
+  .task-text {
+    margin: 0 0 10px 0;
     font-size: 14px;
   }
 
-  .task-actions {
-    flex-direction: column;
+  .task-footer {
+    flex-wrap: wrap;
     gap: 8px;
   }
 
-  .task-actions button {
-    padding: 8px 12px;
-    font-size: 13px;
+  .task-date {
+    font-size: 12px;
+    flex: 1 0 100%;
+  }
+
+  .task-actions {
     width: 100%;
+  }
+
+  .icon-btn {
+    flex: 1;
+    padding: 8px;
   }
 
   .new-task-form {
