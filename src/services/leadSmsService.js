@@ -34,12 +34,11 @@ export const sendBackgroundSms = async ({ macroUrl, phone, message }) => {
 
 export const buildInitialSmsMessage = () => {
   const waLink = BUSINESS_WHATSAPP_NUMBER ? `https://wa.me/${BUSINESS_WHATSAPP_NUMBER}` : '';
-  return `Events in Vadodara? Serve Anjani Water 200ml bottles! Perfect size, zero waste. Special rates on bulk buys! Order here: ${waLink}`;
+  return `Dear Sir/Madam, Events in Vadodara? Serve Anjani Water 200ml bottles! Perfect size, zero waste. Special rates on bulk buys! Order here: ${waLink}`;
 };
 
-export const buildFollowUpSmsMessage = ({ name, reminderDay }) => {
-  const displayName = name || 'Sir/Madam';
-  return `Hello ${displayName}, this is a gentle follow-up from Anjani Water, Vadodara. It's been ${reminderDay} day${reminderDay > 1 ? 's' : ''} since our last message. Can we help with your packaged water bottle requirement?`;
+export const buildFollowUpSmsMessage = ({ reminderDay }) => {
+  return `Dear Sir/Madam, this is a gentle follow-up from Anjani Water, Vadodara. It's been ${reminderDay} day${reminderDay > 1 ? 's' : ''} since our last message. Can we help with your packaged water bottle requirement?`;
 };
 
 export const buildInitialSmsUpdate = ({ lead = {}, leadId, now = new Date() } = {}) => {
