@@ -13,7 +13,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
-import { MessageSquare, Phone, Trash2, Plus, Zap, RefreshCw, Users } from 'lucide-react';
+import { MessageSquare, Trash2, Plus, Zap, RefreshCw, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import React from 'react';
 import {
@@ -119,35 +119,24 @@ const SkeletonCard = React.memo(function SkeletonCard() {
 });
 
 const LeadCard = React.memo(function LeadCard({ lead, onWhatsApp, onDelete }) {
-  const config = TAG_CONFIG[lead.Tag] ?? TAG_CONFIG._default;
-  const initials = lead.name ? lead.name.trim().charAt(0).toUpperCase() : null;
   const nextFollowUp = formatNextFollowUp(lead);
   const smsCount = lead.smsCount || 0;
 
   return (
-    <div className="bg-white rounded-2xl px-4 py-3 shadow-sm border border-gray-100">
+    <div className="bg-white rounded-2xl px-3 py-2.5 shadow-sm border border-gray-100">
       <div className="flex items-center gap-3">
-
-        {/* Avatar */}
-        <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${config.avatar}`}>
-          {initials ? <span>{initials}</span> : <Phone size={16} />}
-        </div>
-
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-gray-900 text-sm truncate">
-              {lead.name || 'Unknown'}
-            </span>
+          <div className="flex items-center gap-2">
             <StatusBadge tag={lead.Tag} />
           </div>
-          <p className="text-xs text-gray-400 mt-0.5 truncate">
+          <p className="text-xs text-gray-500 mt-1 truncate">
             {lead.mobile ? `+91 ${lead.mobile}` : 'No number'}
             <span className="text-gray-300 mx-1">·</span>
             {formatDate(lead)}
           </p>
           {lead.Tag === 'SMS_SENT' && (
-            <p className="text-xs text-orange-500 mt-1 font-medium">
+            <p className="text-xs text-orange-500 mt-0.5 font-medium">
               SMS {smsCount} sent{nextFollowUp ? ` · Next: ${nextFollowUp}` : ''}
             </p>
           )}
@@ -168,13 +157,6 @@ const LeadCard = React.memo(function LeadCard({ lead, onWhatsApp, onDelete }) {
             <MessageSquare size={13} />
             WA
           </button>
-          <a
-            href={`tel:${lead.mobile}`}
-            className="text-blue-500 p-2 bg-blue-50 rounded-xl active:scale-90 transition-transform"
-            aria-label={`Call ${lead.name || lead.mobile}`}
-          >
-            <Phone size={16} />
-          </a>
           <button
             onClick={() => onDelete(lead.id, lead.name || lead.mobile)}
             className="text-red-400 p-2 bg-red-50 rounded-xl active:scale-90 transition-transform"
