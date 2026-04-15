@@ -67,3 +67,129 @@
 .task-edit-form input {
   padding: 8px;
 }
+
+.task-edit-form button {
+  padding: 8px 12px;
+  cursor: pointer;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.task-edit-form button:first-of-type {
+  background-color: #28a745;
+  color: white;
+}
+
+.task-edit-form button:first-of-type:hover {
+  background-color: #218838;
+}
+
+.task-edit-form button:last-of-type {
+  background-color: #6c757d;
+  color: white;
+}
+
+.task-edit-form button:last-of-type:hover {
+  background-color: #5a6268;
+}
+
+.tasks-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.tasks-header h2 {
+  margin: 0;
+}
+
+.new-task-btn {
+  padding: 10px 20px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.new-task-btn:hover {
+  background-color: #218838;
+}
+
+.new-task-form {
+  background-color: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border-left: 4px solid #28a745;
+}
+
+.new-task-form h3 {
+  margin-top: 0;
+  color: #333;
+}
+
+.new-task-form textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.new-task-form input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.form-actions button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.save-btn {
+  background-color: #28a745;
+  color: white;
+}
+
+.save-btn:hover {
+  background-color: #218838;
+}
+
+.cancel-btn {
+  background-color: #6c757d;
+  color: white;
+}
+
+.cancel-btn:hover {
+  background-color: #5a6268;
+}
+
+.archive-btn {
+  background-color: #fd7e14;
+  color: white;
+}
+
+.archive-btn:hover {
+  background-color: #e0711b;
+}
