@@ -197,14 +197,15 @@ const TasksPage: React.FC = () => {
     <div className="tasks-page">
       <div className="tasks-header">
         <h2>Staff Tasks Assignment</h2>
-        <button
-          onClick={() => setShowNewTaskForm(!showNewTaskForm)}
-          className="new-task-btn"
-          title="Create new task"
-        >
-          <Plus size={24} />
-        </button>
       </div>
+
+      <button
+        onClick={() => setShowNewTaskForm(!showNewTaskForm)}
+        className="new-task-btn"
+        title="Create new task"
+      >
+        <Plus size={24} />
+      </button>
 
       {showNewTaskForm && (
         <div className="new-task-form">
