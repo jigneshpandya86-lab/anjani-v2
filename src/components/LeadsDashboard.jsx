@@ -217,8 +217,7 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
   // ── Handlers (stable references via useCallback) ────────────────────────
 
   const sendWhatsApp = useCallback((lead) => {
-    const displayName = lead.name || 'Sir/Madam';
-    const msg = `Hello ${displayName}, Greetings from *Annapurna Foods, Vadodara*! ✨ \n\nPlanning an event? Make it premium with our 200ml Packaged Water Bottles. Perfect size and crystal clear quality. 💧\n\nShall we discuss your requirement?`;
+    const msg = `Dear Sir/Madam, Greetings from *Annapurna Foods, Vadodara*! ✨ \n\nPlanning an event? Make it premium with our 200ml Packaged Water Bottles. Perfect size and crystal clear quality. 💧\n\nShall we discuss your requirement?`;
     window.open(`https://wa.me/91${lead.mobile}?text=${encodeURIComponent(msg)}`, '_blank');
   }, []);
 
