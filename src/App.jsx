@@ -15,6 +15,7 @@ import {
   CreditCard,
   Users,
   TrendingUp,
+  CheckSquare,
   LogOut
 } from 'lucide-react'
 import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'firebase/firestore'
@@ -30,6 +31,7 @@ import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
 import Login from './components/Login'
 import SalesAnalyticsDashboard from './components/SalesAnalyticsDashboard'
+import TasksPage from './TasksPage'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
@@ -120,6 +122,7 @@ function App() {
   ].filter(item => userRole === 'admin' || item.id === 'orders')
 
   const drawerNavItems = [
+    { id: 'tasks', label: 'Tasks', icon: <CheckSquare size={20} /> },
     ...navItems,
   ]
 
@@ -766,6 +769,7 @@ function App() {
               />
             </div>
           )}
+          {activeTab === 'tasks' && <TasksPage />}
           {activeTab === 'leads' && (
             <LeadsDashboard
               pendingAction={pendingLeadAction}
