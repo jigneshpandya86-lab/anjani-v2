@@ -63,17 +63,6 @@ const formatDate = (lead) => {
   return new Date(raw).toLocaleDateString('en-IN');
 };
 
-const formatNextFollowUp = (lead) => {
-  const raw = lead.nextFollowUpAt;
-  if (!raw) return null;
-  try {
-    const d = raw?.toDate ? raw.toDate() : new Date(raw);
-    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-  } catch {
-    return null;
-  }
-};
-
 const isLeadUntagged = (lead = {}) => {
   if (!Object.prototype.hasOwnProperty.call(lead, 'Tag')) return true;
   return lead.Tag === null || lead.Tag === '';
@@ -119,27 +108,29 @@ const SkeletonCard = React.memo(function SkeletonCard() {
 });
 
 const LeadCard = React.memo(function LeadCard({ lead, onWhatsApp, onDelete }) {
-  const nextFollowUp = formatNextFollowUp(lead);
   const smsCount = lead.smsCount || 0;
+  const showSmsCounter = lead.Tag === 'SMS_SENT';
 
   return (
-    <div className="bg-white rounded-2xl px-3 py-2.5 shadow-sm border border-gray-100">
+    <div className="relative bg-white rounded-2xl px-3 py-2.5 shadow-sm border border-gray-100">
+      {showSmsCounter && (
+        <span className="absolute top-1.5 right-1.5 text-[10px] leading-none font-semibold text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">
+          {smsCount}
+        </span>
+      )}
       <div className="flex items-center gap-3">
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <StatusBadge tag={lead.Tag} />
-          </div>
+          {lead.Tag !== 'SMS_SENT' && (
+            <div className="flex items-center gap-2">
+              <StatusBadge tag={lead.Tag} />
+            </div>
+          )}
           <p className="text-xs text-gray-500 mt-1 truncate">
             {lead.mobile ? `+91 ${lead.mobile}` : 'No number'}
             <span className="text-gray-300 mx-1">·</span>
             {formatDate(lead)}
           </p>
-          {lead.Tag === 'SMS_SENT' && (
-            <p className="text-xs text-orange-500 mt-0.5 font-medium">
-              SMS {smsCount} sent{nextFollowUp ? ` · Next: ${nextFollowUp}` : ''}
-            </p>
-          )}
           {lead.Tag === 'FOLLOWUP_DONE' && (
             <p className="text-xs text-green-600 mt-1 font-medium">
               ✓ All follow-ups complete
