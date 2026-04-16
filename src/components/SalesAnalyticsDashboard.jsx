@@ -132,8 +132,18 @@ export default function SalesAnalyticsDashboard({ onClose }) {
         }))
         .sort((a, b) => new Date(b.date) - new Date(a.date))
         .slice(0, 10),
+      outstanding: clients
+        .filter((client) => Number(client.outstanding || 0) > 0)
+        .map((client) => ({
+          clientId: client.id,
+          customer: client.name || `Client ${client.id?.slice(0, 8)}`,
+          outstanding: Number(client.outstanding || 0),
+          mobile: client.mobile || '',
+        }))
+        .sort((a, b) => b.outstanding - a.outstanding)
+        .slice(0, 10),
     };
-  }, [orders, dateRange]);
+  }, [orders, clients, dateRange]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end sm:items-center sm:justify-center">
@@ -200,14 +210,14 @@ export default function SalesAnalyticsDashboard({ onClose }) {
               {/* Revenue */}
               <button
                 onClick={() => setSelectedTile('revenue')}
-                className="bg-gradient-to-br from-[#131921] to-[#1f2937] rounded-[16px] p-4 text-white hover:shadow-lg transition-all cursor-pointer text-left"
+                className="bg-gradient-to-br from-[#131921] to-[#1f2937] rounded-[16px] p-3 text-white hover:shadow-lg transition-all cursor-pointer text-left min-h-[128px]"
               >
                 <p className="text-[10px] font-bold uppercase tracking-wide opacity-70">
                   Revenue {getRangeLabel()}
                 </p>
-                <p className="text-2xl font-black mt-2">{formatCurrency(kpis.revenue)}</p>
+                <p className="text-xl font-black mt-1.5">{formatCurrency(kpis.revenue)}</p>
                 <p className="text-[10px] mt-1 opacity-60">{kpis.orderCount} orders</p>
-                <div className="flex justify-end mt-2">
+                <div className="flex justify-end mt-1.5">
                   <ChevronRight size={14} className="opacity-50" />
                 </div>
               </button>
@@ -215,13 +225,13 @@ export default function SalesAnalyticsDashboard({ onClose }) {
               {/* Orders */}
               <button
                 onClick={() => setSelectedTile('orders')}
-                className="bg-gradient-to-br from-[#ff9900] to-[#ffb84d] rounded-[16px] p-4 text-white hover:shadow-lg transition-all cursor-pointer text-left"
+                className="bg-gradient-to-br from-[#ff9900] to-[#ffb84d] rounded-[16px] p-3 text-white hover:shadow-lg transition-all cursor-pointer text-left min-h-[128px]"
               >
                 <p className="text-[10px] font-bold uppercase tracking-wide opacity-70">
                   Orders {getRangeLabel()}
                 </p>
-                <p className="text-2xl font-black mt-2">{kpis.orderCount}</p>
-                <div className="flex justify-end mt-3">
+                <p className="text-xl font-black mt-1.5">{kpis.orderCount}</p>
+                <div className="flex justify-end mt-8">
                   <ChevronRight size={14} className="opacity-50" />
                 </div>
               </button>
@@ -229,15 +239,34 @@ export default function SalesAnalyticsDashboard({ onClose }) {
               {/* Pending */}
               <button
                 onClick={() => setSelectedTile('pending')}
-                className="bg-white border border-yellow-200 rounded-[16px] p-4 bg-yellow-50 hover:shadow-lg transition-all cursor-pointer text-left"
+                className="bg-white border border-yellow-200 rounded-[16px] p-3 bg-yellow-50 hover:shadow-lg transition-all cursor-pointer text-left min-h-[128px]"
               >
                 <p className="text-[10px] font-bold text-yellow-700 uppercase tracking-wide">
                   Pending Orders
                 </p>
-                <p className="text-2xl font-black text-yellow-700 mt-2">
+                <p className="text-xl font-black text-yellow-700 mt-1.5">
                   {kpis.pendingOrderCount}
                 </p>
-                <div className="flex justify-end mt-3">
+                <div className="flex justify-end mt-8">
+                  <ChevronRight size={14} className="opacity-50" />
+                </div>
+              </button>
+
+              {/* Outstanding Amount */}
+              <button
+                onClick={() => setSelectedTile('outstanding')}
+                className="bg-white border border-red-200 rounded-[16px] p-3 bg-red-50 hover:shadow-lg transition-all cursor-pointer text-left min-h-[128px]"
+              >
+                <p className="text-[10px] font-bold text-red-700 uppercase tracking-wide">
+                  Total Outstanding
+                </p>
+                <p className="text-xl font-black text-red-700 mt-1.5">
+                  {formatCurrency(kpis.totalOutstanding || 0)}
+                </p>
+                <p className="text-[10px] mt-1 text-red-600 opacity-80">
+                  {getDetailData.outstanding.length} clients due
+                </p>
+                <div className="flex justify-end mt-1.5">
                   <ChevronRight size={14} className="opacity-50" />
                 </div>
               </button>
@@ -300,6 +329,7 @@ export default function SalesAnalyticsDashboard({ onClose }) {
                 {selectedTile === 'revenue' && `Top Orders by Revenue`}
                 {selectedTile === 'orders' && `Delivered Orders`}
                 {selectedTile === 'pending' && `Pending Orders`}
+                {selectedTile === 'outstanding' && `Client Outstanding Dues`}
               </h3>
               <button
                 onClick={() => setSelectedTile(null)}
@@ -339,6 +369,15 @@ export default function SalesAnalyticsDashboard({ onClose }) {
                         <th className="px-3 py-2 text-right font-bold text-gray-700">Qty</th>
                         <th className="px-3 py-2 text-left font-bold text-gray-700">Status</th>
                         <th className="px-3 py-2 text-center font-bold text-gray-700">Date</th>
+                      </>
+                    )}
+                    {selectedTile === 'outstanding' && (
+                      <>
+                        <th className="px-3 py-2 text-left font-bold text-gray-700">Client</th>
+                        <th className="px-3 py-2 text-left font-bold text-gray-700">Mobile</th>
+                        <th className="px-3 py-2 text-right font-bold text-gray-700">
+                          Outstanding
+                        </th>
                       </>
                     )}
                   </tr>
@@ -386,6 +425,16 @@ export default function SalesAnalyticsDashboard({ onClose }) {
                         </td>
                       </tr>
                     ))}
+                  {selectedTile === 'outstanding' &&
+                    getDetailData.outstanding.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-3 py-3 text-gray-700">{item.customer}</td>
+                        <td className="px-3 py-3 text-gray-700">{item.mobile || '--'}</td>
+                        <td className="px-3 py-3 text-right font-bold text-red-600">
+                          {formatCurrency(item.outstanding)}
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
@@ -393,7 +442,8 @@ export default function SalesAnalyticsDashboard({ onClose }) {
             {/* Empty State */}
             {((selectedTile === 'revenue' && getDetailData.revenue.length === 0) ||
               (selectedTile === 'orders' && getDetailData.orders.length === 0) ||
-              (selectedTile === 'pending' && getDetailData.pending.length === 0)) && (
+              (selectedTile === 'pending' && getDetailData.pending.length === 0) ||
+              (selectedTile === 'outstanding' && getDetailData.outstanding.length === 0)) && (
               <div className="text-center py-8 text-gray-500">
                 No data available for this period
               </div>
