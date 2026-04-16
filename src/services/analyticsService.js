@@ -144,6 +144,12 @@ export const computeAnalyticsKpis = (orders = [], payments = [], clients = [], d
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 5);
 
+  // 8. Total Outstanding - Sum of client-level due amounts
+  const totalOutstanding = clients.reduce((sum, client) => {
+    const outstanding = Number(client.outstanding || 0);
+    return outstanding > 0 ? sum + outstanding : sum;
+  }, 0);
+
   return {
     revenue: Math.round(revenue),
     orderCount,
@@ -151,6 +157,7 @@ export const computeAnalyticsKpis = (orders = [], payments = [], clients = [], d
     pendingOrderCount,
     newCustomerCount,
     collectionRate: Math.round(collectionRate),
+    totalOutstanding: Math.round(totalOutstanding),
     topCustomers,
     lastUpdated: new Date(),
   };
