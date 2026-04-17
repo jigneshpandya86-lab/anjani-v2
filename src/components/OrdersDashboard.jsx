@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useClientStore } from '../store/clientStore';
-import { Clock, Copy, Edit2, Trash2, Smartphone, Search, HandCoins, FileText, Paperclip, Loader2 } from 'lucide-react';
+import { Clock, Copy, Edit2, Trash2, Smartphone, Search, HandCoins, FileText, Paperclip, Loader2, CalendarRange, Sun, CalendarDays } from 'lucide-react';
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 import { app } from '../firebase-config';
 
@@ -177,37 +177,41 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
         />
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide px-1 items-center">
+      <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-hide px-1 items-center">
         {['All', 'Pending', 'Confirmed', 'Delivered'].map(f => (
-          <button key={f} onClick={() => setFilter(f)} 
-            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${filter === f ? 'bg-[#131921] text-[#ff9900]' : 'bg-white text-gray-400 border border-gray-200'}`}>
+          <button key={f} onClick={() => setFilter(f)}
+            className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.18em] whitespace-nowrap transition-all ${
+              filter === f ? 'bg-[#131921] text-[#ff9900]' : 'bg-white text-gray-400 border border-gray-200'
+            }`}>
             {f === 'Delivered' ? 'DEL' : f}
           </button>
         ))}
-        <button onClick={shareDispatchPlan} className="bg-[#25D366] text-white px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95">
-          <Smartphone size={12} /> Roster
-        </button>
-      </div>
 
-      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide px-1">
+        <span className="h-5 w-px bg-gray-200 shrink-0" />
+
         {[
-          { key: 'All', label: 'All Dates' },
-          { key: 'Today', label: 'Today' },
-          { key: 'Tomorrow', label: 'Tomorrow' },
-          { key: 'ThisWeek', label: 'This Week' },
-        ].map(({ key, label }) => (
+          { key: 'All', label: 'Dates', icon: CalendarRange },
+          { key: 'Today', label: 'Today', icon: Sun },
+          { key: 'Tomorrow', label: 'Tmrw', icon: Clock },
+          { key: 'ThisWeek', label: 'Week', icon: CalendarDays },
+        ].map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => setDateFilter(key)}
-            className={`px-2.5 py-1 rounded-lg text-[9px] font-extrabold uppercase tracking-wide whitespace-nowrap border transition-all ${
+            className={`px-2 py-1.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wide whitespace-nowrap border transition-all inline-flex items-center gap-1 ${
               dateFilter === key
                 ? 'bg-[#ff9900]/15 text-[#cc7a00] border-[#ff9900]/30'
                 : 'bg-white text-gray-400 border-gray-200'
             }`}
           >
-            {label}
+            <Icon size={12} />
+            <span>{label}</span>
           </button>
         ))}
+
+        <button onClick={shareDispatchPlan} className="bg-[#25D366] text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider whitespace-nowrap flex items-center gap-1 shadow-sm active:scale-95">
+          <Smartphone size={12} /> Roster
+        </button>
       </div>
 
       {filteredOrders.length === 0 ? (
