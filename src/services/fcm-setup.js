@@ -18,6 +18,13 @@ export async function initializeFcm(userId, userEmail = null) {
       return false;
     }
 
+    if (!('serviceWorker' in navigator)) {
+      return false;
+    }
+
+    // Register FCM service worker before requesting token
+    const serviceWorkerRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+
     // Initialize messaging
     messaging = getMessaging();
 
@@ -29,7 +36,7 @@ export async function initializeFcm(userId, userEmail = null) {
 
     // Get FCM token
     const vapidKey = import.meta.env.VITE_VAPID_KEY || 'BDJ_S_m7_Q1_X_u7_v_Z_q_Q_H_G_F_D_S_A_Q_W_E_R_T_Y'; 
-    const token = await getToken(messaging, { vapidKey });
+    const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration });
 
     if (!token) {
       return false;
@@ -41,11 +48,12 @@ export async function initializeFcm(userId, userEmail = null) {
       'userDevices',
       userId,
       'tokens',
-      token.substring(0, 32)
+      token
     );
 
     await setDoc(tokenDocRef, {
       token: token,
+      loginId: userEmail || userId,
       platform: 'web',
       createdAt: serverTimestamp(),
       lastActive: serverTimestamp()
@@ -106,7 +114,7 @@ export async function cleanupFcm(userId, token) {
       'userDevices',
       userId,
       'tokens',
-      token.substring(0, 32)
+      token
     );
 
     await deleteDoc(tokenDocRef);
