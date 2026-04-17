@@ -74,12 +74,20 @@ function App() {
   const handleEnableNotifications = async () => {
     if (!user) return;
     try {
-      const { initializeFcm } = await import('./services/fcm-setup');
-      const success = await initializeFcm(user.uid, user.email);
-      if (success) {
-        toast.success('Push notifications enabled!');
+      const { initializeFcm, sendLocalTestNotification } = await import('./services/fcm-setup');
+      const result = await initializeFcm(user.uid, user.email);
+      if (result.success) {
+        await sendLocalTestNotification();
+        toast.success(`Push notifications enabled (${result.tokenPreview})`);
+        if (!result.tokenStored) {
+          toast.error('Notification permission granted, but token record could not be verified.');
+        }
       } else {
-        toast.error('Failed to enable notifications. Please check browser permissions.');
+        if (result.reason === 'permission-denied') {
+          toast.error('Notification permission denied. Please allow notifications in browser settings.');
+        } else {
+          toast.error('Failed to enable notifications. Please check browser permissions.');
+        }
       }
     } catch (error) {
       console.error(error);
