@@ -9,9 +9,7 @@ const __dirname = path.dirname(__filename)
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: {
-      'react-hot-toast': path.resolve(__dirname, 'src/shims/react-hot-toast.js'),
-    },
+    alias: {},
   },
-  base: '/', 
+  base: '/',
 })
