@@ -82,11 +82,53 @@ export async function initializeFcm(userId, userEmail = null) {
       success: true,
       token,
       tokenPreview: `${token.slice(0, 8)}...${token.slice(-8)}`,
-      tokenStored: tokenSnapshot.exists()
+      tokenStored: tokenSnapshot.exists(),
+      serviceWorkerRegistration
     };
   } catch (error) {
     console.error('Error initializing FCM:', error);
     return { success: false, reason: 'unknown-error' };
+  }
+}
+
+function timeout(ms) {
+  return new Promise((resolve) => setTimeout(() => resolve(null), ms));
+}
+
+export async function sendLocalTestNotification(existingRegistration = null) {
+  try {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+      return false;
+    }
+
+    const notificationTitle = 'Test notification enabled ✅';
+    const notificationOptions = {
+      body: 'This device is now registered for Anjani Water alerts.',
+      icon: '/favicon.svg',
+      badge: '/favicon.svg',
+      tag: 'notification-test'
+    };
+
+    if (existingRegistration && typeof existingRegistration.showNotification === 'function') {
+      await existingRegistration.showNotification(notificationTitle, notificationOptions);
+      return true;
+    }
+
+    if ('serviceWorker' in navigator) {
+      const readyRegistration = await Promise.race([navigator.serviceWorker.ready, timeout(2000)]);
+      if (readyRegistration && typeof readyRegistration.showNotification === 'function') {
+        await readyRegistration.showNotification(notificationTitle, notificationOptions);
+        return true;
+      }
+    }
+
+    // Fallback: show in-page notification without service worker dependency.
+    // This ensures users get immediate feedback even if SW is still activating.
+    new Notification(notificationTitle, notificationOptions);
+    return true;
+  } catch (error) {
+    console.error('Failed to show local test notification:', error);
+    return false;
   }
 }
 

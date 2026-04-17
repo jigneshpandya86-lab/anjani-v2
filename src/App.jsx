@@ -77,14 +77,26 @@ function App() {
       const { initializeFcm, sendLocalTestNotification } = await import('./services/fcm-setup');
       const result = await initializeFcm(user.uid, user.email);
       if (result.success) {
-        await sendLocalTestNotification();
         toast.success(`Push notifications enabled (${result.tokenPreview})`);
+        sendLocalTestNotification(result.serviceWorkerRegistration).then((testSent) => {
+          if (testSent) {
+            toast.success('Test notification sent to this device.');
+          } else {
+            toast.error('Device registered, but test notification could not be displayed.');
+          }
+        });
         if (!result.tokenStored) {
           toast.error('Notification permission granted, but token record could not be verified.');
         }
       } else {
         if (result.reason === 'permission-denied') {
           toast.error('Notification permission denied. Please allow notifications in browser settings.');
+        } else if (result.reason === 'unsupported-browser') {
+          toast.error('This browser does not support Firebase web push notifications.');
+        } else if (result.reason === 'service-worker-unavailable') {
+          toast.error('Service Worker is not available in this browser context.');
+        } else if (result.reason === 'token-missing') {
+          toast.error('Permission granted, but Firebase could not issue a device token.');
         } else {
           toast.error('Failed to enable notifications. Please check browser permissions.');
         }
