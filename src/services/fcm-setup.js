@@ -131,19 +131,6 @@ export async function sendLocalTestNotification(existingRegistration = null) {
   }
 }
 
-export async function sendLocalTestNotification() {
-  if (!('serviceWorker' in navigator)) return false;
-
-  const registration = await navigator.serviceWorker.ready;
-  await registration.showNotification('Test notification enabled ✅', {
-    body: 'This device is now registered for Anjani Water alerts.',
-    icon: '/favicon.svg',
-    badge: '/favicon.svg',
-    tag: 'notification-test'
-  });
-  return true;
-}
-
 function handleForegroundMessage(payload) {
   const { notification, data } = payload;
 
