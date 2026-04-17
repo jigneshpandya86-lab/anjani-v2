@@ -223,34 +223,6 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
               <div>
                 <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${getStatusColor(order.status)}`}>{order.status || 'LEGACY'}</span>
                 <h3 className="font-black text-gray-900 text-lg mt-2 leading-none">{getDisplayName(order)}</h3>
-                <div className="mt-1 flex items-center gap-2 flex-wrap">
-                  <p className="text-[10px] text-gray-400 font-bold">ID: {order.orderId || 'OLD RECORD'}</p>
-                  <p className="text-[10px] text-gray-400 font-semibold">
-                    Doc: {order.id}
-                  </p>
-                  {userRole === 'admin' && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => onRecordPayment?.(order)}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-200 text-[9px] font-black tracking-wide uppercase"
-                        title="Record payment"
-                      >
-                        <HandCoins size={12} />
-                        Pay
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onShareInvoice?.(order)}
-                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-black tracking-wide uppercase"
-                        title="Invoice PDF / WhatsApp"
-                      >
-                        <FileText size={14} />
-                        PDF
-                      </button>
-                    </>
-                  )}
-                </div>
               </div>
               <div className="text-right">
                 <p className="text-xl font-black text-[#ff9900]">{order.qty || 0} <span className="text-[10px] text-gray-400">BXS</span></p>
@@ -258,8 +230,32 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-xs font-bold text-gray-500 mb-4 bg-gray-50 p-2 rounded-lg">
-              <Clock size={14} className="text-blue-400" /> {order.date || 'No Date'} @ {order.time || '--:--'}
+            <div className="mb-4 flex items-center justify-between gap-2 bg-gray-50 p-2 rounded-lg">
+              <div className="flex items-center gap-2 text-xs font-bold text-gray-500">
+                <Clock size={14} className="text-blue-400" /> {order.date || 'No Date'} @ {order.time || '--:--'}
+              </div>
+              {userRole === 'admin' && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onRecordPayment?.(order)}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-200 text-[9px] font-black tracking-wide uppercase"
+                    title="Record payment"
+                  >
+                    <HandCoins size={12} />
+                    Pay
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onShareInvoice?.(order)}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-black tracking-wide uppercase"
+                    title="Invoice PDF / WhatsApp"
+                  >
+                    <FileText size={14} />
+                    PDF
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Action Bar */}
