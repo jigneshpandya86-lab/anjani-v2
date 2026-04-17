@@ -32,18 +32,48 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
     return order.mobile || order.phone || '';
   };
 
-  const filteredOrders = orders.filter(o => {
-    const name = getDisplayName(o);
-    const mobile = getDisplayMobile(o);
-    const matchesStatus = filter === 'All' || o.status === filter;
-    const searchLower = searchQuery.toLowerCase();
-    const qtyText = String(o.qty ?? o.boxes ?? o.quantity ?? '');
-    const matchesSearch = name.toLowerCase().includes(searchLower) ||
-                          (o.orderId || '').toLowerCase().includes(searchLower) ||
-                          mobile.includes(searchLower) ||
-                          qtyText.includes(searchLower);
-    return matchesStatus && matchesSearch;
-  });
+  const getOrderTimestamp = (order) => {
+    if (order?.createdAt?.toDate) {
+      return order.createdAt.toDate().getTime();
+    }
+
+    if (order?.date) {
+      const dateTime = `${order.date} ${order.time || '00:00'}`;
+      const parsed = new Date(dateTime).getTime();
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+
+    return 0;
+  };
+
+  const getStatusSortGroup = (status) => {
+    const normalizedStatus = (status || '').toLowerCase();
+    if (normalizedStatus === 'pending') return 0;
+    if (normalizedStatus === 'delivered') return 1;
+    return 2;
+  };
+
+  const searchLower = searchQuery.toLowerCase();
+
+  const filteredOrders = orders
+    .filter((o) => {
+      const name = getDisplayName(o);
+      const mobile = String(getDisplayMobile(o) || '').toLowerCase();
+      const matchesStatus = filter === 'All' || o.status === filter;
+      const qtyText = String(o.qty ?? o.boxes ?? o.quantity ?? '');
+      const matchesSearch =
+        name.toLowerCase().includes(searchLower) ||
+        (o.orderId || '').toLowerCase().includes(searchLower) ||
+        mobile.includes(searchLower) ||
+        qtyText.includes(searchLower);
+
+      return matchesStatus && matchesSearch;
+    })
+    .sort((a, b) => {
+      const statusGroupDiff = getStatusSortGroup(a.status) - getStatusSortGroup(b.status);
+      if (statusGroupDiff !== 0) return statusGroupDiff;
+      return getOrderTimestamp(b) - getOrderTimestamp(a);
+    });
 
   const shareOrder = (order) => {
     const msg = `🚚 *NEW DELIVERY ASSIGNMENT*\n\n*ID:* ${order.orderId || 'N/A'}\n*Client:* ${getDisplayName(order)}\n*Mobile:* ${getDisplayMobile(order)}\n*Date:* ${order.date || 'TBD'} at ${order.time || 'TBD'}\n*Qty:* ${order.qty || 0} Boxes (200ml)\n\n*Address:*\n${order.address || 'N/A'}\n\n*Location:* ${order.location || 'N/A'}`;
