@@ -1,27 +1,5 @@
 // KPI Computation Logic - All client-side, zero Firestore operations
 
-// Get today's date as YYYY-MM-DD string for matching order.date field
-const getTodayString = () => {
-  const now = new Date();
-  return now.toISOString().split('T')[0];
-};
-
-// Get week start date as YYYY-MM-DD string
-const getWeekStartString = () => {
-  const now = new Date();
-  const dayOfWeek = now.getDay();
-  const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-  const weekStart = new Date(now.getFullYear(), now.getMonth(), diff);
-  return weekStart.toISOString().split('T')[0];
-};
-
-// Get month start date as YYYY-MM-DD string
-const getMonthStartString = () => {
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  return monthStart.toISOString().split('T')[0];
-};
-
 export const getDateRangeForFilter = (filterType) => {
   const now = new Date();
   const startDate = new Date();
