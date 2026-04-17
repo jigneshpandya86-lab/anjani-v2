@@ -4,7 +4,6 @@ import {
   onMessage,
   isSupported
 } from 'firebase/messaging';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase-config';
 import { doc, setDoc, deleteDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 
@@ -62,19 +61,6 @@ export async function initializeFcm(userId, userEmail = null) {
       lastActive: serverTimestamp()
     });
     const tokenSnapshot = await getDoc(tokenDocRef);
-
-    // Call the new registerDevice Cloud Function for consolidated logging
-    try {
-        const functions = getFunctions(undefined, "asia-south1");
-        const registerDevice = httpsCallable(functions, 'registerDevice');
-        await registerDevice({
-          token,
-          loginId: userEmail || userId,
-          deviceName: window.navigator.userAgent
-        });
-    } catch (regError) {
-        console.warn('Note: registerDevice function call failed (usually due to CORS or function not deployed):', regError.message);
-    }
 
     // Listen for messages when app is in foreground
     onMessage(messaging, (payload) => {
