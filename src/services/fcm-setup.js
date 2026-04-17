@@ -35,7 +35,7 @@ export async function initializeFcm(userId, userEmail = null) {
     }
 
     // Get FCM token
-    const vapidKey = import.meta.env.VITE_VAPID_KEY || 'BDJ_S_m7_Q1_X_u7_v_Z_q_Q_H_G_F_D_S_A_Q_W_E_R_T_Y'; 
+    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
     const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration });
 
     if (!token) {
@@ -129,19 +129,6 @@ export async function sendLocalTestNotification(existingRegistration = null) {
     console.error('Failed to show local test notification:', error);
     return false;
   }
-}
-
-export async function sendLocalTestNotification() {
-  if (!('serviceWorker' in navigator)) return false;
-
-  const registration = await navigator.serviceWorker.ready;
-  await registration.showNotification('Test notification enabled ✅', {
-    body: 'This device is now registered for Anjani Water alerts.',
-    icon: '/favicon.svg',
-    badge: '/favicon.svg',
-    tag: 'notification-test'
-  });
-  return true;
 }
 
 function handleForegroundMessage(payload) {
