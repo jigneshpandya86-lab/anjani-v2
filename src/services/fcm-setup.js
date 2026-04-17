@@ -91,10 +91,6 @@ export async function initializeFcm(userId, userEmail = null) {
   }
 }
 
-function timeout(ms) {
-  return new Promise((resolve) => setTimeout(() => resolve(null), ms));
-}
-
 export async function sendLocalTestNotification(existingRegistration = null) {
   try {
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
@@ -115,7 +111,10 @@ export async function sendLocalTestNotification(existingRegistration = null) {
     }
 
     if ('serviceWorker' in navigator) {
-      const readyRegistration = await Promise.race([navigator.serviceWorker.ready, timeout(2000)]);
+      const readyRegistration = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise((resolve) => setTimeout(() => resolve(null), 2000))
+      ]);
       if (readyRegistration && typeof readyRegistration.showNotification === 'function') {
         await readyRegistration.showNotification(notificationTitle, notificationOptions);
         return true;
