@@ -12,38 +12,35 @@ let messaging = null;
 
 export async function initializeFcm(userId, userEmail = null) {
   try {
-    // Check if FCM is supported in this browser
     const supported = await isSupported();
     if (!supported) {
-      return false;
+      console.warn('FCM is not supported in this browser.');
+      return { success: false, error: 'Browser not supported' };
     }
 
-    // Initialize messaging
     messaging = getMessaging();
 
-    // Request notification permission
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
-      return false;
+      return { success: false, error: 'Permission denied' };
     }
 
-    // Get FCM token
     const vapidKey = import.meta.env.VITE_VAPID_KEY || 'BDJ_S_m7_Q1_X_u7_v_Z_q_Q_H_G_F_D_S_A_Q_W_E_R_T_Y'; 
-    const token = await getToken(messaging, { vapidKey });
+    
+    let token;
+    try {
+      token = await getToken(messaging, { vapidKey });
+    } catch (tokenError) {
+      console.error('Error getting token:', tokenError);
+      return { success: false, error: 'Token generation failed: ' + tokenError.message };
+    }
 
     if (!token) {
-      return false;
+      return { success: false, error: 'No token returned' };
     }
 
-    // Store token in Firestore (legacy collection)
-    const tokenDocRef = doc(
-      db,
-      'userDevices',
-      userId,
-      'tokens',
-      token.substring(0, 32)
-    );
-
+    // Store token in Firestore (legacy)
+    const tokenDocRef = doc(db, 'userDevices', userId, 'tokens', token.substring(0, 32));
     await setDoc(tokenDocRef, {
       token: token,
       platform: 'web',
@@ -51,7 +48,7 @@ export async function initializeFcm(userId, userEmail = null) {
       lastActive: serverTimestamp()
     });
 
-    // Call the new registerDevice Cloud Function for consolidated logging
+    // Call Cloud Function for logging
     try {
         const functions = getFunctions(undefined, "asia-south1");
         const registerDevice = httpsCallable(functions, 'registerDevice');
@@ -61,18 +58,17 @@ export async function initializeFcm(userId, userEmail = null) {
           deviceName: window.navigator.userAgent 
         });
     } catch (regError) {
-        console.error('Error calling registerDevice function:', regError);
+        console.error('registerDevice error:', regError);
     }
 
-    // Listen for messages when app is in foreground
     onMessage(messaging, (payload) => {
       handleForegroundMessage(payload);
     });
 
-    return true;
+    return { success: true };
   } catch (error) {
-    console.error('Error initializing FCM:', error);
-    return false;
+    console.error('General FCM error:', error);
+    return { success: false, error: error.message };
   }
 }
 

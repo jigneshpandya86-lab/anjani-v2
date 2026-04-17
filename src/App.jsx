@@ -77,15 +77,24 @@ function App() {
 
   const handleEnableNotifications = async () => {
     if (!user) return;
+    const loadingToast = toast.loading('Enabling notifications...');
     try {
       const { initializeFcm } = await import('./services/fcm-setup');
-      const success = await initializeFcm(user.uid, user.email);
-      if (success) {
+      const result = await initializeFcm(user.uid, user.email);
+      
+      toast.dismiss(loadingToast);
+      
+      if (result.success) {
         toast.success('Push notifications enabled!');
       } else {
-        toast.error('Failed to enable notifications. Please check browser permissions.');
+        if (result.error === 'Permission denied') {
+          toast.error('Notifications blocked. Please reset site permissions in your browser address bar.');
+        } else {
+          toast.error(`Setup failed: ${result.error}`);
+        }
       }
     } catch (error) {
+      toast.dismiss(loadingToast);
       console.error(error);
       toast.error('Error enabling notifications.');
     }
