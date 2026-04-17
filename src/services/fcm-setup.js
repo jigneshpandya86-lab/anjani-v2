@@ -36,6 +36,9 @@ export async function initializeFcm(userId, userEmail = null) {
 
     // Get FCM token
     const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+    if (!vapidKey) {
+      console.warn('VITE_FIREBASE_VAPID_KEY is not set. Notifications may not work.');
+    }
     const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration });
 
     if (!token) {
@@ -64,13 +67,13 @@ export async function initializeFcm(userId, userEmail = null) {
     try {
         const functions = getFunctions(undefined, "asia-south1");
         const registerDevice = httpsCallable(functions, 'registerDevice');
-        await registerDevice({ 
-          token, 
+        await registerDevice({
+          token,
           loginId: userEmail || userId,
-          deviceName: window.navigator.userAgent 
+          deviceName: window.navigator.userAgent
         });
     } catch (regError) {
-        console.error('Error calling registerDevice function:', regError);
+        console.warn('Note: registerDevice function call failed (usually due to CORS or function not deployed):', regError.message);
     }
 
     // Listen for messages when app is in foreground

@@ -72,10 +72,17 @@ function App() {
   }, [fetchUserRole])
 
   const handleEnableNotifications = async () => {
-    if (!user) return;
+    if (!user) {
+      toast.error('User not logged in.');
+      return;
+    }
     try {
+      console.log('Starting notification setup...');
       const { initializeFcm, sendLocalTestNotification } = await import('./services/fcm-setup');
+      console.log('FCM module imported successfully');
       const result = await initializeFcm(user.uid, user.email);
+      console.log('FCM initialization result:', result);
+
       if (result.success) {
         toast.success(`Push notifications enabled (${result.tokenPreview})`);
         sendLocalTestNotification(result.serviceWorkerRegistration).then((testSent) => {
@@ -89,6 +96,7 @@ function App() {
           toast.error('Notification permission granted, but token record could not be verified.');
         }
       } else {
+        console.log('FCM initialization failed with reason:', result.reason);
         if (result.reason === 'permission-denied') {
           toast.error('Notification permission denied. Please allow notifications in browser settings.');
         } else if (result.reason === 'unsupported-browser') {
@@ -102,8 +110,8 @@ function App() {
         }
       }
     } catch (error) {
-      console.error(error);
-      toast.error('Error enabling notifications.');
+      console.error('Error in handleEnableNotifications:', error);
+      toast.error('Error enabling notifications: ' + error.message);
     }
   }
 
