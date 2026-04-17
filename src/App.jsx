@@ -16,7 +16,8 @@ import {
   Users,
   TrendingUp,
   CheckSquare,
-  LogOut
+  LogOut,
+  Bell
 } from 'lucide-react'
 import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'firebase/firestore'
 import { db, auth } from './firebase-config'
@@ -63,7 +64,7 @@ function App() {
         await fetchUserRole(currentUser.uid)
         // Initialize FCM for push notifications
         import('./services/fcm-setup').then(({ initializeFcm }) => {
-          initializeFcm(currentUser.uid).catch(console.error)
+          initializeFcm(currentUser.uid, currentUser.email).catch(console.error)
         })
       } else {
         await fetchUserRole(null)
@@ -73,6 +74,23 @@ function App() {
     })
     return unsubAuth
   }, [fetchUserRole])
+
+  const handleEnableNotifications = async () => {
+    if (!user) return;
+    try {
+      const { initializeFcm } = await import('./services/fcm-setup');
+      const success = await initializeFcm(user.uid, user.email);
+      if (success) {
+        toast.success('Push notifications enabled!');
+      } else {
+        toast.error('Failed to enable notifications. Please check browser permissions.');
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error('Error enabling notifications.');
+    }
+  }
+
 
   // AUTH: data is only fetched when user is signed in — do not remove the guard
   useEffect(() => {
@@ -701,6 +719,14 @@ function App() {
         </div>
         {/* AUTH: user email + logout button — do not remove */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleEnableNotifications}
+            className="p-2 rounded-xl text-orange-500 hover:bg-orange-50 transition-colors"
+            aria-label="Enable notifications"
+            title="Enable notifications"
+          >
+            <Bell size={20} />
+          </button>
           <span className="text-sm text-gray-600 hidden sm:inline">{user?.email}</span>
           <button
             onClick={handleLogout}
