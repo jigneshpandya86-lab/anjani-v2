@@ -36,6 +36,9 @@ export async function initializeFcm(userId, userEmail = null) {
 
     // Get FCM token
     const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+    if (!vapidKey) {
+      console.warn('VITE_FIREBASE_VAPID_KEY is not set. Notifications may not work.');
+    }
     const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration });
 
     if (!token) {
