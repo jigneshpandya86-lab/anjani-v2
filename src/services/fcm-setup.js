@@ -4,12 +4,13 @@ import {
   onMessage,
   isSupported
 } from 'firebase/messaging';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase-config';
 import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 
 let messaging = null;
 
-export async function initializeFcm(userId) {
+export async function initializeFcm(userId, userEmail = null) {
   try {
     // Check if FCM is supported in this browser
     const supported = await isSupported();
@@ -27,21 +28,20 @@ export async function initializeFcm(userId) {
     }
 
     // Get FCM token
-    const vapidKey = import.meta.env.REACT_APP_VAPID_PUBLIC_KEY;
-    const tokenOptions = vapidKey ? { vapidKey } : {};
-    const token = await getToken(messaging, tokenOptions);
+    const vapidKey = import.meta.env.VITE_VAPID_KEY || 'BDJ_S_m7_Q1_X_u7_v_Z_q_Q_H_G_F_D_S_A_Q_W_E_R_T_Y'; 
+    const token = await getToken(messaging, { vapidKey });
 
     if (!token) {
       return false;
     }
 
-    // Store token in Firestore
+    // Store token in Firestore (legacy collection)
     const tokenDocRef = doc(
       db,
       'userDevices',
       userId,
       'tokens',
-      token.substring(0, 32) // Use first 32 chars as doc ID
+      token.substring(0, 32)
     );
 
     await setDoc(tokenDocRef, {
@@ -50,6 +50,19 @@ export async function initializeFcm(userId) {
       createdAt: serverTimestamp(),
       lastActive: serverTimestamp()
     });
+
+    // Call the new registerDevice Cloud Function for consolidated logging
+    try {
+        const functions = getFunctions(undefined, "asia-south1");
+        const registerDevice = httpsCallable(functions, 'registerDevice');
+        await registerDevice({ 
+          token, 
+          loginId: userEmail || userId,
+          deviceName: window.navigator.userAgent 
+        });
+    } catch (regError) {
+        console.error('Error calling registerDevice function:', regError);
+    }
 
     // Listen for messages when app is in foreground
     onMessage(messaging, (payload) => {
