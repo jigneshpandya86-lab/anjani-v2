@@ -564,16 +564,17 @@ function App() {
       let lastVisibleDoc = null
 
       while (true) {
-        const constraints = [
-          where('createdAt', '>=', startDate),
-          where('createdAt', '<=', endDate),
-          orderBy('createdAt', 'desc'),
-          limit(LEDGER_EXPORT_PAGE_SIZE)
-        ]
-
-        if (selectedClient.id !== 'all') {
-          constraints.splice(2, 0, where('clientId', '==', selectedClient.id))
-        }
+        const constraints = selectedClient.id === 'all'
+          ? [
+            where('createdAt', '>=', startDate),
+            where('createdAt', '<=', endDate),
+            orderBy('createdAt', 'desc'),
+            limit(LEDGER_EXPORT_PAGE_SIZE)
+          ]
+          : [
+            where('clientId', '==', selectedClient.id),
+            limit(LEDGER_EXPORT_PAGE_SIZE)
+          ]
 
         if (lastVisibleDoc) {
           constraints.push(startAfter(lastVisibleDoc))
@@ -588,13 +589,19 @@ function App() {
         lastVisibleDoc = paymentsSnap.docs[paymentsSnap.docs.length - 1]
       }
 
-      if (payments.length === 0) {
+      const filteredPayments = payments.filter((payment) => {
+        const paymentDate = payment.createdAt?.toDate?.() || payment.date?.toDate?.()
+        if (!paymentDate) return false
+        return paymentDate >= startDate && paymentDate <= endDate
+      })
+
+      if (filteredPayments.length === 0) {
         toast.error('No ledger entries available for report.')
         return
       }
 
       const clientMap = new Map(clients.map((c) => [c.id, c.name || 'Unknown Client']))
-      const rows = payments
+      const rows = filteredPayments
         .sort((a, b) => {
           const aTime = a.date?.toMillis?.() || a.createdAt?.toMillis?.() || 0
           const bTime = b.date?.toMillis?.() || b.createdAt?.toMillis?.() || 0
