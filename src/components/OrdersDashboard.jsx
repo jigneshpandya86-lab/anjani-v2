@@ -8,6 +8,7 @@ import { app } from '../firebase-config';
 export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
   const { orders, clients, updateOrder, deleteOrder, userRole } = useClientStore();
   const [filter, setFilter] = useState('All');
+  const [dateFilter, setDateFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [uploadingProofOrderId, setUploadingProofOrderId] = useState('');
   const [statusUpdatingOrderId, setStatusUpdatingOrderId] = useState('');
@@ -32,48 +33,54 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
     return order.mobile || order.phone || '';
   };
 
-  const getOrderTimestamp = (order) => {
-    if (order?.createdAt?.toDate) {
-      return order.createdAt.toDate().getTime();
-    }
-
-    if (order?.date) {
-      const dateTime = `${order.date} ${order.time || '00:00'}`;
-      const parsed = new Date(dateTime).getTime();
-      if (!Number.isNaN(parsed)) return parsed;
-    }
-
-    return 0;
+  const getOrderDate = (order) => {
+    if (!order?.date) return null;
+    const parsedDate = new Date(order.date);
+    if (Number.isNaN(parsedDate.getTime())) return null;
+    return new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
   };
 
-  const getStatusSortGroup = (status) => {
-    const normalizedStatus = (status || '').toLowerCase();
-    if (normalizedStatus === 'pending') return 0;
-    if (normalizedStatus === 'delivered') return 1;
-    return 2;
+  const doesMatchDateFilter = (order) => {
+    if (dateFilter === 'All') return true;
+
+    const orderDate = getOrderDate(order);
+    if (!orderDate) return false;
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    if (dateFilter === 'Today') {
+      return orderDate.getTime() === today.getTime();
+    }
+
+    if (dateFilter === 'Tomorrow') {
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      return orderDate.getTime() === tomorrow.getTime();
+    }
+
+    if (dateFilter === 'ThisWeek') {
+      const weekEnd = new Date(today);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      return orderDate >= today && orderDate <= weekEnd;
+    }
+
+    return true;
   };
 
-  const searchLower = searchQuery.toLowerCase();
-
-  const filteredOrders = orders
-    .filter((o) => {
-      const name = getDisplayName(o);
-      const mobile = String(getDisplayMobile(o) || '').toLowerCase();
-      const matchesStatus = filter === 'All' || o.status === filter;
-      const qtyText = String(o.qty ?? o.boxes ?? o.quantity ?? '');
-      const matchesSearch =
-        name.toLowerCase().includes(searchLower) ||
-        (o.orderId || '').toLowerCase().includes(searchLower) ||
-        mobile.includes(searchLower) ||
-        qtyText.includes(searchLower);
-
-      return matchesStatus && matchesSearch;
-    })
-    .sort((a, b) => {
-      const statusGroupDiff = getStatusSortGroup(a.status) - getStatusSortGroup(b.status);
-      if (statusGroupDiff !== 0) return statusGroupDiff;
-      return getOrderTimestamp(b) - getOrderTimestamp(a);
-    });
+  const filteredOrders = orders.filter(o => {
+    const name = getDisplayName(o);
+    const mobile = getDisplayMobile(o);
+    const matchesStatus = filter === 'All' || o.status === filter;
+    const matchesDate = doesMatchDateFilter(o);
+    const searchLower = searchQuery.toLowerCase();
+    const qtyText = String(o.qty ?? o.boxes ?? o.quantity ?? '');
+    const matchesSearch = name.toLowerCase().includes(searchLower) ||
+                          (o.orderId || '').toLowerCase().includes(searchLower) ||
+                          mobile.includes(searchLower) ||
+                          qtyText.includes(searchLower);
+    return matchesStatus && matchesDate && matchesSearch;
+  });
 
   const shareOrder = (order) => {
     const msg = `🚚 *NEW DELIVERY ASSIGNMENT*\n\n*ID:* ${order.orderId || 'N/A'}\n*Client:* ${getDisplayName(order)}\n*Mobile:* ${getDisplayMobile(order)}\n*Date:* ${order.date || 'TBD'} at ${order.time || 'TBD'}\n*Qty:* ${order.qty || 0} Boxes (200ml)\n\n*Address:*\n${order.address || 'N/A'}\n\n*Location:* ${order.location || 'N/A'}`;
@@ -180,6 +187,27 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
         <button onClick={shareDispatchPlan} className="bg-[#25D366] text-white px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95">
           <Smartphone size={12} /> Roster
         </button>
+      </div>
+
+      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide px-1">
+        {[
+          { key: 'All', label: 'All Dates' },
+          { key: 'Today', label: 'Today' },
+          { key: 'Tomorrow', label: 'Tomorrow' },
+          { key: 'ThisWeek', label: 'This Week' },
+        ].map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setDateFilter(key)}
+            className={`px-2.5 py-1 rounded-lg text-[9px] font-extrabold uppercase tracking-wide whitespace-nowrap border transition-all ${
+              dateFilter === key
+                ? 'bg-[#ff9900]/15 text-[#cc7a00] border-[#ff9900]/30'
+                : 'bg-white text-gray-400 border-gray-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {filteredOrders.length === 0 ? (
