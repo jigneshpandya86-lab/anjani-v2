@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import toast, { Toaster } from 'react-hot-toast'
 import { useClientStore } from './store/clientStore'
 import {
@@ -17,7 +17,8 @@ import {
   TrendingUp,
   CheckSquare,
   LogOut,
-  Bell
+  Bell,
+  CheckCheck
 } from 'lucide-react'
 import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'firebase/firestore'
 import { db, auth } from './firebase-config'
@@ -37,6 +38,7 @@ import TasksPage from './TasksPage'
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
 function App() {
+  const NOTIFICATION_READ_STORAGE_PREFIX = 'anjani-notification-read-v1'
   const [activeTab, setActiveTab] = useState('orders')
   const [editOrder, setEditOrder] = useState(null)
   const [editClient, setEditClient] = useState(null)
@@ -48,12 +50,21 @@ function App() {
   const [ledgerClientId, setLedgerClientId] = useState('')
   const [ledgerDateRange, setLedgerDateRange] = useState('current-month')
   const [analyticsModalOpen, setAnalyticsModalOpen] = useState(false)
+  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false)
+  const [notifications, setNotifications] = useState([])
+  const [notificationReadMap, setNotificationReadMap] = useState({})
+  const notificationPanelRef = useRef(null)
   // ─────────────────────────────────────────
   // AUTH — DO NOT MODIFY WITHOUT TEAM REVIEW
   // ─────────────────────────────────────────
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const { fetchClients, fetchOrders, fetchStock, fetchStockTotal, orders, clients, userRole, fetchUserRole } = useClientStore()
+  const readStorageKey = user?.uid ? `${NOTIFICATION_READ_STORAGE_PREFIX}-${user.uid}` : null
+
+  const unreadNotificationCount = useMemo(() => {
+    return notifications.reduce((count, item) => (notificationReadMap[item.id] ? count : count + 1), 0)
+  }, [notificationReadMap, notifications])
 
   // AUTH: monitors login/logout state — removing this breaks the entire auth flow
   useEffect(() => {
@@ -114,6 +125,113 @@ function App() {
       toast.error('Error enabling notifications: ' + error.message);
     }
   }
+
+  const formatNotificationTime = (value) => {
+    if (!value) return ''
+
+    const asDate = value?.toDate?.() || (typeof value === 'object' && typeof value.seconds === 'number'
+      ? new Date(value.seconds * 1000)
+      : new Date(value))
+
+    if (!(asDate instanceof Date) || Number.isNaN(asDate.getTime())) return ''
+
+    return asDate.toLocaleString([], {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  const markNotificationAsRead = (notificationId) => {
+    if (!notificationId) return
+
+    setNotificationReadMap((prev) => {
+      const next = { ...prev, [notificationId]: true }
+      if (readStorageKey) {
+        window.localStorage.setItem(readStorageKey, JSON.stringify(next))
+      }
+      return next
+    })
+  }
+
+  const markAllNotificationsAsRead = () => {
+    const next = notifications.reduce((acc, item) => {
+      acc[item.id] = true
+      return acc
+    }, {})
+
+    setNotificationReadMap(next)
+    if (readStorageKey) {
+      window.localStorage.setItem(readStorageKey, JSON.stringify(next))
+    }
+    toast.success('Notifications cleared')
+  }
+
+  const handleBellClick = () => {
+    setNotificationPanelOpen((prev) => !prev)
+  }
+
+  useEffect(() => {
+    if (!readStorageKey) {
+      setNotificationReadMap({})
+      return
+    }
+
+    const savedValue = window.localStorage.getItem(readStorageKey)
+    if (!savedValue) {
+      setNotificationReadMap({})
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(savedValue)
+      setNotificationReadMap(parsed && typeof parsed === 'object' ? parsed : {})
+    } catch {
+      setNotificationReadMap({})
+    }
+  }, [readStorageKey])
+
+  useEffect(() => {
+    if (!user) return undefined
+
+    const notificationQuery = query(
+      collection(db, 'notifications'),
+      orderBy('timestamp', 'desc'),
+      limit(20)
+    )
+
+    let ignoreUpdates = false
+
+    getDocs(notificationQuery)
+      .then((snapshot) => {
+        if (ignoreUpdates) return
+        const fetchedNotifications = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+        setNotifications(fetchedNotifications)
+      })
+      .catch((error) => {
+        console.error('Failed to load notifications:', error)
+      })
+
+    return () => {
+      ignoreUpdates = true
+    }
+  }, [user])
+
+  useEffect(() => {
+    if (!notificationPanelOpen) return undefined
+
+    const handleOutsidePanelClick = (event) => {
+      if (!notificationPanelRef.current?.contains(event.target)) {
+        setNotificationPanelOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsidePanelClick)
+    return () => {
+      document.removeEventListener('mousedown', handleOutsidePanelClick)
+    }
+  }, [notificationPanelOpen])
 
 
   // AUTH: data is only fetched when user is signed in — do not remove the guard
@@ -564,16 +682,17 @@ function App() {
       let lastVisibleDoc = null
 
       while (true) {
-        const constraints = [
-          where('createdAt', '>=', startDate),
-          where('createdAt', '<=', endDate),
-          orderBy('createdAt', 'desc'),
-          limit(LEDGER_EXPORT_PAGE_SIZE)
-        ]
-
-        if (selectedClient.id !== 'all') {
-          constraints.splice(2, 0, where('clientId', '==', selectedClient.id))
-        }
+        const constraints = selectedClient.id === 'all'
+          ? [
+            where('createdAt', '>=', startDate),
+            where('createdAt', '<=', endDate),
+            orderBy('createdAt', 'desc'),
+            limit(LEDGER_EXPORT_PAGE_SIZE)
+          ]
+          : [
+            where('clientId', '==', selectedClient.id),
+            limit(LEDGER_EXPORT_PAGE_SIZE)
+          ]
 
         if (lastVisibleDoc) {
           constraints.push(startAfter(lastVisibleDoc))
@@ -588,13 +707,19 @@ function App() {
         lastVisibleDoc = paymentsSnap.docs[paymentsSnap.docs.length - 1]
       }
 
-      if (payments.length === 0) {
+      const filteredPayments = payments.filter((payment) => {
+        const paymentDate = payment.createdAt?.toDate?.() || payment.date?.toDate?.()
+        if (!paymentDate) return false
+        return paymentDate >= startDate && paymentDate <= endDate
+      })
+
+      if (filteredPayments.length === 0) {
         toast.error('No ledger entries available for report.')
         return
       }
 
       const clientMap = new Map(clients.map((c) => [c.id, c.name || 'Unknown Client']))
-      const rows = payments
+      const rows = filteredPayments
         .sort((a, b) => {
           const aTime = a.date?.toMillis?.() || a.createdAt?.toMillis?.() || 0
           const bTime = b.date?.toMillis?.() || b.createdAt?.toMillis?.() || 0
@@ -742,15 +867,65 @@ function App() {
           </div>
         </div>
         {/* AUTH: user email + logout button — do not remove */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 relative" ref={notificationPanelRef}>
           <button
-            onClick={handleEnableNotifications}
-            className="p-2 rounded-xl text-orange-500 hover:bg-orange-50 transition-colors"
-            aria-label="Enable notifications"
-            title="Enable notifications"
+            onClick={handleBellClick}
+            className="p-2 rounded-xl text-orange-500 hover:bg-orange-50 transition-colors relative"
+            aria-label="Notifications"
+            title="Notifications"
           >
             <Bell size={20} />
+            {unreadNotificationCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[11px] font-bold px-1 flex items-center justify-center">
+                {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+              </span>
+            )}
           </button>
+          {notificationPanelOpen && (
+            <div className="absolute right-0 top-12 w-[320px] max-h-[420px] overflow-hidden bg-white border border-gray-100 rounded-2xl shadow-xl z-50">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <p className="text-sm font-black text-[#131921]">Notifications</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={markAllNotificationsAsRead}
+                    disabled={notifications.length === 0}
+                    className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-[#131921] disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <CheckCheck size={14} />
+                    Clear all
+                  </button>
+                  <button
+                    onClick={handleEnableNotifications}
+                    className="text-xs font-bold text-orange-500 hover:text-orange-600"
+                  >
+                    Enable
+                  </button>
+                </div>
+              </div>
+              <div className="max-h-[360px] overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <p className="px-4 py-6 text-sm text-gray-500">No notifications yet.</p>
+                ) : (
+                  notifications.map((item) => {
+                    const isRead = !!notificationReadMap[item.id]
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => markNotificationAsRead(item.id)}
+                        className={`w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${isRead ? 'bg-white' : 'bg-orange-50/40'}`}
+                      >
+                        <p className="text-sm font-bold text-[#131921]">{item.title || item.message || 'Notification'}</p>
+                        {item.message && item.title ? (
+                          <p className="mt-1 text-xs text-gray-600">{item.message}</p>
+                        ) : null}
+                        <p className="mt-2 text-[11px] text-gray-400">{formatNotificationTime(item.timestamp)}</p>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+          )}
           <span className="text-sm text-gray-600 hidden sm:inline">{user?.email}</span>
           <button
             onClick={handleLogout}
