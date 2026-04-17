@@ -62,10 +62,6 @@ function App() {
       
       if (currentUser) {
         await fetchUserRole(currentUser.uid)
-        // Initialize FCM for push notifications
-        import('./services/fcm-setup').then(({ initializeFcm }) => {
-          initializeFcm(currentUser.uid, currentUser.email).catch(console.error)
-        })
       } else {
         await fetchUserRole(null)
       }
