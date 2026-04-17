@@ -35,7 +35,7 @@ export async function initializeFcm(userId, userEmail = null) {
     }
 
     // Get FCM token
-    const vapidKey = import.meta.env.VITE_VAPID_KEY || 'BDJ_S_m7_Q1_X_u7_v_Z_q_Q_H_G_F_D_S_A_Q_W_E_R_T_Y'; 
+    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
     const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration });
 
     if (!token) {
