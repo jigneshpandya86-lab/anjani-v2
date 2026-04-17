@@ -46,8 +46,6 @@ function App() {
   const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
   const [ledgerClientId, setLedgerClientId] = useState('')
   const [ledgerDateRange, setLedgerDateRange] = useState('current-month')
-  const [leadQuickActionPromptOpen, setLeadQuickActionPromptOpen] = useState(false)
-  const [pendingLeadAction, setPendingLeadAction] = useState(null)
   const [analyticsModalOpen, setAnalyticsModalOpen] = useState(false)
   // ─────────────────────────────────────────
   // AUTH — DO NOT MODIFY WITHOUT TEAM REVIEW
@@ -96,13 +94,6 @@ function App() {
       if (unsubStockTotal) unsubStockTotal()
     }
   }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, user, userRole])
-
-  useEffect(() => {
-    if (!user) return
-    if (typeof window === 'undefined') return
-    const seen = window.sessionStorage.getItem('leadQuickActionPromptSeen')
-    if (!seen) setLeadQuickActionPromptOpen(true)
-  }, [user])
 
   // AUTH: signs out the current user and clears session
   const handleLogout = async () => {
@@ -673,19 +664,6 @@ function App() {
     }
   ].filter(() => userRole === 'admin')
 
-  const dismissLeadPrompt = () => {
-    setLeadQuickActionPromptOpen(false)
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem('leadQuickActionPromptSeen', '1')
-    }
-  }
-
-  const triggerLeadQuickAction = (action) => {
-    setPendingLeadAction(action)
-    setActiveTab('leads')
-    dismissLeadPrompt()
-  }
-
   // AUTH: show loading screen while Firebase resolves the auth state on startup
   if (authLoading) {
     return (
@@ -772,46 +750,11 @@ function App() {
           {activeTab === 'tasks' && <TasksPage />}
           {activeTab === 'leads' && (
             <LeadsDashboard
-              pendingAction={pendingLeadAction}
-              onPendingActionHandled={() => setPendingLeadAction(null)}
+              pendingAction={null}
             />
           )}
         </div>
       </div>
-
-      {leadQuickActionPromptOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={dismissLeadPrompt}>
-          <div className="bg-white rounded-2xl w-full max-w-md p-5 shadow-xl space-y-4" onClick={(e) => e.stopPropagation()}>
-            <div className="space-y-1">
-              <h3 className="text-base font-black text-gray-900 tracking-tight">Run Lead Actions</h3>
-              <p className="text-sm text-gray-500">You can run this from any page. We will switch to Leads automatically.</p>
-            </div>
-            <div className="grid grid-cols-1 gap-2">
-              <button
-                type="button"
-                onClick={() => triggerLeadQuickAction('connect')}
-                className="w-full rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm py-2.5"
-              >
-                Run Connect
-              </button>
-              <button
-                type="button"
-                onClick={() => triggerLeadQuickAction('both')}
-                className="w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold text-sm py-2.5"
-              >
-                Run Both
-              </button>
-              <button
-                type="button"
-                onClick={dismissLeadPrompt}
-                className="w-full rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-sm py-2.5"
-              >
-                Not Now
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Slide-in Drawer (all screen sizes) */}
       {drawerOpen && (
