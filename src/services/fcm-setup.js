@@ -4,14 +4,14 @@ import {
   onMessage,
   isSupported
 } from 'firebase/messaging';
-import { db } from '../firebase-config';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { db, app } from '../firebase-config';
 import { doc, setDoc, deleteDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 
 let messaging = null;
 
 export async function initializeFcm(userId, userEmail = null) {
   try {
-    // Check if FCM is supported in this browser
     const supported = await isSupported();
     if (!supported) {
       return { success: false, reason: 'unsupported-browser' };
@@ -25,9 +25,8 @@ export async function initializeFcm(userId, userEmail = null) {
     const serviceWorkerRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
 
     // Initialize messaging
-    messaging = getMessaging();
+    messaging = getMessaging(app);
 
-    // Request notification permission
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
       return { success: false, reason: 'permission-denied' };
@@ -60,9 +59,22 @@ export async function initializeFcm(userId, userEmail = null) {
       createdAt: serverTimestamp(),
       lastActive: serverTimestamp()
     });
+
+    // Call Cloud Function for logging/registration
+    try {
+        const functions = getFunctions(app, "asia-south1");
+        const registerDevice = httpsCallable(functions, 'registerDevice');
+        await registerDevice({ 
+          token, 
+          loginId: userEmail || userId,
+          deviceName: window.navigator.userAgent 
+        });
+    } catch (regError) {
+        console.error('registerDevice error:', regError);
+    }
+
     const tokenSnapshot = await getDoc(tokenDocRef);
 
-    // Listen for messages when app is in foreground
     onMessage(messaging, (payload) => {
       handleForegroundMessage(payload);
     });
@@ -101,7 +113,7 @@ export async function sendLocalTestNotification(existingRegistration = null) {
 
     if ('serviceWorker' in navigator) {
       const readyRegistration = await Promise.race([
-        navigator.serviceWorker.ready,
+        navigator.worker.ready,
         new Promise((resolve) => setTimeout(() => resolve(null), 2000))
       ]);
       if (readyRegistration && typeof readyRegistration.showNotification === 'function') {
@@ -111,7 +123,6 @@ export async function sendLocalTestNotification(existingRegistration = null) {
     }
 
     // Fallback: show in-page notification without service worker dependency.
-    // This ensures users get immediate feedback even if SW is still activating.
     new Notification(notificationTitle, notificationOptions);
     return true;
   } catch (error) {

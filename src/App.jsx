@@ -87,12 +87,16 @@ function App() {
       toast.error('User not logged in.');
       return;
     }
+
+    const loadingToast = toast.loading('Enabling notifications...');
     try {
       console.log('Starting notification setup...');
       const { initializeFcm, sendLocalTestNotification } = await import('./services/fcm-setup');
       console.log('FCM module imported successfully');
       const result = await initializeFcm(user.uid, user.email);
       console.log('FCM initialization result:', result);
+
+      toast.dismiss(loadingToast);
 
       if (result.success) {
         toast.success(`Push notifications enabled (${result.tokenPreview})`);
@@ -121,6 +125,7 @@ function App() {
         }
       }
     } catch (error) {
+      toast.dismiss(loadingToast);
       console.error('Error in handleEnableNotifications:', error);
       toast.error('Error enabling notifications: ' + error.message);
     }
@@ -401,11 +406,11 @@ function App() {
     const rH = 18
 
     // Build content stream for a single page
-    const buildPageStream = (pageRows, isFirstPage) => {
+    const buildPageStream = (pageRows, i) => {
       const lines = []
       let y = pH - mg - 20
 
-      if (isFirstPage) {
+      if (i === 0) {
         lines.push(txt(mg, y, 14, title))
         y -= 20
         lines.push('0.5 0.5 0.5 rg')
@@ -425,7 +430,7 @@ function App() {
       lines.push('0.2 0.2 0.2 rg')
       lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
       lines.push('1 1 1 rg')
-      columns.forEach((col, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, col)))
+      columns.forEach((col, idx) => lines.push(txt(mg + idx * colW + 4, y + 4, 7, col)))
       lines.push('0 0 0 rg')
       y -= rH
 
@@ -435,7 +440,7 @@ function App() {
           lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
           lines.push('0 0 0 rg')
         }
-        row.forEach((cell, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, cell)))
+        row.forEach((cell, idx) => lines.push(txt(mg + idx * colW + 4, y + 4, 7, cell)))
         y -= rH
       })
 
@@ -463,7 +468,7 @@ function App() {
     }
 
     // Build one stream per page
-    const streams = pages.map((pageRows, i) => buildPageStream(pageRows, i === 0))
+    const streams = pages.map((pageRows, i) => buildPageStream(pageRows, i))
 
     // PDF object layout:
     //   1: Catalog, 2: Pages,
