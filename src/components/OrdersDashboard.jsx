@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useClientStore } from '../store/clientStore';
-import { Clock, Copy, Edit2, Trash2, Smartphone, Search, HandCoins, FileText, Paperclip, Loader2, CalendarRange, Sun, CalendarDays } from 'lucide-react';
+import { Clock, Copy, Edit2, Trash2, Smartphone, Search, HandCoins, FileText, Paperclip, Loader2, CalendarRange, Sun, CalendarDays, Phone } from 'lucide-react';
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 import { app } from '../firebase-config';
 
@@ -94,6 +94,16 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
       msg += `${i+1}. ${getDisplayName(o)} - ${o.qty} Bxs - ${o.date} ${o.time}\n`;
     });
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
+  const callClient = (order) => {
+    const mobile = getDisplayMobile(order);
+    const cleanMobile = String(mobile || '').replace(/\D/g, '');
+    if (!cleanMobile) {
+      toast.error('Client mobile number not found');
+      return;
+    }
+    window.open(`tel:${cleanMobile}`, '_self');
   };
 
   const handleDelete = async (order) => {
@@ -282,7 +292,10 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
                       onChange={(event) => uploadDeliveryProof(order, event)}
                     />
                     {order.status !== 'Delivered' && (
-                      <button onClick={() => onEdit(order)} className="bg-blue-50 text-blue-500 p-2 rounded-xl"><Edit2 size={16} /></button>
+                      <>
+                        <button onClick={() => callClient(order)} className="bg-green-50 text-green-600 p-2 rounded-xl" title="Call client"><Phone size={16} /></button>
+                        <button onClick={() => onEdit(order)} className="bg-blue-50 text-blue-500 p-2 rounded-xl"><Edit2 size={16} /></button>
+                      </>
                     )}
                     <button onClick={() => onCopy(order)} className="bg-gray-100 text-gray-500 p-2 rounded-xl"><Copy size={16} /></button>
                     <button onClick={() => handleDelete(order)} className="bg-red-50 text-red-500 p-2 rounded-xl"><Trash2 size={16} /></button>
