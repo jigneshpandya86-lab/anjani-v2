@@ -559,9 +559,8 @@ async function sendBackgroundSms({ macroUrl, phone, message }) {
   }
 }
 
-function buildFollowUpSmsMessage({ name, reminderDay }) {
-  const displayName = name || "Sir/Madam";
-  return `Hello ${displayName}, this is a gentle follow-up from Anjani Water, Vadodara. It's been ${reminderDay} day${reminderDay > 1 ? "s" : ""} since our last message. Can we help with your packaged water bottle requirement?`;
+function buildFollowUpSmsMessage({ reminderDay }) {
+  return `Sir/Madam, this is a gentle follow-up from Anjani Water, Vadodara. It's been ${reminderDay} day${reminderDay > 1 ? "s" : ""} since our last message. Can we help with your packaged water bottle requirement?`;
 }
 
 function getDueReminderContext(lead, now = new Date()) {
