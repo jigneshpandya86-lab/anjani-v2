@@ -5,8 +5,8 @@ import {
   isSupported
 } from 'firebase/messaging';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { db } from '../firebase-config';
-import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { db, app } from '../firebase-config';
+import { doc, setDoc, deleteDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 
 let messaging = null;
 
@@ -14,43 +14,55 @@ export async function initializeFcm(userId, userEmail = null) {
   try {
     const supported = await isSupported();
     if (!supported) {
-      console.warn('FCM is not supported in this browser.');
-      return { success: false, error: 'Browser not supported' };
+      return { success: false, reason: 'unsupported-browser' };
     }
 
-    messaging = getMessaging();
+    if (!('serviceWorker' in navigator)) {
+      return { success: false, reason: 'service-worker-unavailable' };
+    }
+
+    // Register FCM service worker before requesting token
+    const serviceWorkerRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+
+    // Initialize messaging
+    messaging = getMessaging(app);
 
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
-      return { success: false, error: 'Permission denied' };
+      return { success: false, reason: 'permission-denied' };
     }
 
-    const vapidKey = import.meta.env.VITE_VAPID_KEY || 'BDJ_S_m7_Q1_X_u7_v_Z_q_Q_H_G_F_D_S_A_Q_W_E_R_T_Y'; 
-    
-    let token;
-    try {
-      token = await getToken(messaging, { vapidKey });
-    } catch (tokenError) {
-      console.error('Error getting token:', tokenError);
-      return { success: false, error: 'Token generation failed: ' + tokenError.message };
+    // Get FCM token
+    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+    if (!vapidKey) {
+      console.warn('VITE_FIREBASE_VAPID_KEY is not set. Notifications may not work.');
     }
+    const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration });
 
     if (!token) {
-      return { success: false, error: 'No token returned' };
+      return { success: false, reason: 'token-missing' };
     }
 
-    // Store token in Firestore (legacy)
-    const tokenDocRef = doc(db, 'userDevices', userId, 'tokens', token.substring(0, 32));
+    // Store token in Firestore (legacy collection)
+    const tokenDocRef = doc(
+      db,
+      'userDevices',
+      userId,
+      'tokens',
+      token
+    );
+
     await setDoc(tokenDocRef, {
       token: token,
+      loginId: userEmail || userId,
       platform: 'web',
       createdAt: serverTimestamp(),
       lastActive: serverTimestamp()
     });
 
-    // Call Cloud Function for logging
+    // Call Cloud Function for logging/registration
     try {
-        const functions = getFunctions(undefined, "asia-south1");
+        const functions = getFunctions(app, "asia-south1");
         const registerDevice = httpsCallable(functions, 'registerDevice');
         await registerDevice({ 
           token, 
@@ -61,14 +73,61 @@ export async function initializeFcm(userId, userEmail = null) {
         console.error('registerDevice error:', regError);
     }
 
+    const tokenSnapshot = await getDoc(tokenDocRef);
+
     onMessage(messaging, (payload) => {
       handleForegroundMessage(payload);
     });
 
-    return { success: true };
+    return {
+      success: true,
+      token,
+      tokenPreview: `${token.slice(0, 8)}...${token.slice(-8)}`,
+      tokenStored: tokenSnapshot.exists(),
+      serviceWorkerRegistration
+    };
   } catch (error) {
-    console.error('General FCM error:', error);
-    return { success: false, error: error.message };
+    console.error('Error initializing FCM:', error);
+    return { success: false, reason: 'unknown-error' };
+  }
+}
+
+export async function sendLocalTestNotification(existingRegistration = null) {
+  try {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+      return false;
+    }
+
+    const notificationTitle = 'Test notification enabled ✅';
+    const notificationOptions = {
+      body: 'This device is now registered for Anjani Water alerts.',
+      icon: '/favicon.svg',
+      badge: '/favicon.svg',
+      tag: 'notification-test'
+    };
+
+    if (existingRegistration && typeof existingRegistration.showNotification === 'function') {
+      await existingRegistration.showNotification(notificationTitle, notificationOptions);
+      return true;
+    }
+
+    if ('serviceWorker' in navigator) {
+      const readyRegistration = await Promise.race([
+        navigator.worker.ready,
+        new Promise((resolve) => setTimeout(() => resolve(null), 2000))
+      ]);
+      if (readyRegistration && typeof readyRegistration.showNotification === 'function') {
+        await readyRegistration.showNotification(notificationTitle, notificationOptions);
+        return true;
+      }
+    }
+
+    // Fallback: show in-page notification without service worker dependency.
+    new Notification(notificationTitle, notificationOptions);
+    return true;
+  } catch (error) {
+    console.error('Failed to show local test notification:', error);
+    return false;
   }
 }
 
@@ -102,7 +161,7 @@ export async function cleanupFcm(userId, token) {
       'userDevices',
       userId,
       'tokens',
-      token.substring(0, 32)
+      token
     );
 
     await deleteDoc(tokenDocRef);

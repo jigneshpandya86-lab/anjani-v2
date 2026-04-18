@@ -1,13 +1,14 @@
 import { useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useClientStore } from '../store/clientStore';
-import { Clock, Copy, Edit2, Trash2, Smartphone, Search, HandCoins, FileText, Paperclip, Loader2 } from 'lucide-react';
+import { Clock, Copy, Edit2, Trash2, Smartphone, Search, HandCoins, FileText, Paperclip, Loader2, CalendarRange, Sun, CalendarDays } from 'lucide-react';
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 import { app } from '../firebase-config';
 
 export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
   const { orders, clients, updateOrder, deleteOrder, userRole } = useClientStore();
   const [filter, setFilter] = useState('All');
+  const [dateFilter, setDateFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [uploadingProofOrderId, setUploadingProofOrderId] = useState('');
   const [statusUpdatingOrderId, setStatusUpdatingOrderId] = useState('');
@@ -32,17 +33,53 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
     return order.mobile || order.phone || '';
   };
 
+  const getOrderDate = (order) => {
+    if (!order?.date) return null;
+    const parsedDate = new Date(order.date);
+    if (Number.isNaN(parsedDate.getTime())) return null;
+    return new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
+  };
+
+  const doesMatchDateFilter = (order) => {
+    if (dateFilter === 'All') return true;
+
+    const orderDate = getOrderDate(order);
+    if (!orderDate) return false;
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    if (dateFilter === 'Today') {
+      return orderDate.getTime() === today.getTime();
+    }
+
+    if (dateFilter === 'Tomorrow') {
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      return orderDate.getTime() === tomorrow.getTime();
+    }
+
+    if (dateFilter === 'ThisWeek') {
+      const weekEnd = new Date(today);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      return orderDate >= today && orderDate <= weekEnd;
+    }
+
+    return true;
+  };
+
   const filteredOrders = orders.filter(o => {
     const name = getDisplayName(o);
     const mobile = getDisplayMobile(o);
     const matchesStatus = filter === 'All' || o.status === filter;
+    const matchesDate = doesMatchDateFilter(o);
     const searchLower = searchQuery.toLowerCase();
     const qtyText = String(o.qty ?? o.boxes ?? o.quantity ?? '');
     const matchesSearch = name.toLowerCase().includes(searchLower) ||
                           (o.orderId || '').toLowerCase().includes(searchLower) ||
                           mobile.includes(searchLower) ||
                           qtyText.includes(searchLower);
-    return matchesStatus && matchesSearch;
+    return matchesStatus && matchesDate && matchesSearch;
   });
 
   const shareOrder = (order) => {
@@ -140,14 +177,39 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
         />
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide px-1 items-center">
+      <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-hide px-1 items-center">
         {['All', 'Pending', 'Confirmed', 'Delivered'].map(f => (
-          <button key={f} onClick={() => setFilter(f)} 
-            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${filter === f ? 'bg-[#131921] text-[#ff9900]' : 'bg-white text-gray-400 border border-gray-200'}`}>
+          <button key={f} onClick={() => setFilter(f)}
+            className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.18em] whitespace-nowrap transition-all ${
+              filter === f ? 'bg-[#131921] text-[#ff9900]' : 'bg-white text-gray-400 border border-gray-200'
+            }`}>
             {f === 'Delivered' ? 'DEL' : f}
           </button>
         ))}
-        <button onClick={shareDispatchPlan} className="bg-[#25D366] text-white px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider whitespace-nowrap flex items-center gap-1.5 shadow-sm active:scale-95">
+
+        <span className="h-5 w-px bg-gray-200 shrink-0" />
+
+        {[
+          { key: 'All', label: 'Dates', icon: CalendarRange },
+          { key: 'Today', label: 'Today', icon: Sun },
+          { key: 'Tomorrow', label: 'Tmrw', icon: Clock },
+          { key: 'ThisWeek', label: 'Week', icon: CalendarDays },
+        ].map(({ key, label, icon: Icon }) => ( // eslint-disable-line no-unused-vars
+          <button
+            key={key}
+            onClick={() => setDateFilter(key)}
+            className={`px-2 py-1.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wide whitespace-nowrap border transition-all inline-flex items-center gap-1 ${
+              dateFilter === key
+                ? 'bg-[#ff9900]/15 text-[#cc7a00] border-[#ff9900]/30'
+                : 'bg-white text-gray-400 border-gray-200'
+            }`}
+          >
+            <Icon size={12} />
+            <span>{label}</span>
+          </button>
+        ))}
+
+        <button onClick={shareDispatchPlan} className="bg-[#25D366] text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider whitespace-nowrap flex items-center gap-1 shadow-sm active:scale-95">
           <Smartphone size={12} /> Roster
         </button>
       </div>
@@ -161,34 +223,6 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
               <div>
                 <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${getStatusColor(order.status)}`}>{order.status || 'LEGACY'}</span>
                 <h3 className="font-black text-gray-900 text-lg mt-2 leading-none">{getDisplayName(order)}</h3>
-                <div className="mt-1 flex items-center gap-2 flex-wrap">
-                  <p className="text-[10px] text-gray-400 font-bold">ID: {order.orderId || 'OLD RECORD'}</p>
-                  <p className="text-[10px] text-gray-400 font-semibold">
-                    Doc: {order.id}
-                  </p>
-                  {userRole === 'admin' && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => onRecordPayment?.(order)}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-200 text-[9px] font-black tracking-wide uppercase"
-                        title="Record payment"
-                      >
-                        <HandCoins size={12} />
-                        Pay
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onShareInvoice?.(order)}
-                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-black tracking-wide uppercase"
-                        title="Invoice PDF / WhatsApp"
-                      >
-                        <FileText size={14} />
-                        PDF
-                      </button>
-                    </>
-                  )}
-                </div>
               </div>
               <div className="text-right">
                 <p className="text-xl font-black text-[#ff9900]">{order.qty || 0} <span className="text-[10px] text-gray-400">BXS</span></p>
@@ -196,8 +230,32 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-xs font-bold text-gray-500 mb-4 bg-gray-50 p-2 rounded-lg">
-              <Clock size={14} className="text-blue-400" /> {order.date || 'No Date'} @ {order.time || '--:--'}
+            <div className="mb-4 flex items-center justify-between gap-2 bg-gray-50 p-2 rounded-lg">
+              <div className="flex items-center gap-2 text-xs font-bold text-gray-500">
+                <Clock size={14} className="text-blue-400" /> {order.date || 'No Date'} @ {order.time || '--:--'}
+              </div>
+              {userRole === 'admin' && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onRecordPayment?.(order)}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-200 text-[9px] font-black tracking-wide uppercase"
+                    title="Record payment"
+                  >
+                    <HandCoins size={12} />
+                    Pay
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onShareInvoice?.(order)}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-black tracking-wide uppercase"
+                    title="Invoice PDF / WhatsApp"
+                  >
+                    <FileText size={14} />
+                    PDF
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Action Bar */}
