@@ -142,7 +142,7 @@ export default function SalesAnalyticsDashboard({ onClose }) {
         .sort((a, b) => b.outstanding - a.outstanding)
         .slice(0, 10),
     };
-  }, [orders, clients, dateRange, isInRange, isDelivered]);
+  }, [orders, clients, dateRange]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end sm:items-center sm:justify-center">
