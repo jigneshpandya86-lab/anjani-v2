@@ -2,10 +2,6 @@ function getISTDate(now) {
   return new Date(now.getTime() + 5.5 * 3600 * 1000);
 }
 
-function getISTDateStr(istDate) {
-  return istDate.toISOString().split('T')[0];
-}
-
 function isArriving(order, nowIst) {
   const [h, m] = order.time.split(':').map(Number);
   const orderTimeIst = new Date(nowIst);
