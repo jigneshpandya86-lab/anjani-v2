@@ -93,12 +93,20 @@ export const useClientStore = create((set, get) => ({
       if (userDoc.exists()) {
         set({ userRole: userDoc.data().role || 'staff' });
       } else {
-        // If no user document exists, default to 'staff' for safety
         set({ userRole: 'staff' });
+        // Firestore connected but no user profile found — admin must create
+        // a /users/{uid} document with role:"admin" in Firebase Console.
+        console.warn('No user profile found in Firestore for uid:', uid);
+        import('react-hot-toast').then(({ default: toast }) =>
+          toast.error('No user profile found. Contact admin to set your role.', { duration: 6000 })
+        );
       }
     } catch (err) {
-      console.error('Failed to fetch user role:', err);
+      console.error('Failed to fetch user role:', err?.code, err?.message);
       set({ userRole: 'staff' });
+      import('react-hot-toast').then(({ default: toast }) =>
+        toast.error(`Firebase error (${err?.code || 'unknown'}): ${err?.message || 'Could not load user role'}`, { duration: 8000 })
+      );
     }
   },
 
@@ -379,6 +387,11 @@ export const useClientStore = create((set, get) => ({
         .sort((a, b) => getTime(b) - getTime(a));
 
       set({ orders: docs });
+    }, (err) => {
+      console.error('fetchOrders failed:', err?.code, err?.message);
+      import('react-hot-toast').then(({ default: toast }) =>
+        toast.error(`Could not load orders (${err?.code || 'unknown'}): ${err?.message || 'Firebase connection failed'}`, { duration: 8000 })
+      );
     });
   },
 

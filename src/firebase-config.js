@@ -16,6 +16,10 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID || ""
 };
 
+if (!firebaseConfig.projectId) {
+  console.error('Firebase projectId is empty — check that GitHub Secrets are configured in Actions settings.');
+}
+
 export const app = initializeApp(firebaseConfig);
 
 // memoryLocalCache avoids IndexedDB, which can fail to initialise in Android
