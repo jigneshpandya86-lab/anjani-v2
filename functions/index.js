@@ -312,7 +312,7 @@ MapLink: ${resolved.mapLink}`;
 exports.sendMorningOrderReminders = onSchedule({
     schedule: "0 8 * * *",
     timeZone: "Asia/Kolkata"
-}, async (event) => {
+}, async (_event) => {
     logger.info("Running morning order reminder job.");
     try {
         const todayStr = exports.formatDate(new Date());
@@ -331,7 +331,7 @@ exports.sendMorningOrderReminders = onSchedule({
 exports.sendEveningOrderReminders = onSchedule({
     schedule: "0 20 * * *",
     timeZone: "Asia/Kolkata"
-}, async (event) => {
+}, async (_event) => {
     logger.info("Running evening order reminder job.");
     try {
         const tomorrow = new Date();
@@ -352,7 +352,7 @@ exports.sendEveningOrderReminders = onSchedule({
 exports.sendWeeklyPaymentReminders = onSchedule({
     schedule: "every monday 18:00",
     timeZone: "Asia/Kolkata"
-}, async (event) => {
+}, async (_event) => {
     logger.info("Running weekly payment reminder job.");
     try {
         const customersRef = admin.firestore().collection('customers');
@@ -428,7 +428,7 @@ exports.sendWeeklyRegularOrderReminder = onSchedule(
       timeZone: "Asia/Kolkata",
       retryCount: 2
     },
-    async (event) => {
+    async (_event) => {
         logger.info("Starting weekly regular client order reminder job.");
         const db = admin.firestore();
         
@@ -925,7 +925,7 @@ exports.discoverLeadsWithAI = onSchedule(
                 cleanedText = cleanedText.substring(0, cleanedText.length - 3);
             }
             leads = JSON.parse(cleanedText.trim());
-        } catch (parseError) {
+        } catch (_parseError) {
             logger.error("Failed to parse AI response into JSON:", aiResponseText);
             return;
         }
@@ -1059,7 +1059,7 @@ async function broadcastNotification(message, title = "New Notification") {
 /**
  * Fetch the latest notifications for the app.
  */
-exports.getNotifications = onCall(async (request) => {
+exports.getNotifications = onCall(async (_request) => {
   try {
     const snapshot = await admin.firestore()
       .collection("notifications")
@@ -1165,7 +1165,7 @@ exports.hourlyDeliveryReminders = onSchedule({
     schedule: "0 7-21 * * *",
     timeZone: "Asia/Kolkata",
     retryCount: 1
-}, async (event) => {
+}, async (_event) => {
     logger.info("Starting optimized hourly delivery reminder job...");
     const db = admin.firestore();
     const now = new Date();
@@ -1221,10 +1221,10 @@ exports.hourlyDeliveryReminders = onSchedule({
  * Runs daily at 8:30 AM IST to send a friendly morning notification to all app users.
  */
 exports.dailyGeneralBroadcast = onSchedule({
-    schedule: "30 8 * * *", 
+    schedule: "30 8 * * *",
     timeZone: "Asia/Kolkata",
     retryCount: 1
-}, async (event) => {
+}, async (_event) => {
     logger.info("Starting daily general broadcast job...");
     try {
         const prompt = `You are the automated assistant for Anjani Water, Vadodara. 
@@ -1262,7 +1262,7 @@ exports.intelligentStaffTaskReminders = onSchedule({
     schedule: "0 9 * * *", // 9:00 AM every day
     timeZone: "Asia/Kolkata",
     retryCount: 1
-}, async (event) => {
+}, async (_event) => {
     logger.info("Starting intelligent staff task reminders job...");
     const db = admin.firestore();
     const now = new Date();

@@ -194,7 +194,7 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
           { key: 'Today', label: 'Today', icon: Sun },
           { key: 'Tomorrow', label: 'Tmrw', icon: Clock },
           { key: 'ThisWeek', label: 'Week', icon: CalendarDays },
-        ].map(({ key, label, icon: Icon }) => (
+        ].map(({ key, label, icon: Icon }) => ( // eslint-disable-line no-unused-vars
           <button
             key={key}
             onClick={() => setDateFilter(key)}

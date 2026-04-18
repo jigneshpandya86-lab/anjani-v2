@@ -49,53 +49,52 @@ export default function SalesAnalyticsDashboard({ onClose }) {
     }
   };
 
-  // Helper to check if order is in date range
-  const getDateRangeStart = () => {
-    const now = new Date();
-    const startDate = new Date();
-    switch (dateRange) {
-      case 'today': {
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      }
-      case 'week': {
-        const dayOfWeek = now.getDay();
-        const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-        startDate.setDate(diff);
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      }
-      case 'month':
-      default: {
-        startDate.setDate(1);
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      }
-    }
-    return startDate;
-  };
-
-  const isInRange = (dateStr) => {
-    if (!dateStr) return false;
-    const startDate = getDateRangeStart();
-    let d;
-    if (typeof dateStr === 'string' && dateStr.length === 10) {
-      d = new Date(dateStr + 'T00:00:00');
-    } else if (dateStr.toDate) {
-      d = dateStr.toDate();
-    } else {
-      d = new Date(dateStr);
-    }
-    return d >= startDate;
-  };
-
-  const isDelivered = (status) => {
-    const normalized = (status || '').trim().toLowerCase();
-    return normalized === 'delivered' || normalized === 'completed';
-  };
-
   // Get detail data for each tile
   const getDetailData = useMemo(() => {
+    const getDateRangeStart = () => {
+      const now = new Date();
+      const startDate = new Date();
+      switch (dateRange) {
+        case 'today': {
+          startDate.setHours(0, 0, 0, 0);
+          break;
+        }
+        case 'week': {
+          const dayOfWeek = now.getDay();
+          const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+          startDate.setDate(diff);
+          startDate.setHours(0, 0, 0, 0);
+          break;
+        }
+        case 'month':
+        default: {
+          startDate.setDate(1);
+          startDate.setHours(0, 0, 0, 0);
+          break;
+        }
+      }
+      return startDate;
+    };
+
+    const isInRange = (dateStr) => {
+      if (!dateStr) return false;
+      const startDate = getDateRangeStart();
+      let d;
+      if (typeof dateStr === 'string' && dateStr.length === 10) {
+        d = new Date(dateStr + 'T00:00:00');
+      } else if (dateStr.toDate) {
+        d = dateStr.toDate();
+      } else {
+        d = new Date(dateStr);
+      }
+      return d >= startDate;
+    };
+
+    const isDelivered = (status) => {
+      const normalized = (status || '').trim().toLowerCase();
+      return normalized === 'delivered' || normalized === 'completed';
+    };
+
     return {
       revenue: orders
         .filter((o) => isInRange(o.date || o.createdAt) && isDelivered(o.status))
