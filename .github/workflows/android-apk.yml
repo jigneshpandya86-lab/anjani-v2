@@ -58,7 +58,9 @@ jobs:
           VITE_MACRO_URL=${{ secrets.VITE_MACRO_URL }}
           VITE_BUSINESS_WHATSAPP_NUMBER=${{ secrets.VITE_BUSINESS_WHATSAPP_NUMBER }}
           EOF
-          cat .env
+          echo "✅ .env file created with Firebase credentials"
+          echo "📋 Environment variables loaded:"
+          grep -E "FIREBASE|GOOGLE_MAPS" .env | sed 's/=.*/=***REDACTED***/g'
 
       - name: Build web app
         run: npm run build
@@ -129,10 +131,45 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew -I kotlin-alignment.init.gradle assembleDebug
+        run: |
+          echo "🔨 Building Android APK..."
+          ./gradlew -I kotlin-alignment.init.gradle assembleDebug
+          echo "✅ APK build completed"
+
+      - name: Verify APK file
+        run: |
+          APK_FILE="android/app/build/outputs/apk/debug/app-debug.apk"
+          if [ -f "$APK_FILE" ]; then
+            SIZE=$(du -sh "$APK_FILE" | cut -f1)
+            echo "✅ APK file created successfully"
+            echo "📦 File size: $SIZE"
+            echo "📁 Path: $APK_FILE"
+          else
+            echo "❌ APK file not found!"
+            exit 1
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: Build Summary
+        if: success()
+        run: |
+          echo "🎉 Android APK Build Completed Successfully!"
+          echo ""
+          echo "📦 Artifact Details:"
+          echo "  - Name: app-debug-apk"
+          echo "  - Location: android/app/build/outputs/apk/debug/app-debug.apk"
+          echo "  - Retention: 30 days"
+          echo ""
+          echo "✅ Firebase Configuration Loaded"
+          echo "✅ ESLint Validation Passed"
+          echo "✅ Web App Built"
+          echo "✅ Capacitor Synced"
+          echo "✅ APK Generated"
+          echo ""
+          echo "📥 Download APK from: Actions → Build Android APK → Artifacts"
