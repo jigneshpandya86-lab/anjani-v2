@@ -4,7 +4,7 @@
 // Changes here affect authentication and all Firestore access.
 // ─────────────────────────────────────────────────────────────
 import { initializeApp } from "firebase/app";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentSingleTabManager } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
@@ -18,9 +18,12 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 
+// persistentSingleTabManager is required for Capacitor Android WebView — the
+// multi-tab manager's leader-election mechanism can stall in a single-WebView
+// context, causing Firestore to silently fail and all role/data reads to error.
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
+    tabManager: persistentSingleTabManager()
   })
 });
 

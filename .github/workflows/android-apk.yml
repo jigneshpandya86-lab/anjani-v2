@@ -47,20 +47,38 @@ jobs:
       - name: Create .env file from secrets
         run: |
           cat > .env << 'EOF'
-          VITE_FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID }}
-          VITE_FIREBASE_VAPID_KEY=${{ secrets.VITE_FIREBASE_VAPID_KEY }}
-          VITE_GOOGLE_MAPS_API_KEY=${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
-          VITE_MACRO_URL=${{ secrets.VITE_MACRO_URL }}
-          VITE_BUSINESS_WHATSAPP_NUMBER=${{ secrets.VITE_BUSINESS_WHATSAPP_NUMBER }}
-          EOF
-          echo "✅ .env file created with Firebase credentials"
-          echo "📋 Environment variables loaded:"
-          grep -E "FIREBASE|GOOGLE_MAPS" .env | sed 's/=.*/=***REDACTED***/g'
+VITE_FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}
+VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN }}
+VITE_FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}
+VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}
+VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+VITE_FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID }}
+VITE_FIREBASE_VAPID_KEY=${{ secrets.VITE_FIREBASE_VAPID_KEY }}
+VITE_GOOGLE_MAPS_API_KEY=${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+VITE_MACRO_URL=${{ secrets.VITE_MACRO_URL }}
+VITE_BUSINESS_WHATSAPP_NUMBER=${{ secrets.VITE_BUSINESS_WHATSAPP_NUMBER }}
+EOF
+          echo "✅ .env file written"
+
+      - name: Validate Firebase secrets are not empty
+        run: |
+          MISSING=0
+          for VAR in VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID \
+                     VITE_FIREBASE_STORAGE_BUCKET VITE_FIREBASE_MESSAGING_SENDER_ID VITE_FIREBASE_APP_ID; do
+            VALUE=$(grep "^${VAR}=" .env | cut -d'=' -f2-)
+            if [ -z "$VALUE" ]; then
+              echo "❌ Missing secret: $VAR (add it under Settings → Secrets → Actions)"
+              MISSING=1
+            else
+              echo "✅ $VAR is set"
+            fi
+          done
+          if [ "$MISSING" -eq 1 ]; then
+            echo ""
+            echo "Build aborted: one or more Firebase secrets are empty."
+            echo "The APK would be built but Firebase would silently fail at runtime."
+            exit 1
+          fi
 
       - name: Build web app
         run: npm run build
