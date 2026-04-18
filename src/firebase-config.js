@@ -16,6 +16,15 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID || ""
 };
 
+// Validate that critical Firebase credentials are available
+const requiredKeys = ['apiKey', 'authDomain', 'projectId', 'appId'];
+const missingKeys = requiredKeys.filter(key => !firebaseConfig[key]);
+
+if (missingKeys.length > 0) {
+  console.error('❌ Firebase Configuration Error:', missingKeys.join(', '), 'are missing or empty');
+  console.warn('📝 Please ensure these environment variables are set:', missingKeys.map(k => `VITE_FIREBASE_${k.toUpperCase()}`).join(', '));
+}
+
 export const app = initializeApp(firebaseConfig);
 
 export const db = initializeFirestore(app, {
