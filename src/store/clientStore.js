@@ -8,6 +8,10 @@ import { db } from '../firebase-config';
 let stockUnsubscribe = null;
 let stockSubscriberCount = 0;
 const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary');
+
+// Short-ID prefix stamped onto human-readable client identifiers
+const CLIENT_SHORT_ID_PREFIX = 'CLT-';
+const CLIENT_SHORT_ID_LENGTH = 6;
 const RECENT_STOCK_ENTRIES_LIMIT = 50;
 
 const getOrderClientName = async (order, clients = []) => {
@@ -56,7 +60,7 @@ const formatOrderNarration = (prefix, orderRef, clientName) => {
 
 const buildClientShortId = (clientDocId) => {
   const safeId = String(clientDocId || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  return `CLT-${safeId.slice(0, 6).padEnd(6, '0')}`;
+  return `${CLIENT_SHORT_ID_PREFIX}${safeId.slice(0, CLIENT_SHORT_ID_LENGTH).padEnd(CLIENT_SHORT_ID_LENGTH, '0')}`;
 };
 
 const normalizeOrderWriteData = (data = {}) => ({

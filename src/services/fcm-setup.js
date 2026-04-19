@@ -88,7 +88,7 @@ export async function initializeFcm(userId, userEmail = null) {
     };
   } catch (error) {
     console.error('Error initializing FCM:', error);
-    return { success: false, reason: 'unknown-error' };
+    return { success: false, reason: 'unknown-error', error: error.message };
   }
 }
 
@@ -113,7 +113,7 @@ export async function sendLocalTestNotification(existingRegistration = null) {
 
     if ('serviceWorker' in navigator) {
       const readyRegistration = await Promise.race([
-        navigator.worker.ready,
+        navigator.serviceWorker.ready,
         new Promise((resolve) => setTimeout(() => resolve(null), 2000))
       ]);
       if (readyRegistration && typeof readyRegistration.showNotification === 'function') {
