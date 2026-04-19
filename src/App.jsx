@@ -37,9 +37,11 @@ import TasksPage from './TasksPage'
 import FirebaseError from './components/FirebaseError'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
+// localStorage key prefix for tracking which notifications a user has already
+// dismissed. Version suffix lets us invalidate stored state on future changes.
+const NOTIFICATION_READ_STORAGE_PREFIX = 'anjani-notification-read-v1'
 
 function App() {
-  const NOTIFICATION_READ_STORAGE_PREFIX = 'anjani-notification-read-v1'
   const [activeTab, setActiveTab] = useState('orders')
   const [editOrder, setEditOrder] = useState(null)
   const [editClient, setEditClient] = useState(null)
