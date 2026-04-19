@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { X, TrendingUp, RefreshCw, ChevronRight } from 'lucide-react';
 import { useClientStore } from '../store/clientStore';
 import { useAnalyticsStore } from '../store/analyticsStore';
 import { computeAnalyticsKpis, formatCurrency } from '../services/analyticsService';
 import toast from 'react-hot-toast';
 
-export default function SalesAnalyticsDashboard({ onClose }) {
+function SalesAnalyticsDashboard({ onClose }) {
   const [dateRange, setDateRange] = useState('month');
   const [selectedTile, setSelectedTile] = useState(null);
   const { orders, clients } = useClientStore();
@@ -453,3 +453,5 @@ export default function SalesAnalyticsDashboard({ onClose }) {
     </div>
   );
 }
+
+export default memo(SalesAnalyticsDashboard);
