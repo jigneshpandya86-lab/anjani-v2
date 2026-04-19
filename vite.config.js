@@ -18,11 +18,10 @@ export default defineConfig({
   server: {
     middlewareMode: false,
   },
-  esbuild: {
-    // Strip console.log/debug/info and debugger statements from production
-    // bundles so debug output never reaches end users. Errors/warnings are
-    // retained on purpose — they still go to Sentry / browser DevTools if set.
-    drop: ['debugger'],
-    pure: ['console.log', 'console.debug', 'console.info'],
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.js'],
+    css: false,
   },
 })
