@@ -1,11 +1,11 @@
-import { useRef, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useClientStore } from '../store/clientStore';
 import { Clock, Copy, Edit2, Trash2, Smartphone, Search, HandCoins, FileText, Paperclip, Loader2, CalendarRange, Sun, CalendarDays, Phone } from 'lucide-react';
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 import { app } from '../firebase-config';
 
-export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
+function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
   const { orders, clients, updateOrder, deleteOrder, userRole } = useClientStore();
   const [filter, setFilter] = useState('All');
   const [dateFilter, setDateFilter] = useState('All');
@@ -331,3 +331,5 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
     </div>
   );
 }
+
+export default memo(OrdersDashboard);

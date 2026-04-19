@@ -37,9 +37,22 @@ import TasksPage from './TasksPage'
 import FirebaseError from './components/FirebaseError'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
+// localStorage key prefix for tracking which notifications a user has already
+// dismissed. Version suffix lets us invalidate stored state on future changes.
+const NOTIFICATION_READ_STORAGE_PREFIX = 'anjani-notification-read-v1'
+
+// Static nav template — icons created once at module scope so the array
+// identity is stable across re-renders, avoiding unnecessary child work.
+const NAV_ITEMS_TEMPLATE = [
+  { id: 'orders', label: 'Orders', icon: <ShoppingCart size={20} /> },
+  { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
+  { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
+  { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
+]
+
+const TASKS_NAV_ITEM = { id: 'tasks', label: 'Tasks', icon: <CheckSquare size={20} /> }
 
 function App() {
-  const NOTIFICATION_READ_STORAGE_PREFIX = 'anjani-notification-read-v1'
   const [activeTab, setActiveTab] = useState('orders')
   const [editOrder, setEditOrder] = useState(null)
   const [editClient, setEditClient] = useState(null)
@@ -122,7 +135,7 @@ function App() {
         } else if (result.reason === 'token-missing') {
           toast.error('Permission granted, but Firebase could not issue a device token.');
         } else {
-          toast.error('Failed to enable notifications. Please check browser permissions.');
+          toast.error('Failed to enable notifications: ' + (result.error || 'unknown error'));
         }
       }
     } catch (error) {
@@ -271,69 +284,70 @@ function App() {
     }
   }
 
-  const navItems = [
-    { id: 'orders', label: 'Orders', icon: <ShoppingCart size={20} /> },
-    { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
-    { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
-    { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
-  ].filter(item => userRole === 'admin' || item.id === 'orders')
+  const navItems = useMemo(
+    () => NAV_ITEMS_TEMPLATE.filter((item) => userRole === 'admin' || item.id === 'orders'),
+    [userRole],
+  )
 
-  const drawerNavItems = [
-    { id: 'tasks', label: 'Tasks', icon: <CheckSquare size={20} /> },
-    ...navItems,
-  ]
+  const drawerNavItems = useMemo(() => [TASKS_NAV_ITEM, ...navItems], [navItems])
 
-  const drawerQuickActions = [
-    {
-      id: 'quick-new-order',
-      label: 'New Order',
-      icon: <ClipboardPlus size={18} />,
-      onClick: () => {
-        setActiveTab('orders')
-        setEditOrder({})
-        setDrawerOpen(false)
-      }
-    },
-    {
-      id: 'quick-open-leads',
-      label: 'Open Leads',
-      icon: <TrendingUp size={18} />,
-      onClick: () => {
-        setActiveTab('leads')
-        setDrawerOpen(false)
-      }
-    },
-    {
-      id: 'quick-add-client',
-      label: 'Add Client',
-      icon: <UserPlus size={18} />,
-      onClick: () => {
-        setActiveTab('clients')
-        setAddClientOpen(true)
-        setDrawerOpen(false)
-      }
-    },
-    {
-      id: 'quick-record-payment',
-      label: 'Record Payment',
-      icon: <HandCoins size={18} />,
-      onClick: () => {
-        setActiveTab('payments')
-        setPayClient({})
-        setPaymentPrefill(null)
-        setDrawerOpen(false)
-      }
-    },
-    {
-      id: 'quick-sales-analytics',
-      label: 'Sales Analytics',
-      icon: <TrendingUp size={18} />,
-      onClick: () => {
-        setAnalyticsModalOpen(true)
-        setDrawerOpen(false)
-      }
-    }
-  ].filter(() => userRole === 'admin')
+  const drawerQuickActions = useMemo(
+    () =>
+      userRole === 'admin'
+        ? [
+            {
+              id: 'quick-new-order',
+              label: 'New Order',
+              icon: <ClipboardPlus size={18} />,
+              onClick: () => {
+                setActiveTab('orders')
+                setEditOrder({})
+                setDrawerOpen(false)
+              },
+            },
+            {
+              id: 'quick-open-leads',
+              label: 'Open Leads',
+              icon: <TrendingUp size={18} />,
+              onClick: () => {
+                setActiveTab('leads')
+                setDrawerOpen(false)
+              },
+            },
+            {
+              id: 'quick-add-client',
+              label: 'Add Client',
+              icon: <UserPlus size={18} />,
+              onClick: () => {
+                setActiveTab('clients')
+                setAddClientOpen(true)
+                setDrawerOpen(false)
+              },
+            },
+            {
+              id: 'quick-record-payment',
+              label: 'Record Payment',
+              icon: <HandCoins size={18} />,
+              onClick: () => {
+                setActiveTab('payments')
+                setPayClient({})
+                setPaymentPrefill(null)
+                setDrawerOpen(false)
+              },
+            },
+            {
+              id: 'quick-sales-analytics',
+              label: 'Sales Analytics',
+              icon: <TrendingUp size={18} />,
+              onClick: () => {
+                setAnalyticsModalOpen(true)
+                setDrawerOpen(false)
+              },
+            },
+          ]
+        : [],
+    [userRole],
+  )
 
   const openReportWindow = ({ title, columns, rows, metadata = [], reportWindow: providedReportWindow = null }) => {
     const reportWindow = providedReportWindow || window.open('', '_blank', 'width=900,height=700')
