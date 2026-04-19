@@ -96,28 +96,29 @@ export default function AddClient({ onDone, client }) {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Client Name</label>
-              <input required value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none" placeholder="e.g. Rahul Sharma" />
+              <label htmlFor="client-name" className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Client Name</label>
+              <input id="client-name" required value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none" placeholder="e.g. Rahul Sharma" />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Mobile Number</label>
-              <input required type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none" placeholder="10-digit mobile number" />
+              <label htmlFor="mobile-number" className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Mobile Number</label>
+              <input id="mobile-number" required type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none" placeholder="10-digit mobile number" />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Delivery Address</label>
-              <textarea required rows="3" value={address} onChange={(e) => setAddress(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none" placeholder="Full delivery address..." />
+              <label htmlFor="address-input" className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Delivery Address</label>
+              <textarea id="address-input" required rows="3" value={address} onChange={(e) => setAddress(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none" placeholder="Full delivery address..." />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Actual Location (Type & Select)</label>
+              <label htmlFor="location-input" className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Actual Location (Type & Select)</label>
               <GoogleMapPicker
                 initialAddress={locationAddress}
                 onChange={handleLocationChange}
               />
               <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
                 <input
+                  id="location-input"
                   type="text"
                   value={locationAddress}
                   onChange={(e) => setLocationAddress(e.target.value)}
@@ -136,8 +137,9 @@ export default function AddClient({ onDone, client }) {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Rate (₹ / Box)</label>
+              <label htmlFor="rate-input" className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Rate (₹ / Box)</label>
               <input
+                id="rate-input"
                 type="number"
                 min="0"
                 step="0.01"
