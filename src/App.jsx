@@ -34,6 +34,7 @@ import StockDashboard from './components/StockDashboard'
 import Login from './components/Login'
 import SalesAnalyticsDashboard from './components/SalesAnalyticsDashboard'
 import TasksPage from './TasksPage'
+import FirebaseError from './components/FirebaseError'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
@@ -836,6 +837,9 @@ function App() {
     }
   ].filter(() => userRole === 'admin')
 
+  // Check if Firebase is properly configured
+  const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_PROJECT_ID;
+
   // AUTH: show loading screen while Firebase resolves the auth state on startup
   if (authLoading) {
     return (
@@ -846,6 +850,11 @@ function App() {
         </div>
       </div>
     )
+  }
+
+  // Show error if Firebase credentials are missing
+  if (!isFirebaseConfigured) {
+    return <FirebaseError />
   }
 
   // AUTH: gate — unauthenticated users see login screen only, do not remove
