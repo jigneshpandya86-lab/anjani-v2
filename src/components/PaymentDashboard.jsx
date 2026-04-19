@@ -9,6 +9,7 @@ const TRANSACTION_FEED_LIMIT = 15;
 
 export default function PaymentDashboard() {
   const [history, setHistory] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { clients, deletePayment } = useClientStore();
 
   useEffect(() => {
@@ -27,6 +28,7 @@ export default function PaymentDashboard() {
       });
 
       setHistory(sorted);
+      setIsLoading(false);
     });
     return unsub;
   }, []);
@@ -97,7 +99,17 @@ export default function PaymentDashboard() {
         </div>
       </div>
 
-      {history.length === 0 && (
+      {isLoading && (
+        <div
+          className="bg-white p-12 rounded-3xl text-center border-2 border-dashed border-gray-100 text-gray-400 font-bold italic"
+          role="status"
+          aria-live="polite"
+        >
+          Loading transactions…
+        </div>
+      )}
+
+      {!isLoading && history.length === 0 && (
         <div className="bg-white p-12 rounded-3xl text-center border-2 border-dashed border-gray-100 text-gray-400 font-bold italic">
           No transactions found.
         </div>
