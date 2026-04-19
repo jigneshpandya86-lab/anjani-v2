@@ -41,10 +41,11 @@ export default function AddStockModal({ onClose }) {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Quantity (Boxes)</label>
+          <label htmlFor="qty-input" className="block text-xs font-bold text-gray-500 uppercase mb-2">Quantity (Boxes)</label>
           <div className="relative">
             <PackagePlus className="absolute left-3 top-3.5 w-5 h-5 text-gray-400" />
-            <input 
+            <input
+              id="qty-input"
               type="number"
               required
               className="w-full pl-10 pr-4 py-3 bg-white border border-gray-300 rounded-xl text-lg font-bold focus:ring-2 focus:ring-[#ff9900] outline-none"
@@ -56,8 +57,9 @@ export default function AddStockModal({ onClose }) {
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Tag / Notes</label>
-          <input 
+          <label htmlFor="notes-input" className="block text-xs font-bold text-gray-500 uppercase mb-2">Tag / Notes</label>
+          <input
+            id="notes-input"
             className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-[#ff9900] outline-none"
             placeholder="e.g. Received from factory"
             value={note}

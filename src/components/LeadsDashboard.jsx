@@ -515,10 +515,11 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+                <label htmlFor="lead-name" className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
                   Name (optional)
                 </label>
                 <input
+                  id="lead-name"
                   type="text"
                   value={newLeadName}
                   onChange={(e) => setNewLeadName(e.target.value)}
@@ -527,10 +528,11 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+                <label htmlFor="lead-mobile" className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
                   Mobile *
                 </label>
                 <input
+                  id="lead-mobile"
                   required
                   type="tel"
                   inputMode="numeric"
