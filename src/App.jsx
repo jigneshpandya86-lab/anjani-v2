@@ -35,6 +35,7 @@ import Login from './components/Login'
 import SalesAnalyticsDashboard from './components/SalesAnalyticsDashboard'
 import TasksPage from './TasksPage'
 import FirebaseError from './components/FirebaseError'
+import { isDynamicImportFailure } from './preloadErrorHandler'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
@@ -128,6 +129,11 @@ function App() {
     } catch (error) {
       toast.dismiss(loadingToast);
       console.error('Error in handleEnableNotifications:', error);
+      if (isDynamicImportFailure(error)) {
+        toast.error('A newer app version is available. Reloading…');
+        setTimeout(() => window.location.reload(), 1200);
+        return;
+      }
       toast.error('Error enabling notifications: ' + error.message);
     }
   }
