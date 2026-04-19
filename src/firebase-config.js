@@ -16,13 +16,23 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID || ""
 };
 
-// Validate that critical Firebase credentials are available
+// Validate that critical Firebase credentials are available. When any are
+// missing we surface a structured error the UI can react to (see App.jsx
+// FirebaseError guard) instead of only logging to the console.
 const requiredKeys = ['apiKey', 'authDomain', 'projectId', 'appId'];
-const missingKeys = requiredKeys.filter(key => !firebaseConfig[key]);
+const missingKeys = requiredKeys.filter((key) => !firebaseConfig[key]);
 
-if (missingKeys.length > 0) {
-  console.error('❌ Firebase Configuration Error:', missingKeys.join(', '), 'are missing or empty');
-  console.warn('📝 Please ensure these environment variables are set:', missingKeys.map(k => `VITE_FIREBASE_${k.toUpperCase()}`).join(', '));
+export const firebaseConfigError =
+  missingKeys.length > 0
+    ? new Error(
+        `Firebase configuration is incomplete. Missing environment variables: ${missingKeys
+          .map((k) => `VITE_FIREBASE_${k.toUpperCase()}`)
+          .join(', ')}`,
+      )
+    : null;
+
+if (firebaseConfigError && import.meta.env.DEV) {
+  console.error(firebaseConfigError.message);
 }
 
 export const app = initializeApp(firebaseConfig);
