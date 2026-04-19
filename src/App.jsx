@@ -122,7 +122,7 @@ function App() {
         } else if (result.reason === 'token-missing') {
           toast.error('Permission granted, but Firebase could not issue a device token.');
         } else {
-          toast.error('Failed to enable notifications. Please check browser permissions.');
+          toast.error('Failed to enable notifications: ' + (result.error || 'unknown error'));
         }
       }
     } catch (error) {
