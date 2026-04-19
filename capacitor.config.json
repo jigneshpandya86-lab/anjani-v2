@@ -11,7 +11,7 @@
       "backgroundColor": "#ffffff"
     },
     "CapacitorHttp": {
-      "enabled": true
+      "enabled": false
     }
   },
   "ios": {
