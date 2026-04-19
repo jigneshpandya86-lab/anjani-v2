@@ -17,6 +17,17 @@ dist-ssr
 .env.local
 .env.*.local
 
+# Secrets / credentials — never commit
+serviceAccountKey.json
+*-credentials.json
+google-services.json
+GoogleService-Info.plist
+
+# Android signing keystores
+*.keystore
+*.jks
+keystore.properties
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
