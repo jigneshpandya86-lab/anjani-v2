@@ -18,4 +18,10 @@ export default defineConfig({
   server: {
     middlewareMode: false,
   },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.js'],
+    css: false,
+  },
 })
