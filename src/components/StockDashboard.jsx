@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useClientStore } from '../store/clientStore';
 import toast from 'react-hot-toast';
 import { Plus, History, Tag, ArrowUpRight, ArrowDownLeft, X, Trash2 } from 'lucide-react';
