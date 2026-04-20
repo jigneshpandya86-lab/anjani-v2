@@ -696,33 +696,51 @@ function App() {
 
       const { startDate, endDate, label: dateRangeLabel } = getLedgerDateRange(ledgerDateRange)
 
-      const payments = []
-      let lastVisibleDoc = null
+      // Check cache first (1-hour TTL for ledger exports)
+      const cacheKey = `ledger-export-${selectedClient.id}-${ledgerDateRange}`
+      const cachedData = localStorage.getItem(cacheKey)
+      const cacheAge = localStorage.getItem(`${cacheKey}-timestamp`)
+      const oneHourAgo = Date.now() - (60 * 60 * 1000)
 
-      while (true) {
-        const constraints = selectedClient.id === 'all'
-          ? [
-            where('createdAt', '>=', startDate),
-            where('createdAt', '<=', endDate),
-            orderBy('createdAt', 'desc'),
-            limit(LEDGER_EXPORT_PAGE_SIZE)
-          ]
-          : [
-            where('clientId', '==', selectedClient.id),
-            limit(LEDGER_EXPORT_PAGE_SIZE)
-          ]
+      let payments = []
+      if (cachedData && cacheAge && Number(cacheAge) > oneHourAgo) {
+        payments = JSON.parse(cachedData)
+      } else {
+        let lastVisibleDoc = null
 
-        if (lastVisibleDoc) {
-          constraints.push(startAfter(lastVisibleDoc))
+        while (true) {
+          const constraints = selectedClient.id === 'all'
+            ? [
+              where('createdAt', '>=', startDate),
+              where('createdAt', '<=', endDate),
+              orderBy('createdAt', 'desc'),
+              limit(LEDGER_EXPORT_PAGE_SIZE)
+            ]
+            : [
+              where('clientId', '==', selectedClient.id),
+              limit(LEDGER_EXPORT_PAGE_SIZE)
+            ]
+
+          if (lastVisibleDoc) {
+            constraints.push(startAfter(lastVisibleDoc))
+          }
+
+          const paymentsSnap = await getDocs(query(collection(db, 'payments'), ...constraints))
+          if (paymentsSnap.empty) break
+
+          payments.push(...paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
+          if (paymentsSnap.docs.length < LEDGER_EXPORT_PAGE_SIZE) break
+
+          lastVisibleDoc = paymentsSnap.docs[paymentsSnap.docs.length - 1]
         }
 
-        const paymentsSnap = await getDocs(query(collection(db, 'payments'), ...constraints))
-        if (paymentsSnap.empty) break
-
-        payments.push(...paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
-        if (paymentsSnap.docs.length < LEDGER_EXPORT_PAGE_SIZE) break
-
-        lastVisibleDoc = paymentsSnap.docs[paymentsSnap.docs.length - 1]
+        // Cache the results for 1 hour
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(payments))
+          localStorage.setItem(`${cacheKey}-timestamp`, String(Date.now()))
+        } catch (cacheError) {
+          console.warn('Failed to cache ledger export:', cacheError)
+        }
       }
 
       const filteredPayments = payments.filter((payment) => {
