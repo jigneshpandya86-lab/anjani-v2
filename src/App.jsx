@@ -20,7 +20,7 @@ import {
   Bell,
   CheckCheck
 } from 'lucide-react'
-import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'firebase/firestore'
+import { collection, getDocs, query, orderBy, where, limit, startAfter, onSnapshot } from 'firebase/firestore'
 import { db, auth } from './firebase-config'
 import { signOut, onAuthStateChanged } from 'firebase/auth'
 import ClientList from './components/ClientList'
@@ -220,24 +220,19 @@ function App() {
       limit(20)
     )
 
-    let ignoreUpdates = false
-
-    const loadNotifications = async () => {
-      try {
-        const snapshot = await getDocs(notificationQuery)
-        if (ignoreUpdates) return
+    const unsubscribe = onSnapshot(
+      notificationQuery,
+      (snapshot) => {
         const fetchedNotifications = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
         setNotifications(fetchedNotifications)
-      } catch (error) {
+        localStorage.setItem(`anjani-notifications-cache-${user.uid}`, JSON.stringify(fetchedNotifications))
+      },
+      (error) => {
         console.error('Failed to load notifications:', error)
       }
-    }
+    )
 
-    loadNotifications()
-
-    return () => {
-      ignoreUpdates = true
-    }
+    return unsubscribe
   }, [user])
 
   useEffect(() => {
