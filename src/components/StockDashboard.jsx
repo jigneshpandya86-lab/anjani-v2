@@ -1,10 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useClientStore } from '../store/clientStore';
 import toast from 'react-hot-toast';
 import { Plus, History, Tag, ArrowUpRight, ArrowDownLeft, X, Trash2 } from 'lucide-react';
 
 export default function StockDashboard() {
-  const { stockEntries, stockTotal, addStockManual, deleteStockEntry, fetchStock } = useClientStore();
+  const stockEntries = useClientStore(state => state.stockEntries);
+  const stockTotal = useClientStore(state => state.stockTotal);
+  const addStockManual = useClientStore(state => state.addStockManual);
+  const deleteStockEntry = useClientStore(state => state.deleteStockEntry);
+  const fetchStock = useClientStore(state => state.fetchStock);
   const [showAdd, setShowAdd] = useState(false);
   const [qty, setQty] = useState('');
   const [narration, setNarration] = useState('');

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useClientStore } from '../store/clientStore';
 import { IndianRupee, Save, CreditCard, Banknote } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -7,7 +7,8 @@ const getToday = () => new Date().toISOString().slice(0, 10);
 const getCurrentTime = () => new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
 
 export default function PaymentModal({ client, onClose, initialValues = {} }) {
-  const { addPayment, clients } = useClientStore();
+  const addPayment = useClientStore(state => state.addPayment);
+  const clients = useClientStore(state => state.clients);
   const [amount, setAmount] = useState(initialValues.amount ? String(initialValues.amount) : '');
   const [method, setMethod] = useState('cash');
   const [note, setNote] = useState(initialValues.note || '');

@@ -1,37 +1,17 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect } from 'react';
 import { useClientStore } from '../store/clientStore';
+import { useAnalyticsStore } from '../store/analyticsStore';
 import toast from 'react-hot-toast';
-import { collection, query, onSnapshot, orderBy, limit } from 'firebase/firestore';
-import { db } from '../firebase-config';
 import { IndianRupee, Calendar, Clock, ShoppingBag, RotateCcw, Trash2 } from 'lucide-react';
 
-const TRANSACTION_FEED_LIMIT = 15;
-
 function PaymentDashboard() {
-  const [history, setHistory] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
   const { clients, deletePayment } = useClientStore();
+  const { recentPayments: history, recentLoading: isLoading, subscribeToRecentPayments, unsubscribeFromRecentPayments } = useAnalyticsStore();
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'payments'),
-      orderBy('createdAt', 'desc'),
-      limit(TRANSACTION_FEED_LIMIT)
-    );
-    const unsub = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-      const sorted = docs.sort((a, b) => {
-        const dateA = a.date?.toDate?.() || new Date(a.date || a.paymentDate || a.createdAt || 0);
-        const dateB = b.date?.toDate?.() || new Date(b.date || b.paymentDate || b.createdAt || 0);
-        return dateB - dateA;
-      });
-
-      setHistory(sorted);
-      setIsLoading(false);
-    });
-    return unsub;
-  }, []);
+    subscribeToRecentPayments();
+    return unsubscribeFromRecentPayments;
+  }, [subscribeToRecentPayments, unsubscribeFromRecentPayments]);
 
   const getClientName = (id) => clients.find(c => c.id === id)?.name || 'Unknown Client';
 

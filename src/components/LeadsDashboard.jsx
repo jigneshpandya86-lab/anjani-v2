@@ -9,6 +9,7 @@ import {
   serverTimestamp,
   where,
   limit,
+  orderBy,
   getDocs,
   updateDoc,
 } from 'firebase/firestore';
@@ -174,7 +175,7 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
   const [isRemessaging, setIsRemessaging] = useState(false);
 
   useEffect(() => {
-    const q = query(collection(db, 'leads'));
+    const q = query(collection(db, 'leads'), orderBy('createdAt', 'desc'), limit(100));
     const unsub = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setLeads(docs.sort((a, b) => getLeadDate(b) - getLeadDate(a)));
