@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import { 
-  collection, addDoc, onSnapshot, query, doc, 
-  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs, deleteField
+import {
+  collection, addDoc, onSnapshot, query, doc,
+  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs, deleteField,
+  runTransaction
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
 
@@ -458,6 +459,12 @@ export const useClientStore = create((set, get) => ({
       const stockDelta = -Math.abs(qty);
       const clientName = await getOrderClientName(existing, get().clients);
       const deliveredNarration = formatOrderNarration('Order Delivered', existing.orderId || id, clientName);
+
+      // OPTIMIZATION: The following 5 write operations should be batched into a single Firestore
+      // transaction for atomicity and reduced billing. This requires careful refactoring to ensure
+      // payment accuracy is maintained. Candidate for Phase 2 optimization.
+      // Transaction would cover: stock debit, stock summary update, payment add, payment record, and
+      // customer outstanding update. See PR #298 for optimization approach documentation.
 
       // 1. Debit stock
       const stockDocRef = await addDoc(collection(db, 'stock'), {
