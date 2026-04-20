@@ -4,6 +4,8 @@ import { useAnalyticsStore } from '../store/analyticsStore';
 import toast from 'react-hot-toast';
 import { IndianRupee, Calendar, Clock, ShoppingBag, RotateCcw, Trash2 } from 'lucide-react';
 
+const TRANSACTION_FEED_LIMIT = 15;
+
 function PaymentDashboard() {
   const { clients, deletePayment } = useClientStore();
   const { recentPayments: history, recentLoading: isLoading, subscribeToRecentPayments, unsubscribeFromRecentPayments } = useAnalyticsStore();
