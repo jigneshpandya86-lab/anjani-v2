@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useClientStore } from '../store/clientStore';
 import { Package, Clock, IndianRupee, Image as ImageIcon, MapPinned } from 'lucide-react';
 import toast from 'react-hot-toast';
