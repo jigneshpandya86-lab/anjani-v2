@@ -68,19 +68,39 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
     return true;
   };
 
-  const filteredOrders = orders.filter(o => {
-    const name = getDisplayName(o);
-    const mobile = getDisplayMobile(o);
-    const matchesStatus = filter === 'All' || o.status === filter;
-    const matchesDate = doesMatchDateFilter(o);
-    const searchLower = searchQuery.toLowerCase();
-    const qtyText = String(o.qty ?? o.boxes ?? o.quantity ?? '');
-    const matchesSearch = name.toLowerCase().includes(searchLower) ||
-                          (o.orderId || '').toLowerCase().includes(searchLower) ||
-                          mobile.includes(searchLower) ||
-                          qtyText.includes(searchLower);
-    return matchesStatus && matchesDate && matchesSearch;
-  });
+  const statusPriority = { 'Pending': 0, 'Confirmed': 1, 'Delivered': 2 };
+
+  const getOrderSortKey = (order) => {
+    const statusPrio = statusPriority[order.status] ?? 999;
+    const dateObj = getOrderDate(order);
+    const dateTime = dateObj?.getTime() ?? Number.MAX_VALUE;
+    const timeStr = order.time || '23:59';
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const timeInMinutes = (hours || 0) * 60 + (minutes || 0);
+    return [statusPrio, dateTime, timeInMinutes];
+  };
+
+  const filteredOrders = orders
+    .filter(o => {
+      const name = getDisplayName(o);
+      const mobile = getDisplayMobile(o);
+      const matchesStatus = filter === 'All' || o.status === filter;
+      const matchesDate = doesMatchDateFilter(o);
+      const searchLower = searchQuery.toLowerCase();
+      const qtyText = String(o.qty ?? o.boxes ?? o.quantity ?? '');
+      const matchesSearch = name.toLowerCase().includes(searchLower) ||
+                            (o.orderId || '').toLowerCase().includes(searchLower) ||
+                            mobile.includes(searchLower) ||
+                            qtyText.includes(searchLower);
+      return matchesStatus && matchesDate && matchesSearch;
+    })
+    .sort((a, b) => {
+      const [aPrio, aDate, aTime] = getOrderSortKey(a);
+      const [bPrio, bDate, bTime] = getOrderSortKey(b);
+      if (aPrio !== bPrio) return aPrio - bPrio;
+      if (aDate !== bDate) return aDate - bDate;
+      return aTime - bTime;
+    });
 
   const shareOrder = (order) => {
     const msg = `🚚 *NEW DELIVERY ASSIGNMENT*\n\n*ID:* ${order.orderId || 'N/A'}\n*Client:* ${getDisplayName(order)}\n*Mobile:* ${getDisplayMobile(order)}\n*Date:* ${order.date || 'TBD'} at ${order.time || 'TBD'}\n*Qty:* ${order.qty || 0} Boxes (200ml)\n\n*Address:*\n${order.address || 'N/A'}\n\n*Location:* ${order.location || 'N/A'}`;
