@@ -109,7 +109,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
   const shareOrder = useCallback((order) => {
     const msg = `🚚 *NEW DELIVERY ASSIGNMENT*\n\n*ID:* ${order.orderId || 'N/A'}\n*Client:* ${getDisplayName(order)}\n*Mobile:* ${getDisplayMobile(order)}\n*Date:* ${order.date || 'TBD'} at ${order.time || 'TBD'}\n*Qty:* ${order.qty || 0} Boxes (200ml)\n\n*Address:*\n${order.address || 'N/A'}\n\n*Location:* ${order.location || 'N/A'}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-  }, []);
+  }, [clients]);
 
   const shareDispatchPlan = useCallback(() => {
     const pending = orders.filter(o => o.status !== 'Delivered');
@@ -118,7 +118,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
       msg += `${i+1}. ${getDisplayName(o)} - ${o.qty} Bxs - ${o.date} ${o.time}\n`;
     });
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-  }, [orders]);
+  }, [orders, clients]);
 
   const callClient = useCallback((order) => {
     const mobile = getDisplayMobile(order);
@@ -128,7 +128,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
       return;
     }
     window.open(`tel:${cleanMobile}`, '_self');
-  }, []);
+  }, [clients]);
 
   const handleDelete = useCallback(async (order) => {
     const label = order.orderId || order.id;
