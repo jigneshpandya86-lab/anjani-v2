@@ -222,15 +222,18 @@ function App() {
 
     let ignoreUpdates = false
 
-    getDocs(notificationQuery)
-      .then((snapshot) => {
+    const loadNotifications = async () => {
+      try {
+        const snapshot = await getDocs(notificationQuery)
         if (ignoreUpdates) return
         const fetchedNotifications = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
         setNotifications(fetchedNotifications)
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error('Failed to load notifications:', error)
-      })
+      }
+    }
+
+    loadNotifications()
 
     return () => {
       ignoreUpdates = true
