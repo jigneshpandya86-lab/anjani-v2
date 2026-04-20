@@ -1,25 +1,26 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useClientStore } from '../store/clientStore';
 import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, UserX, UserCheck, Flag } from 'lucide-react';
 
 export default function ClientList({ onEdit, onPay, onOrder }) {
-  const { clients, updateClient } = useClientStore();
+  const clients = useClientStore(state => state.clients);
+  const updateClient = useClientStore(state => state.updateClient);
   const [search, setSearch] = useState('');
   const [sortByDue, setSortByDue] = useState(false);
 
-  const filtered = (clients || [])
-    .filter(c => 
-      (c.name || '').toLowerCase().includes(search.toLowerCase()) || 
+  const filtered = useMemo(() => (clients || [])
+    .filter(c =>
+      (c.name || '').toLowerCase().includes(search.toLowerCase()) ||
       (c.mobile || '').includes(search)
     )
     .sort((a, b) => {
       if (!sortByDue) return 0;
       return Number(b.outstanding || 0) - Number(a.outstanding || 0);
-    });
+    }), [clients, search, sortByDue]);
 
-  const toggleStatus = (client) => {
+  const toggleStatus = useCallback((client) => {
     updateClient(client.id, { active: !client.active });
-  };
+  }, [updateClient]);
 
   const getOutstandingMessage = (client) => {
     const pendingAmount = Number(client.outstanding || 0).toLocaleString();
