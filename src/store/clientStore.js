@@ -7,11 +7,9 @@ import { db } from '../firebase-config';
 
 let stockUnsubscribe = null;
 let stockSubscriberCount = 0;
+let leadsUnsubscribe = null;
+let leadsSubscriberCount = 0;
 const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary');
-
-// Short-ID prefix stamped onto human-readable client identifiers
-const CLIENT_SHORT_ID_PREFIX = 'CLT-';
-const CLIENT_SHORT_ID_LENGTH = 6;
 const RECENT_STOCK_ENTRIES_LIMIT = 50;
 
 const getOrderClientName = async (order, clients = []) => {
@@ -60,7 +58,7 @@ const formatOrderNarration = (prefix, orderRef, clientName) => {
 
 const buildClientShortId = (clientDocId) => {
   const safeId = String(clientDocId || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  return `${CLIENT_SHORT_ID_PREFIX}${safeId.slice(0, CLIENT_SHORT_ID_LENGTH).padEnd(CLIENT_SHORT_ID_LENGTH, '0')}`;
+  return `CLT-${safeId.slice(0, 6).padEnd(6, '0')}`;
 };
 
 const normalizeOrderWriteData = (data = {}) => ({
@@ -83,8 +81,9 @@ export const useClientStore = create((set, get) => ({
   userRole: null,
   clients: [],
   orders: [],
-  stockEntries: [], 
+  stockEntries: [],
   stockTotal: 0,
+  leads: [],
   loading: false,
 
   fetchUserRole: async (uid) => {
@@ -234,6 +233,54 @@ export const useClientStore = create((set, get) => ({
 
     await deleteDoc(stockRef);
     await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(-qtyDelta) }, { merge: true });
+  },
+
+  fetchLeads: () => {
+    leadsSubscriberCount++;
+    if (leadsUnsubscribe) return leadsUnsubscribe;
+
+    const q = query(
+      collection(db, 'leads'),
+      orderBy('createdAt', 'desc'),
+      limit(100)
+    );
+
+    leadsUnsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const fetchedLeads = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        set({ leads: fetchedLeads });
+      },
+      (error) => {
+        console.error('Failed to fetch leads:', error);
+      }
+    );
+
+    return () => {
+      leadsSubscriberCount--;
+      if (leadsSubscriberCount <= 0) {
+        if (leadsUnsubscribe) {
+          leadsUnsubscribe();
+          leadsUnsubscribe = null;
+        }
+        leadsSubscriberCount = 0;
+      }
+    };
+  },
+
+  addLead: async (leadData) => {
+    await addDoc(collection(db, 'leads'), {
+      ...leadData,
+      createdAt: serverTimestamp()
+    });
+  },
+
+  deleteLead: async (id) => {
+    await deleteDoc(doc(db, 'leads', id));
+  },
+
+  updateLead: async (id, data) => {
+    await updateDoc(doc(db, 'leads', id), data);
   },
 
   addClient: async (data) => {
