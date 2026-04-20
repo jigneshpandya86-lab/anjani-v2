@@ -20,7 +20,7 @@ import {
   Bell,
   CheckCheck
 } from 'lucide-react'
-import { collection, getDocs, query, orderBy, where, limit, startAfter, onSnapshot } from 'firebase/firestore'
+import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'firebase/firestore'
 import { db, auth } from './firebase-config'
 import { signOut, onAuthStateChanged } from 'firebase/auth'
 import ClientList from './components/ClientList'
@@ -34,25 +34,11 @@ import StockDashboard from './components/StockDashboard'
 import Login from './components/Login'
 import SalesAnalyticsDashboard from './components/SalesAnalyticsDashboard'
 import TasksPage from './TasksPage'
-import FirebaseError from './components/FirebaseError'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
-// localStorage key prefix for tracking which notifications a user has already
-// dismissed. Version suffix lets us invalidate stored state on future changes.
-const NOTIFICATION_READ_STORAGE_PREFIX = 'anjani-notification-read-v1'
-
-// Static nav template — icons created once at module scope so the array
-// identity is stable across re-renders, avoiding unnecessary child work.
-const NAV_ITEMS_TEMPLATE = [
-  { id: 'orders', label: 'Orders', icon: <ShoppingCart size={20} /> },
-  { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
-  { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
-  { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
-]
-
-const TASKS_NAV_ITEM = { id: 'tasks', label: 'Tasks', icon: <CheckSquare size={20} /> }
 
 function App() {
+  const NOTIFICATION_READ_STORAGE_PREFIX = 'anjani-notification-read-v1'
   const [activeTab, setActiveTab] = useState('orders')
   const [editOrder, setEditOrder] = useState(null)
   const [editClient, setEditClient] = useState(null)
@@ -101,16 +87,12 @@ function App() {
       toast.error('User not logged in.');
       return;
     }
-
-    const loadingToast = toast.loading('Enabling notifications...');
     try {
       console.log('Starting notification setup...');
       const { initializeFcm, sendLocalTestNotification } = await import('./services/fcm-setup');
       console.log('FCM module imported successfully');
       const result = await initializeFcm(user.uid, user.email);
       console.log('FCM initialization result:', result);
-
-      toast.dismiss(loadingToast);
 
       if (result.success) {
         toast.success(`Push notifications enabled (${result.tokenPreview})`);
@@ -135,11 +117,10 @@ function App() {
         } else if (result.reason === 'token-missing') {
           toast.error('Permission granted, but Firebase could not issue a device token.');
         } else {
-          toast.error('Failed to enable notifications: ' + (result.error || 'unknown error'));
+          toast.error('Failed to enable notifications. Please check browser permissions.');
         }
       }
     } catch (error) {
-      toast.dismiss(loadingToast);
       console.error('Error in handleEnableNotifications:', error);
       toast.error('Error enabling notifications: ' + error.message);
     }
@@ -220,19 +201,21 @@ function App() {
       limit(20)
     )
 
-    const unsubscribe = onSnapshot(
-      notificationQuery,
-      (snapshot) => {
+    let ignoreUpdates = false
+
+    getDocs(notificationQuery)
+      .then((snapshot) => {
+        if (ignoreUpdates) return
         const fetchedNotifications = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
         setNotifications(fetchedNotifications)
-        localStorage.setItem(`anjani-notifications-cache-${user.uid}`, JSON.stringify(fetchedNotifications))
-      },
-      (error) => {
+      })
+      .catch((error) => {
         console.error('Failed to load notifications:', error)
-      }
-    )
+      })
 
-    return unsubscribe
+    return () => {
+      ignoreUpdates = true
+    }
   }, [user])
 
   useEffect(() => {
@@ -282,70 +265,69 @@ function App() {
     }
   }
 
-  const navItems = useMemo(
-    () => NAV_ITEMS_TEMPLATE.filter((item) => userRole === 'admin' || item.id === 'orders'),
-    [userRole],
-  )
+  const navItems = [
+    { id: 'orders', label: 'Orders', icon: <ShoppingCart size={20} /> },
+    { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
+    { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
+    { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
+  ].filter(item => userRole === 'admin' || item.id === 'orders')
 
-  const drawerNavItems = useMemo(() => [TASKS_NAV_ITEM, ...navItems], [navItems])
+  const drawerNavItems = [
+    { id: 'tasks', label: 'Tasks', icon: <CheckSquare size={20} /> },
+    ...navItems,
+  ]
 
-  const drawerQuickActions = useMemo(
-    () =>
-      userRole === 'admin'
-        ? [
-            {
-              id: 'quick-new-order',
-              label: 'New Order',
-              icon: <ClipboardPlus size={18} />,
-              onClick: () => {
-                setActiveTab('orders')
-                setEditOrder({})
-                setDrawerOpen(false)
-              },
-            },
-            {
-              id: 'quick-open-leads',
-              label: 'Open Leads',
-              icon: <TrendingUp size={18} />,
-              onClick: () => {
-                setActiveTab('leads')
-                setDrawerOpen(false)
-              },
-            },
-            {
-              id: 'quick-add-client',
-              label: 'Add Client',
-              icon: <UserPlus size={18} />,
-              onClick: () => {
-                setActiveTab('clients')
-                setAddClientOpen(true)
-                setDrawerOpen(false)
-              },
-            },
-            {
-              id: 'quick-record-payment',
-              label: 'Record Payment',
-              icon: <HandCoins size={18} />,
-              onClick: () => {
-                setActiveTab('payments')
-                setPayClient({})
-                setPaymentPrefill(null)
-                setDrawerOpen(false)
-              },
-            },
-            {
-              id: 'quick-sales-analytics',
-              label: 'Sales Analytics',
-              icon: <TrendingUp size={18} />,
-              onClick: () => {
-                setAnalyticsModalOpen(true)
-                setDrawerOpen(false)
-              },
-            },
-          ]
-        : [],
-    [userRole],
-  )
+  const drawerQuickActions = [
+    {
+      id: 'quick-new-order',
+      label: 'New Order',
+      icon: <ClipboardPlus size={18} />,
+      onClick: () => {
+        setActiveTab('orders')
+        setEditOrder({})
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-open-leads',
+      label: 'Open Leads',
+      icon: <TrendingUp size={18} />,
+      onClick: () => {
+        setActiveTab('leads')
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-add-client',
+      label: 'Add Client',
+      icon: <UserPlus size={18} />,
+      onClick: () => {
+        setActiveTab('clients')
+        setAddClientOpen(true)
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-record-payment',
+      label: 'Record Payment',
+      icon: <HandCoins size={18} />,
+      onClick: () => {
+        setActiveTab('payments')
+        setPayClient({})
+        setPaymentPrefill(null)
+        setDrawerOpen(false)
+      }
+    },
+    {
+      id: 'quick-sales-analytics',
+      label: 'Sales Analytics',
+      icon: <TrendingUp size={18} />,
+      onClick: () => {
+        setAnalyticsModalOpen(true)
+        setDrawerOpen(false)
+      }
+    }
+  ].filter(() => userRole === 'admin')
 
   const openReportWindow = ({ title, columns, rows, metadata = [], reportWindow: providedReportWindow = null }) => {
     const reportWindow = providedReportWindow || window.open('', '_blank', 'width=900,height=700')
@@ -419,11 +401,11 @@ function App() {
     const rH = 18
 
     // Build content stream for a single page
-    const buildPageStream = (pageRows, i) => {
+    const buildPageStream = (pageRows, isFirstPage) => {
       const lines = []
       let y = pH - mg - 20
 
-      if (i === 0) {
+      if (isFirstPage) {
         lines.push(txt(mg, y, 14, title))
         y -= 20
         lines.push('0.5 0.5 0.5 rg')
@@ -443,7 +425,7 @@ function App() {
       lines.push('0.2 0.2 0.2 rg')
       lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
       lines.push('1 1 1 rg')
-      columns.forEach((col, idx) => lines.push(txt(mg + idx * colW + 4, y + 4, 7, col)))
+      columns.forEach((col, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, col)))
       lines.push('0 0 0 rg')
       y -= rH
 
@@ -453,7 +435,7 @@ function App() {
           lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
           lines.push('0 0 0 rg')
         }
-        row.forEach((cell, idx) => lines.push(txt(mg + idx * colW + 4, y + 4, 7, cell)))
+        row.forEach((cell, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, cell)))
         y -= rH
       })
 
@@ -481,7 +463,7 @@ function App() {
     }
 
     // Build one stream per page
-    const streams = pages.map((pageRows, i) => buildPageStream(pageRows, i))
+    const streams = pages.map((pageRows, i) => buildPageStream(pageRows, i === 0))
 
     // PDF object layout:
     //   1: Catalog, 2: Pages,
@@ -696,33 +678,51 @@ function App() {
 
       const { startDate, endDate, label: dateRangeLabel } = getLedgerDateRange(ledgerDateRange)
 
-      const payments = []
-      let lastVisibleDoc = null
+      // Check cache first (1-hour TTL for ledger exports)
+      const cacheKey = `ledger-export-${selectedClient.id}-${ledgerDateRange}`
+      const cachedData = localStorage.getItem(cacheKey)
+      const cacheAge = localStorage.getItem(`${cacheKey}-timestamp`)
+      const oneHourAgo = Date.now() - (60 * 60 * 1000)
 
-      while (true) {
-        const constraints = selectedClient.id === 'all'
-          ? [
-            where('createdAt', '>=', startDate),
-            where('createdAt', '<=', endDate),
-            orderBy('createdAt', 'desc'),
-            limit(LEDGER_EXPORT_PAGE_SIZE)
-          ]
-          : [
-            where('clientId', '==', selectedClient.id),
-            limit(LEDGER_EXPORT_PAGE_SIZE)
-          ]
+      let payments = []
+      if (cachedData && cacheAge && Number(cacheAge) > oneHourAgo) {
+        payments = JSON.parse(cachedData)
+      } else {
+        let lastVisibleDoc = null
 
-        if (lastVisibleDoc) {
-          constraints.push(startAfter(lastVisibleDoc))
+        while (true) {
+          const constraints = selectedClient.id === 'all'
+            ? [
+              where('createdAt', '>=', startDate),
+              where('createdAt', '<=', endDate),
+              orderBy('createdAt', 'desc'),
+              limit(LEDGER_EXPORT_PAGE_SIZE)
+            ]
+            : [
+              where('clientId', '==', selectedClient.id),
+              limit(LEDGER_EXPORT_PAGE_SIZE)
+            ]
+
+          if (lastVisibleDoc) {
+            constraints.push(startAfter(lastVisibleDoc))
+          }
+
+          const paymentsSnap = await getDocs(query(collection(db, 'payments'), ...constraints))
+          if (paymentsSnap.empty) break
+
+          payments.push(...paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
+          if (paymentsSnap.docs.length < LEDGER_EXPORT_PAGE_SIZE) break
+
+          lastVisibleDoc = paymentsSnap.docs[paymentsSnap.docs.length - 1]
         }
 
-        const paymentsSnap = await getDocs(query(collection(db, 'payments'), ...constraints))
-        if (paymentsSnap.empty) break
-
-        payments.push(...paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
-        if (paymentsSnap.docs.length < LEDGER_EXPORT_PAGE_SIZE) break
-
-        lastVisibleDoc = paymentsSnap.docs[paymentsSnap.docs.length - 1]
+        // Cache the results for 1 hour
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(payments))
+          localStorage.setItem(`${cacheKey}-timestamp`, String(Date.now()))
+        } catch (cacheError) {
+          console.warn('Failed to cache ledger export:', cacheError)
+        }
       }
 
       const filteredPayments = payments.filter((payment) => {
@@ -849,9 +849,6 @@ function App() {
     }
   ].filter(() => userRole === 'admin')
 
-  // Check if Firebase is properly configured
-  const isFirebaseConfigured = import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_PROJECT_ID;
-
   // AUTH: show loading screen while Firebase resolves the auth state on startup
   if (authLoading) {
     return (
@@ -862,11 +859,6 @@ function App() {
         </div>
       </div>
     )
-  }
-
-  // Show error if Firebase credentials are missing
-  if (!isFirebaseConfigured) {
-    return <FirebaseError />
   }
 
   // AUTH: gate — unauthenticated users see login screen only, do not remove
