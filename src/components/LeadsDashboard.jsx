@@ -9,11 +9,12 @@ import {
   serverTimestamp,
   where,
   limit,
-  orderBy,
   getDocs,
   updateDoc,
+  orderBy,
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
+import { useClientStore } from '../store/clientStore';
 import { MessageSquare, Trash2, Plus, Zap, RefreshCw, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import React from 'react';
@@ -165,7 +166,12 @@ const LeadCard = React.memo(function LeadCard({ lead, onWhatsApp, onDelete }) {
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export default function LeadsDashboard({ pendingAction = null, onPendingActionHandled }) {
-  const [leads, setLeads] = useState([]);
+  const leads = useClientStore(state => state.leads);
+  const fetchLeads = useClientStore(state => state.fetchLeads);
+  const updateLead = useClientStore(state => state.updateLead);
+  const addLead = useClientStore(state => state.addLead);
+  const deleteLead = useClientStore(state => state.deleteLead);
+
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newLeadName, setNewLeadName] = useState('');
@@ -175,14 +181,10 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
   const [isRemessaging, setIsRemessaging] = useState(false);
 
   useEffect(() => {
-    const q = query(collection(db, 'leads'), orderBy('createdAt', 'desc'), limit(100));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setLeads(docs.sort((a, b) => getLeadDate(b) - getLeadDate(a)));
-      setLoading(false);
-    });
+    const unsub = fetchLeads();
+    setLoading(false);
     return unsub;
-  }, []);
+  }, [fetchLeads]);
 
   // Derived counts — memoized, only recalculate when leads change
   const untaggedCount = useMemo(() => leads.filter(l => !l.Tag).length, [leads]);
@@ -195,17 +197,13 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
     window.open(`https://wa.me/91${lead.mobile}?text=${encodeURIComponent(msg)}`, '_blank');
   }, []);
 
-  const deleteLead = useCallback((leadId, leadLabel) => {
-    // Optimistic: remove from UI immediately
-    setLeads(prev => prev.filter(l => l.id !== leadId));
-
+  const deleteLeadHandler = useCallback((leadId, leadLabel) => {
     const undoTimeout = setTimeout(async () => {
       try {
-        await deleteDoc(doc(db, 'leads', leadId));
+        await deleteLead(leadId);
       } catch (error) {
         console.error('Failed to delete lead:', error);
         toast.error('Delete failed — please try again');
-        // Rollback: re-fetch will restore via onSnapshot
       }
     }, 3000);
 
@@ -230,7 +228,7 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
       ),
       { duration: 3000 },
     );
-  }, []);
+  }, [deleteLead]);
 
   const saveManualLead = useCallback(async (e) => {
     e.preventDefault();
@@ -244,7 +242,7 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
 
     setIsSavingLead(true);
     try {
-      await addDoc(collection(db, 'leads'), {
+      await addLead({
         name,
         mobile,
         source: 'manual',
@@ -261,7 +259,7 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
     } finally {
       setIsSavingLead(false);
     }
-  }, [newLeadName, newLeadMobile]);
+  }, [newLeadName, newLeadMobile, addLead]);
 
   const closeAddForm = useCallback(() => {
     if (isSavingLead) return;
@@ -338,7 +336,7 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
         if (!context) continue;
 
         if (context.shouldMarkComplete) {
-          await updateDoc(doc(db, 'leads', leadDoc.id), { Tag: 'FOLLOWUP_DONE' });
+          await updateLead(leadDoc.id, { Tag: 'FOLLOWUP_DONE' });
           continue;
         }
 
@@ -347,8 +345,8 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
           phone: mobile,
           message: buildFollowUpSmsMessage({ reminderDay: context.reminderDay }),
         });
-        await updateDoc(
-          doc(db, 'leads', leadDoc.id),
+        await updateLead(
+          leadDoc.id,
           buildFollowUpUpdate({ lead, reminderDay: context.reminderDay, nextStep: context.nextStep, now }),
         );
         sentCount += 1;
@@ -516,11 +514,10 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label htmlFor="lead-name" className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
                   Name (optional)
                 </label>
                 <input
-                  id="lead-name"
                   type="text"
                   value={newLeadName}
                   onChange={(e) => setNewLeadName(e.target.value)}
@@ -529,11 +526,10 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
                 />
               </div>
               <div>
-                <label htmlFor="lead-mobile" className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
                   Mobile *
                 </label>
                 <input
-                  id="lead-mobile"
                   required
                   type="tel"
                   inputMode="numeric"
@@ -590,7 +586,7 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
               key={lead.id}
               lead={lead}
               onWhatsApp={sendWhatsApp}
-              onDelete={deleteLead}
+              onDelete={deleteLeadHandler}
             />
           ))}
         </div>
