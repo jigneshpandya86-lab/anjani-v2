@@ -187,7 +187,34 @@ export const useClientStore = create((set, get) => ({
   fetchStockTotal: () => {
     return onSnapshot(STOCK_SUMMARY_DOC, async (summarySnap) => {
       if (summarySnap.exists()) {
-        set({ stockTotal: Number(summarySnap.data()?.totalQty) || 0 });
+        const storedTotal = Number(summarySnap.data()?.totalQty) || 0;
+        set({ stockTotal: storedTotal });
+
+        // Validate against actual entries (log warnings for data integrity issues)
+        try {
+          const fullSnap = await getDocs(query(collection(db, 'stock')));
+          const actualTotal = fullSnap.docs.reduce((acc, d) => {
+            const raw = d.data();
+            const hasLegacyProducedDelivered =
+              raw.produced !== undefined || raw.delivered !== undefined;
+            if (hasLegacyProducedDelivered && raw.qty === undefined) {
+              return acc + ((Number(raw.produced) || 0) - (Number(raw.delivered) || 0));
+            }
+            return acc + (Number(raw.qty || raw.boxes || raw.quantity) || 0);
+          }, 0);
+
+          if (storedTotal !== actualTotal) {
+            console.warn('[Stock Integrity] Mismatch detected:', { storedTotal, actualTotal, entryCount: fullSnap.docs.length });
+            // Auto-repair if mismatch is significant
+            if (Math.abs(storedTotal - actualTotal) > 10) {
+              console.warn('[Stock] Auto-repairing total from', storedTotal, 'to', actualTotal);
+              await setDoc(STOCK_SUMMARY_DOC, { totalQty: actualTotal }, { merge: true });
+              set({ stockTotal: actualTotal });
+            }
+          }
+        } catch (err) {
+          console.error('[Stock] Validation check failed:', err);
+        }
         return;
       }
 
@@ -504,6 +531,42 @@ export const useClientStore = create((set, get) => ({
       await deleteDoc(orderDocRef);
     } catch (err) {
       console.error('Delete failed:', err);
+      throw err;
+    }
+  },
+
+  recalculateStockTotal: async () => {
+    try {
+      // Read ALL stock entries (not just recent limit)
+      const fullSnap = await getDocs(query(collection(db, 'stock')));
+
+      let computedTotal = 0;
+      fullSnap.docs.forEach((doc) => {
+        const raw = doc.data();
+        const hasLegacyProducedDelivered =
+          raw.produced !== undefined || raw.delivered !== undefined;
+
+        if (hasLegacyProducedDelivered && raw.qty === undefined) {
+          // Legacy row: net = produced - delivered
+          const producedCount = Number(raw.produced) || 0;
+          const deliveredCount = Number(raw.delivered) || 0;
+          const netQty = producedCount - deliveredCount;
+          computedTotal += netQty;
+        } else {
+          // Modern entry: use qty directly
+          const qty = Number(raw.qty || raw.boxes || raw.quantity) || 0;
+          computedTotal += qty;
+        }
+      });
+
+      // Update summary document with recalculated value
+      await setDoc(STOCK_SUMMARY_DOC, { totalQty: computedTotal }, { merge: true });
+      set({ stockTotal: computedTotal });
+
+      console.log('[Stock] Recalculated total from', fullSnap.docs.length, 'entries:', computedTotal);
+      return computedTotal;
+    } catch (err) {
+      console.error('[Stock] Recalculation failed:', err);
       throw err;
     }
   }

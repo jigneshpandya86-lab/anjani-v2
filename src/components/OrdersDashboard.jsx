@@ -19,32 +19,30 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
   const proofInputRefs = useRef({});
   const storage = getStorage(app);
 
-  // Robust Client Fetcher
-  const getDisplayName = (order) => {
+  const getDisplayName = useCallback((order) => {
     if (order.clientId) {
       const c = clients.find(c => c.id === order.clientId);
       if (c) return c.name;
     }
-    // Fallback for old legacy names saved directly in order
     return order.clientName || order.customerName || order.customer || order.name || 'Legacy Client';
-  };
+  }, [clients]);
 
-  const getDisplayMobile = (order) => {
+  const getDisplayMobile = useCallback((order) => {
     if (order.clientId) {
       const c = clients.find(c => c.id === order.clientId);
       if (c) return c.mobile;
     }
     return order.mobile || order.phone || '';
-  };
+  }, [clients]);
 
-  const getOrderDate = (order) => {
+  const getOrderDate = useCallback((order) => {
     if (!order?.date) return null;
     const parsedDate = new Date(order.date);
     if (Number.isNaN(parsedDate.getTime())) return null;
     return new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
-  };
+  }, []);
 
-  const doesMatchDateFilter = (order) => {
+  const doesMatchDateFilter = useCallback((order) => {
     if (dateFilter === 'All') return true;
 
     const orderDate = getOrderDate(order);
@@ -70,11 +68,11 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
     }
 
     return true;
-  };
+  }, [dateFilter, getOrderDate]);
 
   const statusPriority = { 'Pending': 0, 'Confirmed': 1, 'Delivered': 2 };
 
-  const getOrderSortKey = (order) => {
+  const getOrderSortKey = useCallback((order) => {
     const statusPrio = statusPriority[order.status] ?? 999;
     const dateObj = getOrderDate(order);
     const dateTime = dateObj?.getTime() ?? Number.MAX_VALUE;
@@ -82,7 +80,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
     const [hours, minutes] = timeStr.split(':').map(Number);
     const timeInMinutes = (hours || 0) * 60 + (minutes || 0);
     return [statusPrio, dateTime, timeInMinutes];
-  };
+  }, [getOrderDate]);
 
   const filteredOrders = useMemo(() => orders
     .filter(o => {
@@ -104,12 +102,12 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
       if (aPrio !== bPrio) return aPrio - bPrio;
       if (aDate !== bDate) return aDate - bDate;
       return aTime - bTime;
-    }), [orders, filter, searchQuery, dateFilter]);
+    }), [orders, filter, searchQuery, dateFilter, getDisplayName, getDisplayMobile, doesMatchDateFilter, getOrderSortKey]);
 
   const shareOrder = useCallback((order) => {
     const msg = `🚚 *NEW DELIVERY ASSIGNMENT*\n\n*ID:* ${order.orderId || 'N/A'}\n*Client:* ${getDisplayName(order)}\n*Mobile:* ${getDisplayMobile(order)}\n*Date:* ${order.date || 'TBD'} at ${order.time || 'TBD'}\n*Qty:* ${order.qty || 0} Boxes (200ml)\n\n*Address:*\n${order.address || 'N/A'}\n\n*Location:* ${order.location || 'N/A'}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-  }, [clients]);
+  }, [getDisplayName, getDisplayMobile]);
 
   const shareDispatchPlan = useCallback(() => {
     const pending = orders.filter(o => o.status !== 'Delivered');
@@ -118,7 +116,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
       msg += `${i+1}. ${getDisplayName(o)} - ${o.qty} Bxs - ${o.date} ${o.time}\n`;
     });
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-  }, [orders, clients]);
+  }, [orders, getDisplayName]);
 
   const callClient = useCallback((order) => {
     const mobile = getDisplayMobile(order);
@@ -128,7 +126,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
       return;
     }
     window.open(`tel:${cleanMobile}`, '_self');
-  }, [clients]);
+  }, [getDisplayMobile]);
 
   const handleDelete = useCallback(async (order) => {
     const label = order.orderId || order.id;
