@@ -14,11 +14,18 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message ', payload);
-  const notificationTitle = payload.notification.title;
+  
+  const title = payload.notification?.title || payload.data?.title || 'Anjani Water Update';
+  const body = payload.notification?.body || payload.data?.body || '';
+  
   const notificationOptions = {
-    body: payload.notification.body,
-    icon: '/firebase-logo.png'
+    body: body,
+    icon: '/favicon.svg',
+    badge: '/favicon.svg',
+    data: payload.data,
+    tag: 'background-notification',
+    renotify: true
   };
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  self.registration.showNotification(title, notificationOptions);
 });

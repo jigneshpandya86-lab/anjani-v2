@@ -134,18 +134,22 @@ export async function sendLocalTestNotification(existingRegistration = null) {
 function handleForegroundMessage(payload) {
   const { notification, data } = payload;
 
-  if (!notification) {
+  if (!notification && !data) {
     return;
   }
+
+  const title = notification?.title || data?.title || 'New Update';
+  const body = notification?.body || data?.body || '';
 
   // Create and show notification programmatically
   if ('serviceWorker' in navigator && messaging) {
     navigator.serviceWorker.ready.then((registration) => {
-      registration.showNotification(notification.title, {
-        body: notification.body,
-        icon: notification.icon || '/app-icon.png',
-        badge: notification.badge || '/app-badge.png',
+      registration.showNotification(title, {
+        body: body,
+        icon: '/favicon.svg',
+        badge: '/favicon.svg',
         tag: 'foreground-notification',
+        renotify: true,
         data: data || {}
       });
     });

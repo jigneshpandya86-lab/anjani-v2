@@ -1,8 +1,7 @@
 import { create } from 'zustand';
 import {
   collection, addDoc, onSnapshot, query, doc,
-  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs, deleteField,
-  runTransaction
+  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs, deleteField
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
 
@@ -192,8 +191,13 @@ export const useClientStore = create((set, get) => ({
         set({ stockTotal: storedTotal });
         return;
       }
+      get().recalculateStockTotal();
+    });
+  },
 
-      // One-time backfill for existing deployments where summary doc does not exist yet.
+  recalculateStockTotal: async () => {
+    set({ loading: true });
+    try {
       const fullSnap = await getDocs(query(collection(db, 'stock')));
       const computedTotal = fullSnap.docs.reduce((acc, d) => {
         const raw = d.data();
@@ -207,8 +211,13 @@ export const useClientStore = create((set, get) => ({
 
       console.log('[Stock] Backfilled summary from', fullSnap.docs.length, 'entries:', computedTotal);
       await setDoc(STOCK_SUMMARY_DOC, { totalQty: computedTotal }, { merge: true });
-      set({ stockTotal: computedTotal });
-    });
+      set({ stockTotal: computedTotal, loading: false });
+      return computedTotal;
+    } catch (error) {
+      console.error('Failed to recalculate stock:', error);
+      set({ loading: false });
+      throw error;
+    }
   },
 
   addStockManual: async (qty, narration) => {
