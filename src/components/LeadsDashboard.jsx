@@ -2,16 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   collection,
   query,
-  onSnapshot,
-  deleteDoc,
   doc,
-  addDoc,
   serverTimestamp,
   where,
   limit,
   getDocs,
   updateDoc,
-  orderBy,
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { useClientStore } from '../store/clientStore';
@@ -48,13 +44,6 @@ const TAG_CONFIG = {
     badge: 'bg-gray-100 text-gray-500',
     avatar: 'bg-gray-100 text-gray-500',
   },
-};
-
-const getLeadDate = (lead) => {
-  const raw = lead.createdAt || lead.createdDate || lead.date;
-  if (!raw) return new Date(0);
-  if (raw?.toDate) return raw.toDate();
-  return new Date(raw);
 };
 
 const formatDate = (lead) => {
@@ -514,10 +503,11 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+                <label htmlFor="newLeadName" className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
                   Name (optional)
                 </label>
                 <input
+                  id="newLeadName"
                   type="text"
                   value={newLeadName}
                   onChange={(e) => setNewLeadName(e.target.value)}
@@ -526,10 +516,11 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+                <label htmlFor="newLeadMobile" className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
                   Mobile *
                 </label>
                 <input
+                  id="newLeadMobile"
                   required
                   type="tel"
                   inputMode="numeric"

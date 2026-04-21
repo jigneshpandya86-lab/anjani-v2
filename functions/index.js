@@ -214,12 +214,13 @@ Address: ${sAddress}
 Location: ${sLocation}
 MapLink: ${sMapLink}`;
 
+    const pushMessage = `${statusHeader}: ${sQty} for ${sName} at ${sTime} (${sDate}).`;
 
     logger.info(`Constructed Staff message for ${event.params.docId}: ${message}`);
 
     // Send Push Notification
     try {
-        await broadcastNotification(message, statusHeader);
+        await broadcastNotification(message, statusHeader, pushMessage);
         logger.info(`Push notification sent for order: ${event.params.docId}`);
     } catch (pushError) {
         logger.error("Error sending push notification for order:", { orderId: event.params.docId, error: pushError.message });
@@ -256,7 +257,7 @@ exports.formatDate = (date) => {
 /**
  * Helper to send order reminder SMS
  */
-exports.sendOrderReminder = async function sendOrderReminder(doc, type) {
+exports.sendOrderReminder = async function sendOrderReminder(doc, type, skipPush = false) {
     const data = doc.data();
     logger.info(`Processing ${type} reminder for order ${doc.id}:`, data);
     if (data.status === "cancelled" || data.isCancelled === true) return;
@@ -284,11 +285,15 @@ MapLink: ${resolved.mapLink}`;
     logger.info(`Constructed message for ${doc.id}: ${message}`);
 
     // Send Push Notification
-    try {
-        await broadcastNotification(message, `DELIVERY REMINDER (${type})`);
-        logger.info(`Push reminder (${type}) sent for order: ${doc.id}`);
-    } catch (pushError) {
-        logger.error(`Error sending push reminder (${type}) for order:`, { orderId: doc.id, error: pushError.message });
+    if (!skipPush) {
+        try {
+            await broadcastNotification(message, `DELIVERY REMINDER (${type})`);
+            logger.info(`Push reminder (${type}) sent for order: ${doc.id}`);
+        } catch (pushError) {
+            logger.error(`Error sending push reminder (${type}) for order:`, { orderId: doc.id, error: pushError.message });
+        }
+    } else {
+        logger.info(`Skipping individual push reminder for order ${doc.id} as per skipPush flag.`);
     }
 
     const staffMobile = "917990943652";
@@ -319,9 +324,22 @@ exports.sendMorningOrderReminders = onSchedule({
         const snapshot = await admin.firestore().collection('orders')
             .where('date', '==', todayStr).get();
 
-        const promises = snapshot.docs.map(doc => exports.sendOrderReminder(doc, "TODAY"));
-        await Promise.all(promises);
-        logger.info(`Morning order reminder job completed. Sent ${promises.length} potential reminders.`);
+        const activeOrders = snapshot.docs.filter(doc => {
+            const data = doc.data();
+            return !(data.status === "cancelled" || data.isCancelled === true);
+        });
+
+        if (activeOrders.length > 0) {
+            const summaryMessage = `Good Morning! You have ${activeOrders.length} order${activeOrders.length > 1 ? 's' : ''} scheduled for today. Check the app for details.`;
+            await broadcastNotification(summaryMessage, "TODAY'S ORDERS SUMMARY");
+            
+            // Still send individual SMS for staff automation, but skip individual push
+            const promises = activeOrders.map(doc => exports.sendOrderReminder(doc, "TODAY", true));
+            await Promise.all(promises);
+            logger.info(`Morning order reminder job completed. Sent ${activeOrders.length} SMS reminders and 1 summary push.`);
+        } else {
+            logger.info("No active orders found for today.");
+        }
     } catch (e) {
         logger.error("Morning Order Reminder Job Error:", e.message);
     }
@@ -341,9 +359,22 @@ exports.sendEveningOrderReminders = onSchedule({
         const snapshot = await admin.firestore().collection('orders')
             .where('date', '==', tomorrowStr).get();
 
-        const promises = snapshot.docs.map(doc => exports.sendOrderReminder(doc, "TOMORROW"));
-        await Promise.all(promises);
-        logger.info(`Evening order reminder job completed. Sent ${promises.length} potential reminders.`);
+        const activeOrders = snapshot.docs.filter(doc => {
+            const data = doc.data();
+            return !(data.status === "cancelled" || data.isCancelled === true);
+        });
+
+        if (activeOrders.length > 0) {
+            const summaryMessage = `Evening Update: There are ${activeOrders.length} order${activeOrders.length > 1 ? 's' : ''} scheduled for tomorrow. Be ready!`;
+            await broadcastNotification(summaryMessage, "TOMORROW'S ORDERS SUMMARY");
+
+            // Still send individual SMS for staff automation, but skip individual push
+            const promises = activeOrders.map(doc => exports.sendOrderReminder(doc, "TOMORROW", true));
+            await Promise.all(promises);
+            logger.info(`Evening order reminder job completed. Sent ${activeOrders.length} SMS reminders and 1 summary push.`);
+        } else {
+            logger.info("No active orders found for tomorrow.");
+        }
     } catch (e) {
         logger.error("Evening Order Reminder Job Error:", e.message);
     }
@@ -975,7 +1006,7 @@ const { onCall } = require("firebase-functions/v2/https");
  * Internal helper to broadcast a notification message to all users via FCM
  * and record it in the Firestore notifications collection.
  */
-async function broadcastNotification(message, title = "New Notification") {
+async function broadcastNotification(message, title = "New Notification", pushMessage = null) {
   const db = admin.firestore();
   try {
     const newNotification = {
@@ -986,8 +1017,8 @@ async function broadcastNotification(message, title = "New Notification") {
 
     const notificationDocRef = await db.collection("notifications").add(newNotification);
     
-    // Fetch all user devices to get FCM tokens
-    const devicesSnapshot = await db.collection("user_devices").get();
+    // Fetch all user devices to get FCM tokens across all users
+    const devicesSnapshot = await db.collectionGroup("tokens").get();
     
     if (devicesSnapshot.empty) {
       logger.info("No user devices found to send FCM.");
@@ -999,22 +1030,46 @@ async function broadcastNotification(message, title = "New Notification") {
 
     devicesSnapshot.forEach((doc) => {
       const data = doc.data();
-      if (data.token) {
+      // Only include active tokens
+      if (data.token && data.status !== 'invalid') {
         tokens.push(data.token);
         tokenDocMap[data.token] = doc.ref;
       }
     });
 
     if (tokens.length === 0) {
-      logger.info("No valid FCM tokens found in user devices.");
+      logger.info("No valid/active FCM tokens found in user devices.");
       return { id: notificationDocRef.id, ...newNotification, tokensNotified: 0 };
     }
+
+    const displayBody = pushMessage || message;
 
     // Prepare FCM payload
     const payload = {
       notification: {
         title: title,
-        body: message,
+        body: displayBody,
+      },
+      data: {
+        title: title,
+        body: displayBody,
+        click_action: "https://anjaniappnew.firebaseapp.com",
+        type: "broadcast"
+      },
+      webpush: {
+        notification: {
+          title: title,
+          body: displayBody,
+          icon: "/favicon.svg",
+          badge: "/favicon.svg",
+          vibrate: [200, 100, 200],
+          requireInteraction: true,
+          renotify: true,
+          tag: "broadcast-notification"
+        },
+        fcm_options: {
+          link: "https://anjaniappnew.firebaseapp.com"
+        }
       },
       tokens: tokens,
     };
@@ -1023,30 +1078,35 @@ async function broadcastNotification(message, title = "New Notification") {
     const response = await admin.messaging().sendEachForMulticast(payload);
     logger.info(`Broadcast: Successfully sent ${response.successCount} messages; ${response.failureCount} failed.`);
 
-    // Cleanup dead tokens (DISABLED as per user request to ensure no device tokens are removed automatically)
-    /*
+    // Handle invalid tokens based on FCM failure response
     if (response.failureCount > 0) {
-      const failedTokens = [];
+      const batch = db.batch();
+      let invalidatedCount = 0;
+      
       response.responses.forEach((resp, idx) => {
         if (!resp.success) {
           const errorCode = resp.error?.code;
-          if (errorCode === 'messaging/invalid-registration-token' || errorCode === 'messaging/registration-token-not-registered') {
-            failedTokens.push(tokens[idx]);
+          if (errorCode === 'messaging/invalid-registration-token' || 
+              errorCode === 'messaging/registration-token-not-registered') {
+            const token = tokens[idx];
+            const docRef = tokenDocMap[token];
+            if (docRef) {
+              batch.update(docRef, { 
+                status: 'invalid', 
+                invalidAt: admin.firestore.FieldValue.serverTimestamp(),
+                lastError: errorCode
+              });
+              invalidatedCount++;
+            }
           }
         }
       });
 
-      if (failedTokens.length > 0) {
-        const batch = db.batch();
-        failedTokens.forEach((token) => {
-          const docRef = tokenDocMap[token];
-          if (docRef) batch.delete(docRef);
-        });
+      if (invalidatedCount > 0) {
         await batch.commit();
-        logger.info(`Broadcast: Deleted ${failedTokens.length} dead tokens.`);
+        logger.info(`Broadcast: Marked ${invalidatedCount} dead tokens as invalid.`);
       }
     }
-    */
 
     return { id: notificationDocRef.id, ...newNotification, tokensNotified: response.successCount };
   } catch (error) {
@@ -1104,6 +1164,8 @@ exports.sendNotification = onCall(async (request) => {
  */
 exports.registerDevice = onCall(async (request) => {
   const { token, loginId, deviceName } = request.data;
+  // Use authenticated UID or fallback to loginId if not authenticated
+  const userId = request.auth ? request.auth.uid : (loginId || "unknown");
 
   if (!token) {
     throw new Error("Token is required");
@@ -1111,15 +1173,17 @@ exports.registerDevice = onCall(async (request) => {
 
   const db = admin.firestore();
   try {
-    const deviceRef = db.collection("user_devices").doc(token);
+    // Standardize to userDevices/{userId}/tokens/{token}
+    const deviceRef = db.collection("userDevices").doc(userId).collection("tokens").doc(token);
     await deviceRef.set({
       token,
       loginId: loginId || "anonymous",
       deviceName: deviceName || "unknown",
+      status: 'active', // Ensure the token is active when registered/refreshed
       lastRegistered: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
 
-    logger.info(`Device registered: ${token} for loginId: ${loginId}`);
+    logger.info(`Device registered: ${token} for loginId: ${loginId} under user: ${userId}`);
     return { status: "success" };
   } catch (error) {
     logger.error("Error registering device:", error);
@@ -1182,7 +1246,7 @@ exports.hourlyDeliveryReminders = onSchedule({
             return;
         }
 
-        const promises = [];
+        const ordersToRemind = [];
         snapshot.forEach(doc => {
             const data = doc.data();
             
@@ -1195,18 +1259,28 @@ exports.hourlyDeliveryReminders = onSchedule({
             
             // Only proceed if delivery is "soon" (within next ~3 hours)
             if (deliveryTime && isDeliverySoon(deliveryTime, now)) {
-                promises.push((async () => {
-                    const message = `Upcoming Delivery: Order for ${data.clientName || data.name || 'Customer'} is scheduled for ${deliveryTime} today. Qty: ${data.qty || data.quantity}`;
-                    await broadcastNotification(message, "Delivery Reminder");
-                    await doc.ref.update({ pushReminderSent: true });
-                    logger.info(`Hourly push reminder sent for order: ${doc.id}`);
-                })());
+                ordersToRemind.push({ id: doc.id, ref: doc.ref, ...data });
             }
         });
 
-        if (promises.length > 0) {
-            await Promise.all(promises);
-            logger.info(`Hourly delivery reminder job completed. Sent ${promises.length} reminders.`);
+        if (ordersToRemind.length > 0) {
+            let summaryMessage = "";
+            if (ordersToRemind.length === 1) {
+                const data = ordersToRemind[0];
+                const deliveryTime = data.time || data.deliveryTime;
+                summaryMessage = `Upcoming Delivery: Order for ${data.clientName || data.name || 'Customer'} is scheduled for ${deliveryTime} today. Qty: ${data.qty || data.quantity}`;
+            } else {
+                summaryMessage = `Upcoming Deliveries: You have ${ordersToRemind.length} orders due soon. Check the app for details.`;
+            }
+
+            await broadcastNotification(summaryMessage, "Delivery Reminder");
+
+            const updatePromises = ordersToRemind.map(order => 
+                order.ref.update({ pushReminderSent: true })
+            );
+            await Promise.all(updatePromises);
+            
+            logger.info(`Hourly delivery reminder job completed. Sent 1 summary push for ${ordersToRemind.length} orders.`);
         } else {
             logger.info("No orders are due for reminder in this window.");
         }

@@ -4,7 +4,12 @@
 // Changes here affect authentication and all Firestore access.
 // ─────────────────────────────────────────────────────────────
 import { initializeApp } from "firebase/app";
-import { initializeFirestore, persistentLocalCache, persistentSingleTabManager } from "firebase/firestore";
+import { 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentSingleTabManager,
+  CACHE_SIZE_UNLIMITED 
+} from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
@@ -47,7 +52,8 @@ export const app = initializeApp(firebaseConfig);
 // default to 'staff' and hid all admin data after login.
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
-    tabManager: persistentSingleTabManager()
+    tabManager: persistentSingleTabManager(),
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED
   }),
   experimentalAutoDetectLongPolling: true
 });

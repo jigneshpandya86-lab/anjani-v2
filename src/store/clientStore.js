@@ -1,8 +1,7 @@
 import { create } from 'zustand';
 import {
   collection, addDoc, onSnapshot, query, doc,
-  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs, deleteField,
-  runTransaction
+  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs, deleteField
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
 

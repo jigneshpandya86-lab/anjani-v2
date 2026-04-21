@@ -39,20 +39,23 @@ async function sendTestNotification() {
   try {
     const tokensSnapshot = await db.collectionGroup('tokens').get();
     const tokens = [];
+    const tokenRefs = [];
 
     tokensSnapshot.forEach(doc => {
       const data = doc.data();
-      if (data.token) {
+      // Only include active tokens
+      if (data.token && data.status !== 'invalid') {
         tokens.push(data.token);
+        tokenRefs.push(doc.ref);
       }
     });
 
     if (tokens.length === 0) {
-      console.log('No tokens found');
+      console.log('No active tokens found');
       return;
     }
 
-    console.log(`Found ${tokens.length} tokens. Sending notification...`);
+    console.log(`Found ${tokens.length} active tokens. Sending notification...`);
 
     const message = {
       notification: {
@@ -85,12 +88,25 @@ async function sendTestNotification() {
 
     console.log(`Successfully sent ${response.successCount} messages.`);
     console.log(`Failed to send ${response.failureCount} messages.`);
+    
     if (response.failureCount > 0) {
-      response.responses.forEach((resp, idx) => {
+      for (let idx = 0; idx < response.responses.length; idx++) {
+        const resp = response.responses[idx];
         if (!resp.success) {
-          console.error(`Error sending to token ${tokens[idx]}:`, resp.error);
+          const errorCode = resp.error?.code;
+          console.error(`Error sending to token ${tokens[idx]}:`, errorCode);
+          
+          if (errorCode === 'messaging/registration-token-not-registered' || 
+              errorCode === 'messaging/invalid-registration-token') {
+            console.log(`Marking token ${tokens[idx]} as invalid...`);
+            await tokenRefs[idx].update({ 
+              status: 'invalid',
+              invalidAt: new Date(),
+              lastError: errorCode
+            });
+          }
         }
-      });
+      }
     }
   } catch (error) {
     console.error('Error sending test notification:', error);
