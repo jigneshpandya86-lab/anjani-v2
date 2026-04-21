@@ -187,7 +187,9 @@ export const useClientStore = create((set, get) => ({
   fetchStockTotal: () => {
     return onSnapshot(STOCK_SUMMARY_DOC, async (summarySnap) => {
       if (summarySnap.exists()) {
-        set({ stockTotal: Number(summarySnap.data()?.totalQty) || 0 });
+        const storedTotal = Number(summarySnap.data()?.totalQty) || 0;
+        console.log('[Stock] Current summary doc:', { totalQty: storedTotal, ...summarySnap.data() });
+        set({ stockTotal: storedTotal });
         return;
       }
 
@@ -203,6 +205,7 @@ export const useClientStore = create((set, get) => ({
         return acc + (Number(raw.qty || raw.boxes || raw.quantity) || 0);
       }, 0);
 
+      console.log('[Stock] Backfilled summary from', fullSnap.docs.length, 'entries:', computedTotal);
       await setDoc(STOCK_SUMMARY_DOC, { totalQty: computedTotal }, { merge: true });
       set({ stockTotal: computedTotal });
     });
