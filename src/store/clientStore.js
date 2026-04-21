@@ -188,33 +188,8 @@ export const useClientStore = create((set, get) => ({
     return onSnapshot(STOCK_SUMMARY_DOC, async (summarySnap) => {
       if (summarySnap.exists()) {
         const storedTotal = Number(summarySnap.data()?.totalQty) || 0;
+        console.log('[Stock] Current summary doc:', { totalQty: storedTotal, ...summarySnap.data() });
         set({ stockTotal: storedTotal });
-
-        // Validate against actual entries (log warnings for data integrity issues)
-        try {
-          const fullSnap = await getDocs(query(collection(db, 'stock')));
-          const actualTotal = fullSnap.docs.reduce((acc, d) => {
-            const raw = d.data();
-            const hasLegacyProducedDelivered =
-              raw.produced !== undefined || raw.delivered !== undefined;
-            if (hasLegacyProducedDelivered && raw.qty === undefined) {
-              return acc + ((Number(raw.produced) || 0) - (Number(raw.delivered) || 0));
-            }
-            return acc + (Number(raw.qty || raw.boxes || raw.quantity) || 0);
-          }, 0);
-
-          if (storedTotal !== actualTotal) {
-            console.warn('[Stock Integrity] Mismatch detected:', { storedTotal, actualTotal, entryCount: fullSnap.docs.length });
-            // Auto-repair if mismatch is significant
-            if (Math.abs(storedTotal - actualTotal) > 10) {
-              console.warn('[Stock] Auto-repairing total from', storedTotal, 'to', actualTotal);
-              await setDoc(STOCK_SUMMARY_DOC, { totalQty: actualTotal }, { merge: true });
-              set({ stockTotal: actualTotal });
-            }
-          }
-        } catch (err) {
-          console.error('[Stock] Validation check failed:', err);
-        }
         return;
       }
 
@@ -230,6 +205,7 @@ export const useClientStore = create((set, get) => ({
         return acc + (Number(raw.qty || raw.boxes || raw.quantity) || 0);
       }, 0);
 
+      console.log('[Stock] Backfilled summary from', fullSnap.docs.length, 'entries:', computedTotal);
       await setDoc(STOCK_SUMMARY_DOC, { totalQty: computedTotal }, { merge: true });
       set({ stockTotal: computedTotal });
     });
