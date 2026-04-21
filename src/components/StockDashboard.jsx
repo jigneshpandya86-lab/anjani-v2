@@ -1,13 +1,26 @@
 import { useState, useEffect } from 'react';
 import { useClientStore } from '../store/clientStore';
 import toast from 'react-hot-toast';
-import { Plus, History, Tag, ArrowUpRight, ArrowDownLeft, X, Trash2 } from 'lucide-react';
+import { Plus, History, Tag, ArrowUpRight, ArrowDownLeft, X, Trash2, RefreshCw } from 'lucide-react';
 
 export default function StockDashboard() {
-  const { stockEntries, stockTotal, addStockManual, deleteStockEntry, fetchStock } = useClientStore();
+  const { stockEntries, stockTotal, addStockManual, deleteStockEntry, fetchStock, recalculateStockTotal, loading } = useClientStore();
   const [showAdd, setShowAdd] = useState(false);
   const [qty, setQty] = useState('');
   const [narration, setNarration] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleRecalculate = async () => {
+    setIsSyncing(true);
+    try {
+      await recalculateStockTotal();
+      toast.success('Stock total synchronized');
+    } catch (error) {
+      toast.error('Failed to sync stock');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const getDefaultDateRange = () => {
     const end = new Date();
@@ -138,9 +151,19 @@ export default function StockDashboard() {
           </div>
         </div>
         <div className="relative mt-2 flex items-end justify-between gap-2">
-          <h2 className="text-3xl leading-none font-black whitespace-nowrap text-white">
-            {totalStock.toLocaleString()} <span className="text-[10px] font-bold text-white/80 uppercase tracking-[0.08em]">Boxes</span>
-          </h2>
+          <div className="flex items-baseline gap-2">
+            <h2 className="text-3xl leading-none font-black whitespace-nowrap text-white">
+              {totalStock.toLocaleString()} <span className="text-[10px] font-bold text-white/80 uppercase tracking-[0.08em]">Boxes</span>
+            </h2>
+            <button
+              onClick={handleRecalculate}
+              disabled={isSyncing || loading}
+              className={`p-1 rounded-full bg-white/10 hover:bg-white/20 transition-all ${isSyncing ? 'animate-spin' : ''}`}
+              title="Recalculate Total from Ledger"
+            >
+              <RefreshCw size={12} className="text-white/70" />
+            </button>
+          </div>
           {(startDate || endDate) && (
             <button
               onClick={() => {
