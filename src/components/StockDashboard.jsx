@@ -15,7 +15,7 @@ export default function StockDashboard() {
     try {
       await recalculateStockTotal();
       toast.success('Stock total synchronized');
-    } catch (error) {
+    } catch (_error) {
       toast.error('Failed to sync stock');
     } finally {
       setIsSyncing(false);
