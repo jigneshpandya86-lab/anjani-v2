@@ -5,7 +5,9 @@ import toast from 'react-hot-toast';
 import GoogleMapPicker from './GoogleMapPicker';
 
 export default function OrderModal({ orderToEdit, onClose }) {
-  const { clients, addOrder, updateOrder } = useClientStore();
+  const clients = useClientStore(state => state.clients);
+  const addOrder = useClientStore(state => state.addOrder);
+  const updateOrder = useClientStore(state => state.updateOrder);
   const [formData, setFormData] = useState({
     clientId: '', qty: '', rate: '', date: '', time: '', 
     address: '', location: '', mapLink: '', locationLat: null, locationLng: null, proofUrl: ''
@@ -147,8 +149,8 @@ export default function OrderModal({ orderToEdit, onClose }) {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Select Client</label>
-          <select required className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none font-bold text-sm"
+          <label htmlFor="client-select" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Select Client</label>
+          <select id="client-select" required className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none font-bold text-sm"
             value={formData.clientId} onChange={e => setFormData({...formData, clientId: e.target.value})}>
             <option value="">-- Choose Client --</option>
             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -157,18 +159,18 @@ export default function OrderModal({ orderToEdit, onClose }) {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Quantity (Boxes)</label>
+            <label htmlFor="qty-input" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Quantity (Boxes)</label>
             <div className="relative">
               <Package className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-              <input type="number" required className="w-full pl-9 pr-3 py-3 bg-gray-50 rounded-xl border border-gray-200 outline-none font-black"
+              <input id="qty-input" type="number" required className="w-full pl-9 pr-3 py-3 bg-gray-50 rounded-xl border border-gray-200 outline-none font-black"
                 value={formData.qty} onChange={e => setFormData({...formData, qty: e.target.value})} />
             </div>
           </div>
           <div>
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Rate / Box (₹)</label>
+            <label htmlFor="rate-input" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Rate / Box (₹)</label>
             <div className="relative">
               <IndianRupee className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-              <input type="number" required className="w-full pl-9 pr-3 py-3 bg-gray-50 rounded-xl border border-gray-200 outline-none font-black"
+              <input id="rate-input" type="number" required className="w-full pl-9 pr-3 py-3 bg-gray-50 rounded-xl border border-gray-200 outline-none font-black"
                 value={formData.rate} onChange={e => setFormData({...formData, rate: e.target.value})} />
             </div>
           </div>
@@ -176,29 +178,29 @@ export default function OrderModal({ orderToEdit, onClose }) {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Delivery Date</label>
-            <input type="date" required className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm font-bold"
+            <label htmlFor="date-input" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Delivery Date</label>
+            <input id="date-input" type="date" required className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm font-bold"
               value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
           </div>
           <div>
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Time</label>
+            <label htmlFor="time-input" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Time</label>
             <div className="relative">
               <Clock className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-              <input type="time" required className="w-full pl-9 pr-3 py-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm font-bold"
+              <input id="time-input" type="time" required className="w-full pl-9 pr-3 py-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm font-bold"
                 value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})} />
             </div>
           </div>
         </div>
 
         <div>
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Full Address</label>
-          <textarea required rows="2" className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm font-medium"
+          <label htmlFor="address-input" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Full Address</label>
+          <textarea id="address-input" required rows="2" className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm font-medium"
             value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
         </div>
 
 
         <div>
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Actual Location (Type & Select)</label>
+          <label htmlFor="location-input" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Actual Location (Type & Select)</label>
           <div className="mt-1 mb-2">
             <GoogleMapPicker
               initialAddress={formData.location}
@@ -206,6 +208,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
             />
           </div>
           <input
+            id="location-input"
             type="text"
             placeholder="Resolved location / place"
             maxLength={150}
@@ -227,10 +230,10 @@ export default function OrderModal({ orderToEdit, onClose }) {
 
         {orderToEdit?.status === 'Delivered' && (
           <div>
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Delivery Proof (Photo URL/Drive)</label>
+            <label htmlFor="proof-input" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Delivery Proof (Photo URL/Drive)</label>
             <div className="relative">
               <ImageIcon className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-              <input type="url" placeholder="Paste image link here" className="w-full pl-9 pr-3 py-3 bg-blue-50 text-blue-800 rounded-xl border border-blue-200 outline-none text-sm"
+              <input id="proof-input" type="url" placeholder="Paste image link here" className="w-full pl-9 pr-3 py-3 bg-blue-50 text-blue-800 rounded-xl border border-blue-200 outline-none text-sm"
                 value={formData.proofUrl} onChange={e => setFormData({...formData, proofUrl: e.target.value})} />
             </div>
           </div>

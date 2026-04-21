@@ -1,12 +1,16 @@
-import { useRef, useState } from 'react';
+import { memo, useRef, useState, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { useClientStore } from '../store/clientStore';
-import { Clock, Copy, Edit2, Trash2, Smartphone, Search, HandCoins, FileText, Paperclip, Loader2, CalendarRange, Sun, CalendarDays } from 'lucide-react';
+import { Clock, Copy, Edit2, Trash2, Smartphone, Search, HandCoins, FileText, Paperclip, Loader2, CalendarRange, Sun, CalendarDays, Phone } from 'lucide-react';
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 import { app } from '../firebase-config';
 
-export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
-  const { orders, clients, updateOrder, deleteOrder, userRole } = useClientStore();
+function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
+  const orders = useClientStore(state => state.orders);
+  const clients = useClientStore(state => state.clients);
+  const updateOrder = useClientStore(state => state.updateOrder);
+  const deleteOrder = useClientStore(state => state.deleteOrder);
+  const userRole = useClientStore(state => state.userRole);
   const [filter, setFilter] = useState('All');
   const [dateFilter, setDateFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -15,88 +19,110 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
   const proofInputRefs = useRef({});
   const storage = getStorage(app);
 
-  // Robust Client Fetcher
-  const getDisplayName = (order) => {
+  const getOrderDate = useCallback((order) => {
+    if (!order?.date) return null;
+    const parsedDate = new Date(order.date);
+    if (Number.isNaN(parsedDate.getTime())) return null;
+    return new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
+  }, []);
+
+  const getDisplayName = useCallback((order) => {
     if (order.clientId) {
       const c = clients.find(c => c.id === order.clientId);
       if (c) return c.name;
     }
-    // Fallback for old legacy names saved directly in order
     return order.clientName || order.customerName || order.customer || order.name || 'Legacy Client';
-  };
+  }, [clients]);
 
-  const getDisplayMobile = (order) => {
+  const getDisplayMobile = useCallback((order) => {
     if (order.clientId) {
       const c = clients.find(c => c.id === order.clientId);
       if (c) return c.mobile;
     }
     return order.mobile || order.phone || '';
-  };
+  }, [clients]);
 
-  const getOrderDate = (order) => {
-    if (!order?.date) return null;
-    const parsedDate = new Date(order.date);
-    if (Number.isNaN(parsedDate.getTime())) return null;
-    return new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
-  };
+  const statusPriority = useMemo(() => ({ 'Pending': 0, 'Confirmed': 1, 'Delivered': 2 }), []);
 
-  const doesMatchDateFilter = (order) => {
+  const getOrderSortKey = useCallback((order) => {
+    const statusPrio = statusPriority[order.status] ?? 999;
+    const dateObj = getOrderDate(order);
+    const dateTime = dateObj?.getTime() ?? Number.MAX_VALUE;
+    const timeStr = order.time || '23:59';
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const timeInMinutes = (hours || 0) * 60 + (minutes || 0);
+    return [statusPrio, dateTime, timeInMinutes];
+  }, [statusPriority, getOrderDate]);
+
+  const doesMatchDateFilter = useCallback((order) => {
     if (dateFilter === 'All') return true;
-
     const orderDate = getOrderDate(order);
     if (!orderDate) return false;
-
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
     if (dateFilter === 'Today') {
       return orderDate.getTime() === today.getTime();
     }
-
     if (dateFilter === 'Tomorrow') {
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
       return orderDate.getTime() === tomorrow.getTime();
     }
-
     if (dateFilter === 'ThisWeek') {
       const weekEnd = new Date(today);
       weekEnd.setDate(weekEnd.getDate() + 6);
       return orderDate >= today && orderDate <= weekEnd;
     }
-
     return true;
-  };
+  }, [dateFilter, getOrderDate]);
 
-  const filteredOrders = orders.filter(o => {
-    const name = getDisplayName(o);
-    const mobile = getDisplayMobile(o);
-    const matchesStatus = filter === 'All' || o.status === filter;
-    const matchesDate = doesMatchDateFilter(o);
-    const searchLower = searchQuery.toLowerCase();
-    const qtyText = String(o.qty ?? o.boxes ?? o.quantity ?? '');
-    const matchesSearch = name.toLowerCase().includes(searchLower) ||
-                          (o.orderId || '').toLowerCase().includes(searchLower) ||
-                          mobile.includes(searchLower) ||
-                          qtyText.includes(searchLower);
-    return matchesStatus && matchesDate && matchesSearch;
-  });
+  const filteredOrders = useMemo(() => orders
+    .filter(o => {
+      const name = getDisplayName(o);
+      const mobile = getDisplayMobile(o);
+      const matchesStatus = filter === 'All' || o.status === filter;
+      const matchesDate = doesMatchDateFilter(o);
+      const searchLower = searchQuery.toLowerCase();
+      const qtyText = String(o.qty ?? o.boxes ?? o.quantity ?? '');
+      const matchesSearch = name.toLowerCase().includes(searchLower) ||
+                            (o.orderId || '').toLowerCase().includes(searchLower) ||
+                            mobile.includes(searchLower) ||
+                            qtyText.includes(searchLower);
+      return matchesStatus && matchesDate && matchesSearch;
+    })
+    .sort((a, b) => {
+      const [aPrio, aDate, aTime] = getOrderSortKey(a);
+      const [bPrio, bDate, bTime] = getOrderSortKey(b);
+      if (aPrio !== bPrio) return aPrio - bPrio;
+      if (aDate !== bDate) return aDate - bDate;
+      return aTime - bTime;
+    }), [orders, filter, searchQuery, getDisplayName, getDisplayMobile, doesMatchDateFilter, getOrderSortKey]);
 
-  const shareOrder = (order) => {
+  const shareOrder = useCallback((order) => {
     const msg = `🚚 *NEW DELIVERY ASSIGNMENT*\n\n*ID:* ${order.orderId || 'N/A'}\n*Client:* ${getDisplayName(order)}\n*Mobile:* ${getDisplayMobile(order)}\n*Date:* ${order.date || 'TBD'} at ${order.time || 'TBD'}\n*Qty:* ${order.qty || 0} Boxes (200ml)\n\n*Address:*\n${order.address || 'N/A'}\n\n*Location:* ${order.location || 'N/A'}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-  };
+  }, [getDisplayName, getDisplayMobile]);
 
-  const shareDispatchPlan = () => {
+  const shareDispatchPlan = useCallback(() => {
     const pending = orders.filter(o => o.status !== 'Delivered');
     let msg = `📋 *UPCOMING DISPATCH PLAN*\n\n`;
     pending.forEach((o, i) => {
       msg += `${i+1}. ${getDisplayName(o)} - ${o.qty} Bxs - ${o.date} ${o.time}\n`;
     });
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-  };
+  }, [orders, getDisplayName]);
 
-  const handleDelete = async (order) => {
+  const callClient = useCallback((order) => {
+    const mobile = getDisplayMobile(order);
+    const cleanMobile = String(mobile || '').replace(/\D/g, '');
+    if (!cleanMobile) {
+      toast.error('Client mobile number not found');
+      return;
+    }
+    window.open(`tel:${cleanMobile}`, '_self');
+  }, [getDisplayMobile]);
+
+  const handleDelete = useCallback(async (order) => {
     const label = order.orderId || order.id;
     const isDelivered = order.status === 'Delivered';
     const msg = isDelivered
@@ -109,7 +135,7 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
     } catch {
       toast.error('Failed to delete order');
     }
-  };
+  }, [deleteOrder]);
 
   const getStatusColor = (status) => {
     if(status === 'Pending') return 'bg-yellow-100 text-yellow-700';
@@ -282,7 +308,10 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
                       onChange={(event) => uploadDeliveryProof(order, event)}
                     />
                     {order.status !== 'Delivered' && (
-                      <button onClick={() => onEdit(order)} className="bg-blue-50 text-blue-500 p-2 rounded-xl"><Edit2 size={16} /></button>
+                      <>
+                        <button onClick={() => callClient(order)} className="bg-green-50 text-green-600 p-2 rounded-xl" title="Call client"><Phone size={16} /></button>
+                        <button onClick={() => onEdit(order)} className="bg-blue-50 text-blue-500 p-2 rounded-xl"><Edit2 size={16} /></button>
+                      </>
                     )}
                     <button onClick={() => onCopy(order)} className="bg-gray-100 text-gray-500 p-2 rounded-xl"><Copy size={16} /></button>
                     <button onClick={() => handleDelete(order)} className="bg-red-50 text-red-500 p-2 rounded-xl"><Trash2 size={16} /></button>
@@ -318,3 +347,5 @@ export default function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onSha
     </div>
   );
 }
+
+export default memo(OrdersDashboard);

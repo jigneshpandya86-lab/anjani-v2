@@ -3,14 +3,17 @@ import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/f
 import { db } from '../firebase-config';
 
 export const useAnalyticsStore = create((set) => {
-  let unsubscribe = null;
+  let unsubscribeMonth = null;
+  let unsubscribeRecent = null;
 
   return {
     payments: [],
+    recentPayments: [],
     loading: true,
+    recentLoading: true,
 
     subscribeToPayments: () => {
-      if (unsubscribe) return; // Already subscribed
+      if (unsubscribeMonth) return;
 
       const monthStart = new Date();
       monthStart.setDate(1);
@@ -23,7 +26,7 @@ export const useAnalyticsStore = create((set) => {
         limit(300)
       );
 
-      unsubscribe = onSnapshot(
+      unsubscribeMonth = onSnapshot(
         q,
         (snapshot) => {
           const paymentsList = snapshot.docs.map((doc) => ({
@@ -39,12 +42,45 @@ export const useAnalyticsStore = create((set) => {
       );
     },
 
+    subscribeToRecentPayments: () => {
+      if (unsubscribeRecent) return;
+
+      const q = query(
+        collection(db, 'payments'),
+        orderBy('createdAt', 'desc'),
+        limit(15)
+      );
+
+      unsubscribeRecent = onSnapshot(
+        q,
+        (snapshot) => {
+          const paymentsList = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }));
+          set({ recentPayments: paymentsList, recentLoading: false });
+        },
+        (error) => {
+          console.error('Error fetching recent payments:', error);
+          set({ recentLoading: false });
+        }
+      );
+    },
+
     unsubscribeFromPayments: () => {
-      if (unsubscribe) {
-        unsubscribe();
-        unsubscribe = null;
+      if (unsubscribeMonth) {
+        unsubscribeMonth();
+        unsubscribeMonth = null;
       }
       set({ payments: [], loading: false });
+    },
+
+    unsubscribeFromRecentPayments: () => {
+      if (unsubscribeRecent) {
+        unsubscribeRecent();
+        unsubscribeRecent = null;
+      }
+      set({ recentPayments: [], recentLoading: false });
     },
   };
 });

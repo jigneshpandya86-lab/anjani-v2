@@ -1,12 +1,15 @@
 import { create } from 'zustand';
-import { 
-  collection, addDoc, onSnapshot, query, doc, 
-  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs, deleteField
+import {
+  collection, addDoc, onSnapshot, query, doc,
+  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs, deleteField,
+  runTransaction
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
 
 let stockUnsubscribe = null;
 let stockSubscriberCount = 0;
+let leadsUnsubscribe = null;
+let leadsSubscriberCount = 0;
 const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary');
 const RECENT_STOCK_ENTRIES_LIMIT = 50;
 
@@ -79,8 +82,9 @@ export const useClientStore = create((set, get) => ({
   userRole: null,
   clients: [],
   orders: [],
-  stockEntries: [], 
+  stockEntries: [],
   stockTotal: 0,
+  leads: [],
   loading: false,
 
   fetchUserRole: async (uid) => {
@@ -183,7 +187,9 @@ export const useClientStore = create((set, get) => ({
   fetchStockTotal: () => {
     return onSnapshot(STOCK_SUMMARY_DOC, async (summarySnap) => {
       if (summarySnap.exists()) {
-        set({ stockTotal: Number(summarySnap.data()?.totalQty) || 0 });
+        const storedTotal = Number(summarySnap.data()?.totalQty) || 0;
+        console.log('[Stock] Current summary doc:', { totalQty: storedTotal, ...summarySnap.data() });
+        set({ stockTotal: storedTotal });
         return;
       }
       get().recalculateStockTotal();
@@ -204,6 +210,7 @@ export const useClientStore = create((set, get) => ({
         return acc + (Number(raw.qty || raw.boxes || raw.quantity) || 0);
       }, 0);
 
+      console.log('[Stock] Backfilled summary from', fullSnap.docs.length, 'entries:', computedTotal);
       await setDoc(STOCK_SUMMARY_DOC, { totalQty: computedTotal }, { merge: true });
       set({ stockTotal: computedTotal, loading: false });
       return computedTotal;
@@ -240,6 +247,54 @@ export const useClientStore = create((set, get) => ({
 
     await deleteDoc(stockRef);
     await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(-qtyDelta) }, { merge: true });
+  },
+
+  fetchLeads: () => {
+    leadsSubscriberCount++;
+    if (leadsUnsubscribe) return leadsUnsubscribe;
+
+    const q = query(
+      collection(db, 'leads'),
+      orderBy('createdAt', 'desc'),
+      limit(100)
+    );
+
+    leadsUnsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const fetchedLeads = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        set({ leads: fetchedLeads });
+      },
+      (error) => {
+        console.error('Failed to fetch leads:', error);
+      }
+    );
+
+    return () => {
+      leadsSubscriberCount--;
+      if (leadsSubscriberCount <= 0) {
+        if (leadsUnsubscribe) {
+          leadsUnsubscribe();
+          leadsUnsubscribe = null;
+        }
+        leadsSubscriberCount = 0;
+      }
+    };
+  },
+
+  addLead: async (leadData) => {
+    await addDoc(collection(db, 'leads'), {
+      ...leadData,
+      createdAt: serverTimestamp()
+    });
+  },
+
+  deleteLead: async (id) => {
+    await deleteDoc(doc(db, 'leads', id));
+  },
+
+  updateLead: async (id, data) => {
+    await updateDoc(doc(db, 'leads', id), data);
   },
 
   addClient: async (data) => {
@@ -417,6 +472,12 @@ export const useClientStore = create((set, get) => ({
       const stockDelta = -Math.abs(qty);
       const clientName = await getOrderClientName(existing, get().clients);
       const deliveredNarration = formatOrderNarration('Order Delivered', existing.orderId || id, clientName);
+
+      // OPTIMIZATION: The following 5 write operations should be batched into a single Firestore
+      // transaction for atomicity and reduced billing. This requires careful refactoring to ensure
+      // payment accuracy is maintained. Candidate for Phase 2 optimization.
+      // Transaction would cover: stock debit, stock summary update, payment add, payment record, and
+      // customer outstanding update. See PR #298 for optimization approach documentation.
 
       // 1. Debit stock
       const stockDocRef = await addDoc(collection(db, 'stock'), {

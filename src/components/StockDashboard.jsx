@@ -258,12 +258,12 @@ export default function StockDashboard() {
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Manual Inventory Entry</p>
             <form onSubmit={handleAdd} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Quantity (Boxes)</label>
-                <input type="number" placeholder="Quantity (+ for in, - for out)" className="w-full p-3 bg-gray-50 rounded-xl border border-gray-300 outline-none font-bold focus:ring-2 focus:ring-amz-orange focus:border-amz-orange" value={qty} onChange={e => setQty(e.target.value)} required />
+                <label htmlFor="qty-input" className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Quantity (Boxes)</label>
+                <input id="qty-input" type="number" placeholder="Quantity (+ for in, - for out)" className="w-full p-3 bg-gray-50 rounded-xl border border-gray-300 outline-none font-bold focus:ring-2 focus:ring-amz-orange focus:border-amz-orange" value={qty} onChange={e => setQty(e.target.value)} required />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Narration / Note</label>
-                <input type="text" placeholder="e.g. Received from factory" className="w-full p-3 bg-gray-50 rounded-xl border border-gray-300 outline-none text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange" value={narration} onChange={e => setNarration(e.target.value)} required />
+                <label htmlFor="narration-input" className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Narration / Note</label>
+                <input id="narration-input" type="text" placeholder="e.g. Received from factory" className="w-full p-3 bg-gray-50 rounded-xl border border-gray-300 outline-none text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange" value={narration} onChange={e => setNarration(e.target.value)} required />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <button

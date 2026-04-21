@@ -7,7 +7,8 @@ const getToday = () => new Date().toISOString().slice(0, 10);
 const getCurrentTime = () => new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
 
 export default function PaymentModal({ client, onClose, initialValues = {} }) {
-  const { addPayment, clients } = useClientStore();
+  const addPayment = useClientStore(state => state.addPayment);
+  const clients = useClientStore(state => state.clients);
   const [amount, setAmount] = useState(initialValues.amount ? String(initialValues.amount) : '');
   const [method, setMethod] = useState('cash');
   const [note, setNote] = useState(initialValues.note || '');
@@ -75,8 +76,9 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
 
       {!client?.id && (
         <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Client</label>
+          <label htmlFor="client-select" className="block text-xs font-bold text-gray-500 uppercase mb-2">Client</label>
           <select
+            id="client-select"
             className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-[#ff9900] outline-none"
             value={selectedClientId}
             onChange={(e) => setSelectedClientId(e.target.value)}
@@ -102,10 +104,11 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Amount Input */}
         <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Amount Received (₹)</label>
+          <label htmlFor="amount-input" className="block text-xs font-bold text-gray-500 uppercase mb-2">Amount Received (₹)</label>
           <div className="relative">
             <IndianRupee className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-            <input 
+            <input
+              id="amount-input"
               type="number"
               required
               className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-300 rounded-xl text-lg font-bold focus:ring-2 focus:ring-[#ff9900] outline-none"
@@ -118,9 +121,10 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
 
         {/* Payment Method Toggle */}
         <div className="grid grid-cols-2 gap-3">
-          <label>
+          <label htmlFor="date-input">
             <span className="block text-xs font-bold text-gray-500 uppercase mb-2">Payment Date</span>
             <input
+              id="date-input"
               type="date"
               className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-[#ff9900] outline-none"
               value={paymentDate}
@@ -128,9 +132,10 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
               required
             />
           </label>
-          <label>
+          <label htmlFor="time-input">
             <span className="block text-xs font-bold text-gray-500 uppercase mb-2">Payment Time</span>
             <input
+              id="time-input"
               type="time"
               className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-[#ff9900] outline-none"
               value={paymentTime}
@@ -141,7 +146,7 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Payment Method</label>
+          <label htmlFor="payment-method" className="block text-xs font-bold text-gray-500 uppercase mb-2">Payment Method</label>
           <div className="grid grid-cols-2 gap-3">
             <button 
               type="button"
@@ -162,8 +167,9 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
 
         {/* Note */}
         <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Notes (Optional)</label>
-          <input 
+          <label htmlFor="notes-input" className="block text-xs font-bold text-gray-500 uppercase mb-2">Notes (Optional)</label>
+          <input
+            id="notes-input"
             className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-[#ff9900] outline-none"
             placeholder="e.g. Paid for March deliveries"
             value={note}

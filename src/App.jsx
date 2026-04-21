@@ -87,16 +87,12 @@ function App() {
       toast.error('User not logged in.');
       return;
     }
-
-    const loadingToast = toast.loading('Enabling notifications...');
     try {
       console.log('Starting notification setup...');
       const { initializeFcm, sendLocalTestNotification } = await import('./services/fcm-setup');
       console.log('FCM module imported successfully');
       const result = await initializeFcm(user.uid, user.email);
       console.log('FCM initialization result:', result);
-
-      toast.dismiss(loadingToast);
 
       if (result.success) {
         toast.success(`Push notifications enabled (${result.tokenPreview})`);
@@ -125,7 +121,6 @@ function App() {
         }
       }
     } catch (error) {
-      toast.dismiss(loadingToast);
       console.error('Error in handleEnableNotifications:', error);
       toast.error('Error enabling notifications: ' + error.message);
     }
@@ -406,11 +401,11 @@ function App() {
     const rH = 18
 
     // Build content stream for a single page
-    const buildPageStream = (pageRows, i) => {
+    const buildPageStream = (pageRows, isFirstPage) => {
       const lines = []
       let y = pH - mg - 20
 
-      if (i === 0) {
+      if (isFirstPage) {
         lines.push(txt(mg, y, 14, title))
         y -= 20
         lines.push('0.5 0.5 0.5 rg')
@@ -430,7 +425,7 @@ function App() {
       lines.push('0.2 0.2 0.2 rg')
       lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
       lines.push('1 1 1 rg')
-      columns.forEach((col, idx) => lines.push(txt(mg + idx * colW + 4, y + 4, 7, col)))
+      columns.forEach((col, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, col)))
       lines.push('0 0 0 rg')
       y -= rH
 
@@ -440,7 +435,7 @@ function App() {
           lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
           lines.push('0 0 0 rg')
         }
-        row.forEach((cell, idx) => lines.push(txt(mg + idx * colW + 4, y + 4, 7, cell)))
+        row.forEach((cell, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, cell)))
         y -= rH
       })
 
@@ -468,7 +463,7 @@ function App() {
     }
 
     // Build one stream per page
-    const streams = pages.map((pageRows, i) => buildPageStream(pageRows, i))
+    const streams = pages.map((pageRows, i) => buildPageStream(pageRows, i === 0))
 
     // PDF object layout:
     //   1: Catalog, 2: Pages,
@@ -683,33 +678,51 @@ function App() {
 
       const { startDate, endDate, label: dateRangeLabel } = getLedgerDateRange(ledgerDateRange)
 
-      const payments = []
-      let lastVisibleDoc = null
+      // Check cache first (1-hour TTL for ledger exports)
+      const cacheKey = `ledger-export-${selectedClient.id}-${ledgerDateRange}`
+      const cachedData = localStorage.getItem(cacheKey)
+      const cacheAge = localStorage.getItem(`${cacheKey}-timestamp`)
+      const oneHourAgo = Date.now() - (60 * 60 * 1000)
 
-      while (true) {
-        const constraints = selectedClient.id === 'all'
-          ? [
-            where('createdAt', '>=', startDate),
-            where('createdAt', '<=', endDate),
-            orderBy('createdAt', 'desc'),
-            limit(LEDGER_EXPORT_PAGE_SIZE)
-          ]
-          : [
-            where('clientId', '==', selectedClient.id),
-            limit(LEDGER_EXPORT_PAGE_SIZE)
-          ]
+      let payments = []
+      if (cachedData && cacheAge && Number(cacheAge) > oneHourAgo) {
+        payments = JSON.parse(cachedData)
+      } else {
+        let lastVisibleDoc = null
 
-        if (lastVisibleDoc) {
-          constraints.push(startAfter(lastVisibleDoc))
+        while (true) {
+          const constraints = selectedClient.id === 'all'
+            ? [
+              where('createdAt', '>=', startDate),
+              where('createdAt', '<=', endDate),
+              orderBy('createdAt', 'desc'),
+              limit(LEDGER_EXPORT_PAGE_SIZE)
+            ]
+            : [
+              where('clientId', '==', selectedClient.id),
+              limit(LEDGER_EXPORT_PAGE_SIZE)
+            ]
+
+          if (lastVisibleDoc) {
+            constraints.push(startAfter(lastVisibleDoc))
+          }
+
+          const paymentsSnap = await getDocs(query(collection(db, 'payments'), ...constraints))
+          if (paymentsSnap.empty) break
+
+          payments.push(...paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
+          if (paymentsSnap.docs.length < LEDGER_EXPORT_PAGE_SIZE) break
+
+          lastVisibleDoc = paymentsSnap.docs[paymentsSnap.docs.length - 1]
         }
 
-        const paymentsSnap = await getDocs(query(collection(db, 'payments'), ...constraints))
-        if (paymentsSnap.empty) break
-
-        payments.push(...paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
-        if (paymentsSnap.docs.length < LEDGER_EXPORT_PAGE_SIZE) break
-
-        lastVisibleDoc = paymentsSnap.docs[paymentsSnap.docs.length - 1]
+        // Cache the results for 1 hour
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(payments))
+          localStorage.setItem(`${cacheKey}-timestamp`, String(Date.now()))
+        } catch (cacheError) {
+          console.warn('Failed to cache ledger export:', cacheError)
+        }
       }
 
       const filteredPayments = payments.filter((payment) => {

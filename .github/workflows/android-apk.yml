@@ -1,5 +1,19 @@
 name: Build Android APK (Capacitor)
 # Cache buster: 2026-04-18
+#
+# REQUIRED GITHUB SECRETS (set in Repository Settings → Secrets and variables → Actions):
+#   - FIREBASE_API_KEY: Get from Firebase Console → Project Settings
+#   - FIREBASE_AUTH_DOMAIN: Get from Firebase Console → Project Settings
+#   - FIREBASE_PROJECT_ID: Get from Firebase Console → Project Settings
+#   - FIREBASE_STORAGE_BUCKET: Get from Firebase Console → Project Settings
+#   - FIREBASE_MESSAGING_SENDER_ID: Get from Firebase Console → Project Settings
+#   - FIREBASE_APP_ID: Get from Firebase Console → Project Settings
+#   - VITE_FIREBASE_VAPID_KEY: Get from Firebase Console → Cloud Messaging
+#   - VITE_GOOGLE_MAPS_API_KEY: Get from Google Cloud Console
+#   - VITE_MACRO_URL: MacroDroid webhook (optional)
+#   - VITE_BUSINESS_WHATSAPP_NUMBER: WhatsApp number (optional)
+#
+# Without these secrets, the APK will build but show a blank app with no data.
 
 on:
   workflow_dispatch:
@@ -36,7 +50,7 @@ jobs:
           java-version: '21'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Lint
         run: npm run lint
@@ -58,9 +72,62 @@ jobs:
           VITE_MACRO_URL=${{ secrets.VITE_MACRO_URL }}
           VITE_BUSINESS_WHATSAPP_NUMBER=${{ secrets.VITE_BUSINESS_WHATSAPP_NUMBER }}
           EOF
-          echo "✅ .env file created with Firebase credentials"
-          echo "📋 Environment variables loaded:"
-          grep -E "FIREBASE|GOOGLE_MAPS" .env | sed 's/=.*/=***REDACTED***/g'
+          echo "✅ .env file written"
+
+      - name: Validate Firebase secrets are not empty
+        run: |
+          MISSING=0
+          for VAR in VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID \
+                     VITE_FIREBASE_STORAGE_BUCKET VITE_FIREBASE_MESSAGING_SENDER_ID VITE_FIREBASE_APP_ID; do
+            VALUE=$(grep "^${VAR}=" .env | cut -d'=' -f2-)
+            if [ -z "$VALUE" ]; then
+              echo "❌ Missing secret: $VAR (add it under Settings → Secrets → Actions)"
+              MISSING=1
+            else
+              echo "✅ $VAR is set"
+            fi
+          done
+          if [ "$MISSING" -eq 1 ]; then
+            echo ""
+            echo "Build aborted: one or more Firebase secrets are empty."
+            echo "The APK would be built but Firebase would silently fail at runtime."
+            exit 1
+          fi
+
+      - name: Validate critical Firebase environment variables
+        run: |
+          MISSING_VARS=()
+
+          if [ -z "${{ secrets.FIREBASE_API_KEY }}" ]; then
+            MISSING_VARS+=("FIREBASE_API_KEY")
+          fi
+
+          if [ -z "${{ secrets.FIREBASE_AUTH_DOMAIN }}" ]; then
+            MISSING_VARS+=("FIREBASE_AUTH_DOMAIN")
+          fi
+
+          if [ -z "${{ secrets.FIREBASE_PROJECT_ID }}" ]; then
+            MISSING_VARS+=("FIREBASE_PROJECT_ID")
+          fi
+
+          if [ -z "${{ secrets.FIREBASE_APP_ID }}" ]; then
+            MISSING_VARS+=("FIREBASE_APP_ID")
+          fi
+
+          if [ ${#MISSING_VARS[@]} -gt 0 ]; then
+            echo "❌ ERROR: Missing critical Firebase environment variables:"
+            printf '%s\n' "${MISSING_VARS[@]}"
+            echo ""
+            echo "📝 Please configure these secrets in GitHub:"
+            echo "   Repository Settings → Secrets and variables → Actions"
+            echo ""
+            echo "🔗 Get Firebase credentials from:"
+            echo "   Firebase Console → Project Settings → Your apps"
+            exit 1
+          fi
+
+          echo "✅ All critical Firebase variables are configured"
+          echo "✅ APK will have access to Firebase data"
 
       - name: Build web app
         run: npm run build

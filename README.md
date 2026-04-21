@@ -44,6 +44,21 @@ This repo includes a GitHub Actions workflow at `.github/workflows/android-apk.y
 2. Download the `app-debug-apk` artifact.
 3. Install the APK manually on your phone (sideload). This is suitable for personal/internal use and does not require Play Store publishing.
 
+### Keystore signing (release builds only)
+
+`capacitor.config.json` contains placeholder `null` values for
+`android.buildOptions.keystorePath`, `keystorePassword`, `keystoreAlias`,
+and `keystoreAliasPassword`. **Do not commit real values to this file.**
+
+For a release build, provide them through one of these safe mechanisms
+instead:
+- a local `android/keystore.properties` file (already ignored — see `.gitignore`)
+- CI environment variables / GitHub Actions secrets injected at build time
+- Gradle `-P` project properties passed on the command line
+
+Keystore files (`*.keystore`, `*.jks`) and `keystore.properties` are
+covered by `.gitignore`; never force-add them.
+
 ## Firestore data location (orders)
 
 Order details are stored in the `orders` top-level collection in Cloud Firestore (project `anjaniappnew`).
