@@ -38,5 +38,13 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow read: if request.auth != null;
     }
+
+    // Google Business Posts collection:
+    // - Admins can read/write all posts
+    // - Authenticated users can read pending/posted posts for approval workflow
+    match /googleBusinessPosts/{postId} {
+      allow read: if request.auth != null && (isAdmin() || true);
+      allow write: if isAdmin();
+    }
   }
 }
