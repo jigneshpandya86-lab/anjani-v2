@@ -18,8 +18,7 @@ const GoogleBusinessPostsApproval = () => {
     useEffect(() => {
         const q = query(
             collection(db, 'googleBusinessPosts'),
-            where('status', '==', 'pending'),
-            orderBy('createdAt', 'desc')
+            where('status', '==', 'pending')
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -38,8 +37,7 @@ const GoogleBusinessPostsApproval = () => {
     useEffect(() => {
         const q = query(
             collection(db, 'googleBusinessPosts'),
-            where('status', '==', 'posted'),
-            orderBy('postedAt', 'desc')
+            where('status', '==', 'posted')
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
