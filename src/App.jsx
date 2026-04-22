@@ -272,12 +272,12 @@ function App() {
     { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
     { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
     { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
-    { id: 'google-business-posts', label: 'Business Posts', icon: <Globe size={20} /> },
   ].filter(item => userRole === 'admin' || item.id === 'orders')
 
   const drawerNavItems = [
     { id: 'tasks', label: 'Tasks', icon: <CheckSquare size={20} /> },
     ...navItems,
+    { id: 'google-business-posts', label: 'Business Posts', icon: <Globe size={20} /> },
   ]
 
   const drawerQuickActions = [

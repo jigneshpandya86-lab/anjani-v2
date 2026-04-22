@@ -23,9 +23,12 @@ const GoogleBusinessPostsApproval = () => {
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            setPendingPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            console.log('Pending posts updated:', posts.length, posts);
+            setPendingPosts(posts);
         }, (error) => {
-            showToast('Error loading pending posts', 'error');
+            console.error('Firestore subscription error:', error);
+            showToast('Error loading pending posts: ' + error.message, 'error');
         });
 
         return unsubscribe;
@@ -114,7 +117,7 @@ const GoogleBusinessPostsApproval = () => {
         setManualPostLoading(true);
         try {
             // Create post in Firestore with 'pending' status
-            const docRef = await addDoc(collection(db, 'googleBusinessPosts'), {
+            await addDoc(collection(db, 'googleBusinessPosts'), {
                 summary: manualPostText.trim(),
                 marketingType: 'manual',
                 keywords: [],
@@ -128,11 +131,17 @@ const GoogleBusinessPostsApproval = () => {
                 isManual: true
             });
 
-            showToast('Manual post created! Review and approve it below.', 'success');
+            showToast('✅ Post created! Refreshing...', 'success');
             setManualPostText('');
             setManualPostModal(false);
+
+            // Small delay to ensure Firestore writes and subscription updates
+            setTimeout(() => {
+                setActiveTab('pending');
+            }, 500);
         } catch (error) {
-            showToast('Failed to create post. Please try again.', 'error');
+            console.error('Error creating post:', error);
+            showToast('Failed to create post: ' + error.message, 'error');
         } finally {
             setManualPostLoading(false);
         }
