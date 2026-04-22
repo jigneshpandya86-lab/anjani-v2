@@ -62,7 +62,7 @@ const GoogleBusinessPostsApproval = () => {
     const approveAndPost = async (postId) => {
         setLoading(prev => ({ ...prev, [postId]: 'posting' }));
         try {
-            const functions = getFunctions();
+            const functions = getFunctions(undefined, 'asia-south1');
             const approvePost = httpsCallable(functions, 'approveAndPostGoogleBusinessUpdate');
             await approvePost({ documentId: postId, shouldPost: true });
             showToast('Post published successfully! 🎉', 'success');
@@ -90,7 +90,7 @@ const GoogleBusinessPostsApproval = () => {
     const skipPost = async (postId) => {
         setLoading(prev => ({ ...prev, [postId]: 'skipping' }));
         try {
-            const functions = getFunctions();
+            const functions = getFunctions(undefined, 'asia-south1');
             const approvePost = httpsCallable(functions, 'approveAndPostGoogleBusinessUpdate');
             await approvePost({ documentId: postId, shouldPost: false });
             showToast('Post skipped', 'info');
