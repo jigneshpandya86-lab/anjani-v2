@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase-config';
-import { Globe, Copy, CheckCircle, AlertCircle, Loader, Trash2, RefreshCw } from 'lucide-react';
+import { Globe, Copy, CheckCircle, AlertCircle, Loader, Trash2, RefreshCw, Plus, X } from 'lucide-react';
 
 const GoogleBusinessPostsApproval = () => {
     const [pendingPosts, setPendingPosts] = useState([]);
@@ -10,6 +10,9 @@ const GoogleBusinessPostsApproval = () => {
     const [loading, setLoading] = useState({});
     const [toast, setToast] = useState(null);
     const [activeTab, setActiveTab] = useState('pending');
+    const [manualPostModal, setManualPostModal] = useState(false);
+    const [manualPostText, setManualPostText] = useState('');
+    const [manualPostLoading, setManualPostLoading] = useState(false);
 
     // Subscribe to pending posts
     useEffect(() => {
@@ -97,13 +100,52 @@ const GoogleBusinessPostsApproval = () => {
         }
     };
 
+    const createManualPost = async () => {
+        if (!manualPostText.trim()) {
+            showToast('Please enter some text for your post', 'error');
+            return;
+        }
+
+        if (manualPostText.trim().length > 1500) {
+            showToast('Post is too long. Maximum 1500 characters.', 'error');
+            return;
+        }
+
+        setManualPostLoading(true);
+        try {
+            // Create post in Firestore with 'pending' status
+            const docRef = await addDoc(collection(db, 'googleBusinessPosts'), {
+                summary: manualPostText.trim(),
+                marketingType: 'manual',
+                keywords: [],
+                hashtags: [],
+                status: 'pending',
+                createdAt: serverTimestamp(),
+                approvedAt: null,
+                postedAt: null,
+                postId: null,
+                error: null,
+                isManual: true
+            });
+
+            showToast('Manual post created! Review and approve it below.', 'success');
+            setManualPostText('');
+            setManualPostModal(false);
+        } catch (error) {
+            showToast('Failed to create post. Please try again.', 'error');
+        } finally {
+            setManualPostLoading(false);
+        }
+    };
+
     const PostCard = ({ post, isPosted = false }) => {
         const marketingTypeColors = {
             serviceHighlight: 'from-blue-500 to-blue-600',
             customerBenefit: 'from-green-500 to-green-600',
             promotion: 'from-orange-500 to-orange-600',
             sustainability: 'from-emerald-500 to-emerald-600',
-            callToAction: 'from-red-500 to-red-600'
+            callToAction: 'from-red-500 to-red-600',
+            manual: 'from-purple-500 to-purple-600'
         };
 
         const marketingTypeLabels = {
@@ -111,7 +153,8 @@ const GoogleBusinessPostsApproval = () => {
             customerBenefit: 'Customer Benefit',
             promotion: 'Promotion',
             sustainability: 'Sustainability',
-            callToAction: 'Call to Action'
+            callToAction: 'Call to Action',
+            manual: 'Manual Post'
         };
 
         const gradientClass = marketingTypeColors[post.marketingType] || 'from-gray-500 to-gray-600';
@@ -284,27 +327,35 @@ const GoogleBusinessPostsApproval = () => {
                     </div>
                 )}
 
-                {/* Tabs */}
-                <div className="flex gap-4 mb-6 border-b border-gray-200">
+                {/* Tabs & Create Button */}
+                <div className="flex gap-4 mb-6 border-b border-gray-200 items-center justify-between">
+                    <div className="flex gap-4">
+                        <button
+                            onClick={() => setActiveTab('pending')}
+                            className={`py-3 px-4 font-medium border-b-2 transition-colors ${
+                                activeTab === 'pending'
+                                    ? 'border-blue-500 text-blue-600'
+                                    : 'border-transparent text-gray-600 hover:text-gray-800'
+                            }`}
+                        >
+                            Pending ({pendingPosts.length})
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('posted')}
+                            className={`py-3 px-4 font-medium border-b-2 transition-colors ${
+                                activeTab === 'posted'
+                                    ? 'border-green-500 text-green-600'
+                                    : 'border-transparent text-gray-600 hover:text-gray-800'
+                            }`}
+                        >
+                            Posted ({postedPosts.length})
+                        </button>
+                    </div>
                     <button
-                        onClick={() => setActiveTab('pending')}
-                        className={`py-3 px-4 font-medium border-b-2 transition-colors ${
-                            activeTab === 'pending'
-                                ? 'border-blue-500 text-blue-600'
-                                : 'border-transparent text-gray-600 hover:text-gray-800'
-                        }`}
+                        onClick={() => setManualPostModal(true)}
+                        className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-all"
                     >
-                        Pending ({pendingPosts.length})
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('posted')}
-                        className={`py-3 px-4 font-medium border-b-2 transition-colors ${
-                            activeTab === 'posted'
-                                ? 'border-green-500 text-green-600'
-                                : 'border-transparent text-gray-600 hover:text-gray-800'
-                        }`}
-                    >
-                        Posted ({postedPosts.length})
+                        <Plus size={18} /> Create Post
                     </button>
                 </div>
 
@@ -341,6 +392,81 @@ const GoogleBusinessPostsApproval = () => {
                     </div>
                 )}
             </div>
+
+            {/* Create Manual Post Modal */}
+            {manualPostModal && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-end md:items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-xl" onClick={(e) => e.stopPropagation()}>
+                        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                            <h2 className="text-xl font-bold text-gray-800">Create Manual Post</h2>
+                            <button
+                                onClick={() => setManualPostModal(false)}
+                                className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                    Post Content
+                                </label>
+                                <textarea
+                                    value={manualPostText}
+                                    onChange={(e) => setManualPostText(e.target.value)}
+                                    placeholder="Write your marketing post here (max 1500 characters)..."
+                                    className="w-full h-32 px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                                    maxLength={1500}
+                                />
+                                <div className="mt-2 flex justify-between items-center">
+                                    <p className="text-xs text-gray-500">
+                                        {manualPostText.length} / 1500 characters
+                                    </p>
+                                    {manualPostText.length > 1400 && (
+                                        <p className="text-xs text-orange-600 font-medium">
+                                            Approaching limit
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <p className="text-sm text-blue-800">
+                                    <strong>Tip:</strong> Include keywords like "water delivery Vadodara", "pure drinking water" and hashtags like #PureWater #VadodaraWater for better reach.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-gray-200 flex gap-3 justify-end">
+                            <button
+                                onClick={() => setManualPostModal(false)}
+                                disabled={manualPostLoading}
+                                className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={createManualPost}
+                                disabled={manualPostLoading || !manualPostText.trim()}
+                                className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-purple-600 text-white font-medium hover:from-purple-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                                {manualPostLoading ? (
+                                    <>
+                                        <Loader size={18} className="animate-spin" />
+                                        Creating...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus size={18} />
+                                        Create Post
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
