@@ -252,7 +252,7 @@ const GoogleBusinessPostsApproval = () => {
                     <div className="flex gap-3">
                         <button
                             onClick={() => approveAndPost(post.id)}
-                            disabled={loading[post.id] !== null}
+                            disabled={!!loading[post.id]}
                             className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2"
                         >
                             {loading[post.id] === 'posting' ? (
@@ -269,7 +269,7 @@ const GoogleBusinessPostsApproval = () => {
                         </button>
                         <button
                             onClick={() => regeneratePost(post.id)}
-                            disabled={loading[post.id] !== null}
+                            disabled={!!loading[post.id]}
                             className="bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2"
                         >
                             {loading[post.id] === 'regenerating' ? (
@@ -280,7 +280,7 @@ const GoogleBusinessPostsApproval = () => {
                         </button>
                         <button
                             onClick={() => skipPost(post.id)}
-                            disabled={loading[post.id] !== null}
+                            disabled={!!loading[post.id]}
                             className="bg-gray-300 hover:bg-gray-400 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 font-medium py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2"
                         >
                             {loading[post.id] === 'skipping' ? (
