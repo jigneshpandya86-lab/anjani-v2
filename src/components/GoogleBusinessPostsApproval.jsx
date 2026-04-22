@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, doc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase-config';
 import { Globe, Copy, CheckCircle, AlertCircle, Loader, Trash2, RefreshCw, Plus, X } from 'lucide-react';
@@ -26,9 +26,9 @@ const GoogleBusinessPostsApproval = () => {
             const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             console.log('Pending posts updated:', posts.length, posts);
             setPendingPosts(posts);
-        }, (error) => {
-            console.error('Firestore subscription error:', error);
-            showToast('Error loading pending posts: ' + error.message, 'error');
+        }, (_error) => {
+            console.error('Firestore subscription error:', _error);
+            showToast('Error loading pending posts: ' + _error.message, 'error');
         });
 
         return unsubscribe;
@@ -44,7 +44,7 @@ const GoogleBusinessPostsApproval = () => {
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setPostedPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        }, (error) => {
+        }, (_error) => {
             // Silently fail for posted posts
         });
 
@@ -66,7 +66,7 @@ const GoogleBusinessPostsApproval = () => {
         try {
             const functions = getFunctions();
             const approvePost = httpsCallable(functions, 'approveAndPostGoogleBusinessUpdate');
-            const response = await approvePost({ documentId: postId, shouldPost: true });
+            await approvePost({ documentId: postId, shouldPost: true });
             showToast('Post published successfully! 🎉', 'success');
         } catch (error) {
             showToast(error.message || 'Failed to post. Please try again.', 'error');
@@ -82,7 +82,7 @@ const GoogleBusinessPostsApproval = () => {
             const docRef = doc(db, 'googleBusinessPosts', postId);
             await deleteDoc(docRef);
             showToast('Post deleted. New one will be generated on Monday.', 'info');
-        } catch (error) {
+        } catch (_error) {
             showToast('Failed to regenerate post', 'error');
         } finally {
             setLoading(prev => ({ ...prev, [postId]: null }));
@@ -96,7 +96,7 @@ const GoogleBusinessPostsApproval = () => {
             const approvePost = httpsCallable(functions, 'approveAndPostGoogleBusinessUpdate');
             await approvePost({ documentId: postId, shouldPost: false });
             showToast('Post skipped', 'info');
-        } catch (error) {
+        } catch (_error) {
             showToast('Failed to skip post', 'error');
         } finally {
             setLoading(prev => ({ ...prev, [postId]: null }));
@@ -139,9 +139,9 @@ const GoogleBusinessPostsApproval = () => {
             setTimeout(() => {
                 setActiveTab('pending');
             }, 500);
-        } catch (error) {
-            console.error('Error creating post:', error);
-            showToast('Failed to create post: ' + error.message, 'error');
+        } catch (_error) {
+            console.error('Error creating post:', _error);
+            showToast('Failed to create post: ' + _error.message, 'error');
         } finally {
             setManualPostLoading(false);
         }
@@ -418,10 +418,11 @@ const GoogleBusinessPostsApproval = () => {
 
                         <div className="p-6 space-y-4">
                             <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                <label htmlFor="post-content" className="block text-sm font-semibold text-gray-700 mb-2">
                                     Post Content
                                 </label>
                                 <textarea
+                                    id="post-content"
                                     value={manualPostText}
                                     onChange={(e) => setManualPostText(e.target.value)}
                                     placeholder="Write your marketing post here (max 1500 characters)..."
