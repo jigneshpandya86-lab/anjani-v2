@@ -1397,3 +1397,265 @@ Keep the message short, professional but warm (Hinglish is okay). Don't list all
     }
 });
 
+// --- GOOGLE BUSINESS PROFILE FUNCTIONS ---
+
+/**
+ * Helper: Determine next marketing content type in rotation cycle
+ */
+function getMarketingRotationType(lastPostType) {
+    const rotationCycle = ['serviceHighlight', 'customerBenefit', 'promotion', 'sustainability', 'callToAction'];
+    const lastIndex = rotationCycle.indexOf(lastPostType || 'callToAction');
+    const nextIndex = (lastIndex + 1) % rotationCycle.length;
+    return rotationCycle[nextIndex];
+}
+
+/**
+ * Helper: Generate SEO-optimized marketing post using Vertex AI
+ */
+async function generateSEOOptimizedPost(marketingType) {
+    const prompts = {
+        serviceHighlight: `Generate a compelling Google Business Profile post (200-280 characters) highlighting Anjani Water's delivery service quality and reliability. Include local SEO keywords like "water delivery Vadodara", "pure drinking water", "packaged water". Add 3-4 relevant hashtags. Strong call-to-action. Format: Return ONLY the post text, then on a new line: KEYWORDS:keyword1,keyword2,keyword3 then HASHTAGS:#tag1,#tag2,#tag3`,
+
+        customerBenefit: `Create a Google Business Profile post (200-280 characters) about customer benefits: convenience, reliability, health benefits of pure water. Include "Vadodara water delivery", "safe drinking water", "convenient water solution". Add 3-4 hashtags. Local keywords for SEO. Format: Return ONLY the post text, then on a new line: KEYWORDS:keyword1,keyword2,keyword3 then HASHTAGS:#tag1,#tag2,#tag3`,
+
+        promotion: `Write a promotional Google Business Profile post (200-280 characters) offering special deals/offers. Include local keywords "water bottles Vadodara", "bulk water orders", "water delivery discount". Make it urgency-driven. Add 3-4 hashtags. Format: Return ONLY the post text, then on a new line: KEYWORDS:keyword1,keyword2,keyword3 then HASHTAGS:#tag1,#tag2,#tag3`,
+
+        sustainability: `Craft a post (200-280 characters) about eco-friendly packaging and quality assurance. Include "sustainable water delivery", "pure water Vadodara", "packaged drinking water". SEO-optimized. Add 3-4 hashtags. Format: Return ONLY the post text, then on a new line: KEYWORDS:keyword1,keyword2,keyword3 then HASHTAGS:#tag1,#tag2,#tag3`,
+
+        callToAction: `Generate an engaging call-to-action Google Business post (200-280 characters) encouraging orders. Include "order water online Vadodara", "water delivery service", "call for delivery". Add 3-4 hashtags with strong urgency. Format: Return ONLY the post text, then on a new line: KEYWORDS:keyword1,keyword2,keyword3 then HASHTAGS:#tag1,#tag2,#tag3`
+    };
+
+    const prompt = prompts[marketingType] || prompts.serviceHighlight;
+
+    try {
+        const result = await generativeModel.generateContent({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: {
+                maxOutputTokens: 400,
+                temperature: 0.7,
+            }
+        });
+
+        const fullResponse = result.response.candidates[0].content.parts[0].text.trim();
+        const parts = fullResponse.split('\nKEYWORDS:');
+        const postText = parts[0].trim();
+
+        let keywords = [];
+        let hashtags = [];
+
+        if (parts.length > 1) {
+            const keywordsPart = parts[1].split('\nHASHTAGS:');
+            keywords = keywordsPart[0].split(',').map(k => k.trim()).filter(k => k);
+
+            if (keywordsPart.length > 1) {
+                hashtags = keywordsPart[1].split(',').map(h => h.trim()).filter(h => h);
+            }
+        }
+
+        return {
+            content: postText,
+            keywords,
+            hashtags,
+            postType: marketingType
+        };
+    } catch (error) {
+        logger.error('Error generating SEO-optimized post:', error);
+        throw error;
+    }
+}
+
+/**
+ * Helper: Get OAuth2 access token for Google APIs using service account
+ */
+async function getGoogleAccessToken() {
+    try {
+        const { google } = require('googleapis');
+        const auth = new google.auth.GoogleAuth({
+            scopes: ['https://www.googleapis.com/auth/business.manage'],
+        });
+        const client = await auth.getClient();
+        const accessToken = await client.getAccessToken();
+        return accessToken.token;
+    } catch (error) {
+        logger.error('Error getting Google access token:', error);
+        throw new Error('Failed to authenticate with Google Business API');
+    }
+}
+
+/**
+ * Helper: Post content to Google Business Profile API
+ */
+async function postToGoogleBusinessProfile(accessToken, summary) {
+    const accountId = process.env.GOOGLE_BUSINESS_ACCOUNT_ID;
+    const locationId = process.env.GOOGLE_BUSINESS_LOCATION_ID;
+
+    if (!accountId || !locationId) {
+        throw new Error('Missing Google Business account or location ID configuration');
+    }
+
+    const url = `https://mybusiness.googleapis.com/v4/accounts/${accountId}/locations/${locationId}/localPosts`;
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                summary: summary,
+                createTime: new Date().toISOString()
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(`Google API error: ${response.status} - ${JSON.stringify(errorData)}`);
+        }
+
+        const result = await response.json();
+        return result;
+    } catch (error) {
+        logger.error('Error posting to Google Business Profile:', error);
+        throw error;
+    }
+}
+
+/**
+ * Scheduled function: Generate weekly marketing post for Google Business Profile
+ * Runs every Monday at 8 AM UTC
+ */
+exports.generateWeeklyGoogleBusinessPost = onSchedule(
+    {
+        schedule: '0 8 * * 1',
+        timeZone: 'UTC',
+        retryCount: 1
+    },
+    async () => {
+        const db = admin.firestore();
+        logger.info('Starting weekly Google Business Profile post generation...');
+
+        try {
+            // 1. Get the last post type to rotate
+            const lastPostSnap = await db.collection('googleBusinessPosts')
+                .where('status', '==', 'posted')
+                .orderBy('postedAt', 'desc')
+                .limit(1)
+                .get();
+
+            let lastPostType = 'callToAction';
+            if (!lastPostSnap.empty) {
+                lastPostType = lastPostSnap.docs[0].data().marketingType || 'callToAction';
+            }
+
+            const nextMarketingType = getMarketingRotationType(lastPostType);
+            logger.info(`Rotating post type from ${lastPostType} to ${nextMarketingType}`);
+
+            // 2. Generate SEO-optimized content
+            const postData = await generateSEOOptimizedPost(nextMarketingType);
+            logger.info(`Generated post: ${postData.content}`);
+
+            // 3. Store in Firestore with 'pending' status for approval
+            const docRef = await db.collection('googleBusinessPosts').add({
+                summary: postData.content,
+                marketingType: nextMarketingType,
+                keywords: postData.keywords,
+                hashtags: postData.hashtags,
+                status: 'pending',
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                approvedAt: null,
+                postedAt: null,
+                postId: null,
+                error: null
+            });
+
+            logger.info(`Post stored with ID: ${docRef.id}`);
+            logger.info('Weekly Google Business post generation completed successfully.');
+
+        } catch (error) {
+            logger.error('Error in Google Business post generation:', error);
+        }
+    }
+);
+
+/**
+ * Callable function: Approve and post to Google Business Profile
+ * Called from React app when user clicks "Approve & Post"
+ */
+exports.approveAndPostGoogleBusinessUpdate = onCall(
+    { enforceAppCheck: false },
+    async (request) => {
+        const db = admin.firestore();
+        const { documentId, shouldPost } = request.data;
+
+        if (!documentId) {
+            throw new Error('documentId is required');
+        }
+
+        try {
+            const docRef = db.collection('googleBusinessPosts').doc(documentId);
+            const doc = await docRef.get();
+
+            if (!doc.exists) {
+                throw new Error('Post document not found');
+            }
+
+            const postData = doc.data();
+
+            // User decided to skip this post
+            if (shouldPost === false) {
+                await docRef.update({
+                    status: 'skipped',
+                    approvedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                logger.info(`Post ${documentId} skipped by user`);
+                return { success: true, message: 'Post skipped', status: 'skipped' };
+            }
+
+            // User approved - post to Google Business Profile
+            if (shouldPost === true) {
+                try {
+                    // Get OAuth token
+                    const accessToken = await getGoogleAccessToken();
+
+                    // Post to Google
+                    const googleResponse = await postToGoogleBusinessProfile(accessToken, postData.summary);
+
+                    // Update document as 'posted'
+                    await docRef.update({
+                        status: 'posted',
+                        postId: googleResponse.name || googleResponse.id,
+                        postedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        error: null
+                    });
+
+                    logger.info(`Post ${documentId} successfully posted to Google Business Profile`);
+                    return {
+                        success: true,
+                        message: 'Post published to Google Business Profile',
+                        status: 'posted',
+                        postId: googleResponse.name || googleResponse.id
+                    };
+
+                } catch (apiError) {
+                    const errorMessage = apiError.message || 'Failed to post to Google Business Profile';
+                    logger.error(`API Error for post ${documentId}:`, apiError);
+
+                    // Store error but keep status as 'pending' for retry
+                    await docRef.update({
+                        error: errorMessage,
+                        approvedAt: admin.firestore.FieldValue.serverTimestamp()
+                    });
+
+                    throw new Error(errorMessage);
+                }
+            }
+
+        } catch (error) {
+            logger.error('Error in approveAndPostGoogleBusinessUpdate:', error);
+            throw error;
+        }
+    }
+);
+

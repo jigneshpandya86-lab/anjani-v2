@@ -18,7 +18,8 @@ import {
   CheckSquare,
   LogOut,
   Bell,
-  CheckCheck
+  CheckCheck,
+  Globe
 } from 'lucide-react'
 import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'firebase/firestore'
 import { db, auth } from './firebase-config'
@@ -34,6 +35,7 @@ import StockDashboard from './components/StockDashboard'
 import Login from './components/Login'
 import SalesAnalyticsDashboard from './components/SalesAnalyticsDashboard'
 import TasksPage from './TasksPage'
+import GoogleBusinessPostsApproval from './components/GoogleBusinessPostsApproval'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
@@ -270,6 +272,7 @@ function App() {
     { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
     { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
     { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
+    { id: 'google-business-posts', label: 'Business Posts', icon: <Globe size={20} /> },
   ].filter(item => userRole === 'admin' || item.id === 'orders')
 
   const drawerNavItems = [
@@ -996,6 +999,7 @@ function App() {
               pendingAction={null}
             />
           )}
+          {activeTab === 'google-business-posts' && <GoogleBusinessPostsApproval />}
         </div>
       </div>
 
