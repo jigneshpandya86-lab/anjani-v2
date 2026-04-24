@@ -34,7 +34,6 @@ import PaymentModal from './components/PaymentModal'
 import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
 import Login from './components/Login'
-import SalesAnalyticsDashboard from './components/SalesAnalyticsDashboard'
 import TasksPage from './TasksPage'
 import GoogleBusinessPostsApproval from './components/GoogleBusinessPostsApproval'
 import IntelligenceDashboard from './components/IntelligenceDashboard'
@@ -53,7 +52,6 @@ function App() {
   const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
   const [ledgerClientId, setLedgerClientId] = useState('')
   const [ledgerDateRange, setLedgerDateRange] = useState('current-month')
-  const [analyticsModalOpen, setAnalyticsModalOpen] = useState(false)
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
   const [notificationReadMap, setNotificationReadMap] = useState({})
@@ -337,15 +335,6 @@ function App() {
         setActiveTab('payments')
         setPayClient({})
         setPaymentPrefill(null)
-        setDrawerOpen(false)
-      }
-    },
-    {
-      id: 'quick-sales-analytics',
-      label: 'Sales Analytics',
-      icon: <TrendingUp size={18} />,
-      onClick: () => {
-        setAnalyticsModalOpen(true)
         setDrawerOpen(false)
       }
     }
@@ -1217,11 +1206,6 @@ function App() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* Sales Analytics Modal */}
-      {analyticsModalOpen && (
-        <SalesAnalyticsDashboard onClose={() => setAnalyticsModalOpen(false)} />
       )}
 
       {/* Bottom Navigation (all screen sizes) */}
