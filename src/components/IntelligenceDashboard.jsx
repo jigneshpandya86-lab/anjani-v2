@@ -6,7 +6,8 @@ import {
   limit, 
   onSnapshot 
 } from 'firebase/firestore';
-import { db } from '../firebase-config';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { db, app } from '../firebase-config';
 import { 
   Brain, 
   TrendingUp, 
@@ -22,6 +23,28 @@ import toast from 'react-hot-toast';
 const IntelligenceDashboard = () => {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const runAnalysis = async () => {
+    setRefreshing(true);
+    const toastId = toast.loading('Running Python intelligence engine...');
+    try {
+      const functions = getFunctions(app, 'asia-south1');
+      const analyze = httpsCallable(functions, 'run_intelligence_analysis');
+      const result = await analyze();
+      
+      if (result.data?.status === 'success') {
+        toast.success('Intelligence report refreshed!', { id: toastId });
+      } else {
+        toast.error(result.data?.message || 'Analysis failed', { id: toastId });
+      }
+    } catch (error) {
+      console.error('Error running analysis:', error);
+      toast.error('Failed to trigger intelligence engine: ' + error.message, { id: toastId });
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     const q = query(
@@ -67,15 +90,16 @@ const IntelligenceDashboard = () => {
           <Brain size={64} className="mx-auto text-blue-400 mb-6" />
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Intelligence Engine Ready</h2>
           <p className="text-gray-600 mb-8">
-            The Python-powered intelligence module is installed. 
-            Run the analysis script to generate your first predictive business report.
+            The Python-powered intelligence module is installed on the server. 
+            Click the button below to generate your first predictive business report.
           </p>
           <button 
-            onClick={() => toast.success('Python script is ready to run in the backend!')}
-            className="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors flex items-center mx-auto"
+            onClick={runAnalysis}
+            disabled={refreshing}
+            className="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors flex items-center mx-auto disabled:opacity-50"
           >
-            <RefreshCw size={20} className="mr-2" />
-            Refresh Intelligence
+            <RefreshCw size={20} className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Running Analysis...' : 'Generate First Report'}
           </button>
         </div>
       </div>
@@ -86,16 +110,27 @@ const IntelligenceDashboard = () => {
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto pb-20">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-            <Brain className="text-blue-600 mr-2" />
-            Anjani Intelligence Hub
-          </h1>
-          <p className="text-gray-500 text-sm">Predictive insights powered by Python</p>
+        <div className="flex items-center justify-between w-full">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center">
+              <Brain className="text-blue-600 mr-2" />
+              Anjani Intelligence Hub
+            </h1>
+            <p className="text-gray-500 text-sm">Predictive insights powered by Python</p>
+          </div>
+          <button 
+            onClick={runAnalysis}
+            disabled={refreshing}
+            className="p-2 bg-white border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-all shadow-sm flex items-center text-xs font-bold disabled:opacity-50"
+            title="Refresh Analysis"
+          >
+            <RefreshCw size={16} className={`sm:mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">{refreshing ? 'Refreshing...' : 'Refresh Intelligence'}</span>
+          </button>
         </div>
-        <div className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full w-fit">
-          Last updated: {report.timestamp?.toDate ? report.timestamp.toDate().toLocaleString() : 'Just now'}
-        </div>
+      </div>
+      <div className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full w-fit">
+        Last updated: {report.timestamp?.toDate ? report.timestamp.toDate().toLocaleString() : 'Just now'}
       </div>
 
       {/* Summary Cards */}
