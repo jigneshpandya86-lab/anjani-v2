@@ -26,7 +26,8 @@ def run_intelligence_analysis(req: https_fn.CallableRequest) -> any:
     
     # 1. Fetch Data
     orders_list = [doc.to_dict() | {'id': doc.id} for doc in db.collection('orders').stream()]
-    clients_list = [doc.to_dict() | {'id': doc.id} for doc in db.collection('clients').stream()]
+    # Collection name is 'customers' in Firestore
+    clients_list = [doc.to_dict() | {'id': doc.id} for doc in db.collection('customers').stream()]
     
     if not orders_list:
         return {"status": "error", "message": "No order data found to analyze"}
