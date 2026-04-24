@@ -292,10 +292,10 @@ function App() {
 
   const drawerNavItems = [
     { id: 'tasks', label: 'Tasks', icon: <CheckSquare size={20} /> },
-    { id: 'intelligence', label: 'Intelligence Hub', icon: <Brain size={20} /> },
+    userRole === 'admin' && { id: 'intelligence', label: 'Intelligence Hub', icon: <Brain size={20} /> },
     ...navItems,
     { id: 'google-business-posts', label: 'Business Posts', icon: <Globe size={20} /> },
-  ]
+  ].filter(Boolean)
 
   const drawerQuickActions = [
     {
