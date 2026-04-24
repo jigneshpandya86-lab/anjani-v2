@@ -36,6 +36,7 @@ import Login from './components/Login'
 import SalesAnalyticsDashboard from './components/SalesAnalyticsDashboard'
 import TasksPage from './TasksPage'
 import GoogleBusinessPostsApproval from './components/GoogleBusinessPostsApproval'
+import IntelligenceDashboard from './components/IntelligenceDashboard'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
@@ -292,6 +293,7 @@ function App() {
 
   const drawerNavItems = [
     { id: 'tasks', label: 'Tasks', icon: <CheckSquare size={20} /> },
+    { id: 'intelligence', label: 'Intelligence Hub', icon: <Brain size={20} /> },
     ...navItems,
     { id: 'google-business-posts', label: 'Business Posts', icon: <Globe size={20} /> },
   ]
@@ -1010,6 +1012,7 @@ function App() {
             </div>
           )}
           {activeTab === 'tasks' && <TasksPage />}
+          {activeTab === 'intelligence' && <IntelligenceDashboard />}
           {activeTab === 'leads' && (
             <LeadsDashboard
               pendingAction={null}
