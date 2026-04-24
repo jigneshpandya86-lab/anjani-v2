@@ -82,6 +82,22 @@ function App() {
     return unsubAuth
   }, [fetchUserRole])
 
+  // FCM Auto-initialization for robustness
+  useEffect(() => {
+    if (user && Notification.permission === 'granted') {
+      const initFcmAuto = async () => {
+        try {
+          const { initializeFcm } = await import('./services/fcm-setup');
+          await initializeFcm(user.uid, user.email);
+          console.log('FCM auto-initialized for user:', user.uid);
+        } catch (err) {
+          console.error('FCM auto-init error:', err);
+        }
+      };
+      initFcmAuto();
+    }
+  }, [user])
+
   const handleEnableNotifications = async () => {
     if (!user) {
       toast.error('User not logged in.');

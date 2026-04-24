@@ -140,16 +140,21 @@ exports.sendOrderSmsToStaff = onDocumentWritten("orders/{docId}", async (event) 
     const currentStatus = (afterData.status || "").toLowerCase();
     const previousStatus = beforeData ? (beforeData.status || "").toLowerCase() : null;
     
+    logger.info(`Processing order ${event.params.docId}: Status ${previousStatus} -> ${currentStatus}`);
+
     const isCancelled = currentStatus === "cancelled" || afterData.isCancelled === true;
     const wasCancelled = beforeData && (previousStatus === "cancelled" || beforeData.isCancelled === true);
     const justCancelled = isCancelled && !wasCancelled;
 
     const importantFields = [
         "clientName", "name", "qty", "quantity", "date", "time", "deliveryTime",
-        "address", "deliveryAddress", "location", "area", "mapLink", "googleMapsLink", "mobile", "phone"
+        "address", "deliveryAddress", "location", "area", "mapLink", "googleMapsLink", "mobile", "phone", "status",
+        "rate", "price", "amount"
     ];
 
     let anyDetailChanged = false;
+    let changedFields = [];
+
     if (beforeData) {
         importantFields.forEach(field => {
             const valBefore = beforeData[field];
@@ -162,11 +167,10 @@ exports.sendOrderSmsToStaff = onDocumentWritten("orders/{docId}", async (event) 
             
             if (normBefore !== normAfter) {
                 anyDetailChanged = true;
+                changedFields.push(field);
             }
         });
     }
-
-    const isSkipStatus = currentStatus === "confirmed" || currentStatus === "delivered";
 
     let shouldSend = false;
     let statusHeader = "ORDER UPDATED";
@@ -175,21 +179,35 @@ exports.sendOrderSmsToStaff = onDocumentWritten("orders/{docId}", async (event) 
         // New order - ALWAYS send
         shouldSend = true;
         statusHeader = "NEW ORDER";
+        logger.info(`Decision: Sending notification for NEW order ${event.params.docId}`);
     } else if (justCancelled) {
         // Transition to cancelled - ALWAYS send
         shouldSend = true;
         statusHeader = "ORDER CANCELLED";
-    } else if (anyDetailChanged && !isSkipStatus) {
-        // Details changed and status is NOT confirmed or delivered
+        logger.info(`Decision: Sending notification for CANCELLED order ${event.params.docId}`);
+    } else if (anyDetailChanged) {
+        // Skip notifications for confirmed or delivered status as requested
+        if (currentStatus === "confirmed" || currentStatus === "delivered") {
+            logger.info(`Decision: Skipping notification for order ${event.params.docId} - Status is ${currentStatus}.`);
+            return;
+        }
+
         shouldSend = true;
-        statusHeader = isCancelled ? "ORDER CANCELLED" : "ORDER UPDATED";
+        // Specific headers for important status transitions
+        if (isCancelled) {
+            statusHeader = "ORDER CANCELLED";
+        } else {
+            statusHeader = "ORDER UPDATED";
+        }
+        logger.info(`Decision: Sending notification for UPDATED order ${event.params.docId}. Changed: ${changedFields.join(", ")}`);
     }
 
     if (!shouldSend) {
-        const reason = isSkipStatus ? `status is ${currentStatus}` : "no important details changed";
-        logger.info(`Skipping SMS for order ${event.params.docId} - ${reason}.`);
+        logger.info(`Decision: Skipping notification for order ${event.params.docId} - no important details changed.`);
         return;
     }
+
+    logger.info(`Sending notification for ${event.params.docId} with header: ${statusHeader}. Changed fields: ${changedFields.join(", ")}`);
 
     // Resolve full order context including client details
     const resolved = await resolveOrderContext({ ...afterData, id: event.params.docId });
@@ -220,7 +238,7 @@ MapLink: ${sMapLink}`;
 
     // Send Push Notification
     try {
-        await broadcastNotification(message, statusHeader, pushMessage);
+        await broadcastNotification(message, statusHeader, pushMessage, event.params.docId);
         logger.info(`Push notification sent for order: ${event.params.docId}`);
     } catch (pushError) {
         logger.error("Error sending push notification for order:", { orderId: event.params.docId, error: pushError.message });
@@ -287,7 +305,7 @@ MapLink: ${resolved.mapLink}`;
     // Send Push Notification
     if (!skipPush) {
         try {
-            await broadcastNotification(message, `DELIVERY REMINDER (${type})`);
+            await broadcastNotification(message, `DELIVERY REMINDER (${type})`, null, doc.id);
             logger.info(`Push reminder (${type}) sent for order: ${doc.id}`);
         } catch (pushError) {
             logger.error(`Error sending push reminder (${type}) for order:`, { orderId: doc.id, error: pushError.message });
@@ -1003,10 +1021,11 @@ exports.discoverLeadsWithAI = onSchedule(
 const { onCall } = require("firebase-functions/v2/https");
 
 /**
- * Internal helper to broadcast a notification message to all users via FCM
+ * Helper to broadcast a notification message to all users via FCM
  * and record it in the Firestore notifications collection.
+ * Includes token chunking for robustness.
  */
-async function broadcastNotification(message, title = "New Notification", pushMessage = null) {
+async function broadcastNotification(message, title = "New Notification", pushMessage = null, tag = "broadcast-notification") {
   const db = admin.firestore();
   try {
     const newNotification = {
@@ -1020,95 +1039,84 @@ async function broadcastNotification(message, title = "New Notification", pushMe
     // Fetch all user devices to get FCM tokens across all users
     const devicesSnapshot = await db.collectionGroup("tokens").get();
     
+    logger.info(`Broadcast (${tag}): Found ${devicesSnapshot.size} total token documents.`);
+
     if (devicesSnapshot.empty) {
-      logger.info("No user devices found to send FCM.");
+      logger.info(`Broadcast (${tag}): No user devices found to send FCM.`);
       return { id: notificationDocRef.id, ...newNotification, tokensNotified: 0 };
     }
 
-    const tokens = [];
-    const tokenDocMap = {};
-
+    const allTokens = [];
     devicesSnapshot.forEach((doc) => {
       const data = doc.data();
-      // Only include active tokens
-      if (data.token && data.status !== 'invalid') {
-        tokens.push(data.token);
-        tokenDocMap[data.token] = doc.ref;
+      if (data.token) {
+        allTokens.push(data.token);
       }
     });
 
-    if (tokens.length === 0) {
-      logger.info("No valid/active FCM tokens found in user devices.");
+    if (allTokens.length === 0) {
+      logger.info(`Broadcast (${tag}): No valid FCM tokens found.`);
       return { id: notificationDocRef.id, ...newNotification, tokensNotified: 0 };
     }
 
     const displayBody = pushMessage || message;
+    let totalSuccessCount = 0;
+    let totalFailureCount = 0;
 
-    // Prepare FCM payload
-    const payload = {
-      notification: {
-        title: title,
-        body: displayBody,
-      },
-      data: {
-        title: title,
-        body: displayBody,
-        click_action: "https://anjaniappnew.firebaseapp.com",
-        type: "broadcast"
-      },
-      webpush: {
-        notification: {
-          title: title,
-          body: displayBody,
-          icon: "/favicon.svg",
-          badge: "/favicon.svg",
-          vibrate: [200, 100, 200],
-          requireInteraction: true,
-          renotify: true,
-          tag: "broadcast-notification"
-        },
-        fcm_options: {
-          link: "https://anjaniappnew.firebaseapp.com"
-        }
-      },
-      tokens: tokens,
-    };
-
-    // Send to all tokens
-    const response = await admin.messaging().sendEachForMulticast(payload);
-    logger.info(`Broadcast: Successfully sent ${response.successCount} messages; ${response.failureCount} failed.`);
-
-    // Handle invalid tokens based on FCM failure response
-    if (response.failureCount > 0) {
-      const batch = db.batch();
-      let invalidatedCount = 0;
+    // FCM limit for sendEach is 500 messages per call
+    const chunkSize = 500;
+    for (let i = 0; i < allTokens.length; i += chunkSize) {
+      const tokenChunk = allTokens.slice(i, i + chunkSize);
       
-      response.responses.forEach((resp, idx) => {
-        if (!resp.success) {
-          const errorCode = resp.error?.code;
-          if (errorCode === 'messaging/invalid-registration-token' || 
-              errorCode === 'messaging/registration-token-not-registered') {
-            const token = tokens[idx];
-            const docRef = tokenDocMap[token];
-            if (docRef) {
-              batch.update(docRef, { 
-                status: 'invalid', 
-                invalidAt: admin.firestore.FieldValue.serverTimestamp(),
-                lastError: errorCode
-              });
-              invalidatedCount++;
-            }
+      const messages = tokenChunk.map(token => ({
+        token,
+        notification: { title, body: displayBody },
+        data: {
+          title,
+          body: message,
+          click_action: "https://anjaniappnew.firebaseapp.com",
+          type: "broadcast",
+          orderId: tag !== "broadcast-notification" ? tag : ""
+        },
+        android: {
+          priority: "high",
+          notification: {
+            channelId: "order_alerts",
+            priority: "high",
+            defaultVibrateTimings: true,
+            defaultSound: true
           }
+        },
+        webpush: {
+          notification: {
+            title,
+            body: displayBody,
+            icon: "/favicon.svg",
+            badge: "/favicon.svg",
+            vibrate: [200, 100, 200],
+            requireInteraction: true,
+            renotify: true,
+            tag: tag
+          },
+          fcm_options: { link: "https://anjaniappnew.firebaseapp.com" }
         }
-      });
+      }));
 
-      if (invalidatedCount > 0) {
-        await batch.commit();
-        logger.info(`Broadcast: Marked ${invalidatedCount} dead tokens as invalid.`);
+      const response = await admin.messaging().sendEach(messages);
+      totalSuccessCount += response.successCount;
+      totalFailureCount += response.failureCount;
+
+      if (response.failureCount > 0) {
+        response.responses.forEach((resp, idx) => {
+          if (!resp.success) {
+            logger.info(`Broadcast (${tag}): Token ${tokenChunk[idx].substring(0, 10)}... failed with error: ${resp.error?.code}`);
+          }
+        });
       }
     }
 
-    return { id: notificationDocRef.id, ...newNotification, tokensNotified: response.successCount };
+    logger.info(`Broadcast (${tag}): Sent to ${totalSuccessCount} tokens; ${totalFailureCount} failed.`);
+    return { id: notificationDocRef.id, ...newNotification, tokensNotified: totalSuccessCount };
   } catch (error) {
     logger.error("Error in broadcastNotification:", error);
     throw error;
@@ -1192,14 +1200,19 @@ exports.registerDevice = onCall(async (request) => {
 });
 
 /**
- * Helper to check if a delivery time string is within the next 3 hours.
+ * Helper to check if a delivery time string is within the next 3.5 hours.
+ * Uses IST for all comparisons to avoid UTC server issues.
  */
 function isDeliverySoon(deliveryTimeStr, now) {
     if (!deliveryTimeStr || deliveryTimeStr === "N/A") return false;
     
+    // Convert current time to IST string and back to Date to "shift" it
+    const istString = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+    const nowIST = new Date(istString);
+    
     // Attempt to parse common time formats like "14:30", "02:30 PM", "2 PM"
     const match = deliveryTimeStr.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?/i);
-    if (!match) return true; // Fallback: if we can't parse, assume it's soon to be safe
+    if (!match) return true; // Fallback
 
     let hours = parseInt(match[1]);
     const minutes = parseInt(match[2]) || 0;
@@ -1210,13 +1223,14 @@ function isDeliverySoon(deliveryTimeStr, now) {
         if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
     }
 
-    const deliveryDate = new Date(now);
-    deliveryDate.setHours(hours, minutes, 0, 0);
+    // deliveryDateIST is based on the shifted nowIST
+    const deliveryDateIST = new Date(nowIST);
+    deliveryDateIST.setHours(hours, minutes, 0, 0);
 
-    const diffMs = deliveryDate.getTime() - now.getTime();
+    const diffMs = deliveryDateIST.getTime() - nowIST.getTime();
     const diffHours = diffMs / (1000 * 60 * 60);
 
-    // Return true if delivery is in the next 3.5 hours (slight buffer) and not in the past
+    // Return true if delivery is in the next 3.5 hours (slight buffer) and not more than 30 mins past
     return diffHours > -0.5 && diffHours <= 3.5;
 }
 
@@ -1286,42 +1300,6 @@ exports.hourlyDeliveryReminders = onSchedule({
         }
     } catch (e) {
         logger.error("Hourly Delivery Reminder Job Error:", e.message);
-    }
-});
-
-/**
- * Daily General Broadcast
- * Runs daily at 8:30 AM IST to send a friendly morning notification to all app users.
- */
-exports.dailyGeneralBroadcast = onSchedule({
-    schedule: "30 8 * * *",
-    timeZone: "Asia/Kolkata",
-    retryCount: 1
-}, async (_event) => {
-    logger.info("Starting daily general broadcast job...");
-    try {
-        const prompt = `You are the automated assistant for Anjani Water, Vadodara. 
-        Write a very short, friendly, and professional morning greeting for our customers (max 100 characters). 
-        Wish them a great day and mention that we are ready to serve their packaged water needs today. 
-        Hinglish is okay. Avoid being too salesy; keep it warm and helpful.`;
-
-        logger.info("Requesting content from Gemini...");
-        const result = await generativeModel.generateContent(prompt);
-        
-        if (!result.response || !result.response.candidates || result.response.candidates.length === 0) {
-            throw new Error("No response candidates from Gemini");
-        }
-        
-        const aiMessage = result.response.candidates[0].content.parts[0].text.trim();
-        logger.info(`Generated AI message: ${aiMessage}`);
-        
-        const broadcastResult = await broadcastNotification(aiMessage, "Anjani Water Morning Update");
-        logger.info("Daily general broadcast sent successfully.", broadcastResult);
-    } catch (error) {
-        logger.error("Error in daily general broadcast job:", {
-            error: error.message,
-            stack: error.stack
-        });
     }
 });
 
@@ -1397,3 +1375,235 @@ Keep the message short, professional but warm (Hinglish is okay). Don't list all
     }
 });
 
+
+// --- GOOGLE BUSINESS PROFILE FUNCTIONS ---
+
+function getMarketingRotationType(lastPostType) {
+    const rotationCycle = ['serviceHighlight', 'customerBenefit', 'promotion', 'sustainability', 'callToAction'];
+    const lastIndex = rotationCycle.indexOf(lastPostType || 'callToAction');
+    const nextIndex = (lastIndex + 1) % rotationCycle.length;
+    return rotationCycle[nextIndex];
+}
+
+async function generateSEOOptimizedPost(marketingType) {
+    const prompts = {
+        serviceHighlight: `Generate a compelling Google Business Profile post (200-280 characters) highlighting Anjani Water's delivery service quality and reliability. Include local SEO keywords like "water delivery Vadodara", "pure drinking water", "packaged water". Add 3-4 relevant hashtags. Strong call-to-action. Format: Return ONLY the post text, then on a new line: KEYWORDS:keyword1,keyword2,keyword3 then HASHTAGS:#tag1,#tag2,#tag3`,
+
+        customerBenefit: `Create a Google Business Profile post (200-280 characters) about customer benefits: convenience, reliability, health benefits of pure water. Include "Vadodara water delivery", "safe drinking water", "convenient water solution". Add 3-4 hashtags. Local keywords for SEO. Format: Return ONLY the post text, then on a new line: KEYWORDS:keyword1,keyword2,keyword3 then HASHTAGS:#tag1,#tag2,#tag3`,
+
+        promotion: `Write a promotional Google Business Profile post (200-280 characters) offering special deals/offers. Include local keywords "water bottles Vadodara", "bulk water orders", "water delivery discount". Make it urgency-driven. Add 3-4 hashtags. Format: Return ONLY the post text, then on a new line: KEYWORDS:keyword1,keyword2,keyword3 then HASHTAGS:#tag1,#tag2,#tag3`,
+
+        sustainability: `Craft a post (200-280 characters) about eco-friendly packaging and quality assurance. Include "sustainable water delivery", "pure water Vadodara", "packaged drinking water". SEO-optimized. Add 3-4 hashtags. Format: Return ONLY the post text, then on a new line: KEYWORDS:keyword1,keyword2,keyword3 then HASHTAGS:#tag1,#tag2,#tag3`,
+
+        callToAction: `Generate an engaging call-to-action Google Business post (200-280 characters) encouraging orders. Include "order water online Vadodara", "water delivery service", "call for delivery". Add 3-4 hashtags with strong urgency. Format: Return ONLY the post text, then on a new line: KEYWORDS:keyword1,keyword2,keyword3 then HASHTAGS:#tag1,#tag2,#tag3`
+    };
+
+    const prompt = prompts[marketingType] || prompts.serviceHighlight;
+
+    try {
+        const result = await generativeModel.generateContent({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: {
+                maxOutputTokens: 400,
+                temperature: 0.7,
+            }
+        });
+
+        const fullResponse = result.response.candidates[0].content.parts[0].text.trim();
+        const parts = fullResponse.split('\nKEYWORDS:');
+        const postText = parts[0].trim();
+
+        let keywords = [];
+        let hashtags = [];
+
+        if (parts.length > 1) {
+            const keywordsPart = parts[1].split('\nHASHTAGS:');
+            keywords = keywordsPart[0].split(',').map(k => k.trim()).filter(k => k);
+
+            if (keywordsPart.length > 1) {
+                hashtags = keywordsPart[1].split(',').map(h => h.trim()).filter(h => h);
+            }
+        }
+
+        return {
+            content: postText,
+            keywords,
+            hashtags,
+            postType: marketingType
+        };
+    } catch (error) {
+        logger.error('Error generating SEO-optimized post:', error);
+        throw error;
+    }
+}
+
+exports.generateWeeklyGoogleBusinessPost = onSchedule(
+    {
+        schedule: '0 8 * * 1',
+        timeZone: 'UTC',
+        retryCount: 1
+    },
+    async () => {
+        const db = admin.firestore();
+        logger.info('Starting weekly Google Business Profile post generation...');
+
+        try {
+            const lastPostSnap = await db.collection('googleBusinessPosts')
+                .where('status', '==', 'posted')
+                .orderBy('postedAt', 'desc')
+                .limit(1)
+                .get();
+
+            let lastPostType = 'callToAction';
+            if (!lastPostSnap.empty) {
+                lastPostType = lastPostSnap.docs[0].data().marketingType || 'callToAction';
+            }
+
+            const nextMarketingType = getMarketingRotationType(lastPostType);
+            logger.info(`Rotating post type from ${lastPostType} to ${nextMarketingType}`);
+
+            const postData = await generateSEOOptimizedPost(nextMarketingType);
+            logger.info(`Generated post: ${postData.content}`);
+
+            const docRef = await db.collection('googleBusinessPosts').add({
+                summary: postData.content,
+                marketingType: nextMarketingType,
+                keywords: postData.keywords,
+                hashtags: postData.hashtags,
+                status: 'pending',
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                approvedAt: null,
+                postedAt: null,
+                postId: null,
+                error: null
+            });
+
+            logger.info(`Post stored with ID: ${docRef.id}`);
+            logger.info('Weekly Google Business post generation completed successfully.');
+
+        } catch (error) {
+            logger.error('Error in Google Business post generation:', error);
+        }
+    }
+);
+
+async function getGoogleAccessToken() {
+    try {
+        const { google } = require('googleapis');
+        const auth = new google.auth.GoogleAuth({
+            scopes: ['https://www.googleapis.com/auth/business.manage'],
+        });
+        const client = await auth.getClient();
+        const accessToken = await client.getAccessToken();
+        return accessToken.token;
+    } catch (error) {
+        logger.error('Error getting Google access token:', error);
+        throw new Error('Failed to authenticate with Google Business API');
+    }
+}
+
+async function postToGoogleBusinessProfile(accessToken, summary) {
+    const accountId = process.env.GOOGLE_BUSINESS_ACCOUNT_ID;
+    const locationId = process.env.GOOGLE_BUSINESS_LOCATION_ID;
+
+    if (!accountId || !locationId) {
+        throw new Error('Missing Google Business account or location ID configuration');
+    }
+
+    const url = `https://mybusiness.googleapis.com/v4/accounts/${accountId}/locations/${locationId}/localPosts`;
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                summary: summary,
+                createTime: new Date().toISOString()
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(`Google API error: ${response.status} - ${JSON.stringify(errorData)}`);
+        }
+
+        const result = await response.json();
+        return result;
+    } catch (error) {
+        logger.error('Error posting to Google Business Profile:', error);
+        throw error;
+    }
+}
+
+exports.approveAndPostGoogleBusinessUpdate = onCall(
+    { enforceAppCheck: false },
+    async (request) => {
+        const db = admin.firestore();
+        const { documentId, shouldPost } = request.data;
+
+        if (!documentId) {
+            throw new Error('documentId is required');
+        }
+
+        try {
+            const docRef = db.collection('googleBusinessPosts').doc(documentId);
+            const doc = await docRef.get();
+
+            if (!doc.exists) {
+                throw new Error('Post document not found');
+            }
+
+            const postData = doc.data();
+
+            if (shouldPost === false) {
+                await docRef.update({
+                    status: 'skipped',
+                    approvedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                logger.info(`Post ${documentId} skipped by user`);
+                return { success: true, message: 'Post skipped', status: 'skipped' };
+            }
+
+            if (shouldPost === true) {
+                try {
+                    const accessToken = await getGoogleAccessToken();
+                    const googleResponse = await postToGoogleBusinessProfile(accessToken, postData.summary);
+
+                    await docRef.update({
+                        status: 'posted',
+                        postId: googleResponse.name || googleResponse.id,
+                        postedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        error: null
+                    });
+
+                    logger.info(`Post ${documentId} successfully posted to Google Business Profile`);
+                    return {
+                        success: true,
+                        message: 'Post published to Google Business Profile',
+                        status: 'posted',
+                        postId: googleResponse.name || googleResponse.id
+                    };
+
+                } catch (apiError) {
+                    const errorMessage = apiError.message || 'Failed to post to Google Business Profile';
+                    logger.error(`API Error for post ${documentId}:`, apiError);
+
+                    await docRef.update({
+                        error: errorMessage,
+                        approvedAt: admin.firestore.FieldValue.serverTimestamp()
+                    });
+
+                    throw new Error(errorMessage);
+                }
+            }
+
+        } catch (error) {
+            logger.error('Error in approveAndPostGoogleBusinessUpdate:', error);
+            throw error;
+        }
+    }
+);
