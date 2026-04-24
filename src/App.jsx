@@ -19,7 +19,8 @@ import {
   LogOut,
   Bell,
   CheckCheck,
-  Globe
+  Globe,
+  Brain
 } from 'lucide-react'
 import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'firebase/firestore'
 import { db, auth } from './firebase-config'
