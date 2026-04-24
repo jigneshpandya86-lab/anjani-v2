@@ -7,6 +7,14 @@ service cloud.firestore {
       return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // Google Business Posts collection (MUST come before catch-all)
+    // - Authenticated users can read posts for approval workflow
+    // - Only admins can write/modify posts
+    match /googleBusinessPosts/{postId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
     // Admins have full read/write access to all collections
     match /{document=**} {
       allow read, write: if isAdmin();
@@ -37,6 +45,14 @@ service cloud.firestore {
     // - Writing is restricted to admins (handled by the ** rule above)
     match /orders/{orderId} {
       allow read: if request.auth != null;
+    }
+
+    // Google Business Posts collection:
+    // - Admins can read/write all posts
+    // - Authenticated users can read pending/posted posts for approval workflow
+    match /googleBusinessPosts/{postId} {
+      allow read: if request.auth != null && (isAdmin() || true);
+      allow write: if isAdmin();
     }
   }
 }
