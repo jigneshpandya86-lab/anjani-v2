@@ -12,16 +12,6 @@
         "firebase-debug.log",
         "firebase-debug.*.log"
       ]
-    },
-    {
-      "source": "functions_python",
-      "codebase": "python-intelligence",
-      "ignore": [
-        "venv",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log"
-      ]
     }
   ],
   "hosting": {
