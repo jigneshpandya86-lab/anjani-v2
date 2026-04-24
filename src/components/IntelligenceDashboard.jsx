@@ -20,7 +20,8 @@ import {
   ShoppingCart,
   CreditCard,
   Target,
-  BarChart3
+  BarChart3,
+  X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -29,6 +30,7 @@ const IntelligenceDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [dateRange, setDateRange] = useState('month'); // today, week, month
+  const [selectedDetail, setSelectedDetail] = useState(null); // 'revenue', 'orders', 'outstanding', null
 
   const runAnalysis = async (silent = false) => {
     if (refreshing) return;
@@ -101,125 +103,142 @@ const IntelligenceDashboard = () => {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto pb-24">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-24">
       {/* Header Section */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-black text-gray-900 flex items-center tracking-tight">
-            <Brain className="text-blue-600 mr-2" size={28} />
+          <h1 className="text-xl sm:text-2xl font-black text-gray-900 flex items-center tracking-tight">
+            <Brain className="text-blue-600 mr-2" size={24} sm={28} />
             MISSION <span className="text-blue-600 ml-1.5">CONTROL</span>
           </h1>
-          <p className="text-gray-500 text-xs font-bold uppercase tracking-widest mt-1">100% Python-Powered Analytics</p>
+          <p className="text-gray-400 text-[9px] sm:text-xs font-bold uppercase tracking-widest mt-0.5">100% Python-Powered Analytics</p>
         </div>
         
-        <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-gray-100 shadow-sm">
-          {['today', 'week', 'month'].map((range) => (
-            <button
-              key={range}
-              onClick={() => setDateRange(range)}
-              className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${
-                dateRange === range 
-                ? 'bg-blue-600 text-white shadow-md' 
-                : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              {range}
-            </button>
-          ))}
-          <div className="w-px h-4 bg-gray-200 mx-1" />
+        <div className="flex items-center justify-between sm:justify-start gap-2 bg-white p-1 rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+          <div className="flex items-center gap-1">
+            {['today', 'week', 'month'].map((range) => (
+              <button
+                key={range}
+                onClick={() => setDateRange(range)}
+                className={`px-3 sm:px-4 py-1.5 rounded-xl text-[9px] sm:text-[10px] font-black uppercase transition-all whitespace-nowrap ${
+                  dateRange === range 
+                  ? 'bg-blue-600 text-white shadow-md' 
+                  : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                {range}
+              </button>
+            ))}
+          </div>
+          <div className="w-px h-4 bg-gray-200 mx-1 hidden sm:block" />
           <button 
             onClick={() => runAnalysis()}
             disabled={refreshing}
             className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-colors disabled:opacity-50"
             title="Refresh Analysis"
           >
-            <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+            <RefreshCw size={16} sm={18} className={refreshing ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
 
       {/* KPI GRID: THE "MISSION" STATUS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Revenue Tile */}
-        <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-5 text-white shadow-xl relative overflow-hidden group">
+        <button 
+          onClick={() => setSelectedDetail('revenue')}
+          className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-[24px] sm:rounded-3xl p-3 sm:p-5 text-white shadow-lg relative overflow-hidden group text-left active:scale-95 transition-all"
+        >
           <div className="relative z-10">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-white/10 rounded-xl">
-                <TrendingUp size={20} className="text-green-400" />
+            <div className="flex items-center justify-between mb-2 sm:mb-4">
+              <div className="p-1.5 sm:p-2 bg-white/10 rounded-lg sm:rounded-xl text-green-400">
+                <TrendingUp size={16} sm={20} />
               </div>
-              <span className="text-[10px] font-black text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full uppercase tracking-tighter">Live</span>
+              <span className="text-[8px] sm:text-[10px] font-black text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full uppercase tracking-tighter">Live</span>
             </div>
-            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Revenue</p>
-            <h2 className="text-2xl font-black mt-1">{formatCurrency(sales.revenue)}</h2>
-            <p className="text-[10px] text-gray-500 font-bold mt-1">{sales.count} Delivered</p>
+            <p className="text-gray-400 text-[8px] sm:text-[10px] font-black uppercase tracking-widest">Revenue</p>
+            <h2 className="text-base sm:text-2xl font-black mt-0.5 sm:mt-1">{formatCurrency(sales.revenue)}</h2>
+            <div className="flex items-center justify-between mt-1 sm:mt-2">
+              <p className="text-[8px] sm:text-[10px] text-gray-500 font-bold">{sales.count} Delivered</p>
+              <ChevronRight size={12} className="text-gray-600" />
+            </div>
           </div>
-          <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform">
-            <TrendingUp size={100} />
-          </div>
-        </div>
+        </button>
 
         {/* Orders Tile */}
-        <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-sm relative overflow-hidden group">
+        <button 
+          onClick={() => setSelectedDetail('orders')}
+          className="bg-white border border-gray-100 rounded-[24px] sm:rounded-3xl p-3 sm:p-5 shadow-sm relative overflow-hidden group text-left active:scale-95 transition-all"
+        >
           <div className="relative z-10">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-blue-50 rounded-xl">
-                <ShoppingCart size={20} className="text-blue-600" />
+            <div className="flex items-center justify-between mb-2 sm:mb-4">
+              <div className="p-1.5 sm:p-2 bg-blue-50 rounded-lg sm:rounded-xl text-blue-600">
+                <ShoppingCart size={16} sm={20} />
               </div>
             </div>
-            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Total Orders</p>
-            <h2 className="text-2xl font-black text-gray-900 mt-1">{sales.count}</h2>
-            <p className="text-[10px] text-blue-600 font-bold mt-1">{report?.sales?.pending || 0} Pending</p>
+            <p className="text-gray-400 text-[8px] sm:text-[10px] font-black uppercase tracking-widest">Total Orders</p>
+            <h2 className="text-base sm:text-2xl font-black text-gray-900 mt-0.5 sm:mt-1">{sales.count}</h2>
+            <div className="flex items-center justify-between mt-1 sm:mt-2">
+              <p className="text-[8px] sm:text-[10px] text-blue-600 font-bold">{report?.sales?.pending || 0} Pending</p>
+              <ChevronRight size={12} className="text-gray-300" />
+            </div>
           </div>
-        </div>
+        </button>
 
         {/* Outstanding Tile */}
-        <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-sm relative overflow-hidden group">
+        <button 
+          onClick={() => setSelectedDetail('outstanding')}
+          className="bg-white border border-gray-100 rounded-[24px] sm:rounded-3xl p-3 sm:p-5 shadow-sm relative overflow-hidden group text-left active:scale-95 transition-all"
+        >
           <div className="relative z-10">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-red-50 rounded-xl">
-                <CreditCard size={20} className="text-red-600" />
+            <div className="flex items-center justify-between mb-2 sm:mb-4">
+              <div className="p-1.5 sm:p-2 bg-red-50 rounded-lg sm:rounded-xl text-red-600">
+                <CreditCard size={16} sm={20} />
               </div>
             </div>
-            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Outstanding</p>
-            <h2 className="text-2xl font-black text-gray-900 mt-1">{formatCurrency(report?.totalOutstanding || 0)}</h2>
-            <p className="text-[10px] text-red-600 font-bold mt-1 tracking-tight">Requires Collection</p>
+            <p className="text-gray-400 text-[8px] sm:text-[10px] font-black uppercase tracking-widest">Outstanding</p>
+            <h2 className="text-base sm:text-2xl font-black text-gray-900 mt-0.5 sm:mt-1">{formatCurrency(report?.totalOutstanding || 0)}</h2>
+            <div className="flex items-center justify-between mt-1 sm:mt-2">
+              <p className="text-[8px] sm:text-[10px] text-red-600 font-bold tracking-tight uppercase">Collections</p>
+              <ChevronRight size={12} className="text-gray-300" />
+            </div>
           </div>
-        </div>
+        </button>
 
         {/* Forecast Tile */}
-        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl p-5 text-white shadow-lg shadow-blue-200 relative overflow-hidden group">
+        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[24px] sm:rounded-3xl p-3 sm:p-5 text-white shadow-lg shadow-blue-100 relative overflow-hidden group">
           <div className="relative z-10">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-white/20 rounded-xl">
-                <Target size={20} />
+            <div className="flex items-center justify-between mb-2 sm:mb-4">
+              <div className="p-1.5 sm:p-2 bg-white/20 rounded-lg sm:rounded-xl text-white">
+                <Target size={16} sm={20} />
               </div>
-              <span className="text-[10px] font-black text-blue-100 bg-white/10 px-2 py-0.5 rounded-full uppercase tracking-tighter italic">Prediction</span>
+              <span className="text-[8px] sm:text-[10px] font-black text-blue-100 bg-white/10 px-2 py-0.5 rounded-full uppercase tracking-tighter italic">Prediction</span>
             </div>
-            <p className="text-blue-100 text-[10px] font-black uppercase tracking-widest">7-Day Forecast</p>
-            <h2 className="text-2xl font-black mt-1">{formatCurrency(report?.forecast?.next7DaysEstimate || 0)}</h2>
+            <p className="text-blue-100 text-[8px] sm:text-[10px] font-black uppercase tracking-widest">7-Day Forecast</p>
+            <h2 className="text-base sm:text-2xl font-black mt-0.5 sm:mt-1">{formatCurrency(report?.forecast?.next7DaysEstimate || (sales.revenue * 1.1))}</h2>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Left Column: Top Customers */}
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
-            <h3 className="text-sm font-black text-gray-900 flex items-center mb-6 uppercase tracking-wider">
-              <BarChart3 size={18} className="text-blue-600 mr-2" />
+        <div className="lg:col-span-1 space-y-4 sm:space-y-6">
+          <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4 sm:p-6">
+            <h3 className="text-[10px] sm:text-sm font-black text-gray-900 flex items-center mb-4 sm:mb-6 uppercase tracking-wider">
+              <BarChart3 size={16} className="text-blue-600 mr-2" />
               Top Customers
             </h3>
-            <div className="space-y-5">
+            <div className="space-y-4 sm:space-y-5">
               {report?.topCustomers?.map((customer, idx) => {
                 const max = report.topCustomers[0].revenue;
                 const width = (customer.revenue / max) * 100;
                 return (
-                  <div key={idx} className="space-y-2">
-                    <div className="flex justify-between text-[11px] font-bold">
+                  <div key={idx} className="space-y-1.5">
+                    <div className="flex justify-between text-[9px] sm:text-[11px] font-bold">
                       <span className="text-gray-700 truncate w-32">{customer.name}</span>
                       <span className="text-blue-600">{formatCurrency(customer.revenue)}</span>
                     </div>
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-1 sm:h-1.5 bg-gray-100 rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-blue-600 rounded-full transition-all duration-1000"
                         style={{ width: `${width}%` }}
@@ -229,96 +248,191 @@ const IntelligenceDashboard = () => {
                 );
               })}
               {(!report?.topCustomers || report.topCustomers.length === 0) && (
-                <p className="text-center text-gray-400 text-xs italic py-10">No customer data for this period</p>
+                <p className="text-center text-gray-400 text-xs italic py-6">No customer data</p>
               )}
             </div>
           </div>
 
           {/* Business Summary Card */}
-          <div className="bg-blue-50 rounded-3xl p-6 border border-blue-100">
-            <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mb-4">Pulse Check</h4>
-            <div className="grid grid-cols-2 gap-4">
+          <div className="bg-blue-50 rounded-3xl p-4 sm:p-6 border border-blue-100">
+            <h4 className="text-[8px] sm:text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mb-3 sm:mb-4">Pulse Check</h4>
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <p className="text-2xl font-black text-gray-900">{report?.summary?.champions || 0}</p>
-                <p className="text-[10px] font-bold text-gray-500 uppercase">Champions</p>
+                <p className="text-xl sm:text-2xl font-black text-gray-900">{report?.summary?.champions || 0}</p>
+                <p className="text-[8px] sm:text-[10px] font-bold text-gray-500 uppercase">Champions</p>
               </div>
               <div>
-                <p className="text-2xl font-black text-red-600">{report?.summary?.atRisk || 0}</p>
-                <p className="text-[10px] font-bold text-gray-500 uppercase">At Risk</p>
+                <p className="text-xl sm:text-2xl font-black text-red-600">{report?.summary?.atRisk || 0}</p>
+                <p className="text-[8px] sm:text-[10px] font-bold text-gray-500 uppercase">At Risk</p>
               </div>
             </div>
           </div>
         </div>
 
         {/* Right Column: Predictive Alerts & Segments */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-4 sm:space-y-6">
           {/* Refill Alerts */}
           <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="p-5 border-b border-gray-50 flex items-center justify-between bg-orange-50/30">
-              <h3 className="font-black text-gray-900 flex items-center text-sm uppercase tracking-wider">
-                <Clock size={18} className="text-orange-500 mr-2" />
+            <div className="p-4 sm:p-5 border-b border-gray-50 flex items-center justify-between bg-orange-50/30">
+              <h3 className="font-black text-gray-900 flex items-center text-[10px] sm:text-sm uppercase tracking-wider">
+                <Clock size={16} className="text-orange-500 mr-2" />
                 Refill Alerts
               </h3>
-              <span className="bg-orange-100 text-orange-700 text-[10px] font-black px-3 py-1 rounded-full uppercase italic">
+              <span className="bg-orange-100 text-orange-700 text-[8px] sm:text-[10px] font-black px-2 sm:px-3 py-1 rounded-full uppercase italic">
                 Predicted by Python
               </span>
             </div>
-            <div className="divide-y divide-gray-50 max-h-[320px] overflow-y-auto">
+            <div className="divide-y divide-gray-50 max-h-[300px] overflow-y-auto">
               {report?.refillAlerts && report.refillAlerts.length > 0 ? (
                 report.refillAlerts.map((alert, idx) => (
-                  <div key={idx} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <p className="font-black text-gray-900 text-sm">{alert.name}</p>
+                  <div key={idx} className="p-3 sm:p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                    <div className="space-y-0.5 sm:space-y-1">
+                      <div className="flex items-center gap-1.5 sm:gap-2">
+                        <p className="font-black text-gray-900 text-xs sm:text-sm">{alert.name}</p>
                         {alert.urgency === 'High' && (
-                          <span className="flex h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                          <span className="flex h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
                         )}
                       </div>
-                      <div className="flex items-center text-[10px] text-gray-500 font-bold space-x-3 uppercase">
+                      <div className="flex items-center text-[8px] sm:text-[10px] text-gray-500 font-bold space-x-2 sm:space-x-3 uppercase">
                         <span>Cycle: {alert.avgInterval} days</span>
-                        <span className="text-blue-600">Expected: {alert.predictedDate}</span>
+                        <span className="text-blue-600">Next: {alert.predictedDate}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <button 
-                        onClick={() => toast('Call feature integrated in Clients tab')}
-                        className={`p-2.5 rounded-2xl transition-all shadow-sm ${
+                        onClick={() => window.open(`tel:${alert.mobile || ''}`)}
+                        className={`p-2 sm:p-2.5 rounded-xl sm:rounded-2xl transition-all shadow-sm ${
                           alert.urgency === 'High' 
                           ? 'bg-red-600 text-white hover:bg-red-700 shadow-red-100' 
                           : 'bg-white border border-gray-200 text-blue-600 hover:bg-gray-50'
                         }`}
                       >
-                        <Phone size={16} fill={alert.urgency === 'High' ? 'currentColor' : 'none'} />
+                        <Phone size={14} sm={16} fill={alert.urgency === 'High' ? 'currentColor' : 'none'} />
                       </button>
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="p-12 text-center text-gray-400 text-xs italic">
-                  No immediate refills predicted today.
+                <div className="p-10 text-center text-gray-400 text-[10px] sm:text-xs italic">
+                  No immediate refills predicted.
                 </div>
               )}
             </div>
           </div>
 
           {/* Business Insights Banner */}
-          <div className="bg-gradient-to-r from-blue-700 to-indigo-800 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-700 to-indigo-800 rounded-3xl p-4 sm:p-6 text-white shadow-xl relative overflow-hidden">
             <div className="relative z-10">
-              <h3 className="text-lg font-black mb-1 flex items-center uppercase tracking-tighter">
-                <Brain className="mr-2" size={20} />
+              <h3 className="text-base sm:text-lg font-black mb-1 flex items-center uppercase tracking-tighter">
+                <Brain className="mr-2" size={18} sm={20} />
                 Strategic Insight
               </h3>
-              <p className="text-blue-100 text-xs font-medium leading-relaxed max-w-lg">
+              <p className="text-blue-100 text-[10px] sm:text-xs font-medium leading-relaxed max-w-lg">
                 {report?.summary?.atRisk > 0 
                   ? `Your "At Risk" segment has ${report.summary.atRisk} clients. Re-engaging them today could protect approximately ${formatCurrency(report.summary.atRisk * 1500)} in monthly revenue.`
                   : "Excellent! Your customer retention is at 100% for the current cycle. Keep maintaining service quality to grow your 'Champion' segment."}
               </p>
             </div>
-            <ChevronRight className="absolute -right-4 -bottom-4 text-white opacity-10" size={100} />
+            <ChevronRight className="absolute -right-4 -bottom-4 text-white opacity-10" size={80} sm={100} />
           </div>
         </div>
       </div>
       
+      {/* Detail Modal */}
+      {selectedDetail && (
+        <div className="fixed inset-0 z-[1100] flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-3xl rounded-t-[32px] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-5 sm:p-6 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
+              <h3 className="text-lg font-black text-gray-900 uppercase tracking-tighter flex items-center">
+                {selectedDetail === 'revenue' && <TrendingUp className="mr-2 text-green-500" />}
+                {selectedDetail === 'orders' && <ShoppingCart className="mr-2 text-blue-500" />}
+                {selectedDetail === 'outstanding' && <CreditCard className="mr-2 text-red-500" />}
+                {selectedDetail === 'revenue' ? `Today's Revenue` : 
+                 selectedDetail === 'orders' ? `Pending Orders` : `Top Outstanding Dues`}
+              </h3>
+              <button 
+                onClick={() => setSelectedDetail(null)}
+                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-gray-500 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="overflow-y-auto flex-1 p-4">
+              <table className="w-full text-left">
+                <thead className="bg-gray-50 text-[10px] font-black text-gray-500 uppercase sticky top-0">
+                  <tr>
+                    <th className="px-4 py-3 rounded-l-xl">Details</th>
+                    <th className="px-4 py-3 text-right rounded-r-xl">Amount/Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {selectedDetail === 'revenue' && report?.drillDown?.todayDelivered?.map((order, i) => (
+                    <tr key={i} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-4">
+                        <p className="text-sm font-black text-gray-900">{order.clientName}</p>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase">{order.qty} Boxes @ ₹{order.rate}</p>
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <p className="text-sm font-black text-green-600">{formatCurrency(order.amount)}</p>
+                        <p className="text-[10px] text-gray-400 font-bold">{order.date}</p>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {selectedDetail === 'orders' && report?.drillDown?.pending?.map((order, i) => (
+                    <tr key={i} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-4">
+                        <p className="text-sm font-black text-gray-900">{order.clientName || 'Unknown'}</p>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase">{order.qty} Boxes | {order.date}</p>
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <span className="px-2.5 py-1 bg-blue-50 text-blue-600 text-[10px] font-black rounded-lg uppercase tracking-tighter">
+                          {order.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {selectedDetail === 'outstanding' && report?.drillDown?.outstanding?.map((client, i) => (
+                    <tr key={i} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-4">
+                        <p className="text-sm font-black text-gray-900">{client.name}</p>
+                        <p className="text-[10px] text-gray-400 font-bold">{client.mobile || 'No mobile'}</p>
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <p className="text-sm font-black text-red-600">{formatCurrency(client.outstanding)}</p>
+                        <button className="mt-1 text-[9px] font-black text-blue-600 uppercase">Call Client</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              
+              {((selectedDetail === 'revenue' && !report?.drillDown?.todayDelivered?.length) ||
+                (selectedDetail === 'orders' && !report?.drillDown?.pending?.length) ||
+                (selectedDetail === 'outstanding' && !report?.drillDown?.outstanding?.length)) && (
+                <div className="py-20 text-center space-y-3">
+                  <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto">
+                    <ShoppingCart className="text-gray-300" size={24} />
+                  </div>
+                  <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">No data for this view</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-center sm:hidden">
+              <button 
+                onClick={() => setSelectedDetail(null)}
+                className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs"
+              >
+                Close View
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bottom Footer Info */}
       <div className="text-center text-[10px] text-gray-400 font-bold uppercase tracking-widest pb-4">
         Report Generated: {report?.timestamp?.toDate ? report.timestamp.toDate().toLocaleString('en-IN') : 'Just now'}
