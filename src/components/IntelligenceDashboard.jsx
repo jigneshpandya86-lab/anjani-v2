@@ -152,76 +152,68 @@ const IntelligenceDashboard = () => {
         {/* Revenue Tile */}
         <button
           onClick={() => setSelectedDetail('revenue')}
-          className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-[24px] p-3 text-white shadow-lg relative overflow-hidden group text-left active:scale-95 transition-all"
+          className="bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-100 rounded-xl p-2.5 shadow-sm relative overflow-hidden group text-left active:scale-95 transition-all"
         >
-          <div className="relative z-10">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-1.5 bg-white/10 rounded-lg text-green-400">
-                <TrendingUp size={16} />
-              </div>
-              <span className="text-[8px] font-black text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full uppercase tracking-tighter">Live</span>
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="p-1 bg-emerald-100 rounded-lg text-emerald-600">
+              <TrendingUp size={13} />
             </div>
-            <p className="text-gray-400 text-[8px] font-black uppercase tracking-widest">Revenue</p>
-            <h2 className="text-base font-black mt-0.5">{formatCurrency(sales.revenue)}</h2>
-            <div className="flex items-center justify-between mt-1">
-              <p className="text-[8px] text-gray-500 font-bold">{sales.count} Delivered</p>
-              <ChevronRight size={12} className="text-gray-600" />
-            </div>
+            <span className="text-[7px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full uppercase tracking-tighter">Live</span>
+          </div>
+          <p className="text-gray-400 text-[7px] font-black uppercase tracking-widest">Revenue</p>
+          <h2 className="text-sm font-black text-emerald-700 mt-0.5">{formatCurrency(sales.revenue)}</h2>
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-[7px] text-gray-500 font-bold">{sales.count} Delivered</p>
+            <ChevronRight size={11} className="text-emerald-400" />
           </div>
         </button>
 
         {/* Orders Tile */}
         <button
           onClick={() => setSelectedDetail('orders')}
-          className="bg-white border border-gray-100 rounded-[24px] p-3 shadow-sm relative overflow-hidden group text-left active:scale-95 transition-all"
+          className="bg-white border border-blue-100 rounded-xl p-2.5 shadow-sm relative overflow-hidden group text-left active:scale-95 transition-all"
         >
-          <div className="relative z-10">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-1.5 bg-blue-50 rounded-lg text-blue-600">
-                <ShoppingCart size={16} />
-              </div>
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="p-1 bg-blue-50 rounded-lg text-blue-600">
+              <ShoppingCart size={13} />
             </div>
-            <p className="text-gray-400 text-[8px] font-black uppercase tracking-widest">Total Orders</p>
-            <h2 className="text-base font-black text-gray-900 mt-0.5">{sales.count}</h2>
-            <div className="flex items-center justify-between mt-1">
-              <p className="text-[8px] text-blue-600 font-bold">{report?.sales?.pending || 0} Pending</p>
-              <ChevronRight size={12} className="text-gray-300" />
-            </div>
+          </div>
+          <p className="text-gray-400 text-[7px] font-black uppercase tracking-widest">Total Orders</p>
+          <h2 className="text-sm font-black text-gray-800 mt-0.5">{sales.count}</h2>
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-[7px] text-blue-600 font-bold">{report?.sales?.pending || 0} Pending</p>
+            <ChevronRight size={11} className="text-gray-300" />
           </div>
         </button>
 
         {/* Outstanding Tile */}
         <button
           onClick={() => setSelectedDetail('outstanding')}
-          className="bg-white border border-gray-100 rounded-[24px] p-3 shadow-sm relative overflow-hidden group text-left active:scale-95 transition-all"
+          className="bg-white border border-red-100 rounded-xl p-2.5 shadow-sm relative overflow-hidden group text-left active:scale-95 transition-all"
         >
-          <div className="relative z-10">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-1.5 bg-red-50 rounded-lg text-red-600">
-                <CreditCard size={16} />
-              </div>
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="p-1 bg-red-50 rounded-lg text-red-500">
+              <CreditCard size={13} />
             </div>
-            <p className="text-gray-400 text-[8px] font-black uppercase tracking-widest">Outstanding</p>
-            <h2 className="text-base font-black text-gray-900 mt-0.5">{formatCurrency(report?.totalOutstanding || 0)}</h2>
-            <div className="flex items-center justify-between mt-1">
-              <p className="text-[8px] text-red-600 font-bold tracking-tight uppercase">Collections</p>
-              <ChevronRight size={12} className="text-gray-300" />
-            </div>
+          </div>
+          <p className="text-gray-400 text-[7px] font-black uppercase tracking-widest">Outstanding</p>
+          <h2 className="text-sm font-black text-gray-800 mt-0.5">{formatCurrency(report?.totalOutstanding || 0)}</h2>
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-[7px] text-red-500 font-bold tracking-tight uppercase">Collections</p>
+            <ChevronRight size={11} className="text-gray-300" />
           </div>
         </button>
 
         {/* Forecast Tile */}
-        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[24px] p-3 text-white shadow-lg shadow-blue-100 relative overflow-hidden group">
-          <div className="relative z-10">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-1.5 bg-white/20 rounded-lg text-white">
-                <Target size={16} />
-              </div>
-              <span className="text-[8px] font-black text-blue-100 bg-white/10 px-2 py-0.5 rounded-full uppercase tracking-tighter italic">Prediction</span>
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-2.5 shadow-sm relative overflow-hidden">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="p-1 bg-blue-100 rounded-lg text-blue-600">
+              <Target size={13} />
             </div>
-            <p className="text-blue-100 text-[8px] font-black uppercase tracking-widest">7-Day Forecast</p>
-            <h2 className="text-base font-black mt-0.5">{formatCurrency(report?.forecast?.next7DaysEstimate || (sales.revenue * 1.1))}</h2>
+            <span className="text-[7px] font-black text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full uppercase tracking-tighter italic">Prediction</span>
           </div>
+          <p className="text-gray-400 text-[7px] font-black uppercase tracking-widest">7-Day Forecast</p>
+          <h2 className="text-sm font-black text-blue-700 mt-0.5">{formatCurrency(report?.forecast?.next7DaysEstimate || (sales.revenue * 1.1))}</h2>
         </div>
       </div>
 

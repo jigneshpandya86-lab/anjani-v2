@@ -550,52 +550,118 @@ function App() {
     const invoiceDateTime = `${order.date || '-'} ${order.time || ''}`.trim()
     const textAt = (x, y, size, text) =>
       `BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${escapePdfText(text)}) Tj ET`
+    const boldAt = (x, y, size, text) =>
+      `BT /F2 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${escapePdfText(text)}) Tj ET`
 
     const stream = [
       'q',
-      '0.95 0.97 1 rg',
-      '40 760 515 60 re f',
+
+      // ── HEADER BAND (dark navy, y=695 to y=842) ──────────────────────
+      '0.06 0.12 0.27 rg',
+      '40 695 515 147 re f',
+
+      // INVOICE title + invoice meta (white)
+      '1 1 1 rg',
+      boldAt(52, 822, 22, 'INVOICE'),
+      '0.8 0.85 0.95 rg',
+      textAt(380, 822, 9, `Invoice #: ${orderId}`),
+      textAt(380, 808, 9, `Issued: ${issuedAt}`),
+
+      // BILL FROM label + company info
+      '0.6 0.65 0.75 rg',
+      textAt(52, 796, 8, 'BILL FROM'),
+      '1 1 1 rg',
+      boldAt(52, 782, 11, 'ANNAPURNA FOODS'),
+      '0.85 0.88 0.93 rg',
+      textAt(52, 768, 9, 'Shop No. 21, VR One Commercial Business Center'),
+      textAt(52, 755, 9, 'Between Ajwa & Waghodia Chokadi'),
+      textAt(52, 742, 9, 'Opp. L&T Knowledge City'),
+      textAt(52, 729, 9, 'Vadodara, Gujarat 390019, India'),
+      '0.7 0.75 0.83 rg',
+      textAt(52, 716, 9, 'GSTIN: 24ABHFA6857D1ZI'),
+
+      // ── BILL TO ───────────────────────────────────────────────────────
+      '0.5 0.5 0.5 rg',
+      textAt(52, 683, 8, 'BILL TO'),
       '0 0 0 rg',
-      textAt(52, 795, 22, 'INVOICE'),
-      textAt(52, 774, 11, 'ANJANI WATER'),
-      textAt(410, 795, 10, `Invoice #: ${orderId}`),
-      textAt(410, 778, 10, `Issued: ${issuedAt}`),
-      '0.85 0.85 0.85 RG',
-      '40 695 515 58 re S',
-      textAt(52, 736, 10, `Bill To: ${clientName || 'Unknown Client'}`),
-      textAt(52, 719, 10, `Mobile: ${mobile || '-'}`),
-      textAt(320, 736, 10, `Delivery Date: ${invoiceDateTime || '-'}`),
-      textAt(320, 719, 10, `Status: ${order.status || '-'}`),
-      '0.88 0.88 0.88 rg',
-      '40 665 515 22 re f',
+      boldAt(52, 669, 11, clientName || 'Unknown Client'),
+      textAt(52, 655, 9, `Mobile: ${mobile || '-'}`),
+      textAt(315, 669, 9, `Delivery: ${invoiceDateTime || '-'}`),
+      textAt(315, 655, 9, `Status: ${order.status || '-'}`),
+
+      // separator
+      '0.8 0.8 0.8 RG',
+      '0.5 w',
+      '40 644 m 555 644 l S',
+
+      // ── ITEM TABLE HEADER ─────────────────────────────────────────────
+      '0.15 0.15 0.15 rg',
+      '40 622 515 20 re f',
+      '1 1 1 rg',
+      textAt(52, 628, 9, 'Description'),
+      textAt(305, 628, 9, 'Qty'),
+      textAt(385, 628, 9, 'Rate'),
+      textAt(475, 628, 9, 'Amount'),
+
+      // ── ITEM ROW ──────────────────────────────────────────────────────
+      '0.96 0.96 0.96 rg',
+      '40 590 515 30 re f',
       '0 0 0 rg',
-      textAt(52, 671, 10, 'Description'),
-      textAt(300, 671, 10, 'Qty'),
-      textAt(380, 671, 10, 'Rate'),
-      textAt(470, 671, 10, 'Amount'),
-      '0.9 0.9 0.9 RG',
-      '40 625 515 40 re S',
-      textAt(52, 641, 10, 'Water Box Supply'),
-      textAt(300, 641, 10, `${qty} Boxes`),
-      textAt(380, 641, 10, `INR ${rate.toLocaleString('en-IN')}`),
-      textAt(470, 641, 10, `INR ${total.toLocaleString('en-IN')}`),
-      '0.95 0.95 0.95 rg',
-      '355 575 200 40 re f',
-      '0.82 0.82 0.82 RG',
-      '355 575 200 40 re S',
+      textAt(52, 602, 10, 'Water Box Supply'),
+      textAt(305, 602, 10, `${qty} Boxes`),
+      textAt(385, 602, 10, `INR ${rate.toLocaleString('en-IN')}`),
+      textAt(475, 602, 10, `INR ${total.toLocaleString('en-IN')}`),
+
+      // ── TOTAL ─────────────────────────────────────────────────────────
+      '0.92 0.92 0.92 rg',
+      '350 544 205 40 re f',
+      '0.75 0.75 0.75 RG',
+      '1 w',
+      '350 544 205 40 re S',
       '0 0 0 rg',
-      textAt(367, 598, 10, 'Total'),
-      textAt(470, 598, 12, `INR ${total.toLocaleString('en-IN')}`),
-      textAt(40, 540, 9, 'Thank you for your business.'),
+      textAt(362, 567, 10, 'Total'),
+      boldAt(440, 567, 12, `INR ${total.toLocaleString('en-IN')}`),
+
+      // ── FOOTER ────────────────────────────────────────────────────────
+      '0.7 0.7 0.7 RG',
+      '1 w',
+      '40 524 m 555 524 l S',
+
+      // Notes
+      '0.4 0.4 0.4 rg',
+      boldAt(40, 511, 9, 'Notes'),
+      '0 0 0 rg',
+      textAt(40, 497, 9, 'Thanks for your business.'),
+
+      // Bank details
+      '0.8 0.8 0.8 RG',
+      '0.5 w',
+      '40 484 m 555 484 l S',
+      '0.4 0.4 0.4 rg',
+      boldAt(40, 471, 9, "Company's Bank Details"),
+      '0 0 0 rg',
+      textAt(40, 457, 9, 'Bank Name: Kotak Mahindra Bank'),
+      textAt(40, 443, 9, 'Account Holder: Annapurna Foods'),
+      textAt(40, 429, 9, 'IFSC Code: KKBK0002748'),
+      textAt(40, 415, 9, 'Account Number: 1712426768'),
+
+      // Contact
+      '0.8 0.8 0.8 RG',
+      '0.5 w',
+      '40 403 m 555 403 l S',
+      '0 0 0 rg',
+      textAt(40, 390, 9, 'Contact Number: 9925997750'),
+
       'Q'
     ].join('\n')
 
     const objects = []
     objects.push('1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj')
     objects.push('2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj')
-    objects.push('3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj')
+    objects.push('3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >> endobj')
     objects.push(`4 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream endobj`)
     objects.push('5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj')
+    objects.push('6 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> endobj')
 
     let pdf = '%PDF-1.4\n'
     const offsets = [0]
