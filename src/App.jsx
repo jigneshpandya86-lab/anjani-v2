@@ -548,6 +548,12 @@ function App() {
     const orderId = order.orderId || order.id || 'NA'
     const issuedAt = new Date().toLocaleString('en-IN')
     const invoiceDateTime = `${order.date || '-'} ${order.time || ''}`.trim()
+    // Flatten multi-line address into a single line, cap at 80 chars
+    const clientAddress = String(order.address || '')
+      .replace(/[\r\n]+/g, ', ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 80)
     const textAt = (x, y, size, text) =>
       `BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${escapePdfText(text)}) Tj ET`
     const boldAt = (x, y, size, text) =>
@@ -588,69 +594,71 @@ function App() {
       textAt(52, 655, 9, `Mobile: ${mobile || '-'}`),
       textAt(315, 669, 9, `Delivery: ${invoiceDateTime || '-'}`),
       textAt(315, 655, 9, `Status: ${order.status || '-'}`),
+      // Client address (from order)
+      ...(clientAddress ? ['0.35 0.35 0.35 rg', textAt(52, 641, 9, `Address: ${clientAddress}`), '0 0 0 rg'] : []),
 
-      // separator
+      // separator (shifted down by 13pt when address present)
       '0.8 0.8 0.8 RG',
       '0.5 w',
-      '40 644 m 555 644 l S',
+      `40 ${clientAddress ? 628 : 644} m 555 ${clientAddress ? 628 : 644} l S`,
 
       // ── ITEM TABLE HEADER ─────────────────────────────────────────────
       '0.15 0.15 0.15 rg',
-      '40 622 515 20 re f',
+      `40 ${clientAddress ? 606 : 622} 515 20 re f`,
       '1 1 1 rg',
-      textAt(52, 628, 9, 'Description'),
-      textAt(305, 628, 9, 'Qty'),
-      textAt(385, 628, 9, 'Rate'),
-      textAt(475, 628, 9, 'Amount'),
+      textAt(52, clientAddress ? 612 : 628, 9, 'Description'),
+      textAt(305, clientAddress ? 612 : 628, 9, 'Qty'),
+      textAt(385, clientAddress ? 612 : 628, 9, 'Rate'),
+      textAt(475, clientAddress ? 612 : 628, 9, 'Amount'),
 
       // ── ITEM ROW ──────────────────────────────────────────────────────
       '0.96 0.96 0.96 rg',
-      '40 590 515 30 re f',
+      `40 ${clientAddress ? 574 : 590} 515 30 re f`,
       '0 0 0 rg',
-      textAt(52, 602, 10, 'Water Box Supply'),
-      textAt(305, 602, 10, `${qty} Boxes`),
-      textAt(385, 602, 10, `INR ${rate.toLocaleString('en-IN')}`),
-      textAt(475, 602, 10, `INR ${total.toLocaleString('en-IN')}`),
+      textAt(52, clientAddress ? 586 : 602, 10, 'Water Box Supply'),
+      textAt(305, clientAddress ? 586 : 602, 10, `${qty} Boxes`),
+      textAt(385, clientAddress ? 586 : 602, 10, `INR ${rate.toLocaleString('en-IN')}`),
+      textAt(475, clientAddress ? 586 : 602, 10, `INR ${total.toLocaleString('en-IN')}`),
 
       // ── TOTAL ─────────────────────────────────────────────────────────
       '0.92 0.92 0.92 rg',
-      '350 544 205 40 re f',
+      `350 ${clientAddress ? 528 : 544} 205 40 re f`,
       '0.75 0.75 0.75 RG',
       '1 w',
-      '350 544 205 40 re S',
+      `350 ${clientAddress ? 528 : 544} 205 40 re S`,
       '0 0 0 rg',
-      textAt(362, 567, 10, 'Total'),
-      boldAt(440, 567, 12, `INR ${total.toLocaleString('en-IN')}`),
+      textAt(362, clientAddress ? 551 : 567, 10, 'Total'),
+      boldAt(440, clientAddress ? 551 : 567, 12, `INR ${total.toLocaleString('en-IN')}`),
 
       // ── FOOTER ────────────────────────────────────────────────────────
       '0.7 0.7 0.7 RG',
       '1 w',
-      '40 524 m 555 524 l S',
+      `40 ${clientAddress ? 508 : 524} m 555 ${clientAddress ? 508 : 524} l S`,
 
       // Notes
       '0.4 0.4 0.4 rg',
-      boldAt(40, 511, 9, 'Notes'),
+      boldAt(40, clientAddress ? 495 : 511, 9, 'Notes'),
       '0 0 0 rg',
-      textAt(40, 497, 9, 'Thanks for your business.'),
+      textAt(40, clientAddress ? 481 : 497, 9, 'Thanks for your business.'),
 
       // Bank details
       '0.8 0.8 0.8 RG',
       '0.5 w',
-      '40 484 m 555 484 l S',
+      `40 ${clientAddress ? 468 : 484} m 555 ${clientAddress ? 468 : 484} l S`,
       '0.4 0.4 0.4 rg',
-      boldAt(40, 471, 9, "Company's Bank Details"),
+      boldAt(40, clientAddress ? 455 : 471, 9, "Company's Bank Details"),
       '0 0 0 rg',
-      textAt(40, 457, 9, 'Bank Name: Kotak Mahindra Bank'),
-      textAt(40, 443, 9, 'Account Holder: Annapurna Foods'),
-      textAt(40, 429, 9, 'IFSC Code: KKBK0002748'),
-      textAt(40, 415, 9, 'Account Number: 1712426768'),
+      textAt(40, clientAddress ? 441 : 457, 9, 'Bank Name: Kotak Mahindra Bank'),
+      textAt(40, clientAddress ? 427 : 443, 9, 'Account Holder: Annapurna Foods'),
+      textAt(40, clientAddress ? 413 : 429, 9, 'IFSC Code: KKBK0002748'),
+      textAt(40, clientAddress ? 399 : 415, 9, 'Account Number: 1712426768'),
 
       // Contact
       '0.8 0.8 0.8 RG',
       '0.5 w',
-      '40 403 m 555 403 l S',
+      `40 ${clientAddress ? 387 : 403} m 555 ${clientAddress ? 387 : 403} l S`,
       '0 0 0 rg',
-      textAt(40, 390, 9, 'Contact Number: 9925997750'),
+      textAt(40, clientAddress ? 374 : 390, 9, 'Contact Number: 9925997750'),
 
       'Q'
     ].join('\n')

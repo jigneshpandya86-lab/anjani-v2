@@ -158,12 +158,12 @@ const IntelligenceDashboard = () => {
             <div className="p-1 bg-emerald-100 rounded-lg text-emerald-600">
               <TrendingUp size={13} />
             </div>
-            <span className="text-[7px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full uppercase tracking-tighter">Live</span>
+            <span className="text-[9px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full uppercase tracking-tighter">Live</span>
           </div>
-          <p className="text-gray-400 text-[7px] font-black uppercase tracking-widest">Revenue</p>
-          <h2 className="text-sm font-black text-emerald-700 mt-0.5">{formatCurrency(sales.revenue)}</h2>
+          <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Revenue</p>
+          <h2 className="text-base font-black text-emerald-700 mt-0.5">{formatCurrency(sales.revenue)}</h2>
           <div className="flex items-center justify-between mt-1">
-            <p className="text-[7px] text-gray-500 font-bold">{sales.count} Delivered</p>
+            <p className="text-[10px] text-gray-500 font-bold">{sales.count} Delivered</p>
             <ChevronRight size={11} className="text-emerald-400" />
           </div>
         </button>
@@ -178,10 +178,10 @@ const IntelligenceDashboard = () => {
               <ShoppingCart size={13} />
             </div>
           </div>
-          <p className="text-gray-400 text-[7px] font-black uppercase tracking-widest">Total Orders</p>
-          <h2 className="text-sm font-black text-gray-800 mt-0.5">{sales.count}</h2>
+          <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Total Orders</p>
+          <h2 className="text-base font-black text-gray-800 mt-0.5">{sales.count}</h2>
           <div className="flex items-center justify-between mt-1">
-            <p className="text-[7px] text-blue-600 font-bold">{report?.sales?.pending || 0} Pending</p>
+            <p className="text-[10px] text-blue-600 font-bold">{report?.sales?.pending || 0} Pending</p>
             <ChevronRight size={11} className="text-gray-300" />
           </div>
         </button>
@@ -196,10 +196,10 @@ const IntelligenceDashboard = () => {
               <CreditCard size={13} />
             </div>
           </div>
-          <p className="text-gray-400 text-[7px] font-black uppercase tracking-widest">Outstanding</p>
-          <h2 className="text-sm font-black text-gray-800 mt-0.5">{formatCurrency(report?.totalOutstanding || 0)}</h2>
+          <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Outstanding</p>
+          <h2 className="text-base font-black text-gray-800 mt-0.5">{formatCurrency(report?.totalOutstanding || 0)}</h2>
           <div className="flex items-center justify-between mt-1">
-            <p className="text-[7px] text-red-500 font-bold tracking-tight uppercase">Collections</p>
+            <p className="text-[10px] text-red-500 font-bold tracking-tight uppercase">Collections</p>
             <ChevronRight size={11} className="text-gray-300" />
           </div>
         </button>
@@ -210,10 +210,10 @@ const IntelligenceDashboard = () => {
             <div className="p-1 bg-blue-100 rounded-lg text-blue-600">
               <Target size={13} />
             </div>
-            <span className="text-[7px] font-black text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full uppercase tracking-tighter italic">Prediction</span>
+            <span className="text-[9px] font-black text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full uppercase tracking-tighter italic">Prediction</span>
           </div>
-          <p className="text-gray-400 text-[7px] font-black uppercase tracking-widest">7-Day Forecast</p>
-          <h2 className="text-sm font-black text-blue-700 mt-0.5">{formatCurrency(report?.forecast?.next7DaysEstimate || (sales.revenue * 1.1))}</h2>
+          <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">7-Day Forecast</p>
+          <h2 className="text-base font-black text-blue-700 mt-0.5">{formatCurrency(report?.forecast?.next7DaysEstimate || (sales.revenue * 1.1))}</h2>
         </div>
       </div>
 
@@ -342,8 +342,9 @@ const IntelligenceDashboard = () => {
                 {selectedDetail === 'revenue' && <TrendingUp className="mr-2 text-green-500" />}
                 {selectedDetail === 'orders' && <ShoppingCart className="mr-2 text-blue-500" />}
                 {selectedDetail === 'outstanding' && <CreditCard className="mr-2 text-red-500" />}
-                {selectedDetail === 'revenue' ? `Today's Revenue` :
-                 selectedDetail === 'orders' ? `Pending Orders` : `Top Outstanding Dues`}
+                {selectedDetail === 'revenue'
+                  ? `${dateRange === 'today' ? "Today's" : dateRange === 'week' ? "This Week's" : "This Month's"} Revenue`
+                  : selectedDetail === 'orders' ? `Pending Orders` : `Top Outstanding Dues`}
               </h3>
               <button
                 onClick={() => setSelectedDetail(null)}
