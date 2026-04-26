@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import {
   collection, addDoc, onSnapshot, query, doc,
-  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs, deleteField
+  updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs, deleteField,
+  writeBatch, runTransaction
 } from 'firebase/firestore';
 import { db } from '../firebase-config';
 
@@ -337,43 +338,39 @@ export const useClientStore = create((set, get) => ({
   },
 
   addPayment: async (data) => {
-    await addDoc(collection(db, 'payments'), {
-      ...data,
-      createdAt: serverTimestamp()
-    });
-
+    const batch = writeBatch(db);
+    const paymentRef = doc(collection(db, 'payments'));
+    batch.set(paymentRef, { ...data, createdAt: serverTimestamp() });
     if (data.clientId) {
       const amount = Number(data.amount) || 0;
       if (amount > 0) {
-        await updateDoc(doc(db, 'customers', data.clientId), {
-          outstanding: increment(-amount)
-        });
+        batch.update(doc(db, 'customers', data.clientId), { outstanding: increment(-amount) });
       }
     }
+    await batch.commit();
   },
 
   deletePayment: async (paymentId) => {
     const paymentRef = doc(db, 'payments', paymentId);
-    const paymentSnap = await getDoc(paymentRef);
-    if (!paymentSnap.exists()) return;
+    await runTransaction(db, async (transaction) => {
+      const paymentSnap = await transaction.get(paymentRef);
+      if (!paymentSnap.exists()) return;
 
-    const payment = paymentSnap.data();
-    const amount = Number(payment.amount) || 0;
+      const payment = paymentSnap.data();
+      const amount = Number(payment.amount) || 0;
 
-    let outstandingDelta = -amount;
-    if (payment.type === 'invoice') {
-      outstandingDelta = amount;
-    } else if (payment.type === 'reversal') {
-      outstandingDelta = amount;
-    }
+      let outstandingDelta = -amount;
+      if (payment.type === 'invoice' || payment.type === 'reversal') {
+        outstandingDelta = amount;
+      }
 
-    if (payment.clientId && outstandingDelta !== 0) {
-      await updateDoc(doc(db, 'customers', payment.clientId), {
-        outstanding: increment(-outstandingDelta)
-      });
-    }
-
-    await deleteDoc(paymentRef);
+      if (payment.clientId && outstandingDelta !== 0) {
+        transaction.update(doc(db, 'customers', payment.clientId), {
+          outstanding: increment(-outstandingDelta)
+        });
+      }
+      transaction.delete(paymentRef);
+    });
   },
 
   fetchClients: () => {
@@ -473,14 +470,11 @@ export const useClientStore = create((set, get) => ({
       const clientName = await getOrderClientName(existing, get().clients);
       const deliveredNarration = formatOrderNarration('Order Delivered', existing.orderId || id, clientName);
 
-      // OPTIMIZATION: The following 5 write operations should be batched into a single Firestore
-      // transaction for atomicity and reduced billing. This requires careful refactoring to ensure
-      // payment accuracy is maintained. Candidate for Phase 2 optimization.
-      // Transaction would cover: stock debit, stock summary update, payment add, payment record, and
-      // customer outstanding update. See PR #298 for optimization approach documentation.
+      const batch = writeBatch(db);
 
       // 1. Debit stock
-      const stockDocRef = await addDoc(collection(db, 'stock'), {
+      const stockDocRef = doc(collection(db, 'stock'));
+      batch.set(stockDocRef, {
         qty: stockDelta,
         narration: deliveredNarration,
         type: 'dispatch',
@@ -491,18 +485,15 @@ export const useClientStore = create((set, get) => ({
         stockEntryId: stockDocRef.id,
         stockPostedAt: serverTimestamp(),
       };
-      await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(stockDelta) }, { merge: true });
 
-      // Keep stock total responsive; movement list should come from persisted snapshot
-      // so we don't show temporary in-memory rows that later disappear on sync failure.
-      set((state) => ({
-        stockTotal: (Number(state.stockTotal) || 0) + stockDelta,
-      }));
+      // 2. Update stock summary
+      batch.set(STOCK_SUMMARY_DOC, { totalQty: increment(stockDelta) }, { merge: true });
 
-      // 2. Create invoice transaction in payments
+      // 3. Create invoice payment and update customer outstanding
       const amount = Math.abs(qty) * rate;
       if (existing.clientId && amount > 0) {
-        await addDoc(collection(db, 'payments'), {
+        const paymentRef = doc(collection(db, 'payments'));
+        batch.set(paymentRef, {
           clientId: existing.clientId,
           amount,
           type: 'invoice',
@@ -511,17 +502,27 @@ export const useClientStore = create((set, get) => ({
           date: serverTimestamp(),
           createdAt: serverTimestamp()
         });
-        // 3. Increase customer outstanding atomically
-        await updateDoc(doc(db, 'customers', existing.clientId), {
-          outstanding: increment(amount)
-        });
+        batch.update(doc(db, 'customers', existing.clientId), { outstanding: increment(amount) });
       }
+
+      // 4. Mark order as delivered
+      batch.update(orderRef, {
+        ...normalizedData,
+        ...getLegacyLocationCleanupPatch(),
+        ...extraOrderPatch,
+      });
+
+      await batch.commit();
+
+      // Keep in-memory stock total responsive after successful commit
+      set((state) => ({ stockTotal: (Number(state.stockTotal) || 0) + stockDelta }));
     }
-    await updateDoc(orderRef, {
-      ...normalizedData,
-      ...getLegacyLocationCleanupPatch(),
-      ...extraOrderPatch,
-    });
+    if (!extraOrderPatch.stockEntryId) {
+      await updateDoc(orderRef, {
+        ...normalizedData,
+        ...getLegacyLocationCleanupPatch(),
+      });
+    }
   },
 
   deleteOrder: async (id) => {
@@ -539,21 +540,25 @@ export const useClientStore = create((set, get) => ({
           const clientName = await getOrderClientName(existing, get().clients);
           const reversalNarration = formatOrderNarration('Order Deleted (Reversal)', orderRef, clientName);
 
+          const batch = writeBatch(db);
+
           // 1. Reverse stock debit
           if (qty > 0) {
-            await addDoc(collection(db, 'stock'), {
+            const stockReversalRef = doc(collection(db, 'stock'));
+            batch.set(stockReversalRef, {
               qty,
               narration: reversalNarration,
               type: 'reversal',
               date: serverTimestamp(),
               createdAt: serverTimestamp()
             });
-            await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(qty) }, { merge: true });
+            batch.set(STOCK_SUMMARY_DOC, { totalQty: increment(qty) }, { merge: true });
           }
 
           // 2. Reverse payment and customer outstanding
           if (reversalClientId && amount > 0) {
-            await addDoc(collection(db, 'payments'), {
+            const paymentReversalRef = doc(collection(db, 'payments'));
+            batch.set(paymentReversalRef, {
               clientId: reversalClientId,
               amount: -amount,
               type: 'reversal',
@@ -562,13 +567,17 @@ export const useClientStore = create((set, get) => ({
               date: new Date(),
               createdAt: serverTimestamp()
             });
-            await updateDoc(doc(db, 'customers', reversalClientId), {
-              outstanding: increment(-amount)
-            });
+            batch.update(doc(db, 'customers', reversalClientId), { outstanding: increment(-amount) });
           }
+
+          batch.delete(orderDocRef);
+          await batch.commit();
+        } else {
+          await deleteDoc(orderDocRef);
         }
+      } else {
+        await deleteDoc(orderDocRef);
       }
-      await deleteDoc(orderDocRef);
     } catch (err) {
       console.error('Delete failed:', err);
       throw err;
