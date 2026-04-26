@@ -405,107 +405,6 @@ function App() {
     }
   }
 
-  const buildTabularReportPdf = ({ title, columns, rows, metadata = [], filename = 'report.pdf' }) => {
-    const san = (t) => String(t ?? '').replace(/₹/g, 'Rs.').replace(/[^\x20-\x7E]/g, '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)').slice(0, 60)
-    const txt = (x, y, size, t) => `BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${san(t)}) Tj ET`
-    const pW = 595, pH = 842, mg = 36, usableW = pW - mg * 2
-    const colW = usableW / Math.max(columns.length, 1)
-    const rH = 18
-
-    // Build content stream for a single page
-    const buildPageStream = (pageRows, isFirstPage) => {
-      const lines = []
-      let y = pH - mg - 20
-
-      if (isFirstPage) {
-        lines.push(txt(mg, y, 14, title))
-        y -= 20
-        lines.push('0.5 0.5 0.5 rg')
-        lines.push(txt(mg, y, 8, `Generated: ${new Date().toLocaleString('en-IN').replace(/[^\x20-\x7E]/g, '')}`))
-        lines.push('0 0 0 rg')
-        y -= 14
-        for (const m of metadata.filter(Boolean)) {
-          lines.push('0.5 0.5 0.5 rg')
-          lines.push(txt(mg, y, 8, m))
-          lines.push('0 0 0 rg')
-          y -= 12
-        }
-        y -= 6
-      }
-
-      // Column header bar
-      lines.push('0.2 0.2 0.2 rg')
-      lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
-      lines.push('1 1 1 rg')
-      columns.forEach((col, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, col)))
-      lines.push('0 0 0 rg')
-      y -= rH
-
-      pageRows.forEach((row, ri) => {
-        if (ri % 2 === 0) {
-          lines.push('0.95 0.95 0.95 rg')
-          lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
-          lines.push('0 0 0 rg')
-        }
-        row.forEach((cell, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, cell)))
-        y -= rH
-      })
-
-      return lines.join('\n')
-    }
-
-    // Calculate how many rows fit on the first page (title + metadata take space)
-    const metaCount = metadata.filter(Boolean).length
-    // y after all first-page headers and column header: 842-36-20-20-14-(metaCount*12)-6-18 = 728-metaCount*12
-    const firstPageRowStartY = pH - mg - 20 - 20 - 14 - metaCount * 12 - 6 - rH
-    const rowsOnFirstPage = Math.max(1, Math.floor((firstPageRowStartY - (mg + rH)) / rH))
-
-    // Subsequent pages: column header at top, then rows fill the rest
-    // y after column header on subsequent pages: 842-36-20-18 = 768
-    const subseqRowStartY = pH - mg - 20 - rH
-    const rowsPerSubsequentPage = Math.max(1, Math.floor((subseqRowStartY - (mg + rH)) / rH))
-
-    // Partition rows into pages
-    const pages = []
-    pages.push(rows.slice(0, rowsOnFirstPage))
-    let offset = rowsOnFirstPage
-    while (offset < rows.length) {
-      pages.push(rows.slice(offset, offset + rowsPerSubsequentPage))
-      offset += rowsPerSubsequentPage
-    }
-
-    // Build one stream per page
-    const streams = pages.map((pageRows, i) => buildPageStream(pageRows, i === 0))
-
-    // PDF object layout:
-    //   1: Catalog, 2: Pages,
-    //   3+i*2: Page i, 4+i*2: Content stream i,
-    //   3+pages.length*2: Font
-    const fontObjNum = 3 + pages.length * 2
-    const pageKids = pages.map((_, i) => `${3 + i * 2} 0 R`).join(' ')
-
-    const objs = [
-      '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
-      `2 0 obj << /Type /Pages /Count ${pages.length} /Kids [${pageKids}] >> endobj`,
-    ]
-    pages.forEach((_, i) => {
-      const pageObjNum = 3 + i * 2
-      const contentObjNum = 4 + i * 2
-      objs.push(`${pageObjNum} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pW} ${pH}] /Contents ${contentObjNum} 0 R /Resources << /Font << /F1 ${fontObjNum} 0 R >> >> >> endobj`)
-      objs.push(`${contentObjNum} 0 obj << /Length ${streams[i].length} >> stream\n${streams[i]}\nendstream endobj`)
-    })
-    objs.push(`${fontObjNum} 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj`)
-
-    let pdf = '%PDF-1.4\n'
-    const offsets = [0]
-    objs.forEach((obj) => { offsets.push(pdf.length); pdf += `${obj}\n` })
-    const xrefStart = pdf.length
-    pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`
-    for (let i = 1; i <= objs.length; i++) pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`
-    pdf += `trailer << /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`
-    return createPdfFile(pdf, filename)
-  }
-
   // Share PDF via native share sheet (WhatsApp, Drive, etc.) or fall back to download
   const shareOrDownloadPdf = async (file, shareTitle = '', shareText = '') => {
     try {
@@ -753,115 +652,254 @@ function App() {
     return { startDate, endDate, label: 'Past 1 Year' }
   }
 
+  // Resolve a Firestore Timestamp OR a plain serialised object (from localStorage cache)
+  // into a JS Date, or null if unparseable.
+  const resolveTimestamp = (ts) => {
+    if (!ts) return null
+    if (typeof ts.toDate === 'function') return ts.toDate()           // Firestore Timestamp
+    if (ts.seconds) return new Date(ts.seconds * 1000)               // cached plain object
+    if (typeof ts === 'string' || typeof ts === 'number') return new Date(ts)
+    return null
+  }
+
+  // Purpose-built ledger PDF: Dr / Cr / Running Balance with per-column widths.
+  const buildLedgerPdf = ({ clientName, dateRangeLabel, txns, openingBalance }) => {
+    // Safe string: strip non-ASCII, escape PDF string specials, limit length
+    const san = (t, maxLen = 60) =>
+      String(t ?? '').replace(/₹/g, 'Rs.').replace(/[^\x20-\x7E]/g, '')
+        .replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)').slice(0, maxLen)
+    const fmt = (n) => Number(n || 0).toLocaleString('en-IN')
+
+    // A4 portrait geometry
+    const pW = 595, pH = 842, mg = 36
+    const usableW = pW - mg * 2   // 523
+
+    // Column widths (must sum to usableW = 523)
+    const cW = [22, 58, 52, 68, 68, 72, 183]  // Sr | Date | Type | Dr | Cr | Balance | Narration
+    const cHdr = ['Sr', 'Date', 'Type', 'Debit (Dr)', 'Credit (Cr)', 'Balance', 'Narration']
+    const rH = 18
+
+    const txt = (x, y, size, t, maxLen) =>
+      `BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${san(t, maxLen)}) Tj ET`
+
+    const drawRow = (lines, y, cells, bg, textRgb = '0 0 0') => {
+      if (bg) {
+        lines.push(`${bg} rg`)
+        lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
+      }
+      lines.push(`${textRgb} rg`)
+      let xOff = mg
+      const maxLens = [4, 12, 9, 10, 10, 10, 42]
+      cells.forEach((cell, i) => {
+        lines.push(txt(xOff + 3, y + 4, 7, cell, maxLens[i]))
+        xOff += cW[i]
+      })
+      lines.push('0 0 0 rg')
+    }
+
+    // Compute running balance rows
+    let balance = openingBalance
+    const dataRows = txns.map((tx, idx) => {
+      const amount = Number(tx.amount || 0)
+      let dr = '', cr = ''
+      if (tx.type === 'invoice') {
+        balance += Math.abs(amount)
+        dr = fmt(Math.abs(amount))
+      } else if (tx.type === 'payment') {
+        balance -= Math.abs(amount)
+        cr = fmt(Math.abs(amount))
+      } else {
+        // reversal: amount may be negative
+        if (amount < 0) { balance += Math.abs(amount); dr = fmt(Math.abs(amount)) }
+        else { balance -= amount; cr = fmt(amount) }
+      }
+      const txDate = resolveTimestamp(tx.date) || resolveTimestamp(tx.createdAt)
+      const dateStr = txDate ? txDate.toLocaleDateString('en-IN') : '-'
+      const typeLabel = tx.type === 'invoice' ? 'Invoice' : tx.type === 'payment' ? 'Payment' : 'Reversal'
+      return [String(idx + 1), dateStr, typeLabel, dr, cr, `Rs.${fmt(balance)}`, tx.narration || '-']
+    })
+
+    const closingBalance = balance
+    const totalDr = txns.reduce((s, tx) => tx.type === 'invoice' ? s + Math.abs(Number(tx.amount || 0)) : s, 0)
+    const totalCr = txns.reduce((s, tx) => tx.type === 'payment' ? s + Math.abs(Number(tx.amount || 0)) : s, 0)
+
+    const buildPageStream = (pageRows, isFirstPage) => {
+      const lines = []
+      let y = pH - mg - 20
+
+      if (isFirstPage) {
+        // Title
+        lines.push('0.08 0.08 0.08 rg')
+        lines.push(txt(mg, y, 13, 'Ledger Statement', 40))
+        y -= 18
+        lines.push('0.4 0.4 0.4 rg')
+        lines.push(txt(mg, y, 8, `Generated: ${new Date().toLocaleString('en-IN').replace(/[^\x20-\x7E]/g, '')}`, 60))
+        y -= 13
+        lines.push(txt(mg, y, 8, `Client: ${clientName}`, 60))
+        y -= 13
+        lines.push(txt(mg, y, 8, `Date Range: ${dateRangeLabel}`, 60))
+        y -= 13
+        lines.push(txt(mg, y, 8, `Opening Balance: Rs.${fmt(openingBalance)}`, 60))
+        lines.push('0 0 0 rg')
+        y -= 10
+
+        // Divider line
+        lines.push('0.7 0.7 0.7 rg')
+        lines.push(`${mg} ${y} ${usableW} 0.5 re f`)
+        lines.push('0 0 0 rg')
+        y -= 8
+      }
+
+      // Column header
+      drawRow(lines, y, cHdr, '0.13 0.13 0.13', '1 1 1')
+      y -= rH
+
+      // Data rows
+      pageRows.forEach((row, ri) => {
+        drawRow(lines, y, row, ri % 2 === 0 ? '0.96 0.96 0.96' : null)
+        y -= rH
+      })
+
+      return lines.join('\n')
+    }
+
+    // Summary page stream (always last)
+    const buildSummaryStream = () => {
+      const lines = []
+      let y = pH - mg - 20
+
+      // Totals row
+      const totalRow = ['', '', 'TOTAL', `Rs.${fmt(totalDr)}`, `Rs.${fmt(totalCr)}`, '', '']
+      drawRow(lines, y, totalRow, '0.13 0.13 0.13', '1 1 1')
+      y -= rH
+
+      // Closing balance row
+      drawRow(lines, y, ['', '', 'Closing Bal.', '', '', `Rs.${fmt(closingBalance)}`, closingBalance < 0 ? 'Advance' : 'Outstanding'], '0.2 0.5 0.2', '1 1 1')
+
+      return lines.join('\n')
+    }
+
+    // Pagination
+    const firstPageHeaderH = 20 + 18 + 13 + 13 + 13 + 10 + 8 + rH  // title+meta+divider+colhdr
+    const rowsOnFirstPage = Math.max(1, Math.floor((pH - mg - firstPageHeaderH - (mg + rH * 2)) / rH))
+    const subseqRowStartY = pH - mg - 20 - rH
+    const rowsPerSubseqPage = Math.max(1, Math.floor((subseqRowStartY - (mg + rH * 2)) / rH))
+
+    const pages = []
+    pages.push(dataRows.slice(0, rowsOnFirstPage))
+    let off = rowsOnFirstPage
+    while (off < dataRows.length) {
+      pages.push(dataRows.slice(off, off + rowsPerSubseqPage))
+      off += rowsPerSubseqPage
+    }
+    // Summary appended to last page if it fits, else as a separate page
+    const streams = pages.map((pr, i) => buildPageStream(pr, i === 0))
+    streams[streams.length - 1] += '\n' + buildSummaryStream()
+
+    // Build PDF
+    const fontObjNum = 3 + pages.length * 2
+    const pageKids = pages.map((_, i) => `${3 + i * 2} 0 R`).join(' ')
+    const objs = []
+    objs.push(`1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj`)
+    objs.push(`2 0 obj\n<< /Type /Pages /Kids [${pageKids}] /Count ${pages.length} >>\nendobj`)
+    streams.forEach((stream, i) => {
+      const enc = new TextEncoder().encode(stream)
+      objs.push(`${3 + i * 2} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pW} ${pH}] /Contents ${4 + i * 2} 0 R /Resources << /Font << /F1 ${fontObjNum} 0 R >> >> >>\nendobj`)
+      objs.push(`${4 + i * 2} 0 obj\n<< /Length ${enc.length} >>\nstream\n${stream}\nendstream\nendobj`)
+    })
+    objs.push(`${fontObjNum} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj`)
+
+    let pdf = '%PDF-1.4\n'
+    const offsets = []
+    objs.forEach((obj) => { offsets.push(pdf.length); pdf += obj + '\n' })
+    const xrefOffset = pdf.length
+    pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`
+    offsets.forEach((o) => { pdf += String(o).padStart(10, '0') + ' 00000 n \n' })
+    pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+
+    return new File([pdf], 'ledger.pdf', { type: 'application/pdf' })
+  }
+
   const handleLedgerStatementPdf = async () => {
     try {
       const selectedClient = clients.find((client) => client.id === ledgerClientId)
-
-      if (!selectedClient) {
-        toast.error('Please select a valid client.')
-        return
-      }
+      if (!selectedClient) { toast.error('Please select a valid client.'); return }
 
       const { startDate, endDate, label: dateRangeLabel } = getLedgerDateRange(ledgerDateRange)
 
-      // Check cache first (1-hour TTL for ledger exports)
-      const cacheKey = `ledger-export-${selectedClient.id}-${ledgerDateRange}`
-      const cachedData = localStorage.getItem(cacheKey)
-      const cacheAge = localStorage.getItem(`${cacheKey}-timestamp`)
-      const oneHourAgo = Date.now() - (60 * 60 * 1000)
-
+      // Fetch payments — always query Firestore directly (no stale cache for ledger)
       let payments = []
-      if (cachedData && cacheAge && Number(cacheAge) > oneHourAgo) {
-        payments = JSON.parse(cachedData)
-      } else {
-        let lastVisibleDoc = null
-
-        while (true) {
-          const constraints = selectedClient.id === 'all'
-            ? [
-              where('createdAt', '>=', startDate),
-              where('createdAt', '<=', endDate),
-              orderBy('createdAt', 'desc'),
-              limit(LEDGER_EXPORT_PAGE_SIZE)
-            ]
-            : [
-              where('clientId', '==', selectedClient.id),
-              limit(LEDGER_EXPORT_PAGE_SIZE)
-            ]
-
-          if (lastVisibleDoc) {
-            constraints.push(startAfter(lastVisibleDoc))
-          }
-
-          const paymentsSnap = await getDocs(query(collection(db, 'payments'), ...constraints))
-          if (paymentsSnap.empty) break
-
-          payments.push(...paymentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
-          if (paymentsSnap.docs.length < LEDGER_EXPORT_PAGE_SIZE) break
-
-          lastVisibleDoc = paymentsSnap.docs[paymentsSnap.docs.length - 1]
-        }
-
-        // Cache the results for 1 hour
-        try {
-          localStorage.setItem(cacheKey, JSON.stringify(payments))
-          localStorage.setItem(`${cacheKey}-timestamp`, String(Date.now()))
-        } catch (cacheError) {
-          console.warn('Failed to cache ledger export:', cacheError)
-        }
+      let lastVisibleDoc = null
+      while (true) {
+        const constraints = selectedClient.id === 'all'
+          ? [where('createdAt', '>=', startDate), where('createdAt', '<=', endDate), orderBy('createdAt', 'asc'), limit(LEDGER_EXPORT_PAGE_SIZE)]
+          : [where('clientId', '==', selectedClient.id), orderBy('createdAt', 'asc'), limit(LEDGER_EXPORT_PAGE_SIZE)]
+        if (lastVisibleDoc) constraints.push(startAfter(lastVisibleDoc))
+        const snap = await getDocs(query(collection(db, 'payments'), ...constraints))
+        if (snap.empty) break
+        payments.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+        if (snap.docs.length < LEDGER_EXPORT_PAGE_SIZE) break
+        lastVisibleDoc = snap.docs[snap.docs.length - 1]
       }
 
-      const filteredPayments = payments.filter((payment) => {
-        const paymentDate = payment.createdAt?.toDate?.() || payment.date?.toDate?.()
-        if (!paymentDate) return false
-        return paymentDate >= startDate && paymentDate <= endDate
+      // Date filter for single-client (Firestore can't compound-index clientId+createdAt without composite index)
+      const filtered = payments.filter((tx) => {
+        const d = resolveTimestamp(tx.createdAt) || resolveTimestamp(tx.date)
+        return d && d >= startDate && d <= endDate
       })
 
-      if (filteredPayments.length === 0) {
-        toast.error('No ledger entries available for report.')
+      if (filtered.length === 0) {
+        toast.error('No ledger entries found for the selected period.')
         return
       }
 
-      const clientMap = new Map(clients.map((c) => [c.id, c.name || 'Unknown Client']))
-      const rows = filteredPayments
-        .sort((a, b) => {
-          const aTime = a.date?.toMillis?.() || a.createdAt?.toMillis?.() || 0
-          const bTime = b.date?.toMillis?.() || b.createdAt?.toMillis?.() || 0
-          return bTime - aTime
-        })
-        .map((tx) => {
-          const clientName = clientMap.get(tx.clientId) || 'Unknown Client'
-          const txDate = tx.date?.toDate?.()?.toLocaleDateString('en-IN')
-            || tx.createdAt?.toDate?.()?.toLocaleDateString('en-IN')
-            || '-'
-          return [
-            clientName,
-            txDate,
-            tx.type || '-',
-            tx.method || 'SYSTEM',
-            `Rs.${Number(tx.amount || 0).toLocaleString('en-IN')}`,
-            tx.narration || '-'
-          ]
-        })
+      // Sort chronologically so running balance flows correctly
+      filtered.sort((a, b) => {
+        const ta = (resolveTimestamp(a.createdAt) || resolveTimestamp(a.date) || new Date(0)).getTime()
+        const tb = (resolveTimestamp(b.createdAt) || resolveTimestamp(b.date) || new Date(0)).getTime()
+        return ta - tb
+      })
 
-      if (rows.length === 0) {
-        toast.error('No ledger entries found for the selected client/date range.')
-        return
-      }
-
-      const columns = ['Client', 'Date', 'Type', 'Method', 'Amount', 'Narration']
-      const metadata = [`Client: ${selectedClient.name}`, `Date Range: ${dateRangeLabel}`]
+      // Opening balance: current outstanding minus net movement in the period
+      const periodNet = filtered.reduce((s, tx) => {
+        const amt = Math.abs(Number(tx.amount || 0))
+        if (tx.type === 'invoice') return s + amt
+        if (tx.type === 'payment') return s - amt
+        return s
+      }, 0)
+      const openingBalance = Math.max(0, Number(selectedClient.outstanding || 0) - periodNet)
 
       if (isMobileOrNative) {
-        const file = buildTabularReportPdf({ title: 'Ledger Statement', columns, rows, metadata, filename: 'ledger.pdf' })
+        const file = buildLedgerPdf({ clientName: selectedClient.name, dateRangeLabel, txns: filtered, openingBalance })
         await shareOrDownloadPdf(file, 'Ledger Statement')
       } else {
-        openReportWindow({ title: 'Ledger Statement Report (PDF)', columns, rows, metadata })
+        // Desktop: improved HTML table with running balance
+        const clientMap = new Map(clients.map((c) => [c.id, c.name || 'Unknown']))
+        let bal = openingBalance
+        const rows = filtered.map((tx, idx) => {
+          const amt = Math.abs(Number(tx.amount || 0))
+          let dr = '', cr = ''
+          if (tx.type === 'invoice') { bal += amt; dr = `Rs.${amt.toLocaleString('en-IN')}` }
+          else if (tx.type === 'payment') { bal -= amt; cr = `Rs.${amt.toLocaleString('en-IN')}` }
+          else { if (Number(tx.amount || 0) < 0) { bal += amt; dr = `Rs.${amt.toLocaleString('en-IN')}` } else { bal -= amt; cr = `Rs.${amt.toLocaleString('en-IN')}` } }
+          const txDate = (resolveTimestamp(tx.date) || resolveTimestamp(tx.createdAt))?.toLocaleDateString('en-IN') || '-'
+          const typeLabel = tx.type === 'invoice' ? 'Invoice' : tx.type === 'payment' ? 'Payment' : 'Reversal'
+          const client = selectedClient.id === 'all' ? (clientMap.get(tx.clientId) || '-') : ''
+          return [String(idx + 1), ...(selectedClient.id === 'all' ? [client] : []), txDate, typeLabel, dr, cr, `Rs.${bal.toLocaleString('en-IN')}`, tx.narration || '-']
+        })
+        const columns = ['Sr', ...(selectedClient.id === 'all' ? ['Client'] : []), 'Date', 'Type', 'Debit (Dr)', 'Credit (Cr)', 'Balance', 'Narration']
+        const metadata = [
+          `Client: ${selectedClient.name}`,
+          `Date Range: ${dateRangeLabel}`,
+          `Opening Balance: Rs.${openingBalance.toLocaleString('en-IN')}`,
+          `Closing Balance: Rs.${bal.toLocaleString('en-IN')}`,
+        ]
+        openReportWindow({ title: 'Ledger Statement', columns, rows, metadata })
       }
 
       setLedgerModalOpen(false)
     } catch (error) {
-      toast.error('Unable to generate ledger statement report.')
+      toast.error('Unable to generate ledger statement.')
       console.error(error)
     }
   }
