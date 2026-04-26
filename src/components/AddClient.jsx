@@ -154,7 +154,7 @@ export default function AddClient({ onDone, client }) {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Defaulter Status</label>
+              <p className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Defaulter Status</p>
               <button
                 type="button"
                 onClick={() => setIsDefaulter(prev => !prev)}

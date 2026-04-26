@@ -164,7 +164,6 @@ const GoogleBusinessPostsApproval = () => {
 
   // ─── Post Card ────────────────────────────────────────────────────────────
   const PostCard = ({ post, isPosted = false }) => {
-    const [expanded, setExpanded] = useState(true);
     const isCopied = copiedId === post.id;
 
     const typeColors = {
@@ -451,10 +450,11 @@ const GoogleBusinessPostsApproval = () => {
             <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
               {/* Post text */}
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wide">
+                <label htmlFor="modal-post-content" className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wide">
                   Post Content
                 </label>
                 <textarea
+                  id="modal-post-content"
                   value={manualPostText}
                   onChange={e => setManualPostText(e.target.value)}
                   placeholder="Write your marketing post here… (max 1500 characters)"
@@ -471,7 +471,7 @@ const GoogleBusinessPostsApproval = () => {
 
               {/* Image picker */}
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wide">
+                <label htmlFor="modal-post-image" className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wide">
                   Attach Image (optional)
                 </label>
                 {imagePreview ? (
@@ -496,6 +496,7 @@ const GoogleBusinessPostsApproval = () => {
                   </button>
                 )}
                 <input
+                  id="modal-post-image"
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
