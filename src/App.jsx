@@ -53,6 +53,7 @@ function App() {
   const [ledgerDateRange, setLedgerDateRange] = useState('current-month')
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
+  const [notificationFetchError, setNotificationFetchError] = useState(false)
   const [notificationReadMap, setNotificationReadMap] = useState({})
   const notificationPanelRef = useRef(null)
   // ─────────────────────────────────────────
@@ -93,6 +94,7 @@ function App() {
           console.log('FCM auto-initialized for user:', user.uid);
         } catch (err) {
           console.error('FCM auto-init error:', err);
+          toast.error('Push notifications failed to initialize. Tap "Enable" in the bell menu to retry.');
         }
       };
       initFcmAuto();
@@ -225,9 +227,11 @@ function App() {
         if (ignoreUpdates) return
         const fetchedNotifications = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
         setNotifications(fetchedNotifications)
+        setNotificationFetchError(false)
       })
       .catch((error) => {
         console.error('Failed to load notifications:', error)
+        if (!ignoreUpdates) setNotificationFetchError(true)
       })
 
     return () => {
@@ -1052,7 +1056,9 @@ function App() {
                 </div>
               </div>
               <div className="max-h-[360px] overflow-y-auto">
-                {notifications.length === 0 ? (
+                {notificationFetchError ? (
+                  <p className="px-4 py-6 text-sm text-red-500 font-medium">Unable to load notifications. Check your connection and try again.</p>
+                ) : notifications.length === 0 ? (
                   <p className="px-4 py-6 text-sm text-gray-500">No notifications yet.</p>
                 ) : (
                   notifications.map((item) => {
