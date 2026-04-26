@@ -19,7 +19,6 @@ import {
   LogOut,
   Bell,
   CheckCheck,
-  Globe,
   Brain
 } from 'lucide-react'
 import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'firebase/firestore'
@@ -35,7 +34,6 @@ import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
 import Login from './components/Login'
 import TasksPage from './TasksPage'
-import GoogleBusinessPostsApproval from './components/GoogleBusinessPostsApproval'
 import IntelligenceDashboard from './components/IntelligenceDashboard'
 import DefaulterReminderSettings from './components/DefaulterReminderSettings'
 
@@ -295,7 +293,6 @@ function App() {
     { id: 'tasks', label: 'Tasks', icon: <CheckSquare size={20} /> },
     userRole === 'admin' && { id: 'intelligence', label: 'Intelligence Hub', icon: <Brain size={20} /> },
     ...navItems,
-    { id: 'google-business-posts', label: 'Business Posts', icon: <Globe size={20} /> },
   ].filter(Boolean)
 
   const drawerQuickActions = [
@@ -1122,7 +1119,6 @@ function App() {
               pendingAction={null}
             />
           )}
-          {activeTab === 'google-business-posts' && <GoogleBusinessPostsApproval />}
         </div>
       </div>
 
