@@ -830,7 +830,7 @@ function App() {
       while (true) {
         const constraints = selectedClient.id === 'all'
           ? [where('createdAt', '>=', startDate), where('createdAt', '<=', endDate), orderBy('createdAt', 'asc'), limit(LEDGER_EXPORT_PAGE_SIZE)]
-          : [where('clientId', '==', selectedClient.id), orderBy('createdAt', 'asc'), limit(LEDGER_EXPORT_PAGE_SIZE)]
+          : [where('clientId', '==', selectedClient.id), limit(LEDGER_EXPORT_PAGE_SIZE)]
         if (lastVisibleDoc) constraints.push(startAfter(lastVisibleDoc))
         const snap = await getDocs(query(collection(db, 'payments'), ...constraints))
         if (snap.empty) break
