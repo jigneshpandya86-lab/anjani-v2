@@ -27,7 +27,7 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
 
     const paymentAmount = parseFloat(amount);
     const outstandingAmount = selectedClient?.outstanding || 0;
-    const isExcessPayment = outstandingAmount >= 0 && paymentAmount > outstandingAmount;
+    const isExcessPayment = paymentAmount > outstandingAmount;
 
     if (isExcessPayment) {
       const overpaidBy = paymentAmount - outstandingAmount;
