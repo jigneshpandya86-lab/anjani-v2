@@ -53,6 +53,7 @@ function App() {
   const [ledgerDateRange, setLedgerDateRange] = useState('current-month')
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
+  const [notificationFetchError, setNotificationFetchError] = useState(false)
   const [notificationReadMap, setNotificationReadMap] = useState({})
   const notificationPanelRef = useRef(null)
   // ─────────────────────────────────────────
@@ -93,6 +94,7 @@ function App() {
           console.log('FCM auto-initialized for user:', user.uid);
         } catch (err) {
           console.error('FCM auto-init error:', err);
+          toast.error('Push notifications failed to initialize. Tap "Enable" in the bell menu to retry.');
         }
       };
       initFcmAuto();
@@ -225,9 +227,11 @@ function App() {
         if (ignoreUpdates) return
         const fetchedNotifications = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
         setNotifications(fetchedNotifications)
+        setNotificationFetchError(false)
       })
       .catch((error) => {
         console.error('Failed to load notifications:', error)
+        if (!ignoreUpdates) setNotificationFetchError(true)
       })
 
     return () => {
@@ -338,6 +342,9 @@ function App() {
     }
   ].filter(() => userRole === 'admin')
 
+  const escapeHtml = (str) =>
+    String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+
   const openReportWindow = ({ title, columns, rows, metadata = [], reportWindow: providedReportWindow = null }) => {
     const reportWindow = providedReportWindow || window.open('', '_blank', 'width=900,height=700')
     if (!reportWindow) {
@@ -346,17 +353,17 @@ function App() {
     }
 
     const generatedAt = new Date().toLocaleString('en-IN')
-    const headerRow = columns.map((col) => `<th>${col}</th>`).join('')
-    const bodyRows = rows.map((row) => `<tr>${row.map((cell) => `<td>${cell || '-'}</td>`).join('')}</tr>`).join('')
+    const headerRow = columns.map((col) => `<th>${escapeHtml(col)}</th>`).join('')
+    const bodyRows = rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell) || '-'}</td>`).join('')}</tr>`).join('')
     const metadataRows = metadata
       .filter(Boolean)
-      .map((entry) => `<p class="meta">${entry}</p>`)
+      .map((entry) => `<p class="meta">${escapeHtml(entry)}</p>`)
       .join('')
 
     reportWindow.document.write(`
       <html>
         <head>
-          <title>${title}</title>
+          <title>${escapeHtml(title)}</title>
           <style>
             body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
             h1 { margin: 0 0 6px; font-size: 22px; }
@@ -367,8 +374,8 @@ function App() {
           </style>
         </head>
         <body>
-          <h1>${title}</h1>
-          <p class="meta">Generated: ${generatedAt}</p>
+          <h1>${escapeHtml(title)}</h1>
+          <p class="meta">Generated: ${escapeHtml(generatedAt)}</p>
           ${metadataRows}
           <table>
             <thead><tr>${headerRow}</tr></thead>
@@ -825,9 +832,16 @@ function App() {
       const { startDate, endDate, label: dateRangeLabel } = getLedgerDateRange(ledgerDateRange)
 
       // Fetch payments — always query Firestore directly (no stale cache for ledger)
+      const LEDGER_MAX_PAGES = 20
       let payments = []
       let lastVisibleDoc = null
+      let pageCount = 0
       while (true) {
+        pageCount++
+        if (pageCount > LEDGER_MAX_PAGES) {
+          toast('Ledger truncated: showing first ' + (LEDGER_MAX_PAGES * LEDGER_EXPORT_PAGE_SIZE).toLocaleString('en-IN') + ' entries only.', { icon: '⚠️' })
+          break
+        }
         const constraints = selectedClient.id === 'all'
           ? [where('createdAt', '>=', startDate), where('createdAt', '<=', endDate), orderBy('createdAt', 'asc'), limit(LEDGER_EXPORT_PAGE_SIZE)]
           : [where('clientId', '==', selectedClient.id), limit(LEDGER_EXPORT_PAGE_SIZE)]
@@ -1042,7 +1056,9 @@ function App() {
                 </div>
               </div>
               <div className="max-h-[360px] overflow-y-auto">
-                {notifications.length === 0 ? (
+                {notificationFetchError ? (
+                  <p className="px-4 py-6 text-sm text-red-500 font-medium">Unable to load notifications. Check your connection and try again.</p>
+                ) : notifications.length === 0 ? (
                   <p className="px-4 py-6 text-sm text-gray-500">No notifications yet.</p>
                 ) : (
                   notifications.map((item) => {
