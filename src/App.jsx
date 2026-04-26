@@ -37,6 +37,7 @@ import Login from './components/Login'
 import TasksPage from './TasksPage'
 import GoogleBusinessPostsApproval from './components/GoogleBusinessPostsApproval'
 import IntelligenceDashboard from './components/IntelligenceDashboard'
+import DefaulterReminderSettings from './components/DefaulterReminderSettings'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
@@ -1073,6 +1074,7 @@ function App() {
                   rate: Number(client.rate) || 0
                 })}
               />
+              {userRole === 'admin' && <DefaulterReminderSettings />}
             </div>
           )}
           {activeTab === 'tasks' && <TasksPage />}
