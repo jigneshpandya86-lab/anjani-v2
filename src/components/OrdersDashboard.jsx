@@ -26,21 +26,23 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
     return new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
   }, []);
 
+  const clientMap = useMemo(() => new Map(clients.map(c => [c.id, c])), [clients]);
+
   const getDisplayName = useCallback((order) => {
     if (order.clientId) {
-      const c = clients.find(c => c.id === order.clientId);
+      const c = clientMap.get(order.clientId);
       if (c) return c.name;
     }
     return order.clientName || order.customerName || order.customer || order.name || 'Legacy Client';
-  }, [clients]);
+  }, [clientMap]);
 
   const getDisplayMobile = useCallback((order) => {
     if (order.clientId) {
-      const c = clients.find(c => c.id === order.clientId);
+      const c = clientMap.get(order.clientId);
       if (c) return c.mobile;
     }
     return order.mobile || order.phone || '';
-  }, [clients]);
+  }, [clientMap]);
 
   const statusPriority = useMemo(() => ({ 'Pending': 0, 'Confirmed': 1, 'Delivered': 2 }), []);
 

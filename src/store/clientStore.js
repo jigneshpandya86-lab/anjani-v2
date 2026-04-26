@@ -172,6 +172,8 @@ export const useClientStore = create((set, get) => ({
           })
           .slice(0, RECENT_STOCK_ENTRIES_LIMIT);
         set({ stockEntries });
+      }, (error) => {
+        console.error('Stock listener error:', error);
       });
     }
 
@@ -391,6 +393,8 @@ export const useClientStore = create((set, get) => ({
         };
       });
       set({ clients });
+    }, (error) => {
+      console.error('Clients listener error:', error);
     });
   },
 
@@ -407,8 +411,10 @@ export const useClientStore = create((set, get) => ({
         })
       );
 
-    await Promise.all(updates);
-    return updates.length;
+    const results = await Promise.allSettled(updates);
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    if (failed > 0) console.error(`generateLegacyClientIds: ${failed} of ${updates.length} updates failed`);
+    return updates.length - failed;
   },
 
   fetchOrders: () => {
@@ -441,6 +447,8 @@ export const useClientStore = create((set, get) => ({
         .sort((a, b) => getTime(b) - getTime(a));
 
       set({ orders: docs });
+    }, (error) => {
+      console.error('Orders listener error:', error);
     });
   },
 
