@@ -1,22 +1,29 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useClientStore } from '../store/clientStore';
-import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, UserX, UserCheck, Flag } from 'lucide-react';
+import { Search, Phone, MessageSquare, ShoppingCart, IndianRupee, Edit3, UserX, UserCheck, Flag, AlertTriangle } from 'lucide-react';
 
 export default function ClientList({ onEdit, onPay, onOrder }) {
   const clients = useClientStore(state => state.clients);
   const updateClient = useClientStore(state => state.updateClient);
   const [search, setSearch] = useState('');
   const [sortByDue, setSortByDue] = useState(false);
+  const [showDefaultersOnly, setShowDefaultersOnly] = useState(false);
 
   const filtered = useMemo(() => (clients || [])
     .filter(c =>
       (c.name || '').toLowerCase().includes(search.toLowerCase()) ||
       (c.mobile || '').includes(search)
     )
+    .filter(c => !showDefaultersOnly || c.isDefaulter === true)
     .sort((a, b) => {
       if (!sortByDue) return 0;
       return Number(b.outstanding || 0) - Number(a.outstanding || 0);
-    }), [clients, search, sortByDue]);
+    }), [clients, search, sortByDue, showDefaultersOnly]);
+
+  const defaulterCount = useMemo(() =>
+    (clients || []).filter(c => c.isDefaulter === true).length,
+    [clients]
+  );
 
   const toggleStatus = useCallback((client) => {
     updateClient(client.id, { active: !client.active });
@@ -36,13 +43,26 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-          <input 
+          <input
             className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-300 bg-white text-sm focus:ring-2 focus:ring-[#ff9900] outline-none"
             placeholder="Search Name or Mobile..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        <button
+          onClick={() => setShowDefaultersOnly(prev => !prev)}
+          className={`h-10 px-2.5 rounded-lg border flex-shrink-0 bg-white cursor-pointer transition-colors flex items-center gap-1 ${
+            showDefaultersOnly ? 'border-red-400 text-red-500 bg-red-50' : 'border-gray-300 text-gray-500'
+          }`}
+          aria-label={showDefaultersOnly ? 'Show all clients' : 'Show defaulters only'}
+          title="Filter defaulters"
+        >
+          <AlertTriangle className="w-4 h-4" />
+          {defaulterCount > 0 && (
+            <span className="text-[10px] font-bold">{defaulterCount}</span>
+          )}
+        </button>
         <button
           onClick={() => setSortByDue(prev => !prev)}
           className={`h-10 w-10 rounded-lg border flex-shrink-0 bg-white cursor-pointer transition-colors flex items-center justify-center ${
@@ -55,15 +75,27 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
         </button>
       </div>
 
-      {filtered.length === 0 && search === '' && (
+      {filtered.length === 0 && search === '' && !showDefaultersOnly && (
         <div className="text-center p-10 text-gray-400 italic">No clients found in database...</div>
       )}
 
+      {filtered.length === 0 && showDefaultersOnly && (
+        <div className="text-center p-10 text-gray-400 italic">No defaulters tagged yet.</div>
+      )}
+
       {filtered.map(client => (
-        <div key={client.id} className={`bg-white p-4 rounded-lg border shadow-sm ${!client.active && 'opacity-60 bg-gray-50'}`}>
+        <div key={client.id} className={`bg-white p-4 rounded-lg border shadow-sm ${!client.active && 'opacity-60 bg-gray-50'} ${client.isDefaulter ? 'border-red-200' : ''}`}>
           <div className="flex justify-between items-start mb-2">
             <div>
-              <h3 className="font-bold text-gray-900 leading-tight">{client.name || 'Unnamed Client'}</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-gray-900 leading-tight">{client.name || 'Unnamed Client'}</h3>
+                {client.isDefaulter && (
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-red-100 text-red-600 border border-red-200">
+                    <AlertTriangle className="w-2.5 h-2.5" />
+                    Defaulter
+                  </span>
+                )}
+              </div>
               <p className="text-[10px] text-gray-500 font-mono">ID: {client.shortId || 'LEGACY'}</p>
               <p className="text-[11px] text-gray-500 font-semibold">Rate: ₹{Number(client.rate || 0).toLocaleString()}</p>
             </div>

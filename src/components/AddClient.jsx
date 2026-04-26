@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { useClientStore } from "../store/clientStore";
-import { UserPlus, CheckCircle, MapPinned } from "lucide-react";
+import { UserPlus, CheckCircle, MapPinned, AlertTriangle } from "lucide-react";
 import toast from 'react-hot-toast';
 import GoogleMapPicker from './GoogleMapPicker';
 
@@ -22,6 +22,7 @@ export default function AddClient({ onDone, client }) {
     const parsed = Number(client?.locationLng ?? client?.lng);
     return Number.isFinite(parsed) ? parsed : null;
   });
+  const [isDefaulter, setIsDefaulter] = useState(client ? (client.isDefaulter ?? false) : false);
   const [status, setStatus] = useState("idle");
 
   const addClient = useClientStore((state) => state.addClient);
@@ -51,6 +52,7 @@ export default function AddClient({ onDone, client }) {
         mapLink: mapLink || '',
         locationLat: Number.isFinite(Number(locationLat)) ? Number(locationLat) : null,
         locationLng: Number.isFinite(Number(locationLng)) ? Number(locationLng) : null,
+        isDefaulter,
       };
 
       if (client) {
@@ -72,6 +74,7 @@ export default function AddClient({ onDone, client }) {
       setMapLink('');
       setLocationLat(null);
       setLocationLng(null);
+      setIsDefaulter(false);
       setStatus("idle");
       if (onDone) onDone();
     } catch (error) {
@@ -148,6 +151,26 @@ export default function AddClient({ onDone, client }) {
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
                 placeholder="e.g. 125"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Defaulter Status</label>
+              <button
+                type="button"
+                onClick={() => setIsDefaulter(prev => !prev)}
+                className={`flex items-center gap-2 w-full p-3 rounded-lg border text-sm font-semibold transition-all ${
+                  isDefaulter
+                    ? 'bg-red-50 border-red-300 text-red-700'
+                    : 'bg-gray-50 border-gray-300 text-gray-500'
+                }`}
+              >
+                <AlertTriangle className={`w-4 h-4 flex-shrink-0 ${isDefaulter ? 'text-red-500' : 'text-gray-400'}`} />
+                <span className="flex-1 text-left">{isDefaulter ? 'Marked as Defaulter' : 'Not a Defaulter'}</span>
+                <span className={`w-10 h-5 rounded-full transition-colors relative ${isDefaulter ? 'bg-red-500' : 'bg-gray-300'}`}>
+                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${isDefaulter ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                </span>
+              </button>
+              <p className="text-[10px] text-gray-400 mt-1">Defaulters will receive automated payment reminder SMS.</p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

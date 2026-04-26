@@ -1607,3 +1607,118 @@ exports.approveAndPostGoogleBusinessUpdate = onCall(
         }
     }
 );
+
+
+// --- DEFAULTER PAYMENT REMINDER SYSTEM ---
+// Runs every hour and checks Firestore config/defaulterReminder for the configured send time.
+// Sends an AI-generated payment reminder SMS to all clients tagged as isDefaulter: true.
+
+async function generateDefaulterPaymentSmsTemplate() {
+    const prompt = `Write a very polite but firm SMS reminder (max 150 chars) for a customer who has a long-overdue payment for "Anjani 200ml Packaged Drinking Water".
+Tone: professional, firm but respectful, slightly urgent.
+Use Hinglish (Hindi + English) or Gujarati-English mix.
+Include placeholder {name} for customer name and {amount} for outstanding balance in rupees.
+End with a call-to-action to clear the payment via WhatsApp or cash.
+Output only the plain SMS text, no quotes or formatting.`;
+
+    try {
+        const resp = await generativeModel.generateContent(prompt);
+        const text = resp.response.candidates[0].content.parts[0].text.trim();
+        return text;
+    } catch (error) {
+        logger.error("Error generating defaulter SMS AI template:", error);
+        return `Namaste {name} ji, Anjani Water ki taraf se payment reminder. Aapka ₹{amount} outstanding hai. Krupaya jaldi payment clear karein. WhatsApp ya cash — dono chalega. Dhanyavaad! 🙏`;
+    }
+}
+
+exports.sendDefaulterPaymentReminders = onSchedule({
+    schedule: "0 * * * *", // every hour, on the hour
+    timeZone: "Asia/Kolkata",
+    retryCount: 1,
+}, async (_event) => {
+    const db = admin.firestore();
+
+    // Load schedule config from Firestore
+    let config;
+    try {
+        const configSnap = await db.collection('config').doc('defaulterReminder').get();
+        config = configSnap.exists ? configSnap.data() : null;
+    } catch (e) {
+        logger.error("Failed to read defaulterReminder config:", e.message);
+        return;
+    }
+
+    if (!config || !config.enabled) {
+        logger.info("Defaulter reminder is disabled or config missing. Skipping.");
+        return;
+    }
+
+    // Check if current IST hour matches configured hour
+    const nowIST = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    const currentHour = nowIST.getHours();
+    const currentMinute = nowIST.getMinutes();
+    const configHour = Number(config.hour ?? 10);
+    const configMinute = Number(config.minute ?? 0);
+
+    // Allow a 5-minute window to account for schedule jitter
+    const minutesDiff = (currentHour * 60 + currentMinute) - (configHour * 60 + configMinute);
+    if (minutesDiff < 0 || minutesDiff > 5) {
+        logger.info(`Not the scheduled time. Config: ${configHour}:${String(configMinute).padStart(2,'0')}, Current IST: ${currentHour}:${String(currentMinute).padStart(2,'0')}. Skipping.`);
+        return;
+    }
+
+    logger.info(`Running defaulter payment reminder job at IST ${currentHour}:${String(currentMinute).padStart(2,'0')}.`);
+
+    try {
+        const defaultersSnap = await db.collection('customers')
+            .where('isDefaulter', '==', true)
+            .get();
+
+        if (defaultersSnap.empty) {
+            logger.info("No clients tagged as defaulter. Exiting.");
+            return;
+        }
+
+        const smsTemplate = await generateDefaulterPaymentSmsTemplate();
+        logger.info("Defaulter SMS template generated:", smsTemplate);
+
+        const promises = defaultersSnap.docs.map(async (docSnap) => {
+            const customer = docSnap.data();
+            const mobile = customer.mobile || customer.phone;
+            const name = customer.name || "Customer";
+            const outstanding = Number(customer.outstanding || 0);
+
+            if (!mobile) {
+                logger.warn(`Defaulter ${docSnap.id} (${name}) has no mobile number. Skipping.`);
+                return;
+            }
+
+            const message = smsTemplate
+                .replace("{name}", name)
+                .replace("{amount}", outstanding.toLocaleString('en-IN'));
+
+            const cleanPhone = normalizeIndianPhone(mobile);
+            const packet = `${cleanPhone}@@@${message}`;
+            const finalUrl = `${MACRODROID_URL}?data=${encodeURIComponent(packet)}`;
+
+            try {
+                const response = await fetch(finalUrl);
+                if (response.ok) {
+                    logger.info(`Defaulter reminder sent to ${name} (${cleanPhone}), outstanding: ₹${outstanding}`);
+                    await docSnap.ref.update({
+                        lastDefaulterReminderSent: admin.firestore.FieldValue.serverTimestamp()
+                    });
+                } else {
+                    logger.error(`Webhook failed for ${name} (${cleanPhone}): HTTP ${response.status}`);
+                }
+            } catch (e) {
+                logger.error(`Error sending defaulter reminder to ${cleanPhone}:`, e.message);
+            }
+        });
+
+        await Promise.all(promises);
+        logger.info(`Defaulter reminder job complete. Processed ${defaultersSnap.docs.length} defaulter(s).`);
+    } catch (error) {
+        logger.error("Error in sendDefaulterPaymentReminders:", error);
+    }
+});
