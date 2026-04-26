@@ -85,10 +85,10 @@ export default function DefaulterReminderSettings() {
 
         {/* Time picker */}
         <div className={`transition-opacity ${enabled ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
-          <label className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wide flex items-center gap-1">
+          <p className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wide flex items-center gap-1">
             <Clock className="w-3 h-3" />
             Send Time (IST)
-          </label>
+          </p>
           <div className="flex items-center gap-2">
             <select
               value={hour}
