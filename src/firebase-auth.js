@@ -11,7 +11,7 @@ import {
   signInWithRedirect,
   signOut
 } from 'firebase/auth'
-import { auth } from './firebase-config'
+import { auth } from './firebase'
 
 // AUTH: Google provider — prompt forces account selection every time
 const googleProvider = new GoogleAuthProvider()

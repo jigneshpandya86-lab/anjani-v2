@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase-config';
+import { db } from '../firebase';
 
 export const useAnalyticsStore = create((set) => {
   let unsubscribeMonth = null;

@@ -20,25 +20,25 @@ def run_analysis(project_id='anjaniappnew', test_mode=True):
     
     db = firestore.client()
     
-    print("Fetching data from Firestore...")
+    print("Fetching comprehensive data from Firestore...")
+    
     # Fetch Orders
     orders_ref = db.collection('orders')
-    orders_docs = orders_ref.stream()
-    orders_list = []
-    for doc in orders_docs:
-        d = doc.to_dict()
-        d['id'] = doc.id
-        orders_list.append(d)
+    orders_list = [doc.to_dict() | {'id': doc.id} for doc in orders_ref.stream()]
+    
+    # Fetch Clients/Customers
+    clients_ref = db.collection('customers')
+    clients_list = [doc.to_dict() | {'id': doc.id} for doc in clients_ref.stream()]
         
     if not orders_list and test_mode:
         print("No orders found. Generating mock data for demonstration...")
         # Mock data logic if empty
         orders_list = [
-            {'clientName': 'Jigneshbhai', 'qty': 150, 'rate': 12, 'date': (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')},
-            {'clientName': 'Jigneshbhai', 'qty': 100, 'rate': 12, 'date': (datetime.now() - timedelta(days=12)).strftime('%Y-%m-%d')},
-            {'clientName': 'KiaMotors', 'qty': 80, 'rate': 15, 'date': (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d')},
-            {'clientName': 'KiaMotors', 'qty': 80, 'rate': 15, 'date': (datetime.now() - timedelta(days=15)).strftime('%Y-%m-%d')},
-            {'clientName': 'Reliance', 'qty': 500, 'rate': 10, 'date': (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')},
+            {'clientName': 'Jigneshbhai', 'qty': 150, 'rate': 12, 'date': (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d'), 'status': 'Delivered'},
+            {'clientName': 'Jigneshbhai', 'qty': 100, 'rate': 12, 'date': (datetime.now() - timedelta(days=12)).strftime('%Y-%m-%d'), 'status': 'Delivered'},
+            {'clientName': 'KiaMotors', 'qty': 80, 'rate': 15, 'date': (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d'), 'status': 'Delivered'},
+            {'clientName': 'KiaMotors', 'qty': 80, 'rate': 15, 'date': (datetime.now() - timedelta(days=15)).strftime('%Y-%m-%d'), 'status': 'Pending'},
+            {'clientName': 'Reliance', 'qty': 500, 'rate': 10, 'date': (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'), 'status': 'Delivered'},
         ]
 
     if not orders_list:
@@ -48,33 +48,75 @@ def run_analysis(project_id='anjaniappnew', test_mode=True):
     df = pd.DataFrame(orders_list)
     
     # Preprocessing
-    df['date'] = pd.to_datetime(df['date'])
+    # Handle different date formats (string or timestamp)
+    df['date_dt'] = pd.to_datetime(df['date'], errors='coerce').dt.tz_localize(None)
     df['amount'] = pd.to_numeric(df['qty'], errors='coerce') * pd.to_numeric(df['rate'], errors='coerce')
+    df['status_norm'] = df['status'].str.strip().str.lower().fillna('pending')
+    
+    # Filter for revenue (Delivered or Completed)
+    df_delivered = df[df['status_norm'].isin(['delivered', 'completed'])]
     
     now = datetime.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - timedelta(days=now.weekday())
+    month_start = today_start.replace(day=1)
+
+    # --- SALES ANALYTICS (KPIs) ---
+    def get_period_stats(df_period, start_date):
+        period_df = df_period[df_period['date_dt'] >= start_date]
+        return {
+            'revenue': float(period_df['amount'].sum()),
+            'count': int(len(period_df))
+        }
+
+    sales_stats = {
+        'today': get_period_stats(df_delivered, today_start),
+        'week': get_period_stats(df_delivered, week_start),
+        'month': get_period_stats(df_delivered, month_start),
+        'pending': int(len(df[~df['status_norm'].isin(['delivered', 'completed', 'cancelled'])]))
+    }
+
+    # --- DRILL-DOWN DATA ---
+    today_delivered_list = df_delivered[df_delivered['date_dt'] >= today_start].to_dict(orient='records')
+    # Filter for clean pending orders
+    pending_list = df[~df['status_norm'].isin(['delivered', 'completed', 'cancelled'])].sort_values('date_dt', ascending=False).head(20).to_dict(orient='records')
     
-    # 1. RFM Calculation
-    # Recency: Days since last order
-    # Frequency: Count of orders
-    # Monetary: Total revenue
+    # Outstanding List
+    outstanding_clients = [
+        {
+            "name": c.get('name', 'Unnamed'),
+            "outstanding": float(c.get('outstanding', 0)),
+            "mobile": c.get('mobile', '')
+        }
+        for c in clients_list if float(c.get('outstanding', 0)) > 0
+    ]
+    outstanding_clients = sorted(outstanding_clients, key=lambda x: x['outstanding'], reverse=True)
+    total_outstanding = sum(c['outstanding'] for c in outstanding_clients)
+
+    # Top Customers (Monthly)
+    top_cust_df = df_delivered[df_delivered['date_dt'] >= month_start]
+    if not top_cust_df.empty:
+        top_cust = top_cust_df.groupby('clientName')['amount'].sum().sort_values(ascending=False).head(5)
+        top_customers = [{"name": name, "revenue": float(amt)} for name, amt in top_cust.items()]
+    else:
+        top_customers = []
+
+    # --- RFM CALCULATION ---
     rfm = df.groupby('clientName').agg({
-        'date': lambda x: (now - x.max()).days,
+        'date_dt': lambda x: (now - x.max()).days,
         'amount': 'sum',
-        'qty': 'count' # Using qty count as proxy for frequency
-    }).rename(columns={'date': 'recency', 'qty': 'frequency', 'amount': 'monetary'})
+        'id': 'count'
+    }).rename(columns={'date_dt': 'recency', 'id': 'frequency', 'amount': 'monetary'})
     
-    # 2. Refill Prediction
-    # Calculate average interval between orders for each client
+    # --- REFILL PREDICTION ---
     refill_alerts = []
-    for name, group in df.sort_values('date').groupby('clientName'):
+    for name, group in df.sort_values('date_dt').groupby('clientName'):
         if len(group) > 1:
-            intervals = group['date'].diff().dt.days.dropna()
+            intervals = group['date_dt'].diff().dt.days.dropna()
             avg_interval = intervals.mean()
             if avg_interval > 0:
-                last_order = group['date'].max()
+                last_order = group['date_dt'].max()
                 predicted_next = last_order + timedelta(days=avg_interval)
-                
-                # If predicted date is within +/- 3 days of now, alert
                 days_until = (predicted_next - now).days
                 if -3 <= days_until <= 3:
                     refill_alerts.append({
@@ -85,7 +127,7 @@ def run_analysis(project_id='anjaniappnew', test_mode=True):
                         'urgency': 'High' if days_until <= 0 else 'Medium'
                     })
 
-    # 3. Segmentation Logic
+    # --- SEGMENTATION LOGIC ---
     def segment_customer(row):
         if row['recency'] <= 7 and row['frequency'] >= 2:
             return 'Champion'
@@ -97,16 +139,24 @@ def run_analysis(project_id='anjaniappnew', test_mode=True):
 
     rfm['segment'] = rfm.apply(segment_customer, axis=1)
     
-    # 4. Prepare Report
+    # --- PREPARE REPORT ---
     report = {
         'timestamp': firestore.SERVER_TIMESTAMP,
+        'sales': sales_stats,
+        'topCustomers': top_customers,
+        'totalOutstanding': float(total_outstanding),
+        'drillDown': {
+            'todayDelivered': today_delivered_list,
+            'pending': pending_list,
+            'outstanding': outstanding_clients[:50] # Top 50 outstanding
+        },
         'summary': {
-            'totalRevenue': float(rfm['monetary'].sum()),
+            'totalRevenue': float(df_delivered['amount'].sum()),
             'activeCustomers': int(len(rfm)),
             'champions': int(len(rfm[rfm['segment'] == 'Champion'])),
             'atRisk': int(len(rfm[rfm['segment'] == 'At Risk']))
         },
-        'refillAlerts': refill_alerts,
+        'refillAlerts': sorted(refill_alerts, key=lambda x: x['urgency'] == 'High', reverse=True),
         'customerSegments': rfm.reset_index().to_dict(orient='records'),
         'forecast': {
             'next7DaysEstimate': float(rfm['monetary'].sum() / 30 * 7) # Simplified projection

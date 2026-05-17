@@ -3,7 +3,7 @@ import {
   collection, addDoc, onSnapshot, query, doc,
   updateDoc, deleteDoc, serverTimestamp, orderBy, getDoc, limit, increment, setDoc, getDocs, deleteField
 } from 'firebase/firestore';
-import { db } from '../firebase-config';
+import { db } from '../firebase';
 
 let stockUnsubscribe = null;
 let stockSubscriberCount = 0;

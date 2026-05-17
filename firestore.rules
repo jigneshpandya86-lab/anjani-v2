@@ -1,58 +1,9 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Check if the user is an admin by reading their user document
-    function isAdmin() {
-      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-
-    // Google Business Posts collection (MUST come before catch-all)
-    // - Authenticated users can read posts for approval workflow
-    // - Only admins can write/modify posts
-    match /googleBusinessPosts/{postId} {
-      allow read: if request.auth != null;
-      allow write: if isAdmin();
-    }
-
-    // Admins have full read/write access to all collections
-    match /{document=**} {
-      allow read, write: if isAdmin();
-    }
-
-    // Users collection rules for non-admins
-    match /users/{userId} {
-      // Users can read their own profile to determine their role
-      allow read: if request.auth != null && request.auth.uid == userId;
-      
-      // Users can manage their own FCM tokens for push notifications
-      match /tokens/{tokenId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-    }
-
-    // Allow users to manage their own device token records used by the web app.
-    match /userDevices/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-
-      match /tokens/{tokenId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-    }
-
-    // Orders collection:
-    // - All authenticated users (including staff) can read orders
-    // - Writing is restricted to admins (handled by the ** rule above)
-    match /orders/{orderId} {
-      allow read: if request.auth != null;
-    }
-
-    // Google Business Posts collection:
-    // - Admins can read/write all posts
-    // - Authenticated users can read pending/posted posts for approval workflow
-    match /googleBusinessPosts/{postId} {
-      allow read: if request.auth != null && (isAdmin() || true);
-      allow write: if isAdmin();
+    match /locations/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
     }
   }
 }

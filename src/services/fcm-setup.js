@@ -5,7 +5,7 @@ import {
   isSupported
 } from 'firebase/messaging';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { db, app } from '../firebase-config';
+import { db, app } from '../firebase';
 import { doc, setDoc, deleteDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 
 let messaging = null;

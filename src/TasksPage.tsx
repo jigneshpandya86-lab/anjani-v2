@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, addDoc } from 'firebase/firestore';
-import { db } from './firebase-config'; // Ensure you have this configured in your project
+import { db } from './firebase'; // Ensure you have this configured in your project
 import { Plus, Edit2, Clock, CheckCircle, Archive } from 'lucide-react';
 import './TasksPage.css'; // Optional CSS for styling
 
