@@ -1,34 +1,34 @@
-import { useState } from 'react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase-config';
-import { PackagePlus, Save } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { useState } from 'react'
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { db } from '../firebase-config'
+import { PackagePlus, Save } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 export default function AddStockModal({ onClose }) {
-  const [qty, setQty] = useState('');
-  const [note, setNote] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [qty, setQty] = useState('')
+  const [note, setNote] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!qty || Number(qty) <= 0) return;
+    e.preventDefault()
+    if (!qty || Number(qty) <= 0) return
 
-    setLoading(true);
+    setLoading(true)
     try {
       await addDoc(collection(db, 'stock'), {
         qty: Number(qty),
         type: 'addition',
         narration: note || 'Manual Addition',
-        date: serverTimestamp()
-      });
-      toast.success('Stock added successfully');
-      onClose();
+        date: serverTimestamp(),
+      })
+      toast.success('Stock added successfully')
+      onClose()
     } catch (err) {
-      toast.error('Failed to add stock: ' + err.message);
+      toast.error('Failed to add stock: ' + err.message)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   return (
     <div className="space-y-6">
@@ -41,7 +41,12 @@ export default function AddStockModal({ onClose }) {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
-          <label htmlFor="qty-input" className="block text-xs font-bold text-gray-500 uppercase mb-2">Quantity (Boxes)</label>
+          <label
+            htmlFor="qty-input"
+            className="block text-xs font-bold text-gray-500 uppercase mb-2"
+          >
+            Quantity (Boxes)
+          </label>
           <div className="relative">
             <PackagePlus className="absolute left-3 top-3.5 w-5 h-5 text-gray-400" />
             <input
@@ -57,7 +62,12 @@ export default function AddStockModal({ onClose }) {
         </div>
 
         <div>
-          <label htmlFor="notes-input" className="block text-xs font-bold text-gray-500 uppercase mb-2">Tag / Notes</label>
+          <label
+            htmlFor="notes-input"
+            className="block text-xs font-bold text-gray-500 uppercase mb-2"
+          >
+            Tag / Notes
+          </label>
           <input
             id="notes-input"
             className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-[#ff9900] outline-none"
@@ -67,13 +77,19 @@ export default function AddStockModal({ onClose }) {
           />
         </div>
 
-        <button 
+        <button
           disabled={loading}
           className="w-full bg-[#131921] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg disabled:opacity-50"
         >
-          {loading ? "Saving..." : <><Save size={20} /> Add to Ledger</>}
+          {loading ? (
+            'Saving...'
+          ) : (
+            <>
+              <Save size={20} /> Add to Ledger
+            </>
+          )}
         </button>
       </form>
     </div>
-  );
+  )
 }

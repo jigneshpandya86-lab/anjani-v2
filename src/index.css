@@ -3,6 +3,6 @@
 @tailwind utilities;
 
 body {
-  background-color: #eaeded; 
+  background-color: #eaeded;
   -webkit-tap-highlight-color: transparent;
 }

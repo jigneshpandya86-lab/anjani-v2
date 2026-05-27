@@ -1,4 +1,4 @@
-import { AlertTriangle, ExternalLink } from 'lucide-react';
+import { AlertTriangle, ExternalLink } from 'lucide-react'
 
 export default function FirebaseError() {
   return (
@@ -8,9 +8,7 @@ export default function FirebaseError() {
           <AlertTriangle size={24} className="text-red-600" />
         </div>
 
-        <h1 className="text-2xl font-black text-center text-[#131921] mb-2">
-          Configuration Error
-        </h1>
+        <h1 className="text-2xl font-black text-center text-[#131921] mb-2">Configuration Error</h1>
 
         <p className="text-center text-gray-600 mb-6">
           Firebase credentials are missing. The app cannot load data without proper configuration.
@@ -52,5 +50,5 @@ export default function FirebaseError() {
         </p>
       </div>
     </div>
-  );
+  )
 }

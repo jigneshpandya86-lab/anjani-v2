@@ -1,131 +1,142 @@
-import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, addDoc } from 'firebase/firestore';
-import { db } from './firebase-config'; // Ensure you have this configured in your project
-import { Plus, Edit2, Clock, CheckCircle, Archive } from 'lucide-react';
-import './TasksPage.css'; // Optional CSS for styling
+import React, { useState, useEffect } from 'react'
+import {
+  collection,
+  query,
+  orderBy,
+  onSnapshot,
+  doc,
+  updateDoc,
+  Timestamp,
+  addDoc,
+} from 'firebase/firestore'
+import { db } from './firebase-config' // Ensure you have this configured in your project
+import { Plus, Edit2, Clock, CheckCircle, Archive } from 'lucide-react'
+import './TasksPage.css' // Optional CSS for styling
 
 interface Job {
-  id: string;
-  text: string;
-  stage: 'new' | 'due' | 'complete' | 'archived';
-  dueDate: Timestamp;
-  leadId?: string;
-  assignedTo?: string;
+  id: string
+  text: string
+  stage: 'new' | 'due' | 'complete' | 'archived'
+  dueDate: Timestamp
+  leadId?: string
+  assignedTo?: string
 }
 
 const TasksPage: React.FC = () => {
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ text: '', dueDate: '' });
-  const [showNewTaskForm, setShowNewTaskForm] = useState(false);
-  const [newTaskForm, setNewTaskForm] = useState({ text: '', dueDate: '' });
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ text: '', dueDate: '' })
+  const [showNewTaskForm, setShowNewTaskForm] = useState(false)
+  const [newTaskForm, setNewTaskForm] = useState({ text: '', dueDate: '' })
 
   // Real-time listener for tasks
   useEffect(() => {
-    const q = query(collection(db, 'Jobs'), orderBy('dueDate', 'asc'));
+    const q = query(collection(db, 'Jobs'), orderBy('dueDate', 'asc'))
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedJobs = snapshot.docs.map((doc) => ({
         id: doc.id,
-        ...doc.data()
-      })) as Job[];
+        ...doc.data(),
+      })) as Job[]
       // Filter out archived tasks
-      const activeJobs = fetchedJobs.filter(job => job.stage !== 'archived');
-      setJobs(activeJobs);
-      setLoading(false);
-    });
+      const activeJobs = fetchedJobs.filter((job) => job.stage !== 'archived')
+      setJobs(activeJobs)
+      setLoading(false)
+    })
 
-    return () => unsubscribe();
-  }, []);
+    return () => unsubscribe()
+  }, [])
 
   const handleStageChange = async (id: string, newStage: Job['stage']) => {
     try {
-      const jobRef = doc(db, 'Jobs', id);
-      await updateDoc(jobRef, { stage: newStage, updatedAt: Timestamp.now() });
+      const jobRef = doc(db, 'Jobs', id)
+      await updateDoc(jobRef, { stage: newStage, updatedAt: Timestamp.now() })
     } catch (error) {
-      console.error('Error updating stage:', error);
+      console.error('Error updating stage:', error)
     }
-  };
+  }
 
   const startEditing = (job: Job) => {
-    setEditingId(job.id);
-    const dateStr = job.dueDate ? job.dueDate.toDate().toISOString().split('T')[0] : '';
-    setEditForm({ text: job.text, dueDate: dateStr });
-  };
+    setEditingId(job.id)
+    const dateStr = job.dueDate ? job.dueDate.toDate().toISOString().split('T')[0] : ''
+    setEditForm({ text: job.text, dueDate: dateStr })
+  }
 
   const saveEdit = async (id: string) => {
     try {
-      const jobRef = doc(db, 'Jobs', id);
-      const newDate = new Date(editForm.dueDate);
+      const jobRef = doc(db, 'Jobs', id)
+      const newDate = new Date(editForm.dueDate)
 
       await updateDoc(jobRef, {
         text: editForm.text,
         dueDate: Timestamp.fromDate(newDate),
-        updatedAt: Timestamp.now()
-      });
-      setEditingId(null);
+        updatedAt: Timestamp.now(),
+      })
+      setEditingId(null)
     } catch (error) {
-      console.error('Error saving task:', error);
+      console.error('Error saving task:', error)
     }
-  };
+  }
 
   const createNewTask = async () => {
     if (!newTaskForm.text.trim()) {
-      alert('Please enter a task description');
-      return;
+      alert('Please enter a task description')
+      return
     }
 
     try {
       const dueDate = newTaskForm.dueDate
         ? Timestamp.fromDate(new Date(newTaskForm.dueDate))
-        : Timestamp.now();
+        : Timestamp.now()
 
       await addDoc(collection(db, 'Jobs'), {
         text: newTaskForm.text,
         dueDate: dueDate,
         stage: 'new',
         createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now()
-      });
+        updatedAt: Timestamp.now(),
+      })
 
-      setNewTaskForm({ text: '', dueDate: '' });
-      setShowNewTaskForm(false);
+      setNewTaskForm({ text: '', dueDate: '' })
+      setShowNewTaskForm(false)
     } catch (error) {
-      console.error('Error creating task:', error);
-      alert('Failed to create task');
+      console.error('Error creating task:', error)
+      alert('Failed to create task')
     }
-  };
+  }
 
   const archiveTask = async (id: string) => {
     try {
-      const jobRef = doc(db, 'Jobs', id);
+      const jobRef = doc(db, 'Jobs', id)
       await updateDoc(jobRef, {
         stage: 'archived',
-        updatedAt: Timestamp.now()
-      });
+        updatedAt: Timestamp.now(),
+      })
     } catch (error) {
-      console.error('Error archiving task:', error);
+      console.error('Error archiving task:', error)
     }
-  };
+  }
 
   const isOverdue = (dueDate: Timestamp): boolean => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const taskDate = dueDate.toDate();
-    taskDate.setHours(0, 0, 0, 0);
-    return taskDate < today;
-  };
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const taskDate = dueDate.toDate()
+    taskDate.setHours(0, 0, 0, 0)
+    return taskDate < today
+  }
 
-  if (loading) return <div>Loading tasks...</div>;
+  if (loading) return <div>Loading tasks...</div>
 
   const renderTaskColumn = (stage: Job['stage'], title: string) => {
-    const columnJobs = jobs.filter((job) => job.stage === stage);
+    const columnJobs = jobs.filter((job) => job.stage === stage)
 
     return (
       <div className="task-column">
-        <h3>{title} ({columnJobs.length})</h3>
+        <h3>
+          {title} ({columnJobs.length})
+        </h3>
         {columnJobs.map((job) => {
-          const overdue = isOverdue(job.dueDate);
+          const overdue = isOverdue(job.dueDate)
           return (
             <div key={job.id} className={`task-card ${overdue ? 'overdue' : ''}`}>
               {editingId === job.id ? (
@@ -144,7 +155,9 @@ const TasksPage: React.FC = () => {
                 </div>
               ) : (
                 <>
-                  <p className="task-text"><strong>{job.text}</strong></p>
+                  <p className="task-text">
+                    <strong>{job.text}</strong>
+                  </p>
                   <div className="task-footer">
                     <p className="task-date">
                       {job.dueDate ? job.dueDate.toDate().toLocaleDateString() : 'No date'}
@@ -187,11 +200,11 @@ const TasksPage: React.FC = () => {
                 </>
               )}
             </div>
-          );
+          )
         })}
       </div>
-    );
-  };
+    )
+  }
 
   return (
     <div className="tasks-page">
@@ -221,11 +234,18 @@ const TasksPage: React.FC = () => {
             onChange={(e) => setNewTaskForm({ ...newTaskForm, dueDate: e.target.value })}
           />
           <div className="form-actions">
-            <button onClick={createNewTask} className="save-btn">Create Task</button>
-            <button onClick={() => {
-              setShowNewTaskForm(false);
-              setNewTaskForm({ text: '', dueDate: '' });
-            }} className="cancel-btn">Cancel</button>
+            <button onClick={createNewTask} className="save-btn">
+              Create Task
+            </button>
+            <button
+              onClick={() => {
+                setShowNewTaskForm(false)
+                setNewTaskForm({ text: '', dueDate: '' })
+              }}
+              className="cancel-btn"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}
@@ -236,7 +256,7 @@ const TasksPage: React.FC = () => {
         {renderTaskColumn('complete', 'Completed')}
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default TasksPage;
+export default TasksPage

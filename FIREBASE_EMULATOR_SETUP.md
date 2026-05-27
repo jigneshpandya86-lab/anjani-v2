@@ -1,6 +1,7 @@
 # Firebase Emulator Setup & Local Development Guide
 
 ## Overview
+
 This guide helps you develop and test the Google Business Profile functions locally before deploying to Firebase.
 
 ## Prerequisites
@@ -16,6 +17,7 @@ npm install -g firebase-tools
 ```
 
 Or if you prefer local installation:
+
 ```bash
 npm install --save-dev firebase-tools
 ```
@@ -37,6 +39,7 @@ firebase init emulator
 ```
 
 When prompted, select:
+
 - **Emulators to set up**: Cloud Functions, Firestore
 - **Port for Functions**: 5001 (default)
 - **Port for Firestore**: 8080 (default)
@@ -50,6 +53,7 @@ firebase emulators:start --only functions,firestore
 ```
 
 You should see:
+
 ```
 ✔ Emulator UI loaded at http://localhost:4000
 ✔ Cloud Functions emulator started at http://localhost:5001
@@ -67,6 +71,7 @@ firebase deploy --only functions --project=anjaniappnew
 ```
 
 Or use the emulator:
+
 ```bash
 firebase emulators:exec "npm run build" --project=anjaniappnew
 ```
@@ -86,22 +91,22 @@ firebase emulators:exec "npm run build" --project=anjaniappnew
 Create a test script: `/home/user/anjani-v2/test-functions.js`
 
 ```javascript
-const admin = require('firebase-admin');
-const { getFunctions, httpsCallable } = require('firebase/functions');
+const admin = require('firebase-admin')
+const { getFunctions, httpsCallable } = require('firebase/functions')
 
 // Connect to emulator
-process.env.FIREBASE_AUTH_EMULATOR_HOST = 'localhost:9099';
-process.env.FIRESTORE_EMULATOR_HOST = 'localhost:8080';
-process.env.CLOUD_FUNCTIONS_EMULATOR = 'true';
+process.env.FIREBASE_AUTH_EMULATOR_HOST = 'localhost:9099'
+process.env.FIRESTORE_EMULATOR_HOST = 'localhost:8080'
+process.env.CLOUD_FUNCTIONS_EMULATOR = 'true'
 
-const serviceAccount = require('./path/to/serviceAccountKey.json');
+const serviceAccount = require('./path/to/serviceAccountKey.json')
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  projectId: 'anjaniappnew'
-});
+  projectId: 'anjaniappnew',
+})
 
-const db = admin.firestore();
+const db = admin.firestore()
 
 // Test creating a post manually
 async function testCreatePost() {
@@ -116,19 +121,20 @@ async function testCreatePost() {
       approvedAt: null,
       postedAt: null,
       postId: null,
-      error: null
-    });
-    
-    console.log('✅ Test post created:', docRef.id);
+      error: null,
+    })
+
+    console.log('✅ Test post created:', docRef.id)
   } catch (error) {
-    console.error('❌ Error:', error);
+    console.error('❌ Error:', error)
   }
 }
 
-testCreatePost();
+testCreatePost()
 ```
 
 Run it:
+
 ```bash
 node test-functions.js
 ```
@@ -144,30 +150,30 @@ node test-functions.js
 Create: `/home/user/anjani-v2/test-callable.js`
 
 ```javascript
-const functions = require('firebase-functions');
-const admin = require('firebase-admin');
+const functions = require('firebase-functions')
+const admin = require('firebase-admin')
 
 // Initialize emulator connection
-process.env.FIRESTORE_EMULATOR_HOST = 'localhost:8080';
+process.env.FIRESTORE_EMULATOR_HOST = 'localhost:8080'
 
 // Import your function
-const { approveAndPostGoogleBusinessUpdate } = require('./functions/index.js');
+const { approveAndPostGoogleBusinessUpdate } = require('./functions/index.js')
 
 // Mock request
 const request = {
   data: {
     documentId: 'test-doc-id',
-    shouldPost: true
+    shouldPost: true,
   },
   auth: {
-    uid: 'test-user-123'
-  }
-};
+    uid: 'test-user-123',
+  },
+}
 
 // Call function
 approveAndPostGoogleBusinessUpdate(request)
-  .then(result => console.log('✅ Result:', result))
-  .catch(error => console.error('❌ Error:', error));
+  .then((result) => console.log('✅ Result:', result))
+  .catch((error) => console.error('❌ Error:', error))
 ```
 
 ## Step 9: Configure Environment Variables Locally
@@ -181,10 +187,11 @@ GCLOUD_PROJECT=anjaniappnew
 ```
 
 In Cloud Functions, load it:
+
 ```javascript
-require('dotenv').config();
-const accountId = process.env.GOOGLE_BUSINESS_ACCOUNT_ID;
-const locationId = process.env.GOOGLE_BUSINESS_LOCATION_ID;
+require('dotenv').config()
+const accountId = process.env.GOOGLE_BUSINESS_ACCOUNT_ID
+const locationId = process.env.GOOGLE_BUSINESS_LOCATION_ID
 ```
 
 ## Step 10: Debug Functions Locally
@@ -194,13 +201,13 @@ const locationId = process.env.GOOGLE_BUSINESS_LOCATION_ID;
 In `functions/index.js`, add:
 
 ```javascript
-const logger = require('firebase-functions/logger');
+const logger = require('firebase-functions/logger')
 
 // In your function:
-logger.info('Starting generation', { 
+logger.info('Starting generation', {
   accountId: process.env.GOOGLE_BUSINESS_ACCOUNT_ID,
-  timestamp: new Date().toISOString()
-});
+  timestamp: new Date().toISOString(),
+})
 ```
 
 ### View Logs
@@ -214,7 +221,9 @@ Or in the Emulator UI → **Logs** tab
 ## Troubleshooting
 
 ### Error: "Java is not installed"
+
 **Solution**: Install Java Runtime Environment (JRE)
+
 ```bash
 # On Ubuntu/Debian
 sudo apt-get install openjdk-11-jre-headless
@@ -224,21 +233,27 @@ brew install openjdk@11
 ```
 
 ### Error: "Port 5001 already in use"
+
 **Solution**: Use a different port or kill the process
+
 ```bash
 lsof -ti:5001 | xargs kill -9
 firebase emulators:start --only functions,firestore
 ```
 
 ### Error: "Emulator UI not loading"
+
 **Solution**: Clear emulator cache
+
 ```bash
 rm -rf ~/.cache/firebase/emulators
 firebase emulators:start --only functions,firestore
 ```
 
 ### Functions not appearing in Emulator
+
 **Solution**: Make sure you deployed to emulator
+
 ```bash
 firebase deploy --only functions --project=anjaniappnew
 ```
@@ -263,6 +278,7 @@ node test-functions.js
 
 1. In Emulator UI → Firestore
 2. Create a new document in `googleBusinessPosts`:
+
 ```json
 {
   "summary": "Premium water bottles now 20% off! Order now at https://wa.me/919925997750",

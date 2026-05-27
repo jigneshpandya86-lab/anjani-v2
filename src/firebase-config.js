@@ -3,30 +3,30 @@
 // This file initialises Firebase and exports the auth instance.
 // Changes here affect authentication and all Firestore access.
 // ─────────────────────────────────────────────────────────────
-import { initializeApp } from "firebase/app";
+import { initializeApp } from 'firebase/app'
 import {
   initializeFirestore,
   persistentLocalCache,
   persistentSingleTabManager,
-  CACHE_SIZE_UNLIMITED
-} from "firebase/firestore";
-import { getAuth } from "firebase/auth";
-import { getStorage } from "firebase/storage";
+  CACHE_SIZE_UNLIMITED,
+} from 'firebase/firestore'
+import { getAuth } from 'firebase/auth'
+import { getStorage } from 'firebase/storage'
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || ""
-};
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
+}
 
 // Validate that critical Firebase credentials are available. When any are
 // missing we surface a structured error the UI can react to (see App.jsx
 // FirebaseError guard) instead of only logging to the console.
-const requiredKeys = ['apiKey', 'authDomain', 'projectId', 'appId'];
-const missingKeys = requiredKeys.filter((key) => !firebaseConfig[key]);
+const requiredKeys = ['apiKey', 'authDomain', 'projectId', 'appId']
+const missingKeys = requiredKeys.filter((key) => !firebaseConfig[key])
 
 export const firebaseConfigError =
   missingKeys.length > 0
@@ -35,13 +35,13 @@ export const firebaseConfigError =
           .map((k) => `VITE_FIREBASE_${k.toUpperCase()}`)
           .join(', ')}`,
       )
-    : null;
+    : null
 
 if (firebaseConfigError && import.meta.env.DEV) {
-  console.error(firebaseConfigError.message);
+  console.error(firebaseConfigError.message)
 }
 
-export const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig)
 
 // persistentSingleTabManager is required for Capacitor Android WebView — the
 // multi-tab manager's leader-election mechanism can stall in a single-WebView
@@ -54,12 +54,12 @@ export const app = initializeApp(firebaseConfig);
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentSingleTabManager(),
-    cacheSizeBytes: CACHE_SIZE_UNLIMITED
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED,
   }),
-  experimentalAutoDetectLongPolling: true
-});
+  experimentalAutoDetectLongPolling: true,
+})
 
 // AUTH: do not remove — shared auth instance used across the entire app
-export const auth = getAuth(app);
+export const auth = getAuth(app)
 
-export const storage = getStorage(app);
+export const storage = getStorage(app)

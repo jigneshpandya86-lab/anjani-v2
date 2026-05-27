@@ -6,31 +6,17 @@
     {
       "source": "functions",
       "codebase": "default",
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log"
-      ]
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
     },
     {
       "source": "functions_python",
       "codebase": "python-intelligence",
-      "ignore": [
-        "venv",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log"
-      ]
+      "ignore": ["venv", ".git", "firebase-debug.log", "firebase-debug.*.log"]
     }
   ],
   "hosting": {
     "public": "dist",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
       {
         "source": "**",
