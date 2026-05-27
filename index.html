@@ -14,9 +14,10 @@
     <script>
       // Register service worker for push notifications
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/firebase-messaging-sw.js')
-          .then(reg => console.log('Service Worker registered'))
-          .catch(err => console.log('Service Worker registration failed:', err))
+        navigator.serviceWorker
+          .register('/firebase-messaging-sw.js')
+          .then((reg) => console.log('Service Worker registered'))
+          .catch((err) => console.log('Service Worker registration failed:', err))
       }
     </script>
   </body>

@@ -1,50 +1,51 @@
-import { useMemo, useState } from 'react';
-import { useClientStore } from '../store/clientStore';
-import { IndianRupee, Save, CreditCard, Banknote } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { useMemo, useState } from 'react'
+import { useClientStore } from '../store/clientStore'
+import { IndianRupee, Save, CreditCard, Banknote } from 'lucide-react'
+import toast from 'react-hot-toast'
 
-const getToday = () => new Date().toISOString().slice(0, 10);
-const getCurrentTime = () => new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+const getToday = () => new Date().toISOString().slice(0, 10)
+const getCurrentTime = () =>
+  new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
 
 export default function PaymentModal({ client, onClose, initialValues = {} }) {
-  const addPayment = useClientStore(state => state.addPayment);
-  const clients = useClientStore(state => state.clients);
-  const [amount, setAmount] = useState(initialValues.amount ? String(initialValues.amount) : '');
-  const [method, setMethod] = useState('cash');
-  const [note, setNote] = useState(initialValues.note || '');
-  const [paymentDate, setPaymentDate] = useState(initialValues.date || getToday());
-  const [paymentTime, setPaymentTime] = useState(initialValues.time || getCurrentTime());
-  const [selectedClientId, setSelectedClientId] = useState(client?.id || '');
-  const [loading, setLoading] = useState(false);
+  const addPayment = useClientStore((state) => state.addPayment)
+  const clients = useClientStore((state) => state.clients)
+  const [amount, setAmount] = useState(initialValues.amount ? String(initialValues.amount) : '')
+  const [method, setMethod] = useState('cash')
+  const [note, setNote] = useState(initialValues.note || '')
+  const [paymentDate, setPaymentDate] = useState(initialValues.date || getToday())
+  const [paymentTime, setPaymentTime] = useState(initialValues.time || getCurrentTime())
+  const [selectedClientId, setSelectedClientId] = useState(client?.id || '')
+  const [loading, setLoading] = useState(false)
   const selectedClient = useMemo(
     () => clients.find((c) => c.id === selectedClientId) || (client?.id ? client : null),
-    [clients, selectedClientId, client]
-  );
+    [clients, selectedClientId, client],
+  )
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!amount || amount <= 0 || !selectedClient) return;
+    e.preventDefault()
+    if (!amount || amount <= 0 || !selectedClient) return
 
-    const paymentAmount = parseFloat(amount);
-    const outstandingAmount = selectedClient?.outstanding || 0;
-    const isExcessPayment = outstandingAmount >= 0 && paymentAmount > outstandingAmount;
+    const paymentAmount = parseFloat(amount)
+    const outstandingAmount = selectedClient?.outstanding || 0
+    const isExcessPayment = outstandingAmount >= 0 && paymentAmount > outstandingAmount
 
     if (isExcessPayment) {
-      const overpaidBy = paymentAmount - outstandingAmount;
+      const overpaidBy = paymentAmount - outstandingAmount
       const firstConfirmation = window.confirm(
-        `This payment is ₹${overpaidBy.toLocaleString()} more than the due amount. Do you want to continue?`
-      );
+        `This payment is ₹${overpaidBy.toLocaleString()} more than the due amount. Do you want to continue?`,
+      )
 
-      if (!firstConfirmation) return;
+      if (!firstConfirmation) return
 
       const secondConfirmation = window.confirm(
-        'Please confirm again: this will save an excess payment and create a negative balance.'
-      );
+        'Please confirm again: this will save an excess payment and create a negative balance.',
+      )
 
-      if (!secondConfirmation) return;
+      if (!secondConfirmation) return
     }
 
-    setLoading(true);
+    setLoading(true)
     try {
       await addPayment({
         clientId: selectedClient.id,
@@ -52,18 +53,18 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
         type: 'payment',
         method,
         note,
-        date: new Date(`${paymentDate}T${paymentTime || '00:00'}`)
-      });
-      toast.success('Payment recorded successfully');
-      onClose();
+        date: new Date(`${paymentDate}T${paymentTime || '00:00'}`),
+      })
+      toast.success('Payment recorded successfully')
+      onClose()
     } catch (err) {
-      toast.error('Failed to record payment: ' + err.message);
+      toast.error('Failed to record payment: ' + err.message)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
-  const newBalance = (selectedClient?.outstanding || 0) - (parseFloat(amount) || 0);
+  const newBalance = (selectedClient?.outstanding || 0) - (parseFloat(amount) || 0)
 
   return (
     <div className="space-y-4">
@@ -76,7 +77,12 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
 
       {!client?.id && (
         <div>
-          <label htmlFor="client-select" className="block text-xs font-bold text-gray-500 uppercase mb-2">Client</label>
+          <label
+            htmlFor="client-select"
+            className="block text-xs font-bold text-gray-500 uppercase mb-2"
+          >
+            Client
+          </label>
           <select
             id="client-select"
             className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-[#ff9900] outline-none"
@@ -96,7 +102,9 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
 
       <div className="bg-gray-50 p-3 rounded-xl flex justify-between items-center border border-gray-100">
         <span className="text-gray-600 font-medium text-sm">Current Balance:</span>
-        <span className={`font-bold text-lg ${(selectedClient?.outstanding || 0) > 0 ? 'text-red-500' : 'text-green-600'}`}>
+        <span
+          className={`font-bold text-lg ${(selectedClient?.outstanding || 0) > 0 ? 'text-red-500' : 'text-green-600'}`}
+        >
           ₹{selectedClient?.outstanding?.toLocaleString() || 0}
         </span>
       </div>
@@ -104,7 +112,12 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Amount Input */}
         <div>
-          <label htmlFor="amount-input" className="block text-xs font-bold text-gray-500 uppercase mb-2">Amount Received (₹)</label>
+          <label
+            htmlFor="amount-input"
+            className="block text-xs font-bold text-gray-500 uppercase mb-2"
+          >
+            Amount Received (₹)
+          </label>
           <div className="relative">
             <IndianRupee className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
             <input
@@ -122,7 +135,9 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
         {/* Payment Method Toggle */}
         <div className="grid grid-cols-2 gap-3">
           <label htmlFor="date-input">
-            <span className="block text-xs font-bold text-gray-500 uppercase mb-2">Payment Date</span>
+            <span className="block text-xs font-bold text-gray-500 uppercase mb-2">
+              Payment Date
+            </span>
             <input
               id="date-input"
               type="date"
@@ -133,7 +148,9 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
             />
           </label>
           <label htmlFor="time-input">
-            <span className="block text-xs font-bold text-gray-500 uppercase mb-2">Payment Time</span>
+            <span className="block text-xs font-bold text-gray-500 uppercase mb-2">
+              Payment Time
+            </span>
             <input
               id="time-input"
               type="time"
@@ -146,16 +163,21 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
         </div>
 
         <div>
-          <label htmlFor="payment-method" className="block text-xs font-bold text-gray-500 uppercase mb-2">Payment Method</label>
+          <label
+            htmlFor="payment-method"
+            className="block text-xs font-bold text-gray-500 uppercase mb-2"
+          >
+            Payment Method
+          </label>
           <div className="grid grid-cols-2 gap-3">
-            <button 
+            <button
               type="button"
               onClick={() => setMethod('cash')}
               className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border-2 transition-all ${method === 'cash' ? 'border-[#ff9900] bg-orange-50 text-[#ff9900]' : 'border-gray-100 bg-white text-gray-500'}`}
             >
               <Banknote size={18} /> Cash
             </button>
-            <button 
+            <button
               type="button"
               onClick={() => setMethod('upi')}
               className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border-2 transition-all ${method === 'upi' ? 'border-[#ff9900] bg-orange-50 text-[#ff9900]' : 'border-gray-100 bg-white text-gray-500'}`}
@@ -167,7 +189,12 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
 
         {/* Note */}
         <div>
-          <label htmlFor="notes-input" className="block text-xs font-bold text-gray-500 uppercase mb-2">Notes (Optional)</label>
+          <label
+            htmlFor="notes-input"
+            className="block text-xs font-bold text-gray-500 uppercase mb-2"
+          >
+            Notes (Optional)
+          </label>
           <input
             id="notes-input"
             className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-[#ff9900] outline-none"
@@ -185,13 +212,19 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
           </div>
         )}
 
-        <button 
+        <button
           disabled={loading || !selectedClient}
           className="w-full bg-[#131921] text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg disabled:opacity-50"
         >
-          {loading ? "Saving..." : <><Save size={20} /> Save Transaction</>}
+          {loading ? (
+            'Saving...'
+          ) : (
+            <>
+              <Save size={20} /> Save Transaction
+            </>
+          )}
         </button>
       </form>
     </div>
-  );
+  )
 }

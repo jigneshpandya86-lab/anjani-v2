@@ -1,62 +1,66 @@
-import { memo, useEffect } from 'react';
-import { useClientStore } from '../store/clientStore';
-import { useAnalyticsStore } from '../store/analyticsStore';
-import toast from 'react-hot-toast';
-import { IndianRupee, Calendar, Clock, ShoppingBag, RotateCcw, Trash2 } from 'lucide-react';
+import { memo, useEffect } from 'react'
+import { useClientStore } from '../store/clientStore'
+import { useAnalyticsStore } from '../store/analyticsStore'
+import toast from 'react-hot-toast'
+import { IndianRupee, Calendar, Clock, ShoppingBag, RotateCcw, Trash2 } from 'lucide-react'
 
-const TRANSACTION_FEED_LIMIT = 15;
+const TRANSACTION_FEED_LIMIT = 15
 
 function PaymentDashboard() {
-  const { clients, deletePayment } = useClientStore();
-  const { recentPayments: history, recentLoading: isLoading, subscribeToRecentPayments, unsubscribeFromRecentPayments } = useAnalyticsStore();
+  const { clients, deletePayment } = useClientStore()
+  const {
+    recentPayments: history,
+    recentLoading: isLoading,
+    subscribeToRecentPayments,
+    unsubscribeFromRecentPayments,
+  } = useAnalyticsStore()
 
   useEffect(() => {
-    subscribeToRecentPayments();
-    return unsubscribeFromRecentPayments;
-  }, [subscribeToRecentPayments, unsubscribeFromRecentPayments]);
+    subscribeToRecentPayments()
+    return unsubscribeFromRecentPayments
+  }, [subscribeToRecentPayments, unsubscribeFromRecentPayments])
 
-  const getClientName = (id) => clients.find(c => c.id === id)?.name || 'Unknown Client';
+  const getClientName = (id) => clients.find((c) => c.id === id)?.name || 'Unknown Client'
 
   const getOrderId = (tx) => {
-    if (tx.orderId) return tx.orderId;
+    if (tx.orderId) return tx.orderId
 
-    const narration = tx.narration || tx.note || '';
-    const match = narration.match(/\bORD-\d+\b/i);
-    return match ? match[0].toUpperCase() : '';
-  };
-
+    const narration = tx.narration || tx.note || ''
+    const match = narration.match(/\bORD-\d+\b/i)
+    return match ? match[0].toUpperCase() : ''
+  }
 
   const handleDeletePayment = async (tx) => {
-    const transactionRef = tx.orderId || tx.id;
+    const transactionRef = tx.orderId || tx.id
     const firstConfirm = window.confirm(
-      `Delete transaction ${transactionRef}? This will update the client balance.`
-    );
-    if (!firstConfirm) return;
+      `Delete transaction ${transactionRef}? This will update the client balance.`,
+    )
+    if (!firstConfirm) return
 
     const secondConfirm = window.confirm(
-      `Final confirmation: permanently delete ${transactionRef}?`
-    );
-    if (!secondConfirm) return;
+      `Final confirmation: permanently delete ${transactionRef}?`,
+    )
+    if (!secondConfirm) return
 
     try {
-      await deletePayment(tx.id);
-      toast.success(`Transaction ${transactionRef} deleted`);
+      await deletePayment(tx.id)
+      toast.success(`Transaction ${transactionRef} deleted`)
     } catch (error) {
-      console.error('Payment delete failed', error);
-      toast.error('Failed to delete transaction');
+      console.error('Payment delete failed', error)
+      toast.error('Failed to delete transaction')
     }
-  };
+  }
   const formatDate = (tx) => {
-    const rawDate = tx.date || tx.paymentDate || tx.createdAt;
-    if (!rawDate) return "No Date Found";
-    if (rawDate.toDate) return rawDate.toDate().toLocaleDateString('en-IN');
-    if (typeof rawDate === 'string') return rawDate;
-    return new Date(rawDate).toLocaleDateString('en-IN');
-  };
+    const rawDate = tx.date || tx.paymentDate || tx.createdAt
+    if (!rawDate) return 'No Date Found'
+    if (rawDate.toDate) return rawDate.toDate().toLocaleDateString('en-IN')
+    if (typeof rawDate === 'string') return rawDate
+    return new Date(rawDate).toLocaleDateString('en-IN')
+  }
 
   const totalBilled = history
     .filter((tx) => tx.type === 'invoice')
-    .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+    .reduce((sum, tx) => sum + Number(tx.amount || 0), 0)
 
   return (
     <div className="space-y-2 pb-20">
@@ -74,9 +78,12 @@ function PaymentDashboard() {
         </div>
 
         <div className="relative mt-2 flex items-center justify-between gap-2">
-          <p className="truncate text-3xl font-black leading-none">₹{totalBilled.toLocaleString('en-IN')}</p>
+          <p className="truncate text-3xl font-black leading-none">
+            ₹{totalBilled.toLocaleString('en-IN')}
+          </p>
           <p className="truncate text-[11px] text-white/75 font-semibold tracking-wide text-right">
-            {history.length} txns · {new Date().toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+            {history.length} txns ·{' '}
+            {new Date().toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
           </p>
         </div>
       </div>
@@ -98,35 +105,35 @@ function PaymentDashboard() {
       )}
 
       {history.map((tx, index) => {
-        const isCharge = tx.type === 'invoice';
-        const isAdjustment = tx.type === 'adjustment';
-        
-        let borderColor = 'border-l-green-500';
-        let iconBg = 'bg-green-50 text-green-600';
-        let amountColor = 'text-green-600';
-        let sign = '+';
-        let label = 'RECEIVED';
-        let Icon = IndianRupee;
+        const isCharge = tx.type === 'invoice'
+        const isAdjustment = tx.type === 'adjustment'
+
+        let borderColor = 'border-l-green-500'
+        let iconBg = 'bg-green-50 text-green-600'
+        let amountColor = 'text-green-600'
+        let sign = '+'
+        let label = 'RECEIVED'
+        let Icon = IndianRupee
 
         if (isCharge) {
-          borderColor = 'border-l-red-500';
-          iconBg = 'bg-red-50 text-red-500';
-          amountColor = 'text-red-500';
-          sign = '+';
-          label = 'BILLED (CHARGE)';
-          Icon = ShoppingBag;
+          borderColor = 'border-l-red-500'
+          iconBg = 'bg-red-50 text-red-500'
+          amountColor = 'text-red-500'
+          sign = '+'
+          label = 'BILLED (CHARGE)'
+          Icon = ShoppingBag
         } else if (isAdjustment) {
-          borderColor = 'border-l-blue-500';
-          iconBg = 'bg-blue-50 text-blue-500';
-          amountColor = 'text-blue-500';
-          sign = '-'; // Reversals decrease the client's balance
-          label = 'SYSTEM REVERSAL';
-          Icon = RotateCcw;
+          borderColor = 'border-l-blue-500'
+          iconBg = 'bg-blue-50 text-blue-500'
+          amountColor = 'text-blue-500'
+          sign = '-' // Reversals decrease the client's balance
+          label = 'SYSTEM REVERSAL'
+          Icon = RotateCcw
         }
 
-        const orderId = getOrderId(tx);
+        const orderId = getOrderId(tx)
 
-        const isAlternateRow = index % 2 === 1;
+        const isAlternateRow = index % 2 === 1
 
         return (
           <div
@@ -174,10 +181,10 @@ function PaymentDashboard() {
               </div>
             </div>
           </div>
-        );
+        )
       })}
     </div>
-  );
+  )
 }
 
-export default memo(PaymentDashboard);
+export default memo(PaymentDashboard)

@@ -19,9 +19,19 @@ import {
   LogOut,
   Bell,
   CheckCheck,
-  Brain
+  Brain,
 } from 'lucide-react'
-import { collection, getDocs, query, orderBy, where, limit, startAfter, getAggregateFromServer, sum } from 'firebase/firestore'
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  where,
+  limit,
+  startAfter,
+  getAggregateFromServer,
+  sum,
+} from 'firebase/firestore'
 import { db, auth } from './firebase-config'
 import { signOut, onAuthStateChanged } from 'firebase/auth'
 import ClientList from './components/ClientList'
@@ -56,30 +66,44 @@ function App() {
   const [notificationReadMap, setNotificationReadMap] = useState({})
   const notificationPanelRef = useRef(null)
   const [stockModalOpen, setStockModalOpen] = useState(false)
-  const [stockStatementMonth, setStockStatementMonth] = useState(new Date().toISOString().slice(0, 7))
+  const [stockStatementMonth, setStockStatementMonth] = useState(
+    new Date().toISOString().slice(0, 7),
+  )
   // ─────────────────────────────────────────
   // AUTH — DO NOT MODIFY WITHOUT TEAM REVIEW
   // ─────────────────────────────────────────
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
-  const { fetchClients, fetchOrders, fetchStock, fetchStockTotal, orders, clients, userRole, fetchUserRole } = useClientStore()
+  const {
+    fetchClients,
+    fetchOrders,
+    fetchStock,
+    fetchStockTotal,
+    orders,
+    clients,
+    userRole,
+    fetchUserRole,
+  } = useClientStore()
   const readStorageKey = user?.uid ? `${NOTIFICATION_READ_STORAGE_PREFIX}-${user.uid}` : null
 
   const unreadNotificationCount = useMemo(() => {
-    return notifications.reduce((count, item) => (notificationReadMap[item.id] ? count : count + 1), 0)
+    return notifications.reduce(
+      (count, item) => (notificationReadMap[item.id] ? count : count + 1),
+      0,
+    )
   }, [notificationReadMap, notifications])
 
   // AUTH: monitors login/logout state — removing this breaks the entire auth flow
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser)
-      
+
       if (currentUser) {
         await fetchUserRole(currentUser.uid)
       } else {
         await fetchUserRole(null)
       }
-      
+
       setAuthLoading(false)
     })
     return unsubAuth
@@ -90,67 +114,71 @@ function App() {
     if (user && Notification.permission === 'granted') {
       const initFcmAuto = async () => {
         try {
-          const { initializeFcm } = await import('./services/fcm-setup');
-          await initializeFcm(user.uid, user.email);
-          console.log('FCM auto-initialized for user:', user.uid);
+          const { initializeFcm } = await import('./services/fcm-setup')
+          await initializeFcm(user.uid, user.email)
+          console.log('FCM auto-initialized for user:', user.uid)
         } catch (err) {
-          console.error('FCM auto-init error:', err);
+          console.error('FCM auto-init error:', err)
         }
-      };
-      initFcmAuto();
+      }
+      initFcmAuto()
     }
   }, [user])
 
   const handleEnableNotifications = async () => {
     if (!user) {
-      toast.error('User not logged in.');
-      return;
+      toast.error('User not logged in.')
+      return
     }
     try {
-      console.log('Starting notification setup...');
-      const { initializeFcm, sendLocalTestNotification } = await import('./services/fcm-setup');
-      console.log('FCM module imported successfully');
-      const result = await initializeFcm(user.uid, user.email);
-      console.log('FCM initialization result:', result);
+      console.log('Starting notification setup...')
+      const { initializeFcm, sendLocalTestNotification } = await import('./services/fcm-setup')
+      console.log('FCM module imported successfully')
+      const result = await initializeFcm(user.uid, user.email)
+      console.log('FCM initialization result:', result)
 
       if (result.success) {
-        toast.success(`Push notifications enabled (${result.tokenPreview})`);
+        toast.success(`Push notifications enabled (${result.tokenPreview})`)
         sendLocalTestNotification(result.serviceWorkerRegistration).then((testSent) => {
           if (testSent) {
-            toast.success('Test notification sent to this device.');
+            toast.success('Test notification sent to this device.')
           } else {
-            toast.error('Device registered, but test notification could not be displayed.');
+            toast.error('Device registered, but test notification could not be displayed.')
           }
-        });
+        })
         if (!result.tokenStored) {
-          toast.error('Notification permission granted, but token record could not be verified.');
+          toast.error('Notification permission granted, but token record could not be verified.')
         }
       } else {
-        console.log('FCM initialization failed with reason:', result.reason);
+        console.log('FCM initialization failed with reason:', result.reason)
         if (result.reason === 'permission-denied') {
-          toast.error('Notification permission denied. Please allow notifications in browser settings.');
+          toast.error(
+            'Notification permission denied. Please allow notifications in browser settings.',
+          )
         } else if (result.reason === 'unsupported-browser') {
-          toast.error('This browser does not support Firebase web push notifications.');
+          toast.error('This browser does not support Firebase web push notifications.')
         } else if (result.reason === 'service-worker-unavailable') {
-          toast.error('Service Worker is not available in this browser context.');
+          toast.error('Service Worker is not available in this browser context.')
         } else if (result.reason === 'token-missing') {
-          toast.error('Permission granted, but Firebase could not issue a device token.');
+          toast.error('Permission granted, but Firebase could not issue a device token.')
         } else {
-          toast.error('Failed to enable notifications. Please check browser permissions.');
+          toast.error('Failed to enable notifications. Please check browser permissions.')
         }
       }
     } catch (error) {
-      console.error('Error in handleEnableNotifications:', error);
-      toast.error('Error enabling notifications: ' + error.message);
+      console.error('Error in handleEnableNotifications:', error)
+      toast.error('Error enabling notifications: ' + error.message)
     }
   }
 
   const formatNotificationTime = (value) => {
     if (!value) return ''
 
-    const asDate = value?.toDate?.() || (typeof value === 'object' && typeof value.seconds === 'number'
-      ? new Date(value.seconds * 1000)
-      : new Date(value))
+    const asDate =
+      value?.toDate?.() ||
+      (typeof value === 'object' && typeof value.seconds === 'number'
+        ? new Date(value.seconds * 1000)
+        : new Date(value))
 
     if (!(asDate instanceof Date) || Number.isNaN(asDate.getTime())) return ''
 
@@ -158,7 +186,7 @@ function App() {
       day: '2-digit',
       month: 'short',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     })
   }
 
@@ -217,7 +245,7 @@ function App() {
     const notificationQuery = query(
       collection(db, 'notifications'),
       orderBy('timestamp', 'desc'),
-      limit(20)
+      limit(20),
     )
 
     let ignoreUpdates = false
@@ -252,13 +280,12 @@ function App() {
     }
   }, [notificationPanelOpen])
 
-
   // AUTH: data is only fetched when user is signed in — do not remove the guard
   useEffect(() => {
     if (!user) return undefined // AUTH: do not remove — prevents data fetch for unauthenticated users
 
     const unsubOrders = fetchOrders()
-    let unsubClients, unsubStock, unsubStockTotal;
+    let unsubClients, unsubStock, unsubStockTotal
 
     if (userRole === 'admin') {
       unsubClients = fetchClients()
@@ -285,18 +312,23 @@ function App() {
   }
 
   // AUTH: simple admin check — placeholder for proper role system
-  const isAdmin = user?.email?.toLowerCase()?.includes('admin') || user?.email?.toLowerCase()?.includes('owner')
+  const isAdmin =
+    user?.email?.toLowerCase()?.includes('admin') || user?.email?.toLowerCase()?.includes('owner')
 
   const navItems = [
     { id: 'orders', label: 'Orders', icon: <ShoppingCart size={20} /> },
     { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
     { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
     { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
-  ].filter(item => userRole === 'admin' || item.id === 'orders')
+  ].filter((item) => userRole === 'admin' || item.id === 'orders')
 
   const drawerNavItems = [
     { id: 'tasks', label: 'Tasks', icon: <CheckSquare size={20} /> },
-    userRole === 'admin' && { id: 'intelligence', label: 'Intelligence Hub', icon: <Brain size={20} /> },
+    userRole === 'admin' && {
+      id: 'intelligence',
+      label: 'Intelligence Hub',
+      icon: <Brain size={20} />,
+    },
     ...navItems,
   ].filter(Boolean)
 
@@ -309,7 +341,7 @@ function App() {
         setActiveTab('orders')
         setEditOrder({})
         setDrawerOpen(false)
-      }
+      },
     },
     {
       id: 'quick-open-leads',
@@ -318,7 +350,7 @@ function App() {
       onClick: () => {
         setActiveTab('leads')
         setDrawerOpen(false)
-      }
+      },
     },
     {
       id: 'quick-add-client',
@@ -328,7 +360,7 @@ function App() {
         setActiveTab('clients')
         setAddClientOpen(true)
         setDrawerOpen(false)
-      }
+      },
     },
     {
       id: 'quick-record-payment',
@@ -339,11 +371,17 @@ function App() {
         setPayClient({})
         setPaymentPrefill(null)
         setDrawerOpen(false)
-      }
-    }
+      },
+    },
   ].filter(() => userRole === 'admin')
 
-  const openReportWindow = ({ title, columns, rows, metadata = [], reportWindow: providedReportWindow = null }) => {
+  const openReportWindow = ({
+    title,
+    columns,
+    rows,
+    metadata = [],
+    reportWindow: providedReportWindow = null,
+  }) => {
     const reportWindow = providedReportWindow || window.open('', '_blank', 'width=900,height=700')
     if (!reportWindow) {
       toast.error('Popup blocked. Please allow popups to generate PDF report.')
@@ -352,7 +390,9 @@ function App() {
 
     const generatedAt = new Date().toLocaleString('en-IN')
     const headerRow = columns.map((col) => `<th>${col}</th>`).join('')
-    const bodyRows = rows.map((row) => `<tr>${row.map((cell) => `<td>${cell || '-'}</td>`).join('')}</tr>`).join('')
+    const bodyRows = rows
+      .map((row) => `<tr>${row.map((cell) => `<td>${cell || '-'}</td>`).join('')}</tr>`)
+      .join('')
     const metadataRows = metadata
       .filter(Boolean)
       .map((entry) => `<p class="meta">${entry}</p>`)
@@ -391,8 +431,11 @@ function App() {
     return true
   }
 
-
-  const escapePdfText = (text) => String(text || '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+  const escapePdfText = (text) =>
+    String(text || '')
+      .replace(/\\/g, '\\\\')
+      .replace(/\(/g, '\\(')
+      .replace(/\)/g, '\\)')
 
   // Builds a raw single-page PDF from tabular data — works inside Capacitor WebView
   const createPdfFile = (pdfText, filename) => {
@@ -411,8 +454,7 @@ function App() {
   const shareOrDownloadPdf = async (file, shareTitle = '', shareText = '') => {
     try {
       const canShareWithFile = Boolean(
-        navigator.share &&
-        (!navigator.canShare || navigator.canShare({ files: [file] }))
+        navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] })),
       )
       if (canShareWithFile) {
         await navigator.share({ title: shareTitle, text: shareText, files: [file] })
@@ -441,12 +483,30 @@ function App() {
     toast.success('PDF generated.')
   }
 
-  const isMobileOrNative = Boolean(window?.Capacitor?.isNativePlatform?.()) || /Android|iPhone|iPad/i.test(navigator.userAgent)
+  const isMobileOrNative =
+    Boolean(window?.Capacitor?.isNativePlatform?.()) ||
+    /Android|iPhone|iPad/i.test(navigator.userAgent)
 
-  const buildTabularReportPdf = ({ title, columns, rows, metadata = [], filename = 'report.pdf' }) => {
-    const san = (t) => String(t ?? '').replace(/₹/g, 'Rs.').replace(/[^\x20-\x7E]/g, '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)').slice(0, 60)
+  const buildTabularReportPdf = ({
+    title,
+    columns,
+    rows,
+    metadata = [],
+    filename = 'report.pdf',
+  }) => {
+    const san = (t) =>
+      String(t ?? '')
+        .replace(/₹/g, 'Rs.')
+        .replace(/[^\x20-\x7E]/g, '')
+        .replace(/\\/g, '\\\\')
+        .replace(/\(/g, '\\(')
+        .replace(/\)/g, '\\)')
+        .slice(0, 60)
     const txt = (x, y, size, t) => `BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${san(t)}) Tj ET`
-    const pW = 595, pH = 842, mg = 36, usableW = pW - mg * 2
+    const pW = 595,
+      pH = 842,
+      mg = 36,
+      usableW = pW - mg * 2
     const colW = usableW / Math.max(columns.length, 1)
     const rH = 18
 
@@ -459,7 +519,14 @@ function App() {
         lines.push(txt(mg, y, 14, title))
         y -= 20
         lines.push('0.5 0.5 0.5 rg')
-        lines.push(txt(mg, y, 8, `Generated: ${new Date().toLocaleString('en-IN').replace(/[^\x20-\x7E]/g, '')}`))
+        lines.push(
+          txt(
+            mg,
+            y,
+            8,
+            `Generated: ${new Date().toLocaleString('en-IN').replace(/[^\x20-\x7E]/g, '')}`,
+          ),
+        )
         lines.push('0 0 0 rg')
         y -= 14
         for (const m of metadata.filter(Boolean)) {
@@ -518,8 +585,12 @@ function App() {
       `2 0 obj << /Type /Pages /Count ${pages.length} /Kids [${pageKids}] >> endobj`,
     ]
     pages.forEach((_, i) => {
-      objs.push(`${3 + i * 2} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents ${4 + i * 2} 0 R /Resources << /Font << /F1 ${fontObjNum} 0 R >> >> >> endobj`)
-      objs.push(`${4 + i * 2} 0 obj << /Length ${streams[i].length} >> stream\n${streams[i]}\nendstream endobj`)
+      objs.push(
+        `${3 + i * 2} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents ${4 + i * 2} 0 R /Resources << /Font << /F1 ${fontObjNum} 0 R >> >> >> endobj`,
+      )
+      objs.push(
+        `${4 + i * 2} 0 obj << /Length ${streams[i].length} >> stream\n${streams[i]}\nendstream endobj`,
+      )
     })
     objs.push(`${fontObjNum} 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj`)
 
@@ -593,7 +664,9 @@ function App() {
       textAt(315, 669, 9, `Delivery: ${invoiceDateTime || '-'}`),
       textAt(315, 655, 9, `Status: ${order.status || '-'}`),
       // Client address (from order)
-      ...(clientAddress ? ['0.35 0.35 0.35 rg', textAt(52, 641, 9, `Address: ${clientAddress}`), '0 0 0 rg'] : []),
+      ...(clientAddress
+        ? ['0.35 0.35 0.35 rg', textAt(52, 641, 9, `Address: ${clientAddress}`), '0 0 0 rg']
+        : []),
 
       // separator (shifted down by 13pt when address present)
       '0.8 0.8 0.8 RG',
@@ -658,13 +731,15 @@ function App() {
       '0 0 0 rg',
       textAt(40, clientAddress ? 374 : 390, 9, 'Contact Number: 9925997750'),
 
-      'Q'
+      'Q',
     ].join('\n')
 
     const objects = []
     objects.push('1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj')
     objects.push('2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj')
-    objects.push('3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >> endobj')
+    objects.push(
+      '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >> endobj',
+    )
     objects.push(`4 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream endobj`)
     objects.push('5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj')
     objects.push('6 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> endobj')
@@ -690,14 +765,18 @@ function App() {
     const amount = (Number(order.qty) || 0) * (Number(order.rate) || 0)
     const now = new Date()
     const date = now.toISOString().slice(0, 10)
-    const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
+    const time = now.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
 
     setPayClient(client || {})
     setPaymentPrefill({
       amount,
       date,
       time,
-      note: `Payment received for order ${order.orderId || order.id}`
+      note: `Payment received for order ${order.orderId || order.id}`,
     })
   }
 
@@ -754,8 +833,8 @@ function App() {
   // into a JS Date, or null if unparseable.
   const resolveTimestamp = (ts) => {
     if (!ts) return null
-    if (typeof ts.toDate === 'function') return ts.toDate()           // Firestore Timestamp
-    if (ts.seconds) return new Date(ts.seconds * 1000)               // cached plain object
+    if (typeof ts.toDate === 'function') return ts.toDate() // Firestore Timestamp
+    if (ts.seconds) return new Date(ts.seconds * 1000) // cached plain object
     if (typeof ts === 'string' || typeof ts === 'number') return new Date(ts)
     return null
   }
@@ -764,16 +843,23 @@ function App() {
   const buildLedgerPdf = ({ clientName, dateRangeLabel, txns, openingBalance }) => {
     // Safe string: strip non-ASCII, escape PDF string specials, limit length
     const san = (t, maxLen = 60) =>
-      String(t ?? '').replace(/₹/g, 'Rs.').replace(/[^\x20-\x7E]/g, '')
-        .replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)').slice(0, maxLen)
+      String(t ?? '')
+        .replace(/₹/g, 'Rs.')
+        .replace(/[^\x20-\x7E]/g, '')
+        .replace(/\\/g, '\\\\')
+        .replace(/\(/g, '\\(')
+        .replace(/\)/g, '\\)')
+        .slice(0, maxLen)
     const fmt = (n) => Number(n || 0).toLocaleString('en-IN')
 
     // A4 portrait geometry
-    const pW = 595, pH = 842, mg = 36
-    const usableW = pW - mg * 2   // 523
+    const pW = 595,
+      pH = 842,
+      mg = 36
+    const usableW = pW - mg * 2 // 523
 
     // Column widths (must sum to usableW = 523)
-    const cW = [22, 58, 52, 68, 68, 72, 183]  // Sr | Date | Type | Dr | Cr | Balance | Narration
+    const cW = [22, 58, 52, 68, 68, 72, 183] // Sr | Date | Type | Dr | Cr | Balance | Narration
     const cHdr = ['Sr', 'Date', 'Type', 'Debit (Dr)', 'Credit (Cr)', 'Balance', 'Narration']
     const rH = 18
 
@@ -799,7 +885,8 @@ function App() {
     let balance = openingBalance
     const dataRows = txns.map((tx, idx) => {
       const amount = Number(tx.amount || 0)
-      let dr = '', cr = ''
+      let dr = '',
+        cr = ''
       if (tx.type === 'invoice') {
         balance += Math.abs(amount)
         dr = fmt(Math.abs(amount))
@@ -808,18 +895,38 @@ function App() {
         cr = fmt(Math.abs(amount))
       } else {
         // reversal: amount may be negative
-        if (amount < 0) { balance += Math.abs(amount); dr = fmt(Math.abs(amount)) }
-        else { balance -= amount; cr = fmt(amount) }
+        if (amount < 0) {
+          balance += Math.abs(amount)
+          dr = fmt(Math.abs(amount))
+        } else {
+          balance -= amount
+          cr = fmt(amount)
+        }
       }
       const txDate = resolveTimestamp(tx.date) || resolveTimestamp(tx.createdAt)
       const dateStr = txDate ? txDate.toLocaleDateString('en-IN') : '-'
-      const typeLabel = tx.type === 'invoice' ? 'Invoice' : tx.type === 'payment' ? 'Payment' : 'Reversal'
-      return [String(idx + 1), dateStr, typeLabel, dr, cr, `Rs.${fmt(balance)}`, tx.narration || '-']
+      const typeLabel =
+        tx.type === 'invoice' ? 'Invoice' : tx.type === 'payment' ? 'Payment' : 'Reversal'
+      return [
+        String(idx + 1),
+        dateStr,
+        typeLabel,
+        dr,
+        cr,
+        `Rs.${fmt(balance)}`,
+        tx.narration || '-',
+      ]
     })
 
     const closingBalance = balance
-    const totalDr = txns.reduce((s, tx) => tx.type === 'invoice' ? s + Math.abs(Number(tx.amount || 0)) : s, 0)
-    const totalCr = txns.reduce((s, tx) => tx.type === 'payment' ? s + Math.abs(Number(tx.amount || 0)) : s, 0)
+    const totalDr = txns.reduce(
+      (s, tx) => (tx.type === 'invoice' ? s + Math.abs(Number(tx.amount || 0)) : s),
+      0,
+    )
+    const totalCr = txns.reduce(
+      (s, tx) => (tx.type === 'payment' ? s + Math.abs(Number(tx.amount || 0)) : s),
+      0,
+    )
 
     const buildPageStream = (pageRows, isFirstPage) => {
       const lines = []
@@ -831,7 +938,15 @@ function App() {
         lines.push(txt(mg, y, 13, 'Ledger Statement', 40))
         y -= 18
         lines.push('0.4 0.4 0.4 rg')
-        lines.push(txt(mg, y, 8, `Generated: ${new Date().toLocaleString('en-IN').replace(/[^\x20-\x7E]/g, '')}`, 60))
+        lines.push(
+          txt(
+            mg,
+            y,
+            8,
+            `Generated: ${new Date().toLocaleString('en-IN').replace(/[^\x20-\x7E]/g, '')}`,
+            60,
+          ),
+        )
         y -= 13
         lines.push(txt(mg, y, 8, `Client: ${clientName}`, 60))
         y -= 13
@@ -872,14 +987,31 @@ function App() {
       y -= rH
 
       // Closing balance row
-      drawRow(lines, y, ['', '', 'Closing Bal.', '', '', `Rs.${fmt(closingBalance)}`, closingBalance < 0 ? 'Advance' : 'Outstanding'], '0.2 0.5 0.2', '1 1 1')
+      drawRow(
+        lines,
+        y,
+        [
+          '',
+          '',
+          'Closing Bal.',
+          '',
+          '',
+          `Rs.${fmt(closingBalance)}`,
+          closingBalance < 0 ? 'Advance' : 'Outstanding',
+        ],
+        '0.2 0.5 0.2',
+        '1 1 1',
+      )
 
       return lines.join('\n')
     }
 
     // Pagination
-    const firstPageHeaderH = 20 + 18 + 13 + 13 + 13 + 10 + 8 + rH  // title+meta+divider+colhdr
-    const rowsOnFirstPage = Math.max(1, Math.floor((pH - mg - firstPageHeaderH - (mg + rH * 2)) / rH))
+    const firstPageHeaderH = 20 + 18 + 13 + 13 + 13 + 10 + 8 + rH // title+meta+divider+colhdr
+    const rowsOnFirstPage = Math.max(
+      1,
+      Math.floor((pH - mg - firstPageHeaderH - (mg + rH * 2)) / rH),
+    )
     const subseqRowStartY = pH - mg - 20 - rH
     const rowsPerSubseqPage = Math.max(1, Math.floor((subseqRowStartY - (mg + rH * 2)) / rH))
 
@@ -902,17 +1034,26 @@ function App() {
     objs.push(`2 0 obj\n<< /Type /Pages /Kids [${pageKids}] /Count ${pages.length} >>\nendobj`)
     streams.forEach((stream, i) => {
       const enc = new TextEncoder().encode(stream)
-      objs.push(`${3 + i * 2} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pW} ${pH}] /Contents ${4 + i * 2} 0 R /Resources << /Font << /F1 ${fontObjNum} 0 R >> >> >>\nendobj`)
-      objs.push(`${4 + i * 2} 0 obj\n<< /Length ${enc.length} >>\nstream\n${stream}\nendstream\nendobj`)
+      objs.push(
+        `${3 + i * 2} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pW} ${pH}] /Contents ${4 + i * 2} 0 R /Resources << /Font << /F1 ${fontObjNum} 0 R >> >> >>\nendobj`,
+      )
+      objs.push(
+        `${4 + i * 2} 0 obj\n<< /Length ${enc.length} >>\nstream\n${stream}\nendstream\nendobj`,
+      )
     })
     objs.push(`${fontObjNum} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj`)
 
     let pdf = '%PDF-1.4\n'
     const offsets = []
-    objs.forEach((obj) => { offsets.push(pdf.length); pdf += obj + '\n' })
+    objs.forEach((obj) => {
+      offsets.push(pdf.length)
+      pdf += obj + '\n'
+    })
     const xrefOffset = pdf.length
     pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`
-    offsets.forEach((o) => { pdf += String(o).padStart(10, '0') + ' 00000 n \n' })
+    offsets.forEach((o) => {
+      pdf += String(o).padStart(10, '0') + ' 00000 n \n'
+    })
     pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
 
     return new File([pdf], 'ledger.pdf', { type: 'application/pdf' })
@@ -921,7 +1062,10 @@ function App() {
   const handleLedgerStatementPdf = async () => {
     try {
       const selectedClient = clients.find((client) => client.id === ledgerClientId)
-      if (!selectedClient) { toast.error('Please select a valid client.'); return }
+      if (!selectedClient) {
+        toast.error('Please select a valid client.')
+        return
+      }
 
       const { startDate, endDate, label: dateRangeLabel } = getLedgerDateRange(ledgerDateRange)
 
@@ -929,9 +1073,15 @@ function App() {
       let payments = []
       let lastVisibleDoc = null
       while (true) {
-        const constraints = selectedClient.id === 'all'
-          ? [where('createdAt', '>=', startDate), where('createdAt', '<=', endDate), orderBy('createdAt', 'asc'), limit(LEDGER_EXPORT_PAGE_SIZE)]
-          : [where('clientId', '==', selectedClient.id), limit(LEDGER_EXPORT_PAGE_SIZE)]
+        const constraints =
+          selectedClient.id === 'all'
+            ? [
+                where('createdAt', '>=', startDate),
+                where('createdAt', '<=', endDate),
+                orderBy('createdAt', 'asc'),
+                limit(LEDGER_EXPORT_PAGE_SIZE),
+              ]
+            : [where('clientId', '==', selectedClient.id), limit(LEDGER_EXPORT_PAGE_SIZE)]
         if (lastVisibleDoc) constraints.push(startAfter(lastVisibleDoc))
         const snap = await getDocs(query(collection(db, 'payments'), ...constraints))
         if (snap.empty) break
@@ -953,8 +1103,16 @@ function App() {
 
       // Sort chronologically so running balance flows correctly
       filtered.sort((a, b) => {
-        const ta = (resolveTimestamp(a.createdAt) || resolveTimestamp(a.date) || new Date(0)).getTime()
-        const tb = (resolveTimestamp(b.createdAt) || resolveTimestamp(b.date) || new Date(0)).getTime()
+        const ta = (
+          resolveTimestamp(a.createdAt) ||
+          resolveTimestamp(a.date) ||
+          new Date(0)
+        ).getTime()
+        const tb = (
+          resolveTimestamp(b.createdAt) ||
+          resolveTimestamp(b.date) ||
+          new Date(0)
+        ).getTime()
         return ta - tb
       })
 
@@ -968,7 +1126,12 @@ function App() {
       const openingBalance = Math.max(0, Number(selectedClient.outstanding || 0) - periodNet)
 
       if (isMobileOrNative) {
-        const file = buildLedgerPdf({ clientName: selectedClient.name, dateRangeLabel, txns: filtered, openingBalance })
+        const file = buildLedgerPdf({
+          clientName: selectedClient.name,
+          dateRangeLabel,
+          txns: filtered,
+          openingBalance,
+        })
         await shareOrDownloadPdf(file, 'Ledger Statement')
       } else {
         // Desktop: improved HTML table with running balance
@@ -976,16 +1139,51 @@ function App() {
         let bal = openingBalance
         const rows = filtered.map((tx, idx) => {
           const amt = Math.abs(Number(tx.amount || 0))
-          let dr = '', cr = ''
-          if (tx.type === 'invoice') { bal += amt; dr = `Rs.${amt.toLocaleString('en-IN')}` }
-          else if (tx.type === 'payment') { bal -= amt; cr = `Rs.${amt.toLocaleString('en-IN')}` }
-          else { if (Number(tx.amount || 0) < 0) { bal += amt; dr = `Rs.${amt.toLocaleString('en-IN')}` } else { bal -= amt; cr = `Rs.${amt.toLocaleString('en-IN')}` } }
-          const txDate = (resolveTimestamp(tx.date) || resolveTimestamp(tx.createdAt))?.toLocaleDateString('en-IN') || '-'
-          const typeLabel = tx.type === 'invoice' ? 'Invoice' : tx.type === 'payment' ? 'Payment' : 'Reversal'
-          const client = selectedClient.id === 'all' ? (clientMap.get(tx.clientId) || '-') : ''
-          return [String(idx + 1), ...(selectedClient.id === 'all' ? [client] : []), txDate, typeLabel, dr, cr, `Rs.${bal.toLocaleString('en-IN')}`, tx.narration || '-']
+          let dr = '',
+            cr = ''
+          if (tx.type === 'invoice') {
+            bal += amt
+            dr = `Rs.${amt.toLocaleString('en-IN')}`
+          } else if (tx.type === 'payment') {
+            bal -= amt
+            cr = `Rs.${amt.toLocaleString('en-IN')}`
+          } else {
+            if (Number(tx.amount || 0) < 0) {
+              bal += amt
+              dr = `Rs.${amt.toLocaleString('en-IN')}`
+            } else {
+              bal -= amt
+              cr = `Rs.${amt.toLocaleString('en-IN')}`
+            }
+          }
+          const txDate =
+            (resolveTimestamp(tx.date) || resolveTimestamp(tx.createdAt))?.toLocaleDateString(
+              'en-IN',
+            ) || '-'
+          const typeLabel =
+            tx.type === 'invoice' ? 'Invoice' : tx.type === 'payment' ? 'Payment' : 'Reversal'
+          const client = selectedClient.id === 'all' ? clientMap.get(tx.clientId) || '-' : ''
+          return [
+            String(idx + 1),
+            ...(selectedClient.id === 'all' ? [client] : []),
+            txDate,
+            typeLabel,
+            dr,
+            cr,
+            `Rs.${bal.toLocaleString('en-IN')}`,
+            tx.narration || '-',
+          ]
         })
-        const columns = ['Sr', ...(selectedClient.id === 'all' ? ['Client'] : []), 'Date', 'Type', 'Debit (Dr)', 'Credit (Cr)', 'Balance', 'Narration']
+        const columns = [
+          'Sr',
+          ...(selectedClient.id === 'all' ? ['Client'] : []),
+          'Date',
+          'Type',
+          'Debit (Dr)',
+          'Credit (Cr)',
+          'Balance',
+          'Narration',
+        ]
         const metadata = [
           `Client: ${selectedClient.name}`,
           `Date Range: ${dateRangeLabel}`,
@@ -1018,23 +1216,25 @@ function App() {
       console.log(`[StockReport] Fetching opening balance before ${startDate.toISOString()}`)
       const openingQuery = query(collection(db, 'stock'), where('date', '<', startDate))
       const openingSnap = await getAggregateFromServer(openingQuery, {
-        total: sum('qty')
+        total: sum('qty'),
       })
       let runningBalance = Number(openingSnap.data().total) || 0
       const openingBalance = runningBalance
       console.log(`[StockReport] Opening balance: ${openingBalance}`)
 
       // 2. Fetch transactions for the month
-      console.log(`[StockReport] Fetching transactions from ${startDate.toISOString()} to ${endDate.toISOString()}`)
+      console.log(
+        `[StockReport] Fetching transactions from ${startDate.toISOString()} to ${endDate.toISOString()}`,
+      )
       const transQuery = query(
         collection(db, 'stock'),
         where('date', '>=', startDate),
         where('date', '<=', endDate),
-        orderBy('date', 'asc')
+        orderBy('date', 'asc'),
       )
       const transSnap = await getDocs(transQuery)
       console.log(`[StockReport] Found ${transSnap.size} transactions.`)
-      
+
       const rows = []
       // Opening Balance Row
       rows.push(['-', 'OPENING BALANCE', '-', '-', openingBalance.toLocaleString('en-IN')])
@@ -1045,7 +1245,7 @@ function App() {
         const debit = qty < 0 ? Math.abs(qty).toLocaleString('en-IN') : '-'
         const credit = qty > 0 ? qty.toLocaleString('en-IN') : '-'
         runningBalance += qty
-        
+
         let dateDisplay = '-'
         if (data.date?.toDate) {
           dateDisplay = data.date.toDate().toLocaleDateString('en-IN')
@@ -1054,13 +1254,13 @@ function App() {
         } else if (data.createdAt?.toDate) {
           dateDisplay = data.createdAt.toDate().toLocaleDateString('en-IN')
         }
-        
+
         rows.push([
           dateDisplay,
           data.narration || data.note || '-',
           debit,
           credit,
-          runningBalance.toLocaleString('en-IN')
+          runningBalance.toLocaleString('en-IN'),
         ])
       })
 
@@ -1068,10 +1268,18 @@ function App() {
       rows.push(['-', 'CLOSING BALANCE', '-', '-', runningBalance.toLocaleString('en-IN')])
 
       const columns = ['Date', 'Description', 'Debit', 'Credit', 'Balance']
-      const metadata = [`Period: ${startDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}`]
+      const metadata = [
+        `Period: ${startDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}`,
+      ]
 
       if (isMobileOrNative) {
-        const file = buildTabularReportPdf({ title: 'Stock Statement', columns, rows, metadata, filename: `stock_statement_${selectedMonthStr}.pdf` })
+        const file = buildTabularReportPdf({
+          title: 'Stock Statement',
+          columns,
+          rows,
+          metadata,
+          filename: `stock_statement_${selectedMonthStr}.pdf`,
+        })
         await shareOrDownloadPdf(file, 'Stock Statement')
       } else {
         openReportWindow({ title: 'Stock Statement Report (PDF)', columns, rows, metadata })
@@ -1106,10 +1314,19 @@ function App() {
 
     const matchedOrders = orders.filter((order) => {
       const client = clients.find((c) => c.id === order.clientId)
-      const clientName = (client?.name || order.clientName || order.customerName || '').toLowerCase()
+      const clientName = (
+        client?.name ||
+        order.clientName ||
+        order.customerName ||
+        ''
+      ).toLowerCase()
       const mobile = String(client?.mobile || order.mobile || order.phone || '').toLowerCase()
       const orderId = String(order.orderId || order.id || '').toLowerCase()
-      return orderId.includes(searchTerm) || clientName.includes(searchTerm) || mobile.includes(searchTerm)
+      return (
+        orderId.includes(searchTerm) ||
+        clientName.includes(searchTerm) ||
+        mobile.includes(searchTerm)
+      )
     })
 
     if (matchedOrders.length === 0) {
@@ -1118,7 +1335,9 @@ function App() {
     }
 
     if (matchedOrders.length > 1) {
-      toast.error('Multiple matching orders found. Please search by exact Order ID for single invoice.')
+      toast.error(
+        'Multiple matching orders found. Please search by exact Order ID for single invoice.',
+      )
       return
     }
 
@@ -1139,7 +1358,7 @@ function App() {
       onClick: () => {
         handleOrderSpecificPrintPdf()
         setDrawerOpen(false)
-      }
+      },
     },
     {
       id: 'report-ledger-statement',
@@ -1154,7 +1373,7 @@ function App() {
         setLedgerClientId((prev) => prev || clients[0]?.id || '')
         setDrawerOpen(false)
         setLedgerModalOpen(true)
-      }
+      },
     },
     {
       id: 'report-stock-statement',
@@ -1163,11 +1382,11 @@ function App() {
       onClick: () => {
         setDrawerOpen(false)
         setStockModalOpen(true)
-      }
-    }
-  ].filter(r => {
+      },
+    },
+  ].filter((r) => {
     if (r.id === 'report-order-specific') return true
-    return (userRole === 'admin' || isAdmin)
+    return userRole === 'admin' || isAdmin
   })
 
   // AUTH: show loading screen while Firebase resolves the auth state on startup
@@ -1175,7 +1394,9 @@ function App() {
     return (
       <div className="min-h-screen bg-[#f8f9fa] font-sans flex items-center justify-center px-4">
         <div className="text-center">
-          <h1 className="text-2xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
+          <h1 className="text-2xl font-black tracking-tighter text-[#131921]">
+            ANJANI <span className="text-[#ff9900]">WATER</span>
+          </h1>
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
@@ -1189,7 +1410,23 @@ function App() {
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] font-sans">
-      <Toaster position="top-center" toastOptions={{ style: { background: '#ffffff', color: '#131921', border: '1px solid #e5e7eb', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', borderRadius: '12px', fontWeight: '900', fontSize: '14px', padding: '16px 24px' }, success: { iconTheme: { primary: '#25D366', secondary: '#fff' } }, error: { iconTheme: { primary: '#EF4444', secondary: '#fff' } } }} />
+      <Toaster
+        position="top-center"
+        toastOptions={{
+          style: {
+            background: '#ffffff',
+            color: '#131921',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+            borderRadius: '12px',
+            fontWeight: '900',
+            fontSize: '14px',
+            padding: '16px 24px',
+          },
+          success: { iconTheme: { primary: '#25D366', secondary: '#fff' } },
+          error: { iconTheme: { primary: '#EF4444', secondary: '#fff' } },
+        }}
+      />
 
       {/* Unified Top Header (all screen sizes) */}
       <header className="sticky top-0 bg-white shadow-sm z-40 flex items-center justify-between px-4 py-3">
@@ -1202,7 +1439,9 @@ function App() {
             <Menu size={22} />
           </button>
           <div className="ml-2">
-            <h1 className="text-xl font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h1>
+            <h1 className="text-xl font-black tracking-tighter text-[#131921]">
+              ANJANI <span className="text-[#ff9900]">WATER</span>
+            </h1>
           </div>
         </div>
         {/* AUTH: user email + logout button — do not remove */}
@@ -1253,11 +1492,15 @@ function App() {
                         onClick={() => markNotificationAsRead(item.id)}
                         className={`w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${isRead ? 'bg-white' : 'bg-orange-50/40'}`}
                       >
-                        <p className="text-sm font-bold text-[#131921]">{item.title || item.message || 'Notification'}</p>
+                        <p className="text-sm font-bold text-[#131921]">
+                          {item.title || item.message || 'Notification'}
+                        </p>
                         {item.message && item.title ? (
                           <p className="mt-1 text-xs text-gray-600">{item.message}</p>
                         ) : null}
-                        <p className="mt-2 text-[11px] text-gray-400">{formatNotificationTime(item.timestamp)}</p>
+                        <p className="mt-2 text-[11px] text-gray-400">
+                          {formatNotificationTime(item.timestamp)}
+                        </p>
                       </button>
                     )
                   })
@@ -1298,27 +1541,29 @@ function App() {
                   setPaymentPrefill(null)
                   setPayClient(client)
                 }}
-                onOrder={(client) => setEditOrder({
-                  clientId: client.id,
-                  clientName: client.name || '',
-                  address: client.address || '',
-                  location: client.location || client.mapLink || '',
-                  mapLink: client.mapLink || '',
-                  locationLat: Number.isFinite(Number(client.locationLat)) ? Number(client.locationLat) : null,
-                  locationLng: Number.isFinite(Number(client.locationLng)) ? Number(client.locationLng) : null,
-                  rate: Number(client.rate) || 0
-                })}
+                onOrder={(client) =>
+                  setEditOrder({
+                    clientId: client.id,
+                    clientName: client.name || '',
+                    address: client.address || '',
+                    location: client.location || client.mapLink || '',
+                    mapLink: client.mapLink || '',
+                    locationLat: Number.isFinite(Number(client.locationLat))
+                      ? Number(client.locationLat)
+                      : null,
+                    locationLng: Number.isFinite(Number(client.locationLng))
+                      ? Number(client.locationLng)
+                      : null,
+                    rate: Number(client.rate) || 0,
+                  })
+                }
               />
               {userRole === 'admin' && <DefaulterReminderSettings />}
             </div>
           )}
           {activeTab === 'tasks' && <TasksPage />}
           {activeTab === 'intelligence' && <IntelligenceDashboard />}
-          {activeTab === 'leads' && (
-            <LeadsDashboard
-              pendingAction={null}
-            />
-          )}
+          {activeTab === 'leads' && <LeadsDashboard pendingAction={null} />}
         </div>
       </div>
 
@@ -1329,37 +1574,48 @@ function App() {
           <aside className="absolute left-0 top-0 h-full w-72 bg-white shadow-2xl flex flex-col">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <div>
-                <h2 className="text-lg font-black tracking-tighter text-[#131921]">ANJANI <span className="text-[#ff9900]">WATER</span></h2>
+                <h2 className="text-lg font-black tracking-tighter text-[#131921]">
+                  ANJANI <span className="text-[#ff9900]">WATER</span>
+                </h2>
               </div>
-              <button onClick={() => setDrawerOpen(false)} className="p-2 rounded-xl text-gray-400 hover:bg-gray-100" aria-label="Close menu">
+              <button
+                onClick={() => setDrawerOpen(false)}
+                className="p-2 rounded-xl text-gray-400 hover:bg-gray-100"
+                aria-label="Close menu"
+              >
                 <X size={18} />
               </button>
             </div>
             <nav className="flex-1 p-4 space-y-6 overflow-y-auto">
               <div className="space-y-1">
-                <p className="px-2 text-[11px] font-black tracking-[0.14em] text-gray-400 uppercase">Quick Actions</p>
-                {drawerQuickActions.map(action => (
+                <p className="px-2 text-[11px] font-black tracking-[0.14em] text-gray-400 uppercase">
+                  Quick Actions
+                </p>
+                {drawerQuickActions.map((action) => (
                   <button
                     key={action.id}
                     onClick={action.onClick}
                     className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all"
                   >
-                    <span className="text-[#ff9900]">
-                      {action.icon}
-                    </span>
+                    <span className="text-[#ff9900]">{action.icon}</span>
                     {action.label}
                   </button>
                 ))}
               </div>
               <div className="space-y-1">
-                {drawerNavItems.map(item => (
-                  <button key={`drawer-${item.id}`}
-                    onClick={() => { setActiveTab(item.id); setDrawerOpen(false); }}
+                {drawerNavItems.map((item) => (
+                  <button
+                    key={`drawer-${item.id}`}
+                    onClick={() => {
+                      setActiveTab(item.id)
+                      setDrawerOpen(false)
+                    }}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                       activeTab === item.id
                         ? 'bg-orange-50 text-[#131921] border border-orange-100'
                         : 'text-gray-500 hover:bg-gray-50'
-                    }`}>
+                    }`}
+                  >
                     <span className={activeTab === item.id ? 'text-[#ff9900]' : 'text-gray-400'}>
                       {item.icon}
                     </span>
@@ -1368,18 +1624,18 @@ function App() {
                 ))}
               </div>
               <div className="space-y-1">
-                <p className="px-2 text-[11px] font-black tracking-[0.14em] text-gray-400 uppercase">Reports (PDF)</p>
+                <p className="px-2 text-[11px] font-black tracking-[0.14em] text-gray-400 uppercase">
+                  Reports (PDF)
+                </p>
                 {drawerReports
-                  .filter(report => report.id !== 'report-stock-statement' || isAdmin)
-                  .map(report => (
+                  .filter((report) => report.id !== 'report-stock-statement' || isAdmin)
+                  .map((report) => (
                     <button
                       key={report.id}
                       onClick={report.onClick}
                       className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all"
                     >
-                      <span className="text-[#ff9900]">
-                        {report.icon}
-                      </span>
+                      <span className="text-[#ff9900]">{report.icon}</span>
                       {report.label}
                     </button>
                   ))}
@@ -1391,8 +1647,14 @@ function App() {
 
       {/* Order Modal */}
       {editOrder !== null && (
-        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setEditOrder(null)}>
-          <div className="relative bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 pt-12" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4"
+          onClick={() => setEditOrder(null)}
+        >
+          <div
+            className="relative bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 pt-12"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
               type="button"
               onClick={() => setEditOrder(null)}
@@ -1408,8 +1670,14 @@ function App() {
 
       {/* Edit Client Modal */}
       {editClient !== null && (
-        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setEditClient(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-lg p-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4"
+          onClick={() => setEditClient(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-lg p-0 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
             <AddClient client={editClient} onDone={() => setEditClient(null)} />
           </div>
         </div>
@@ -1417,8 +1685,14 @@ function App() {
 
       {/* Add Client Modal */}
       {addClientOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setAddClientOpen(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-lg p-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4"
+          onClick={() => setAddClientOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-lg p-0 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
             <AddClient onDone={() => setAddClientOpen(false)} />
           </div>
         </div>
@@ -1426,11 +1700,17 @@ function App() {
 
       {/* Payment Modal */}
       {payClient !== null && (
-        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => {
-          setPayClient(null)
-          setPaymentPrefill(null)
-        }}>
-          <div className="relative bg-white rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 pt-10 md:p-5 md:pt-10" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4"
+          onClick={() => {
+            setPayClient(null)
+            setPaymentPrefill(null)
+          }}
+        >
+          <div
+            className="relative bg-white rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 pt-10 md:p-5 md:pt-10"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
               type="button"
               onClick={() => {
@@ -1454,11 +1734,16 @@ function App() {
         </div>
       )}
 
-
       {/* Ledger Statement Modal */}
       {ledgerModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setLedgerModalOpen(false)}>
-          <div className="relative bg-white rounded-2xl w-full max-w-lg p-5" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4"
+          onClick={() => setLedgerModalOpen(false)}
+        >
+          <div
+            className="relative bg-white rounded-2xl w-full max-w-lg p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
               type="button"
               onClick={() => setLedgerModalOpen(false)}
@@ -1520,11 +1805,16 @@ function App() {
         </div>
       )}
 
-
       {/* Stock Statement Modal */}
       {stockModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setStockModalOpen(false)}>
-          <div className="relative bg-white rounded-2xl w-full max-w-lg p-5" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4"
+          onClick={() => setStockModalOpen(false)}
+        >
+          <div
+            className="relative bg-white rounded-2xl w-full max-w-lg p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
               type="button"
               onClick={() => setStockModalOpen(false)}
@@ -1535,7 +1825,9 @@ function App() {
             </button>
 
             <h3 className="text-lg font-black text-[#131921]">Stock Statement Options</h3>
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Admin Only • Max 1 Month</p>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">
+              Admin Only • Max 1 Month
+            </p>
 
             <div className="mt-4 space-y-4">
               <label className="block">
@@ -1584,7 +1876,9 @@ function App() {
             aria-label={`Open ${item.label}`}
           >
             {item.icon}
-            <span className={`text-[9px] mt-0 uppercase tracking-tight ${activeTab === item.id ? 'font-black' : 'font-bold'}`}>
+            <span
+              className={`text-[9px] mt-0 uppercase tracking-tight ${activeTab === item.id ? 'font-black' : 'font-bold'}`}
+            >
               {item.label}
             </span>
           </button>
@@ -1626,7 +1920,6 @@ function App() {
           <Plus size={24} strokeWidth={2.5} />
         </button>
       )}
-
     </div>
   )
 }

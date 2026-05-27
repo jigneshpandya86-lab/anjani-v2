@@ -1,13 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  collection,
-  query,
-  orderBy,
-  limit,
-  onSnapshot
-} from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { db, app } from '../firebase-config';
+import React, { useState, useEffect, useMemo } from 'react'
+import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore'
+import { getFunctions, httpsCallable } from 'firebase/functions'
+import { db, app } from '../firebase-config'
 import {
   Brain,
   TrendingUp,
@@ -19,77 +13,80 @@ import {
   CreditCard,
   Target,
   BarChart3,
-  X
-} from 'lucide-react';
-import toast from 'react-hot-toast';
+  X,
+} from 'lucide-react'
+import toast from 'react-hot-toast'
 
 const IntelligenceDashboard = () => {
-  const [report, setReport] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [dateRange, setDateRange] = useState('month'); // today, week, month
-  const [selectedDetail, setSelectedDetail] = useState(null); // 'revenue', 'orders', 'outstanding', null
+  const [report, setReport] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [dateRange, setDateRange] = useState('month') // today, week, month
+  const [selectedDetail, setSelectedDetail] = useState(null) // 'revenue', 'orders', 'outstanding', null
 
   const runAnalysis = async (silent = false) => {
-    if (refreshing) return;
-    setRefreshing(true);
-    let toastId;
-    if (!silent) toastId = toast.loading('Python engine is crunching numbers...');
+    if (refreshing) return
+    setRefreshing(true)
+    let toastId
+    if (!silent) toastId = toast.loading('Python engine is crunching numbers...')
 
     try {
-      const functions = getFunctions(app, 'asia-south1');
-      const analyze = httpsCallable(functions, 'run_intelligence_analysis');
-      const result = await analyze();
+      const functions = getFunctions(app, 'asia-south1')
+      const analyze = httpsCallable(functions, 'run_intelligence_analysis')
+      const result = await analyze()
 
       if (result.data?.status === 'success') {
-        if (!silent) toast.success('Mission Control updated!', { id: toastId });
+        if (!silent) toast.success('Mission Control updated!', { id: toastId })
       } else {
-        if (!silent) toast.error(result.data?.message || 'Analysis failed', { id: toastId });
+        if (!silent) toast.error(result.data?.message || 'Analysis failed', { id: toastId })
       }
     } catch (error) {
-      console.error('Error running analysis:', error);
-      if (!silent) toast.error('Intelligence engine offline: ' + error.message, { id: toastId });
+      console.error('Error running analysis:', error)
+      if (!silent) toast.error('Intelligence engine offline: ' + error.message, { id: toastId })
     } finally {
-      setRefreshing(false);
+      setRefreshing(false)
     }
-  };
+  }
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'intelligence_reports'),
-      orderBy('timestamp', 'desc'),
-      limit(1)
-    );
+    const q = query(collection(db, 'intelligence_reports'), orderBy('timestamp', 'desc'), limit(1))
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        setReport(snapshot.docs[0].data());
-      }
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching intelligence report:", error);
-      setLoading(false);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          setReport(snapshot.docs[0].data())
+        }
+        setLoading(false)
+      },
+      (error) => {
+        console.error('Error fetching intelligence report:', error)
+        setLoading(false)
+      },
+    )
 
-    return () => unsubscribe();
-  }, []);
+    return () => unsubscribe()
+  }, [])
 
   // Auto-run if no report exists
   useEffect(() => {
     if (!loading && !report && !refreshing) {
-      runAnalysis(true);
+      runAnalysis(true)
     }
-  }, [loading, report]);
+  }, [loading, report])
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
       maximumFractionDigits: 0,
-    }).format(value);
-  };
+    }).format(value)
+  }
 
-  const sales = useMemo(() => report?.sales?.[dateRange] || { revenue: 0, count: 0 }, [report, dateRange]);
+  const sales = useMemo(
+    () => report?.sales?.[dateRange] || { revenue: 0, count: 0 },
+    [report, dateRange],
+  )
 
   if (loading) {
     return (
@@ -97,7 +94,7 @@ const IntelligenceDashboard = () => {
         <RefreshCw className="animate-spin text-blue-500 mb-4" size={48} />
         <p className="text-gray-500 font-medium">Powering up Python Intelligence...</p>
       </div>
-    );
+    )
   }
 
   return (
@@ -124,7 +121,9 @@ const IntelligenceDashboard = () => {
 
         <div className="relative mt-2 flex items-end justify-between gap-2">
           <div>
-            <p className="truncate text-3xl font-black leading-none">{formatCurrency(sales.revenue)}</p>
+            <p className="truncate text-3xl font-black leading-none">
+              {formatCurrency(sales.revenue)}
+            </p>
             <p className="text-white/70 text-[10px] font-bold mt-1 uppercase tracking-wide">
               {sales.count} Delivered · {report?.sales?.pending || 0} Pending
             </p>
@@ -158,10 +157,14 @@ const IntelligenceDashboard = () => {
             <div className="p-1 bg-emerald-100 rounded-lg text-emerald-600">
               <TrendingUp size={13} />
             </div>
-            <span className="text-[9px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full uppercase tracking-tighter">Live</span>
+            <span className="text-[9px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full uppercase tracking-tighter">
+              Live
+            </span>
           </div>
           <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Revenue</p>
-          <h2 className="text-base font-black text-emerald-700 mt-0.5">{formatCurrency(sales.revenue)}</h2>
+          <h2 className="text-base font-black text-emerald-700 mt-0.5">
+            {formatCurrency(sales.revenue)}
+          </h2>
           <div className="flex items-center justify-between mt-1">
             <p className="text-[10px] text-gray-500 font-bold">{sales.count} Delivered</p>
             <ChevronRight size={11} className="text-emerald-400" />
@@ -178,10 +181,14 @@ const IntelligenceDashboard = () => {
               <ShoppingCart size={13} />
             </div>
           </div>
-          <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Total Orders</p>
+          <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">
+            Total Orders
+          </p>
           <h2 className="text-base font-black text-gray-800 mt-0.5">{sales.count}</h2>
           <div className="flex items-center justify-between mt-1">
-            <p className="text-[10px] text-blue-600 font-bold">{report?.sales?.pending || 0} Pending</p>
+            <p className="text-[10px] text-blue-600 font-bold">
+              {report?.sales?.pending || 0} Pending
+            </p>
             <ChevronRight size={11} className="text-gray-300" />
           </div>
         </button>
@@ -196,10 +203,16 @@ const IntelligenceDashboard = () => {
               <CreditCard size={13} />
             </div>
           </div>
-          <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Outstanding</p>
-          <h2 className="text-base font-black text-gray-800 mt-0.5">{formatCurrency(report?.totalOutstanding || 0)}</h2>
+          <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">
+            Outstanding
+          </p>
+          <h2 className="text-base font-black text-gray-800 mt-0.5">
+            {formatCurrency(report?.totalOutstanding || 0)}
+          </h2>
           <div className="flex items-center justify-between mt-1">
-            <p className="text-[10px] text-red-500 font-bold tracking-tight uppercase">Collections</p>
+            <p className="text-[10px] text-red-500 font-bold tracking-tight uppercase">
+              Collections
+            </p>
             <ChevronRight size={11} className="text-gray-300" />
           </div>
         </button>
@@ -210,10 +223,16 @@ const IntelligenceDashboard = () => {
             <div className="p-1 bg-blue-100 rounded-lg text-blue-600">
               <Target size={13} />
             </div>
-            <span className="text-[9px] font-black text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full uppercase tracking-tighter italic">Prediction</span>
+            <span className="text-[9px] font-black text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full uppercase tracking-tighter italic">
+              Prediction
+            </span>
           </div>
-          <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">7-Day Forecast</p>
-          <h2 className="text-base font-black text-blue-700 mt-0.5">{formatCurrency(report?.forecast?.next7DaysEstimate || (sales.revenue * 1.1))}</h2>
+          <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">
+            7-Day Forecast
+          </p>
+          <h2 className="text-base font-black text-blue-700 mt-0.5">
+            {formatCurrency(report?.forecast?.next7DaysEstimate || sales.revenue * 1.1)}
+          </h2>
         </div>
       </div>
 
@@ -228,8 +247,8 @@ const IntelligenceDashboard = () => {
             </h3>
             <div className="space-y-4">
               {report?.topCustomers?.map((customer, idx) => {
-                const max = report.topCustomers[0].revenue;
-                const width = (customer.revenue / max) * 100;
+                const max = report.topCustomers[0].revenue
+                const width = (customer.revenue / max) * 100
                 return (
                   <div key={idx} className="space-y-1.5">
                     <div className="flex justify-between text-[9px] font-bold">
@@ -243,7 +262,7 @@ const IntelligenceDashboard = () => {
                       />
                     </div>
                   </div>
-                );
+                )
               })}
               {(!report?.topCustomers || report.topCustomers.length === 0) && (
                 <p className="text-center text-gray-400 text-xs italic py-6">No customer data</p>
@@ -252,10 +271,14 @@ const IntelligenceDashboard = () => {
           </div>
 
           <div className="bg-blue-50 rounded-3xl p-4 border border-blue-100">
-            <h4 className="text-[8px] font-black text-blue-600 uppercase tracking-[0.2em] mb-3">Pulse Check</h4>
+            <h4 className="text-[8px] font-black text-blue-600 uppercase tracking-[0.2em] mb-3">
+              Pulse Check
+            </h4>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-xl font-black text-gray-900">{report?.summary?.champions || 0}</p>
+                <p className="text-xl font-black text-gray-900">
+                  {report?.summary?.champions || 0}
+                </p>
                 <p className="text-[8px] font-bold text-gray-500 uppercase">Champions</p>
               </div>
               <div>
@@ -281,7 +304,10 @@ const IntelligenceDashboard = () => {
             <div className="divide-y divide-gray-50 max-h-[300px] overflow-y-auto">
               {report?.refillAlerts && report.refillAlerts.length > 0 ? (
                 report.refillAlerts.map((alert, idx) => (
-                  <div key={idx} className="p-3 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                  <div
+                    key={idx}
+                    className="p-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                  >
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-1.5">
                         <p className="font-black text-gray-900 text-xs">{alert.name}</p>
@@ -303,7 +329,10 @@ const IntelligenceDashboard = () => {
                             : 'bg-white border border-gray-200 text-blue-600 hover:bg-gray-50'
                         }`}
                       >
-                        <Phone size={14} fill={alert.urgency === 'High' ? 'currentColor' : 'none'} />
+                        <Phone
+                          size={14}
+                          fill={alert.urgency === 'High' ? 'currentColor' : 'none'}
+                        />
                       </button>
                     </div>
                   </div>
@@ -344,7 +373,9 @@ const IntelligenceDashboard = () => {
                 {selectedDetail === 'outstanding' && <CreditCard className="mr-2 text-red-500" />}
                 {selectedDetail === 'revenue'
                   ? `${dateRange === 'today' ? "Today's" : dateRange === 'week' ? "This Week's" : "This Month's"} Revenue`
-                  : selectedDetail === 'orders' ? `Pending Orders` : `Top Outstanding Dues`}
+                  : selectedDetail === 'orders'
+                    ? `Pending Orders`
+                    : `Top Outstanding Dues`}
               </h3>
               <button
                 onClick={() => setSelectedDetail(null)}
@@ -363,45 +394,62 @@ const IntelligenceDashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {selectedDetail === 'revenue' && report?.drillDown?.todayDelivered?.map((order, i) => (
-                    <tr key={i} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-4">
-                        <p className="text-sm font-black text-gray-900">{order.clientName}</p>
-                        <p className="text-[10px] text-gray-500 font-bold uppercase">{order.qty} Boxes @ ₹{order.rate}</p>
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <p className="text-sm font-black text-green-600">{formatCurrency(order.amount)}</p>
-                        <p className="text-[10px] text-gray-400 font-bold">{order.date}</p>
-                      </td>
-                    </tr>
-                  ))}
+                  {selectedDetail === 'revenue' &&
+                    report?.drillDown?.todayDelivered?.map((order, i) => (
+                      <tr key={i} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-4">
+                          <p className="text-sm font-black text-gray-900">{order.clientName}</p>
+                          <p className="text-[10px] text-gray-500 font-bold uppercase">
+                            {order.qty} Boxes @ ₹{order.rate}
+                          </p>
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          <p className="text-sm font-black text-green-600">
+                            {formatCurrency(order.amount)}
+                          </p>
+                          <p className="text-[10px] text-gray-400 font-bold">{order.date}</p>
+                        </td>
+                      </tr>
+                    ))}
 
-                  {selectedDetail === 'orders' && report?.drillDown?.pending?.map((order, i) => (
-                    <tr key={i} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-4">
-                        <p className="text-sm font-black text-gray-900">{order.clientName || 'Unknown'}</p>
-                        <p className="text-[10px] text-gray-500 font-bold uppercase">{order.qty} Boxes | {order.date}</p>
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <span className="px-2.5 py-1 bg-blue-50 text-blue-600 text-[10px] font-black rounded-lg uppercase tracking-tighter">
-                          {order.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {selectedDetail === 'orders' &&
+                    report?.drillDown?.pending?.map((order, i) => (
+                      <tr key={i} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-4">
+                          <p className="text-sm font-black text-gray-900">
+                            {order.clientName || 'Unknown'}
+                          </p>
+                          <p className="text-[10px] text-gray-500 font-bold uppercase">
+                            {order.qty} Boxes | {order.date}
+                          </p>
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          <span className="px-2.5 py-1 bg-blue-50 text-blue-600 text-[10px] font-black rounded-lg uppercase tracking-tighter">
+                            {order.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
 
-                  {selectedDetail === 'outstanding' && report?.drillDown?.outstanding?.map((client, i) => (
-                    <tr key={i} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-4">
-                        <p className="text-sm font-black text-gray-900">{client.name}</p>
-                        <p className="text-[10px] text-gray-400 font-bold">{client.mobile || 'No mobile'}</p>
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <p className="text-sm font-black text-red-600">{formatCurrency(client.outstanding)}</p>
-                        <button className="mt-1 text-[9px] font-black text-blue-600 uppercase">Call Client</button>
-                      </td>
-                    </tr>
-                  ))}
+                  {selectedDetail === 'outstanding' &&
+                    report?.drillDown?.outstanding?.map((client, i) => (
+                      <tr key={i} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-4">
+                          <p className="text-sm font-black text-gray-900">{client.name}</p>
+                          <p className="text-[10px] text-gray-400 font-bold">
+                            {client.mobile || 'No mobile'}
+                          </p>
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          <p className="text-sm font-black text-red-600">
+                            {formatCurrency(client.outstanding)}
+                          </p>
+                          <button className="mt-1 text-[9px] font-black text-blue-600 uppercase">
+                            Call Client
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
 
@@ -412,7 +460,9 @@ const IntelligenceDashboard = () => {
                   <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto">
                     <ShoppingCart className="text-gray-300" size={24} />
                   </div>
-                  <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">No data for this view</p>
+                  <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">
+                    No data for this view
+                  </p>
                 </div>
               )}
             </div>
@@ -430,10 +480,11 @@ const IntelligenceDashboard = () => {
       )}
 
       <div className="text-center text-[10px] text-gray-400 font-bold uppercase tracking-widest pb-4">
-        Report Generated: {report?.timestamp?.toDate ? report.timestamp.toDate().toLocaleString('en-IN') : 'Just now'}
+        Report Generated:{' '}
+        {report?.timestamp?.toDate ? report.timestamp.toDate().toLocaleString('en-IN') : 'Just now'}
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default IntelligenceDashboard;
+export default IntelligenceDashboard
