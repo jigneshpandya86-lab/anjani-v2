@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useClientStore } from '../store/clientStore';
 import toast from 'react-hot-toast';
-import { Plus, History, Tag, ArrowUpRight, ArrowDownLeft, X, Trash2, RefreshCw } from 'lucide-react';
+import { Plus, History, Tag, ArrowUpRight, ArrowDownLeft, X, Trash2, RefreshCw, FileText } from 'lucide-react';
 
-export default function StockDashboard() {
+export default function StockDashboard({ onOpenReport }) {
   const { stockEntries, stockTotal, addStockManual, deleteStockEntry, fetchStock, recalculateStockTotal, loading } = useClientStore();
   const [showAdd, setShowAdd] = useState(false);
   const [qty, setQty] = useState('');
@@ -162,6 +162,13 @@ export default function StockDashboard() {
               title="Recalculate Total from Ledger"
             >
               <RefreshCw size={12} className="text-white/70" />
+            </button>
+            <button
+              onClick={onOpenReport}
+              className="p-1 rounded-full bg-white/10 hover:bg-white/20 transition-all ml-1"
+              title="Generate Stock Statement Report"
+            >
+              <FileText size={12} className="text-white/70" />
             </button>
           </div>
           {(startDate || endDate) && (
