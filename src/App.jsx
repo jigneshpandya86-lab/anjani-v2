@@ -1157,7 +1157,10 @@ function App() {
         setStockModalOpen(true)
       }
     }
-  ]
+  ].filter(r => {
+    if (r.id === 'report-order-specific') return true
+    return (userRole === 'admin' || isAdmin)
+  })
 
   // AUTH: show loading screen while Firebase resolves the auth state on startup
   if (authLoading) {
@@ -1277,7 +1280,7 @@ function App() {
               onShareInvoice={handleOrderInvoiceWhatsApp}
             />
           )}
-          {activeTab === 'stock' && <StockDashboard />}
+          {activeTab === 'stock' && <StockDashboard onOpenReport={() => setStockModalOpen(true)} />}
           {activeTab === 'payments' && <PaymentDashboard />}
           {activeTab === 'clients' && (
             <div className="space-y-6">
