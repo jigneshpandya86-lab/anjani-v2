@@ -21,7 +21,7 @@ import {
   CheckCheck,
   Brain
 } from 'lucide-react'
-import { collection, getDocs, query, orderBy, where, limit, startAfter } from 'firebase/firestore'
+import { collection, getDocs, query, orderBy, where, limit, startAfter, getAggregateFromServer, sum } from 'firebase/firestore'
 import { db, auth } from './firebase-config'
 import { signOut, onAuthStateChanged } from 'firebase/auth'
 import ClientList from './components/ClientList'
@@ -55,6 +55,8 @@ function App() {
   const [notifications, setNotifications] = useState([])
   const [notificationReadMap, setNotificationReadMap] = useState({})
   const notificationPanelRef = useRef(null)
+  const [stockModalOpen, setStockModalOpen] = useState(false)
+  const [stockStatementMonth, setStockStatementMonth] = useState(new Date().toISOString().slice(0, 7))
   // ─────────────────────────────────────────
   // AUTH — DO NOT MODIFY WITHOUT TEAM REVIEW
   // ─────────────────────────────────────────
@@ -282,6 +284,9 @@ function App() {
     }
   }
 
+  // AUTH: simple admin check — placeholder for proper role system
+  const isAdmin = user?.email?.toLowerCase().includes('admin') || user?.email?.toLowerCase().includes('owner')
+
   const navItems = [
     { id: 'orders', label: 'Orders', icon: <ShoppingCart size={20} /> },
     { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
@@ -437,6 +442,102 @@ function App() {
   }
 
   const isMobileOrNative = Boolean(window?.Capacitor?.isNativePlatform?.()) || /Android|iPhone|iPad/i.test(navigator.userAgent)
+
+  const buildTabularReportPdf = ({ title, columns, rows, metadata = [], filename = 'report.pdf' }) => {
+    const san = (t) => String(t ?? '').replace(/₹/g, 'Rs.').replace(/[^\x20-\x7E]/g, '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)').slice(0, 60)
+    const txt = (x, y, size, t) => `BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${san(t)}) Tj ET`
+    const pW = 595, pH = 842, mg = 36, usableW = pW - mg * 2
+    const colW = usableW / Math.max(columns.length, 1)
+    const rH = 18
+
+    // Build content stream for a single page
+    const buildPageStream = (pageRows, isFirstPage) => {
+      const lines = []
+      let y = pH - mg - 20
+
+      if (isFirstPage) {
+        lines.push(txt(mg, y, 14, title))
+        y -= 20
+        lines.push('0.5 0.5 0.5 rg')
+        lines.push(txt(mg, y, 8, `Generated: ${new Date().toLocaleString('en-IN').replace(/[^\x20-\x7E]/g, '')}`))
+        lines.push('0 0 0 rg')
+        y -= 14
+        for (const m of metadata.filter(Boolean)) {
+          lines.push('0.5 0.5 0.5 rg')
+          lines.push(txt(mg, y, 8, m))
+          lines.push('0 0 0 rg')
+          y -= 12
+        }
+        y -= 6
+      }
+
+      // Column header bar
+      lines.push('0.2 0.2 0.2 rg')
+      lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
+      lines.push('1 1 1 rg')
+      columns.forEach((col, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, col)))
+      lines.push('0 0 0 rg')
+      y -= rH
+
+      pageRows.forEach((row, ri) => {
+        if (ri % 2 === 0) {
+          lines.push('0.95 0.95 0.95 rg')
+          lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
+          lines.push('0 0 0 rg')
+        }
+        row.forEach((cell, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, cell)))
+        y -= rH
+      })
+
+      return lines.join('\n')
+    }
+
+    // Calculate how many rows fit on the first page (title + metadata take space)
+    const metaCount = metadata.filter(Boolean).length
+    const firstPageRowStartY = pH - mg - 20 - 20 - 14 - metaCount * 12 - 6 - rH
+    const rowsOnFirstPage = Math.max(1, Math.floor((firstPageRowStartY - (mg + rH)) / rH))
+
+    const subseqRowStartY = pH - mg - 20 - rH
+    const rowsPerSubsequentPage = Math.max(1, Math.floor((subseqRowStartY - (mg + rH)) / rH))
+
+    const pages = []
+    pages.push(rows.slice(0, rowsOnFirstPage))
+    let offset = rowsOnFirstPage
+    while (offset < rows.length) {
+      pages.push(rows.slice(offset, offset + rowsPerSubsequentPage))
+      offset += rowsPerSubsequentPage
+    }
+
+    const streams = pages.map((pageRows, i) => buildPageStream(pageRows, i === 0))
+
+    const fontObjNum = 3 + pages.length * 2
+    const pageKids = pages.map((_, i) => `${3 + i * 2} 0 R`).join(' ')
+
+    const objs = [
+      '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
+      `2 0 obj << /Type /Pages /Count ${pages.length} /Kids [${pageKids}] >> endobj`,
+    ]
+    pages.forEach((_, i) => {
+      objs.push(`${3 + i * 2} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents ${4 + i * 2} 0 R /Resources << /Font << /F1 ${fontObjNum} 0 R >> >> >> endobj`)
+      objs.push(`${4 + i * 2} 0 obj << /Length ${streams[i].length} >> stream\n${streams[i]}\nendstream endobj`)
+    })
+    objs.push(`${fontObjNum} 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj`)
+
+    let pdf = '%PDF-1.4\n'
+    const offsets = [0]
+    objs.forEach((obj) => {
+      offsets.push(pdf.length)
+      pdf += `${obj}\n`
+    })
+    const xrefStart = pdf.length
+    pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`
+    for (let i = 1; i <= objs.length; i += 1) {
+      pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`
+    }
+    pdf += `trailer << /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`
+
+    return createPdfFile(pdf, filename)
+  }
 
   const buildSimpleInvoicePdfFile = ({ order, clientName, mobile }) => {
     const qty = Number(order.qty) || 0
@@ -901,6 +1002,85 @@ function App() {
     }
   }
 
+  const handleStockStatementPdf = async () => {
+    try {
+      const selectedMonthStr = stockStatementMonth
+      if (!selectedMonthStr) {
+        toast.error('Please select a month.')
+        return
+      }
+
+      const [year, month] = selectedMonthStr.split('-').map(Number)
+      const startDate = new Date(year, month - 1, 1)
+      const endDate = new Date(year, month, 0, 23, 59, 59, 999)
+
+      // 1. Fetch opening balance (Sum of all qty before startDate)
+      // Efficiency: use getAggregateFromServer to minimize data read
+      const openingQuery = query(collection(db, 'stock'), where('date', '<', startDate))
+      const openingSnap = await getAggregateFromServer(openingQuery, {
+        total: sum('qty')
+      })
+      let runningBalance = Number(openingSnap.data().total) || 0
+      const openingBalance = runningBalance
+
+      // 2. Fetch transactions for the month
+      const transQuery = query(
+        collection(db, 'stock'),
+        where('date', '>=', startDate),
+        where('date', '<=', endDate),
+        orderBy('date', 'asc')
+      )
+      const transSnap = await getDocs(transQuery)
+      
+      const rows = []
+      // Opening Balance Row
+      rows.push(['-', 'OPENING BALANCE', '-', '-', openingBalance.toLocaleString('en-IN')])
+
+      transSnap.forEach((doc) => {
+        const data = doc.data()
+        const qty = Number(data.qty) || 0
+        const debit = qty < 0 ? Math.abs(qty).toLocaleString('en-IN') : '-'
+        const credit = qty > 0 ? qty.toLocaleString('en-IN') : '-'
+        runningBalance += qty
+        
+        let dateDisplay = '-'
+        if (data.date?.toDate) {
+          dateDisplay = data.date.toDate().toLocaleDateString('en-IN')
+        } else if (typeof data.date === 'string') {
+          dateDisplay = data.date
+        } else if (data.createdAt?.toDate) {
+          dateDisplay = data.createdAt.toDate().toLocaleDateString('en-IN')
+        }
+        
+        rows.push([
+          dateDisplay,
+          data.narration || data.note || '-',
+          debit,
+          credit,
+          runningBalance.toLocaleString('en-IN')
+        ])
+      })
+
+      // Closing Balance Row
+      rows.push(['-', 'CLOSING BALANCE', '-', '-', runningBalance.toLocaleString('en-IN')])
+
+      const columns = ['Date', 'Description', 'Debit', 'Credit', 'Balance']
+      const metadata = [`Period: ${startDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}`]
+
+      if (isMobileOrNative) {
+        const file = buildTabularReportPdf({ title: 'Stock Statement', columns, rows, metadata, filename: `stock_statement_${selectedMonthStr}.pdf` })
+        await shareOrDownloadPdf(file, 'Stock Statement')
+      } else {
+        openReportWindow({ title: 'Stock Statement Report (PDF)', columns, rows, metadata })
+      }
+
+      setStockModalOpen(false)
+    } catch (error) {
+      toast.error('Unable to generate stock statement.')
+      console.error(error)
+    }
+  }
+
   const handleOrderSpecificPrintPdf = async () => {
     if (orders.length === 0) {
       toast.error('No orders available for report.')
@@ -966,6 +1146,15 @@ function App() {
         setLedgerClientId((prev) => prev || clients[0]?.id || '')
         setDrawerOpen(false)
         setLedgerModalOpen(true)
+      }
+    },
+    {
+      id: 'report-stock-statement',
+      label: 'Stock Statement (PDF)',
+      icon: <Package size={18} />,
+      onClick: () => {
+        setDrawerOpen(false)
+        setStockModalOpen(true)
       }
     }
   ].filter(() => userRole === 'admin')
@@ -1169,18 +1358,20 @@ function App() {
               </div>
               <div className="space-y-1">
                 <p className="px-2 text-[11px] font-black tracking-[0.14em] text-gray-400 uppercase">Reports (PDF)</p>
-                {drawerReports.map(report => (
-                  <button
-                    key={report.id}
-                    onClick={report.onClick}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all"
-                  >
-                    <span className="text-[#ff9900]">
-                      {report.icon}
-                    </span>
-                    {report.label}
-                  </button>
-                ))}
+                {drawerReports
+                  .filter(report => report.id !== 'report-stock-statement' || isAdmin)
+                  .map(report => (
+                    <button
+                      key={report.id}
+                      onClick={report.onClick}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all"
+                    >
+                      <span className="text-[#ff9900]">
+                        {report.icon}
+                      </span>
+                      {report.label}
+                    </button>
+                  ))}
               </div>
             </nav>
           </aside>
@@ -1310,6 +1501,56 @@ function App() {
                 type="button"
                 onClick={handleLedgerStatementPdf}
                 className="rounded-xl bg-[#2563eb] px-4 py-2 text-sm font-bold text-white hover:bg-[#1d4ed8]"
+              >
+                Generate PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* Stock Statement Modal */}
+      {stockModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4" onClick={() => setStockModalOpen(false)}>
+          <div className="relative bg-white rounded-2xl w-full max-w-lg p-5" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setStockModalOpen(false)}
+              className="absolute top-3 right-3 p-2 rounded-lg text-gray-500 bg-gray-100 hover:bg-gray-200"
+              aria-label="Close stock statement options"
+            >
+              <X size={18} />
+            </button>
+
+            <h3 className="text-lg font-black text-[#131921]">Stock Statement Options</h3>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Admin Only • Max 1 Month</p>
+
+            <div className="mt-4 space-y-4">
+              <label className="block">
+                <span className="text-sm font-bold text-gray-700">Select Month</span>
+                <input
+                  type="month"
+                  value={stockStatementMonth}
+                  onChange={(e) => setStockStatementMonth(e.target.value)}
+                  max={new Date().toISOString().slice(0, 7)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setStockModalOpen(false)}
+                className="rounded-xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleStockStatementPdf}
+                className="rounded-xl bg-[#ff9900] px-4 py-2 text-sm font-bold text-white hover:bg-orange-600"
               >
                 Generate PDF
               </button>
