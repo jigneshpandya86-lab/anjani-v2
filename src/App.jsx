@@ -1157,7 +1157,7 @@ function App() {
         setStockModalOpen(true)
       }
     }
-  ].filter(() => userRole === 'admin')
+  ]
 
   // AUTH: show loading screen while Firebase resolves the auth state on startup
   if (authLoading) {
