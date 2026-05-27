@@ -29,8 +29,6 @@ import {
   where,
   limit,
   startAfter,
-  getAggregateFromServer,
-  sum,
 } from 'firebase/firestore'
 import { db, auth } from './firebase-config'
 import { signOut, onAuthStateChanged } from 'firebase/auth'
@@ -381,6 +379,7 @@ function App() {
     rows,
     metadata = [],
     reportWindow: providedReportWindow = null,
+    styles = '', // Optional: extra CSS
   }) => {
     const reportWindow = providedReportWindow || window.open('', '_blank', 'width=900,height=700')
     if (!reportWindow) {
@@ -409,6 +408,7 @@ function App() {
             table { width: 100%; border-collapse: collapse; font-size: 13px; }
             th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; }
             th { background: #f3f4f6; font-weight: 700; }
+            ${styles}
           </style>
         </head>
         <body>
@@ -493,6 +493,7 @@ function App() {
     rows,
     metadata = [],
     filename = 'report.pdf',
+    columnWidths = null, // Optional: array of percentages/fractions
   }) => {
     const san = (t) =>
       String(t ?? '')
@@ -507,7 +508,21 @@ function App() {
       pH = 842,
       mg = 36,
       usableW = pW - mg * 2
-    const colW = usableW / Math.max(columns.length, 1)
+
+    // If columnWidths is provided, use it; otherwise, default to even distribution.
+    const calculatedWidths =
+      columnWidths && columnWidths.length === columns.length
+        ? columnWidths.map((w) => w * usableW)
+        : columns.map(() => usableW / Math.max(columns.length, 1))
+
+    const getColX = (index) => {
+      let x = mg
+      for (let i = 0; i < index; i++) {
+        x += calculatedWidths[i]
+      }
+      return x
+    }
+
     const rH = 18
 
     // Build content stream for a single page
@@ -542,7 +557,7 @@ function App() {
       lines.push('0.2 0.2 0.2 rg')
       lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
       lines.push('1 1 1 rg')
-      columns.forEach((col, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, col)))
+      columns.forEach((col, i) => lines.push(txt(getColX(i) + 4, y + 4, 7, col)))
       lines.push('0 0 0 rg')
       y -= rH
 
@@ -552,7 +567,7 @@ function App() {
           lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
           lines.push('0 0 0 rg')
         }
-        row.forEach((cell, i) => lines.push(txt(mg + i * colW + 4, y + 4, 7, cell)))
+        row.forEach((cell, i) => lines.push(txt(getColX(i) + 4, y + 4, 7, cell)))
         y -= rH
       })
 
@@ -1212,47 +1227,76 @@ function App() {
       const startDate = new Date(year, month - 1, 1)
       const endDate = new Date(year, month, 0, 23, 59, 59, 999)
 
-      // 1. Fetch opening balance (Sum of all qty before startDate)
-      console.log(`[StockReport] Fetching opening balance before ${startDate.toISOString()}`)
-      const openingQuery = query(collection(db, 'stock'), where('date', '<', startDate))
-      const openingSnap = await getAggregateFromServer(openingQuery, {
-        total: sum('qty'),
+      const getTime = (value) => {
+        if (!value) return 0
+        if (value?.toMillis) return value.toMillis()
+        if (value?.seconds) return value.seconds * 1000
+        if (value instanceof Date) return value.getTime()
+        if (typeof value === 'string') {
+          const ddmmyyyy = value.match(/^(\d{2})-(\d{2})-(\d{4})$/)
+          if (ddmmyyyy) {
+            const [, dd, mm, yyyy] = ddmmyyyy
+            return new Date(`${yyyy}-${mm}-${dd}T00:00:00`).getTime()
+          }
+          return new Date(value).getTime()
+        }
+        return 0
+      }
+
+      const getQty = (raw) => {
+        const hasLegacyProducedDelivered =
+          raw.produced !== undefined || raw.delivered !== undefined
+        if (hasLegacyProducedDelivered && raw.qty === undefined) {
+          return (Number(raw.produced) || 0) - (Number(raw.delivered) || 0)
+        }
+        return Number(raw.qty || raw.boxes || raw.quantity) || 0
+      }
+
+      // 1. Fetch ALL stock docs to ensure accuracy (handling legacy fields and various date formats)
+      // If performance becomes an issue, we can optimize by storing monthly snapshots.
+      console.log(`[StockReport] Fetching all stock entries for accurate calculation...`)
+      const allSnap = await getDocs(collection(db, 'stock'))
+      const allEntries = allSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+
+      let openingBalance = 0
+      const monthlyTxns = []
+
+      const startMs = startDate.getTime()
+      const endMs = endDate.getTime()
+
+      allEntries.forEach((entry) => {
+        const entryTime = getTime(entry.date || entry.createdAt)
+        const qty = getQty(entry)
+
+        if (entryTime < startMs) {
+          openingBalance += qty
+        } else if (entryTime >= startMs && entryTime <= endMs) {
+          monthlyTxns.push({ ...entry, _time: entryTime, _qty: qty })
+        }
       })
-      let runningBalance = Number(openingSnap.data().total) || 0
-      const openingBalance = runningBalance
-      console.log(`[StockReport] Opening balance: ${openingBalance}`)
 
-      // 2. Fetch transactions for the month
-      console.log(
-        `[StockReport] Fetching transactions from ${startDate.toISOString()} to ${endDate.toISOString()}`,
-      )
-      const transQuery = query(
-        collection(db, 'stock'),
-        where('date', '>=', startDate),
-        where('date', '<=', endDate),
-        orderBy('date', 'asc'),
-      )
-      const transSnap = await getDocs(transQuery)
-      console.log(`[StockReport] Found ${transSnap.size} transactions.`)
+      // Sort monthly transactions by date
+      monthlyTxns.sort((a, b) => a._time - b._time)
 
+      let runningBalance = openingBalance
       const rows = []
       // Opening Balance Row
       rows.push(['-', 'OPENING BALANCE', '-', '-', openingBalance.toLocaleString('en-IN')])
 
-      transSnap.forEach((doc) => {
-        const data = doc.data()
-        const qty = Number(data.qty) || 0
+      monthlyTxns.forEach((data) => {
+        const qty = data._qty
         const debit = qty < 0 ? Math.abs(qty).toLocaleString('en-IN') : '-'
         const credit = qty > 0 ? qty.toLocaleString('en-IN') : '-'
         runningBalance += qty
 
         let dateDisplay = '-'
-        if (data.date?.toDate) {
-          dateDisplay = data.date.toDate().toLocaleDateString('en-IN')
-        } else if (typeof data.date === 'string') {
-          dateDisplay = data.date
-        } else if (data.createdAt?.toDate) {
-          dateDisplay = data.createdAt.toDate().toLocaleDateString('en-IN')
+        const d = data.date || data.createdAt
+        if (d?.toDate) {
+          dateDisplay = d.toDate().toLocaleDateString('en-IN')
+        } else if (typeof d === 'string') {
+          dateDisplay = d
+        } else if (d instanceof Date) {
+          dateDisplay = d.toLocaleDateString('en-IN')
         }
 
         rows.push([
@@ -1268,6 +1312,7 @@ function App() {
       rows.push(['-', 'CLOSING BALANCE', '-', '-', runningBalance.toLocaleString('en-IN')])
 
       const columns = ['Date', 'Description', 'Debit', 'Credit', 'Balance']
+      const columnWidths = [0.18, 0.42, 0.12, 0.12, 0.16] // Better distribution for Description
       const metadata = [
         `Period: ${startDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}`,
       ]
@@ -1278,11 +1323,19 @@ function App() {
           columns,
           rows,
           metadata,
+          columnWidths,
           filename: `stock_statement_${selectedMonthStr}.pdf`,
         })
         await shareOrDownloadPdf(file, 'Stock Statement')
       } else {
-        openReportWindow({ title: 'Stock Statement Report (PDF)', columns, rows, metadata })
+        // For web, we inject styles to handle widths
+        openReportWindow({
+          title: 'Stock Statement Report (PDF)',
+          columns,
+          rows,
+          metadata,
+          styles: 'table td:nth-child(2) { width: 42%; } table td:nth-child(3), table td:nth-child(4) { width: 12%; text-align: center; }',
+        })
       }
 
       setStockModalOpen(false)
