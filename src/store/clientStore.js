@@ -443,29 +443,40 @@ export const useClientStore = create((set, get) => ({
   fetchOrders: () => {
     const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(50))
     return onSnapshot(q, (snapshot) => {
-      const normalize = (raw) => ({
-        ...raw,
-        qty: Number(raw.qty || raw.boxes || raw.quantity) || 0,
-        rate: Number(raw.rate) || 0,
-        date: raw.date || raw.deliveryDate || raw.orderDate || '',
-        time: raw.time || raw.deliveryTime || '',
-        clientId: raw.clientId || raw.customerId || '',
-        address: raw.address || raw.deliveryAddress || raw.location || '',
-        location:
-          raw.location ||
-          raw.googleLocation ||
-          raw.locationName ||
-          raw.mapLink ||
-          raw.googleMap ||
-          '',
-        mapLink: raw.mapLink || raw.googleMap || '',
-        locationLat: Number.isFinite(Number(raw.locationLat ?? raw.lat))
-          ? Number(raw.locationLat ?? raw.lat)
-          : null,
-        locationLng: Number.isFinite(Number(raw.locationLng ?? raw.lng))
-          ? Number(raw.locationLng ?? raw.lng)
-          : null,
-      })
+      const normalize = (raw) => {
+        const hasLegacyProducedDelivered = raw.produced !== undefined || raw.delivered !== undefined
+        const hasDirectQty =
+          raw.qty !== undefined || raw.boxes !== undefined || raw.quantity !== undefined
+        let qty = Number(raw.qty || raw.boxes || raw.quantity) || 0
+
+        if (hasLegacyProducedDelivered && !hasDirectQty) {
+          qty = (Number(raw.produced) || 0) - (Number(raw.delivered) || 0)
+        }
+
+        return {
+          ...raw,
+          qty,
+          rate: Number(raw.rate) || 0,
+          date: raw.date || raw.deliveryDate || raw.orderDate || '',
+          time: raw.time || raw.deliveryTime || '',
+          clientId: raw.clientId || raw.customerId || '',
+          address: raw.address || raw.deliveryAddress || raw.location || '',
+          location:
+            raw.location ||
+            raw.googleLocation ||
+            raw.locationName ||
+            raw.mapLink ||
+            raw.googleMap ||
+            '',
+          mapLink: raw.mapLink || raw.googleMap || '',
+          locationLat: Number.isFinite(Number(raw.locationLat ?? raw.lat))
+            ? Number(raw.locationLat ?? raw.lat)
+            : null,
+          locationLng: Number.isFinite(Number(raw.locationLng ?? raw.lng))
+            ? Number(raw.locationLng ?? raw.lng)
+            : null,
+        }
+      }
 
       const getTime = (o) => {
         const ts = o.createdAt
@@ -502,8 +513,9 @@ export const useClientStore = create((set, get) => ({
       shouldMarkDelivered &&
       (!alreadyPostedToStock || previousStatus !== 'Delivered')
     ) {
-      const qty = Number(existing.qty || existing.boxes || existing.quantity) || 0
-      const rate = Number(existing.rate) || 0
+      // Use the NEW quantity and rate being saved, falling back to existing if not provided
+      const qty = Number(normalizedData.qty ?? existing.qty ?? existing.boxes ?? existing.quantity) || 0
+      const rate = Number(normalizedData.rate ?? existing.rate) || 0
       const stockDelta = -Math.abs(qty)
       const clientName = await getOrderClientName(existing, get().clients)
       const deliveredNarration = formatOrderNarration(

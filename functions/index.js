@@ -484,8 +484,10 @@ exports.sendWeeklyPaymentReminders = onSchedule(
       const weeklyPaymentTemplate = await generateWeeklyPaymentSmsTemplate()
       logger.info('Weekly payment AI template generated:', weeklyPaymentTemplate)
 
-      const promises = dueCustomersSnapshot.docs.map((doc) => {
-        const customerData = doc.data()
+      const promises = dueCustomersSnapshot.docs
+        .filter((doc) => !doc.data().isDefaulter) // Exclude defaulters as they have their own schedule
+        .map((doc) => {
+          const customerData = doc.data()
         const clientMobile = customerData.mobile || customerData.phone
         const amountDue = customerData.outstanding
         const clientName = customerData.name || 'Customer'
@@ -633,12 +635,11 @@ function normalizeIndianPhone(phone) {
  * Uses Gemini to generate a single engaging, fresh SMS template for the week's payment reminders.
  */
 async function generateWeeklyPaymentSmsTemplate() {
-  const prompt = `Write a very polite, short, and friendly SMS reminder (max 140 chars) for a customer regarding their outstanding payment balance for "Anjani 200ml Packaged Drinking Water".
-    The tone should be professional and very polite.
-    Use a mix of Hindi and Gujarati (Hinglish/Gujlish style) if appropriate, but keep it clear.
-    Include a placeholder {name} exactly where the customer's name should go, and {amount} exactly where the outstanding balance should go.
-    Include a call to action to reply or WhatsApp to settle the amount.
-    Avoid complex formatting. Just the plain text of the SMS template.`
+  const prompt = `Write an extremely polite, humble, and friendly SMS reminder (max 140 chars) for a customer regarding their outstanding payment balance for "Anjani 200ml Packaged Drinking Water".
+Tone: Very respectful, friendly, and soft (like family business). Use "Ji" for respect.
+Language: Use a warm and natural mix of Hindi, Gujarati, and English (Hinglish/Gujarish).
+Include placeholders {name} for name and {amount} for balance.
+Output only the plain text of the SMS template.`
 
   try {
     const resp = await generativeModel.generateContent(prompt)
@@ -1479,11 +1480,11 @@ Keep the message short, professional but warm (Hinglish is okay). Don't list all
 // Sends an AI-generated payment reminder SMS to all clients tagged as isDefaulter: true.
 
 async function generateDefaulterPaymentSmsTemplate() {
-  const prompt = `Write a very polite but firm SMS reminder (max 150 chars) for a customer who has a long-overdue payment for "Anjani 200ml Packaged Drinking Water".
-Tone: professional, firm but respectful, slightly urgent.
-Use Hinglish (Hindi + English) or Gujarati-English mix.
+  const prompt = `Write an extremely polite, respectful, and gentle SMS reminder (max 150 chars) for a customer regarding their pending payment for "Anjani 200ml Packaged Drinking Water".
+Tone: Very humble, respectful (like a family business talking to a respected elder), yet clear about the balance.
+Language: Use a very natural mix of Hindi, Gujarati, and English (Hinglish/Gujarish). For example, use words like "Krupaya", "Vinti", "Namaste", "Kem cho".
 Include placeholder {name} for customer name and {amount} for outstanding balance in rupees.
-End with a call-to-action to clear the payment via WhatsApp or cash.
+The message should feel personal and warm, not robotic or automated.
 Output only the plain SMS text, no quotes or formatting.`
 
   try {
@@ -1520,14 +1521,23 @@ exports.sendDefaulterPaymentReminders = onSchedule(
       return
     }
 
-    // Check if current IST hour matches configured hour
+    // Check if current IST day and hour matches configured schedule
     const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
     const currentHour = nowIST.getHours()
     const currentMinute = nowIST.getMinutes()
+    const currentDay = nowIST.getDay() // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+
     const configHour = Number(config.hour ?? 10)
     const configMinute = Number(config.minute ?? 0)
+    const configDays = config.days || [1, 3, 5] // Default to Mon, Wed, Fri
 
-    // Allow a 5-minute window to account for schedule jitter
+    // 1. Check if today is a scheduled day
+    if (!configDays.includes(currentDay)) {
+      logger.info(`Today (Day ${currentDay}) is not a scheduled reminder day. Skipping.`)
+      return
+    }
+
+    // 2. Check if current hour matches (Allow a 5-minute window)
     const minutesDiff = currentHour * 60 + currentMinute - (configHour * 60 + configMinute)
     if (minutesDiff < 0 || minutesDiff > 5) {
       logger.info(

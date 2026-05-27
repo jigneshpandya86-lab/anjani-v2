@@ -10,8 +10,19 @@ export default function DefaulterReminderSettings() {
   const [enabled, setEnabled] = useState(false)
   const [hour, setHour] = useState(10)
   const [minute, setMinute] = useState(0)
+  const [days, setDays] = useState([1, 3, 5]) // Default Mon, Wed, Fri
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+
+  const WEEK_DAYS = [
+    { label: 'Sun', value: 0 },
+    { label: 'Mon', value: 1 },
+    { label: 'Tue', value: 2 },
+    { label: 'Wed', value: 3 },
+    { label: 'Thu', value: 4 },
+    { label: 'Fri', value: 5 },
+    { label: 'Sat', value: 6 },
+  ]
 
   useEffect(() => {
     getDoc(CONFIG_DOC)
@@ -21,6 +32,7 @@ export default function DefaulterReminderSettings() {
           setEnabled(data.enabled ?? false)
           setHour(data.hour ?? 10)
           setMinute(data.minute ?? 0)
+          setDays(data.days ?? [1, 3, 5])
         }
       })
       .catch((e) => {
@@ -30,11 +42,15 @@ export default function DefaulterReminderSettings() {
   }, [])
 
   const handleSave = async () => {
+    if (days.length === 0 && enabled) {
+      toast.error('Please select at least one day')
+      return
+    }
     setSaving(true)
     try {
       await setDoc(
         CONFIG_DOC,
-        { enabled, hour: Number(hour), minute: Number(minute) },
+        { enabled, hour: Number(hour), minute: Number(minute), days },
         { merge: true },
       )
       toast.success('Reminder schedule saved!')
@@ -43,6 +59,12 @@ export default function DefaulterReminderSettings() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const toggleDay = (dayValue) => {
+    setDays((prev) =>
+      prev.includes(dayValue) ? prev.filter((d) => d !== dayValue) : [...prev, dayValue],
+    )
   }
 
   const formattedTime = () => {
@@ -72,8 +94,7 @@ export default function DefaulterReminderSettings() {
       <div className="p-4 space-y-4">
         <p className="text-xs text-gray-500">
           Automatically sends a payment reminder SMS (via webhook) to all clients tagged as{' '}
-          <span className="font-semibold text-red-600">Defaulter</span> at the configured time every
-          day.
+          <span className="font-semibold text-red-600">Defaulter</span> at the configured schedule.
         </p>
 
         {/* Enable toggle */}
@@ -92,6 +113,34 @@ export default function DefaulterReminderSettings() {
               className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-7' : 'translate-x-1'}`}
             />
           </button>
+        </div>
+
+        {/* Day selection */}
+        <div
+          className={`transition-opacity ${enabled ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}
+        >
+          <p className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wide">
+            Select Days
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {WEEK_DAYS.map((d) => {
+              const isActive = days.includes(d.value)
+              return (
+                <button
+                  key={d.value}
+                  type="button"
+                  onClick={() => toggleDay(d.value)}
+                  className={`px-2.5 py-1.5 rounded-md text-[11px] font-bold transition-all border ${
+                    isActive
+                      ? 'bg-red-500 border-red-600 text-white shadow-sm'
+                      : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  {d.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         {/* Time picker */}
@@ -134,8 +183,18 @@ export default function DefaulterReminderSettings() {
           {enabled && (
             <p className="text-[11px] text-gray-500 mt-1.5 flex items-center gap-1">
               <CheckCircle className="w-3 h-3 text-green-500" />
-              Reminders will fire daily at{' '}
-              <span className="font-semibold text-gray-700 ml-0.5">{formattedTime()}</span> IST
+              Reminders will fire on{' '}
+              <span className="font-semibold text-gray-700">
+                {days.length === 7
+                  ? 'every day'
+                  : days.length === 0
+                    ? 'no days'
+                    : days
+                        .sort((a, b) => a - b)
+                        .map((d) => WEEK_DAYS.find((wd) => wd.value === d)?.label)
+                        .join(', ')}
+              </span>{' '}
+              at <span className="font-semibold text-gray-700">{formattedTime()}</span> IST
             </p>
           )}
         </div>
