@@ -1015,15 +1015,17 @@ function App() {
       const endDate = new Date(year, month, 0, 23, 59, 59, 999)
 
       // 1. Fetch opening balance (Sum of all qty before startDate)
-      // Efficiency: use getAggregateFromServer to minimize data read
+      console.log(`[StockReport] Fetching opening balance before ${startDate.toISOString()}`)
       const openingQuery = query(collection(db, 'stock'), where('date', '<', startDate))
       const openingSnap = await getAggregateFromServer(openingQuery, {
         total: sum('qty')
       })
       let runningBalance = Number(openingSnap.data().total) || 0
       const openingBalance = runningBalance
+      console.log(`[StockReport] Opening balance: ${openingBalance}`)
 
       // 2. Fetch transactions for the month
+      console.log(`[StockReport] Fetching transactions from ${startDate.toISOString()} to ${endDate.toISOString()}`)
       const transQuery = query(
         collection(db, 'stock'),
         where('date', '>=', startDate),
@@ -1031,6 +1033,7 @@ function App() {
         orderBy('date', 'asc')
       )
       const transSnap = await getDocs(transQuery)
+      console.log(`[StockReport] Found ${transSnap.size} transactions.`)
       
       const rows = []
       // Opening Balance Row
@@ -1076,8 +1079,13 @@ function App() {
 
       setStockModalOpen(false)
     } catch (error) {
-      toast.error('Unable to generate stock statement.')
-      console.error(error)
+      const errorMessage = error.message || 'Unknown error'
+      if (errorMessage.includes('index')) {
+        toast.error('Firestore index required. Check console for link.')
+      } else {
+        toast.error(`Error: ${errorMessage.slice(0, 50)}`)
+      }
+      console.error('[StockReport Error]', error)
     }
   }
 
