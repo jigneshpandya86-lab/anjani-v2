@@ -260,7 +260,7 @@ function App() {
     const unsubOrders = fetchOrders()
     let unsubClients, unsubStock, unsubStockTotal;
 
-    if (userRole === 'admin') {
+    if ((userRole === 'admin' || isAdmin)) {
       unsubClients = fetchClients()
       unsubStock = fetchStock()
       unsubStockTotal = fetchStockTotal()
@@ -272,7 +272,7 @@ function App() {
       if (unsubStock) unsubStock()
       if (unsubStockTotal) unsubStockTotal()
     }
-  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, user, userRole])
+  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, user, userRole, isAdmin])
 
   // AUTH: signs out the current user and clears session
   const handleLogout = async () => {
@@ -292,11 +292,11 @@ function App() {
     { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
     { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
     { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
-  ].filter(item => userRole === 'admin' || item.id === 'orders')
+  ].filter(item => (userRole === 'admin' || isAdmin) || item.id === 'orders')
 
   const drawerNavItems = [
     { id: 'tasks', label: 'Tasks', icon: <CheckSquare size={20} /> },
-    userRole === 'admin' && { id: 'intelligence', label: 'Intelligence Hub', icon: <Brain size={20} /> },
+    (userRole === 'admin' || isAdmin) && { id: 'intelligence', label: 'Intelligence Hub', icon: <Brain size={20} /> },
     ...navItems,
   ].filter(Boolean)
 
@@ -341,7 +341,7 @@ function App() {
         setDrawerOpen(false)
       }
     }
-  ].filter(() => userRole === 'admin')
+  ].filter(() => (userRole === 'admin' || isAdmin))
 
   const openReportWindow = ({ title, columns, rows, metadata = [], reportWindow: providedReportWindow = null }) => {
     const reportWindow = providedReportWindow || window.open('', '_blank', 'width=900,height=700')
@@ -1157,7 +1157,7 @@ function App() {
         setStockModalOpen(true)
       }
     }
-  ].filter(() => userRole === 'admin')
+  ].filter(() => (userRole === 'admin' || isAdmin))
 
   // AUTH: show loading screen while Firebase resolves the auth state on startup
   if (authLoading) {
@@ -1298,7 +1298,7 @@ function App() {
                   rate: Number(client.rate) || 0
                 })}
               />
-              {userRole === 'admin' && <DefaulterReminderSettings />}
+              {(userRole === 'admin' || isAdmin) && <DefaulterReminderSettings />}
             </div>
           )}
           {activeTab === 'tasks' && <TasksPage />}
@@ -1358,9 +1358,7 @@ function App() {
               </div>
               <div className="space-y-1">
                 <p className="px-2 text-[11px] font-black tracking-[0.14em] text-gray-400 uppercase">Reports (PDF)</p>
-                {drawerReports
-                  .filter(report => report.id !== 'report-stock-statement' || isAdmin)
-                  .map(report => (
+                {drawerReports.map(report => (
                     <button
                       key={report.id}
                       onClick={report.onClick}
@@ -1581,7 +1579,7 @@ function App() {
       </nav>
 
       {/* FAB: New Order (Orders tab) */}
-      {activeTab === 'orders' && userRole === 'admin' && (
+      {activeTab === 'orders' && (userRole === 'admin' || isAdmin) && (
         <button
           onClick={() => setEditOrder({})}
           className="fixed bottom-24 right-4 z-[998] bg-[#ff9900] text-white w-14 h-14 rounded-full shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
@@ -1592,7 +1590,7 @@ function App() {
       )}
 
       {/* FAB: Add Client (Clients tab) */}
-      {activeTab === 'clients' && userRole === 'admin' && (
+      {activeTab === 'clients' && (userRole === 'admin' || isAdmin) && (
         <button
           onClick={() => setAddClientOpen(true)}
           className="fixed right-4 bottom-24 z-[998] h-14 w-14 rounded-full bg-[#ff9900] text-white shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
@@ -1603,7 +1601,7 @@ function App() {
       )}
 
       {/* FAB: Record Payment (Transactions tab) */}
-      {activeTab === 'payments' && userRole === 'admin' && (
+      {activeTab === 'payments' && (userRole === 'admin' || isAdmin) && (
         <button
           onClick={() => {
             setPaymentPrefill(null)
