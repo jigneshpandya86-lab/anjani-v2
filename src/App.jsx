@@ -285,7 +285,7 @@ function App() {
   }
 
   // AUTH: simple admin check — placeholder for proper role system
-  const isAdmin = user?.email?.toLowerCase().includes('admin') || user?.email?.toLowerCase().includes('owner')
+  const isAdmin = user?.email?.toLowerCase()?.includes('admin') || user?.email?.toLowerCase()?.includes('owner')
 
   const navItems = [
     { id: 'orders', label: 'Orders', icon: <ShoppingCart size={20} /> },
