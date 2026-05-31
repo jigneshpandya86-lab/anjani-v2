@@ -62,7 +62,12 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
         <div key={client.id} className={`bg-white p-4 rounded-lg border shadow-sm ${!client.active && 'opacity-60 bg-gray-50'}`}>
           <div className="flex justify-between items-start mb-2">
             <div>
-              <h3 className="font-bold text-gray-900 leading-tight">{client.name || 'Unnamed Client'}</h3>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h3 className="font-bold text-gray-900 leading-tight">{client.name || 'Unnamed Client'}</h3>
+                {client.isRegular && (
+                  <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase rounded bg-orange-100 text-orange-700 tracking-wider">Regular</span>
+                )}
+              </div>
               <p className="text-[10px] text-gray-500 font-mono">ID: {client.shortId || 'LEGACY'}</p>
               <p className="text-[11px] text-gray-500 font-semibold">Rate: ₹{Number(client.rate || 0).toLocaleString()}</p>
             </div>

@@ -23,6 +23,7 @@ export default function AddClient({ onDone, client }) {
     return Number.isFinite(parsed) ? parsed : null;
   });
   const [status, setStatus] = useState("idle");
+  const [isRegular, setIsRegular] = useState(client ? !!client.isRegular : false);
 
   const addClient = useClientStore((state) => state.addClient);
   const updateClient = useClientStore((state) => state.updateClient);
@@ -51,6 +52,7 @@ export default function AddClient({ onDone, client }) {
         mapLink: mapLink || '',
         locationLat: Number.isFinite(Number(locationLat)) ? Number(locationLat) : null,
         locationLng: Number.isFinite(Number(locationLng)) ? Number(locationLng) : null,
+        isRegular,
       };
 
       if (client) {
@@ -72,6 +74,7 @@ export default function AddClient({ onDone, client }) {
       setMapLink('');
       setLocationLat(null);
       setLocationLng(null);
+      setIsRegular(false);
       setStatus("idle");
       if (onDone) onDone();
     } catch (error) {
@@ -84,7 +87,7 @@ export default function AddClient({ onDone, client }) {
     <div className="bg-white rounded-xl w-full">
       <div className="bg-amz-navy text-white p-4 rounded-t-xl flex items-center gap-2">
         <UserPlus className="text-amz-orange" />
-        <h2 className="font-bold text-lg">Add New Client</h2>
+        <h2 className="font-bold text-lg">{client ? "Edit Client" : "Add New Client"}</h2>
       </div>
 
       <div className="p-5">
@@ -146,6 +149,19 @@ export default function AddClient({ onDone, client }) {
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
                 placeholder="e.g. 125"
               />
+            </div>
+
+            <div className="flex items-center gap-2.5 py-1.5">
+              <input
+                type="checkbox"
+                id="isRegular"
+                checked={isRegular}
+                onChange={(e) => setIsRegular(e.target.checked)}
+                className="h-4.5 w-4.5 rounded border-gray-300 text-amz-orange focus:ring-amz-orange cursor-pointer"
+              />
+              <label htmlFor="isRegular" className="text-xs font-bold text-gray-700 uppercase tracking-wide cursor-pointer select-none">
+                Regular Client (Mark for scheduled order templates)
+              </label>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

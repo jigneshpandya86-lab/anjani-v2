@@ -244,6 +244,7 @@ export const useClientStore = create((set, get) => ({
       locationLng: Number.isFinite(Number(data.locationLng)) ? Number(data.locationLng) : null,
       active: true,
       outstanding: 0,
+      isRegular: data.isRegular || false,
       createdAt: serverTimestamp()
     });
     await updateDoc(docRef, {

@@ -15,6 +15,7 @@ import {
   CreditCard,
   Users,
   TrendingUp,
+  Sliders,
   CheckSquare,
   LogOut
 } from 'lucide-react'
@@ -32,6 +33,7 @@ import StockDashboard from './components/StockDashboard'
 import Login from './components/Login'
 import SalesAnalyticsDashboard from './components/SalesAnalyticsDashboard'
 import TasksPage from './TasksPage'
+import SettingsTab from './components/SettingsTab'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
@@ -119,6 +121,7 @@ function App() {
     { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
     { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
     { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
+    { id: 'settings', label: 'Settings', icon: <Sliders size={20} /> },
   ].filter(item => userRole === 'admin' || item.id === 'orders')
 
   const drawerNavItems = [
@@ -776,6 +779,7 @@ function App() {
               onPendingActionHandled={() => setPendingLeadAction(null)}
             />
           )}
+          {activeTab === 'settings' && <SettingsTab />}
         </div>
       </div>
 
