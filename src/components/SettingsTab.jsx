@@ -138,11 +138,12 @@ export default function SettingsTab() {
             {regularEnabled && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fadeIn">
                 <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                  <label htmlFor="regularHourSelect" className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wider flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5" />
                     Delivery Query Hour (24-hr format)
                   </label>
                   <select
+                    id="regularHourSelect"
                     value={regularHour}
                     onChange={(e) => setRegularHour(Number(e.target.value))}
                     className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-400 outline-none"
@@ -156,10 +157,10 @@ export default function SettingsTab() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wider flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5" />
                     Trigger Weekdays
-                  </label>
+                  </span>
                   <div className="flex flex-wrap gap-1.5">
                     {DAYS_OF_WEEK.map((d) => {
                       const isSelected = regularDays.includes(d.value);
@@ -210,11 +211,12 @@ export default function SettingsTab() {
             {defaulterEnabled && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fadeIn">
                 <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                  <label htmlFor="defaulterHourSelect" className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wider flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5" />
                     Reminder Trigger Hour (24-hr format)
                   </label>
                   <select
+                    id="defaulterHourSelect"
                     value={defaulterHour}
                     onChange={(e) => setDefaulterHour(Number(e.target.value))}
                     className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-400 outline-none"
@@ -228,10 +230,10 @@ export default function SettingsTab() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wider flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5" />
                     Trigger Weekdays
-                  </label>
+                  </span>
                   <div className="flex flex-wrap gap-1.5">
                     {DAYS_OF_WEEK.map((d) => {
                       const isSelected = defaulterDays.includes(d.value);

@@ -67,6 +67,7 @@ function App() {
   const [stockStatementMonth, setStockStatementMonth] = useState(
     new Date().toISOString().slice(0, 7),
   )
+  const [pendingLeadAction, setPendingLeadAction] = useState(null)
   // ─────────────────────────────────────────
   // AUTH — DO NOT MODIFY WITHOUT TEAM REVIEW
   // ─────────────────────────────────────────
