@@ -44,6 +44,7 @@ import StockDashboard from './components/StockDashboard'
 import Login from './components/Login'
 import TasksPage from './TasksPage'
 import SettingsTab from './components/SettingsTab'
+import DefaulterReminderSettings from './components/DefaulterReminderSettings'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
