@@ -1,23 +1,23 @@
-import { useCallback, useState } from "react";
-import { useClientStore } from "../store/clientStore";
-import { UserPlus, CheckCircle, MapPinned } from "lucide-react";
-import toast from 'react-hot-toast';
-import GoogleMapPicker from './GoogleMapPicker';
+import { useCallback, useState } from 'react'
+import { useClientStore } from '../store/clientStore'
+import { UserPlus, CheckCircle, MapPinned, AlertTriangle } from 'lucide-react'
+import toast from 'react-hot-toast'
+import GoogleMapPicker from './GoogleMapPicker'
 
 export default function AddClient({ onDone, client }) {
   // If editing, fill in the blanks. If new, leave empty!
-  const [name, setName] = useState(client ? client.name : "");
-  const [phone, setPhone] = useState(client ? client.mobile : "");
-  const [address, setAddress] = useState(client ? client.address : "");
-  const [rate, setRate] = useState(client ? String(client.rate ?? "") : "");
+  const [name, setName] = useState(client ? client.name : '')
+  const [phone, setPhone] = useState(client ? client.mobile : '')
+  const [address, setAddress] = useState(client ? client.address : '')
+  const [rate, setRate] = useState(client ? String(client.rate ?? '') : '')
   const [locationAddress, setLocationAddress] = useState(
-    client?.location || client?.googleLocation || client?.locationName || ''
-  );
-  const [mapLink, setMapLink] = useState(client?.mapLink || client?.googleMap || '');
+    client?.location || client?.googleLocation || client?.locationName || '',
+  )
+  const [mapLink, setMapLink] = useState(client?.mapLink || client?.googleMap || '')
   const [locationLat, setLocationLat] = useState(() => {
-    const parsed = Number(client?.locationLat ?? client?.lat);
-    return Number.isFinite(parsed) ? parsed : null;
-  });
+    const parsed = Number(client?.locationLat ?? client?.lat)
+    return Number.isFinite(parsed) ? parsed : null
+  })
   const [locationLng, setLocationLng] = useState(() => {
     const parsed = Number(client?.locationLng ?? client?.lng);
     return Number.isFinite(parsed) ? parsed : null;
@@ -39,15 +39,15 @@ export default function AddClient({ onDone, client }) {
   }, []);
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setStatus("saving");
+    e.preventDefault()
+    setStatus('saving')
 
     try {
       const payload = {
         name,
         mobile: phone,
         address,
-        rate: rate === "" ? 0 : Number(rate),
+        rate: rate === '' ? 0 : Number(rate),
         location: locationAddress || mapLink || '',
         mapLink: mapLink || '',
         locationLat: Number.isFinite(Number(locationLat)) ? Number(locationLat) : null,
@@ -56,14 +56,14 @@ export default function AddClient({ onDone, client }) {
       };
 
       if (client) {
-        await updateClient(client.id, payload);
-        toast.success("Client updated successfully");
+        await updateClient(client.id, payload)
+        toast.success('Client updated successfully')
       } else {
         await addClient({
           ...payload,
           phone,
-        });
-        toast.success("Client created successfully");
+        })
+        toast.success('Client created successfully')
       }
 
       setName("");
@@ -78,10 +78,10 @@ export default function AddClient({ onDone, client }) {
       setStatus("idle");
       if (onDone) onDone();
     } catch (error) {
-      toast.error("Failed to save client: " + error.message);
-      setStatus("idle");
+      toast.error('Failed to save client: ' + error.message)
+      setStatus('idle')
     }
-  };
+  }
 
   return (
     <div className="bg-white rounded-xl w-full">
@@ -91,7 +91,7 @@ export default function AddClient({ onDone, client }) {
       </div>
 
       <div className="p-5">
-        {status === "success" ? (
+        {status === 'success' ? (
           <div className="bg-green-50 text-green-700 p-4 rounded-lg flex items-center gap-3 border border-green-200 animate-pulse">
             <CheckCircle className="w-6 h-6" />
             <p className="font-bold">Client Saved Successfully!</p>
@@ -99,28 +99,69 @@ export default function AddClient({ onDone, client }) {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Client Name</label>
-              <input required value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none" placeholder="e.g. Rahul Sharma" />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Mobile Number</label>
-              <input required type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none" placeholder="10-digit mobile number" />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Delivery Address</label>
-              <textarea required rows="3" value={address} onChange={(e) => setAddress(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none" placeholder="Full delivery address..." />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Actual Location (Type & Select)</label>
-              <GoogleMapPicker
-                initialAddress={locationAddress}
-                onChange={handleLocationChange}
+              <label
+                htmlFor="client-name"
+                className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide"
+              >
+                Client Name
+              </label>
+              <input
+                id="client-name"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
+                placeholder="e.g. Rahul Sharma"
               />
+            </div>
+
+            <div>
+              <label
+                htmlFor="mobile-number"
+                className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide"
+              >
+                Mobile Number
+              </label>
+              <input
+                id="mobile-number"
+                required
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
+                placeholder="10-digit mobile number"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="address-input"
+                className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide"
+              >
+                Delivery Address
+              </label>
+              <textarea
+                id="address-input"
+                required
+                rows="3"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
+                placeholder="Full delivery address..."
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="location-input"
+                className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide"
+              >
+                Actual Location (Type & Select)
+              </label>
+              <GoogleMapPicker initialAddress={locationAddress} onChange={handleLocationChange} />
               <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
                 <input
+                  id="location-input"
                   type="text"
                   value={locationAddress}
                   onChange={(e) => setLocationAddress(e.target.value)}
@@ -130,7 +171,14 @@ export default function AddClient({ onDone, client }) {
                 <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2">
                   <MapPinned className="h-4 w-4 text-amz-orange" />
                   {mapLink ? (
-                    <a className="text-xs text-blue-600 underline truncate" href={mapLink} target="_blank" rel="noreferrer">Open selected map link</a>
+                    <a
+                      className="text-xs text-blue-600 underline truncate"
+                      href={mapLink}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open selected map link
+                    </a>
                   ) : (
                     <span className="text-xs text-gray-500">Pick a point to generate map link</span>
                   )}
@@ -139,8 +187,14 @@ export default function AddClient({ onDone, client }) {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Rate (₹ / Box)</label>
+              <label
+                htmlFor="rate-input"
+                className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide"
+              >
+                Rate (₹ / Box)
+              </label>
               <input
+                id="rate-input"
                 type="number"
                 min="0"
                 step="0.01"
@@ -168,20 +222,24 @@ export default function AddClient({ onDone, client }) {
               <button
                 type="button"
                 onClick={() => onDone?.()}
-                disabled={status === "saving"}
+                disabled={status === 'saving'}
                 className="w-full bg-gray-100 border border-gray-300 text-gray-700 font-bold py-3 px-4 rounded-lg shadow-sm hover:bg-gray-200 active:shadow-inner disabled:opacity-50 transition-all"
               >
                 Cancel
               </button>
 
-              <button type="submit" disabled={status === "saving"} className="w-full bg-gradient-to-b from-[#f7dfa5] to-[#f0c14b] border border-[#a88734] text-gray-900 font-bold py-3 px-4 rounded-lg shadow-sm hover:bg-gradient-to-b hover:from-[#f5d78e] hover:to-[#eeb933] active:shadow-inner disabled:opacity-50 transition-all flex justify-center items-center gap-2">
+              <button
+                type="submit"
+                disabled={status === 'saving'}
+                className="w-full bg-gradient-to-b from-[#f7dfa5] to-[#f0c14b] border border-[#a88734] text-gray-900 font-bold py-3 px-4 rounded-lg shadow-sm hover:bg-gradient-to-b hover:from-[#f5d78e] hover:to-[#eeb933] active:shadow-inner disabled:opacity-50 transition-all flex justify-center items-center gap-2"
+              >
                 <UserPlus className="w-5 h-5" />
-                {status === "saving" ? "Saving..." : "Save Client"}
+                {status === 'saving' ? 'Saving...' : 'Save Client'}
               </button>
             </div>
           </form>
         )}
       </div>
     </div>
-  );
+  )
 }

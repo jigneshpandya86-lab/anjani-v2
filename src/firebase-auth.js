@@ -9,14 +9,14 @@ import {
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
-  signOut
+  signOut,
 } from 'firebase/auth'
 import { auth } from './firebase-config'
 
 // AUTH: Google provider — prompt forces account selection every time
 const googleProvider = new GoogleAuthProvider()
 googleProvider.setCustomParameters({
-  prompt: 'select_account'
+  prompt: 'select_account',
 })
 
 // AUTH: detects Capacitor native environment (Android/iOS) to use redirect instead of popup

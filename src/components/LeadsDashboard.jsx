@@ -1,21 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   collection,
   query,
-  onSnapshot,
-  deleteDoc,
   doc,
-  addDoc,
   serverTimestamp,
   where,
   limit,
   getDocs,
   updateDoc,
-} from 'firebase/firestore';
-import { db } from '../firebase-config';
-import { MessageSquare, Phone, Trash2, Plus, Zap, RefreshCw, Users } from 'lucide-react';
-import toast from 'react-hot-toast';
-import React from 'react';
+} from 'firebase/firestore'
+import { db } from '../firebase-config'
+import { useClientStore } from '../store/clientStore'
+import { MessageSquare, Trash2, Plus, Zap, RefreshCw, Users } from 'lucide-react'
+import toast from 'react-hot-toast'
+import React from 'react'
 import {
   buildFollowUpSmsMessage,
   buildFollowUpUpdate,
@@ -24,11 +22,11 @@ import {
   getDueReminderContext,
   getLeadPhone,
   sendBackgroundSms,
-} from '../services/leadSmsService';
+} from '../services/leadSmsService'
 
 // ─── Module-level constants ──────────────────────────────────────────────────
 
-const MACRO_URL = import.meta.env.VITE_MACRO_URL || '';
+const MACRO_URL = import.meta.env.VITE_MACRO_URL || ''
 
 const TAG_CONFIG = {
   SMS_SENT: {
@@ -46,38 +44,20 @@ const TAG_CONFIG = {
     badge: 'bg-gray-100 text-gray-500',
     avatar: 'bg-gray-100 text-gray-500',
   },
-};
-
-const getLeadDate = (lead) => {
-  const raw = lead.createdAt || lead.createdDate || lead.date;
-  if (!raw) return new Date(0);
-  if (raw?.toDate) return raw.toDate();
-  return new Date(raw);
-};
+}
 
 const formatDate = (lead) => {
-  const raw = lead.createdAt || lead.createdDate || lead.date;
-  if (!raw) return 'No date';
-  if (raw.toDate) return raw.toDate().toLocaleDateString('en-IN');
-  if (typeof raw === 'string') return raw;
-  return new Date(raw).toLocaleDateString('en-IN');
-};
-
-const formatNextFollowUp = (lead) => {
-  const raw = lead.nextFollowUpAt;
-  if (!raw) return null;
-  try {
-    const d = raw?.toDate ? raw.toDate() : new Date(raw);
-    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-  } catch {
-    return null;
-  }
-};
+  const raw = lead.createdAt || lead.createdDate || lead.date
+  if (!raw) return 'No date'
+  if (raw.toDate) return raw.toDate().toLocaleDateString('en-IN')
+  if (typeof raw === 'string') return raw
+  return new Date(raw).toLocaleDateString('en-IN')
+}
 
 const isLeadUntagged = (lead = {}) => {
-  if (!Object.prototype.hasOwnProperty.call(lead, 'Tag')) return true;
-  return lead.Tag === null || lead.Tag === '';
-};
+  if (!Object.prototype.hasOwnProperty.call(lead, 'Tag')) return true
+  return lead.Tag === null || lead.Tag === ''
+}
 
 // ─── Sub-components (memoized) ───────────────────────────────────────────────
 
@@ -87,17 +67,19 @@ const ButtonSpinner = React.memo(function ButtonSpinner() {
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
     </svg>
-  );
-});
+  )
+})
 
 const StatusBadge = React.memo(function StatusBadge({ tag }) {
-  const config = TAG_CONFIG[tag] ?? TAG_CONFIG._default;
+  const config = TAG_CONFIG[tag] ?? TAG_CONFIG._default
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${config.badge}`}>
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${config.badge}`}
+    >
       {config.label}
     </span>
-  );
-});
+  )
+})
 
 const SkeletonCard = React.memo(function SkeletonCard() {
   return (
@@ -115,46 +97,35 @@ const SkeletonCard = React.memo(function SkeletonCard() {
         </div>
       </div>
     </div>
-  );
-});
+  )
+})
 
 const LeadCard = React.memo(function LeadCard({ lead, onWhatsApp, onDelete }) {
-  const config = TAG_CONFIG[lead.Tag] ?? TAG_CONFIG._default;
-  const initials = lead.name ? lead.name.trim().charAt(0).toUpperCase() : null;
-  const nextFollowUp = formatNextFollowUp(lead);
-  const smsCount = lead.smsCount || 0;
+  const smsCount = lead.smsCount || 0
+  const showSmsCounter = lead.Tag === 'SMS_SENT'
 
   return (
-    <div className="bg-white rounded-2xl px-4 py-3 shadow-sm border border-gray-100">
+    <div className="relative bg-white rounded-2xl px-3 py-2.5 shadow-sm border border-gray-100">
+      {showSmsCounter && (
+        <span className="absolute top-1.5 right-1.5 text-[10px] leading-none font-semibold text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">
+          {smsCount}
+        </span>
+      )}
       <div className="flex items-center gap-3">
-
-        {/* Avatar */}
-        <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${config.avatar}`}>
-          {initials ? <span>{initials}</span> : <Phone size={16} />}
-        </div>
-
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-gray-900 text-sm truncate">
-              {lead.name || 'Unknown'}
-            </span>
-            <StatusBadge tag={lead.Tag} />
-          </div>
-          <p className="text-xs text-gray-400 mt-0.5 truncate">
+          {lead.Tag !== 'SMS_SENT' && (
+            <div className="flex items-center gap-2">
+              <StatusBadge tag={lead.Tag} />
+            </div>
+          )}
+          <p className="text-xs text-gray-500 mt-1 truncate">
             {lead.mobile ? `+91 ${lead.mobile}` : 'No number'}
             <span className="text-gray-300 mx-1">·</span>
             {formatDate(lead)}
           </p>
-          {lead.Tag === 'SMS_SENT' && (
-            <p className="text-xs text-orange-500 mt-1 font-medium">
-              SMS {smsCount} sent{nextFollowUp ? ` · Next: ${nextFollowUp}` : ''}
-            </p>
-          )}
           {lead.Tag === 'FOLLOWUP_DONE' && (
-            <p className="text-xs text-green-600 mt-1 font-medium">
-              ✓ All follow-ups complete
-            </p>
+            <p className="text-xs text-green-600 mt-1 font-medium">✓ All follow-ups complete</p>
           )}
         </div>
 
@@ -168,13 +139,6 @@ const LeadCard = React.memo(function LeadCard({ lead, onWhatsApp, onDelete }) {
             <MessageSquare size={13} />
             WA
           </button>
-          <a
-            href={`tel:${lead.mobile}`}
-            className="text-blue-500 p-2 bg-blue-50 rounded-xl active:scale-90 transition-transform"
-            aria-label={`Call ${lead.name || lead.mobile}`}
-          >
-            <Phone size={16} />
-          </a>
           <button
             onClick={() => onDelete(lead.id, lead.name || lead.mobile)}
             className="text-red-400 p-2 bg-red-50 rounded-xl active:scale-90 transition-transform"
@@ -185,241 +149,254 @@ const LeadCard = React.memo(function LeadCard({ lead, onWhatsApp, onDelete }) {
         </div>
       </div>
     </div>
-  );
-});
+  )
+})
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export default function LeadsDashboard({ pendingAction = null, onPendingActionHandled }) {
-  const [leads, setLeads] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newLeadName, setNewLeadName] = useState('');
-  const [newLeadMobile, setNewLeadMobile] = useState('');
-  const [isSavingLead, setIsSavingLead] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [isRemessaging, setIsRemessaging] = useState(false);
+  const leads = useClientStore((state) => state.leads)
+  const fetchLeads = useClientStore((state) => state.fetchLeads)
+  const updateLead = useClientStore((state) => state.updateLead)
+  const addLead = useClientStore((state) => state.addLead)
+  const deleteLead = useClientStore((state) => state.deleteLead)
+
+  const [loading, setLoading] = useState(true)
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [newLeadName, setNewLeadName] = useState('')
+  const [newLeadMobile, setNewLeadMobile] = useState('')
+  const [isSavingLead, setIsSavingLead] = useState(false)
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [isRemessaging, setIsRemessaging] = useState(false)
 
   useEffect(() => {
-    const q = query(collection(db, 'leads'));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setLeads(docs.sort((a, b) => getLeadDate(b) - getLeadDate(a)));
-      setLoading(false);
-    });
-    return unsub;
-  }, []);
+    const unsub = fetchLeads()
+    setLoading(false)
+    return unsub
+  }, [fetchLeads])
 
   // Derived counts — memoized, only recalculate when leads change
-  const untaggedCount = useMemo(() => leads.filter(l => !l.Tag).length, [leads]);
-  const smsSentCount  = useMemo(() => leads.filter(l => l.Tag === 'SMS_SENT').length, [leads]);
+  const untaggedCount = useMemo(() => leads.filter((l) => !l.Tag).length, [leads])
+  const smsSentCount = useMemo(() => leads.filter((l) => l.Tag === 'SMS_SENT').length, [leads])
 
   // ── Handlers (stable references via useCallback) ────────────────────────
 
   const sendWhatsApp = useCallback((lead) => {
-    const displayName = lead.name || 'Sir/Madam';
-    const msg = `Hello ${displayName}, Greetings from *Annapurna Foods, Vadodara*! ✨ \n\nPlanning an event? Make it premium with our 200ml Packaged Water Bottles. Perfect size and crystal clear quality. 💧\n\nShall we discuss your requirement?`;
-    window.open(`https://wa.me/91${lead.mobile}?text=${encodeURIComponent(msg)}`, '_blank');
-  }, []);
+    const msg = `Dear Sir/Madam, Greetings from *Annapurna Foods, Vadodara*! ✨ \n\nPlanning an event? Make it premium with our 200ml Packaged Water Bottles. Perfect size and crystal clear quality. 💧\n\nShall we discuss your requirement?`
+    window.open(`https://wa.me/91${lead.mobile}?text=${encodeURIComponent(msg)}`, '_blank')
+  }, [])
 
-  const deleteLead = useCallback((leadId, leadLabel) => {
-    // Optimistic: remove from UI immediately
-    setLeads(prev => prev.filter(l => l.id !== leadId));
+  const deleteLeadHandler = useCallback(
+    (leadId, leadLabel) => {
+      const undoTimeout = setTimeout(async () => {
+        try {
+          await deleteLead(leadId)
+        } catch (error) {
+          console.error('Failed to delete lead:', error)
+          toast.error('Delete failed — please try again')
+        }
+      }, 3000)
 
-    const undoTimeout = setTimeout(async () => {
-      try {
-        await deleteDoc(doc(db, 'leads', leadId));
-      } catch (error) {
-        console.error('Failed to delete lead:', error);
-        toast.error('Delete failed — please try again');
-        // Rollback: re-fetch will restore via onSnapshot
-      }
-    }, 3000);
-
-    toast(
-      (t) => (
-        <span className="flex items-center gap-3 text-sm">
-          <span>
-            <strong>{leadLabel}</strong> deleted
+      toast(
+        (t) => (
+          <span className="flex items-center gap-3 text-sm">
+            <span>
+              <strong>{leadLabel}</strong> deleted
+            </span>
+            <button
+              className="text-orange-600 font-bold text-xs uppercase"
+              onClick={() => {
+                clearTimeout(undoTimeout)
+                toast.dismiss(t.id)
+                // Rollback: onSnapshot will restore the lead automatically
+                // because we haven't actually deleted from Firestore yet
+              }}
+            >
+              Undo
+            </button>
           </span>
-          <button
-            className="text-orange-600 font-bold text-xs uppercase"
-            onClick={() => {
-              clearTimeout(undoTimeout);
-              toast.dismiss(t.id);
-              // Rollback: onSnapshot will restore the lead automatically
-              // because we haven't actually deleted from Firestore yet
-            }}
-          >
-            Undo
-          </button>
-        </span>
-      ),
-      { duration: 3000 },
-    );
-  }, []);
+        ),
+        { duration: 3000 },
+      )
+    },
+    [deleteLead],
+  )
 
-  const saveManualLead = useCallback(async (e) => {
-    e.preventDefault();
-    const mobile = newLeadMobile.trim();
-    const name = newLeadName.trim();
+  const saveManualLead = useCallback(
+    async (e) => {
+      e.preventDefault()
+      const mobile = newLeadMobile.trim()
+      const name = newLeadName.trim()
 
-    if (!/^\d{10}$/.test(mobile)) {
-      toast.error('Please enter a valid 10-digit mobile number');
-      return;
-    }
+      if (!/^\d{10}$/.test(mobile)) {
+        toast.error('Please enter a valid 10-digit mobile number')
+        return
+      }
 
-    setIsSavingLead(true);
-    try {
-      await addDoc(collection(db, 'leads'), {
-        name,
-        mobile,
-        source: 'manual',
-        Tag: null,
-        createdAt: serverTimestamp(),
-      });
-      toast.success('Lead added');
-      setNewLeadName('');
-      setNewLeadMobile('');
-      setShowAddForm(false);
-    } catch (error) {
-      console.error('Failed to add lead:', error);
-      toast.error('Failed to add lead');
-    } finally {
-      setIsSavingLead(false);
-    }
-  }, [newLeadName, newLeadMobile]);
+      setIsSavingLead(true)
+      try {
+        await addLead({
+          name,
+          mobile,
+          source: 'manual',
+          Tag: null,
+          createdAt: serverTimestamp(),
+        })
+        toast.success('Lead added')
+        setNewLeadName('')
+        setNewLeadMobile('')
+        setShowAddForm(false)
+      } catch (error) {
+        console.error('Failed to add lead:', error)
+        toast.error('Failed to add lead')
+      } finally {
+        setIsSavingLead(false)
+      }
+    },
+    [newLeadName, newLeadMobile, addLead],
+  )
 
   const closeAddForm = useCallback(() => {
-    if (isSavingLead) return;
-    setShowAddForm(false);
-    setNewLeadName('');
-    setNewLeadMobile('');
-  }, [isSavingLead]);
+    if (isSavingLead) return
+    setShowAddForm(false)
+    setNewLeadName('')
+    setNewLeadMobile('')
+  }, [isSavingLead])
 
   const connectTopFiveUntaggedLeads = useCallback(async () => {
-    if (isConnecting) return;
-    setIsConnecting(true);
+    if (isConnecting) return
+    setIsConnecting(true)
     try {
       // Fetch recent leads and include records where Tag is null, empty, or missing
-      const q = query(collection(db, 'leads'), limit(100));
-      const snapshot = await getDocs(q);
-      const untaggedLeads = snapshot.docs.filter((leadDoc) => isLeadUntagged(leadDoc.data())).slice(0, 5);
+      const q = query(collection(db, 'leads'), limit(100))
+      const snapshot = await getDocs(q)
+      const untaggedLeads = snapshot.docs
+        .filter((leadDoc) => isLeadUntagged(leadDoc.data()))
+        .slice(0, 5)
 
       if (untaggedLeads.length === 0) {
-        toast('No untagged leads found');
-        return;
+        toast('No untagged leads found')
+        return
       }
 
-      let sentCount = 0;
+      let sentCount = 0
       for (const leadDoc of untaggedLeads) {
-        const lead = leadDoc.data();
-        const mobile = getLeadPhone(lead);
-        if (!mobile) continue;
+        const lead = leadDoc.data()
+        const mobile = getLeadPhone(lead)
+        if (!mobile) continue
         await sendBackgroundSms({
           macroUrl: MACRO_URL,
           phone: mobile,
-          message: buildInitialSmsMessage(lead.name),
-        });
+          message: buildInitialSmsMessage(),
+        })
         await updateDoc(
           doc(db, 'leads', leadDoc.id),
           buildInitialSmsUpdate({ lead, leadId: leadDoc.id, now: new Date() }),
-        );
-        sentCount += 1;
+        )
+        sentCount += 1
       }
 
       if (sentCount === 0) {
-        toast('No valid phone numbers found');
-        return;
+        toast('No valid phone numbers found')
+        return
       }
-      toast.success(`Connected ${sentCount} lead${sentCount > 1 ? 's' : ''}`);
+      toast.success(`Connected ${sentCount} lead${sentCount > 1 ? 's' : ''}`)
     } catch (error) {
-      console.error('Failed to connect leads:', error);
-      toast.error('Failed to send SMS for leads');
+      console.error('Failed to connect leads:', error)
+      toast.error('Failed to send SMS for leads')
     } finally {
-      setIsConnecting(false);
+      setIsConnecting(false)
     }
-  }, [isConnecting]);
+  }, [isConnecting])
 
   const sendDueFollowUpSms = useCallback(async () => {
-    if (isRemessaging) return;
-    setIsRemessaging(true);
+    if (isRemessaging) return
+    setIsRemessaging(true)
     try {
-      const q = query(collection(db, 'leads'), where('Tag', '==', 'SMS_SENT'), limit(100));
-      const snapshot = await getDocs(q);
+      const q = query(collection(db, 'leads'), where('Tag', '==', 'SMS_SENT'), limit(100))
+      const snapshot = await getDocs(q)
 
       if (snapshot.empty) {
-        toast('No SMS sent leads found');
-        return;
+        toast('No SMS sent leads found')
+        return
       }
 
-      const now = new Date();
-      let sentCount = 0;
+      const now = new Date()
+      let sentCount = 0
 
       for (const leadDoc of snapshot.docs) {
-        const lead = leadDoc.data();
-        const mobile = getLeadPhone(lead);
-        if (!mobile) continue;
+        const lead = leadDoc.data()
+        const mobile = getLeadPhone(lead)
+        if (!mobile) continue
 
-        const context = getDueReminderContext(lead, now);
-        if (!context) continue;
+        const context = getDueReminderContext(lead, now)
+        if (!context) continue
 
         if (context.shouldMarkComplete) {
-          await updateDoc(doc(db, 'leads', leadDoc.id), { Tag: 'FOLLOWUP_DONE' });
-          continue;
+          await updateLead(leadDoc.id, { Tag: 'FOLLOWUP_DONE' })
+          continue
         }
 
         await sendBackgroundSms({
           macroUrl: MACRO_URL,
           phone: mobile,
-          message: buildFollowUpSmsMessage({ name: lead.name, reminderDay: context.reminderDay }),
-        });
-        await updateDoc(
-          doc(db, 'leads', leadDoc.id),
-          buildFollowUpUpdate({ lead, reminderDay: context.reminderDay, nextStep: context.nextStep, now }),
-        );
-        sentCount += 1;
+          message: buildFollowUpSmsMessage({ reminderDay: context.reminderDay }),
+        })
+        await updateLead(
+          leadDoc.id,
+          buildFollowUpUpdate({
+            lead,
+            reminderDay: context.reminderDay,
+            nextStep: context.nextStep,
+            now,
+          }),
+        )
+        sentCount += 1
       }
 
       if (sentCount === 0) {
-        toast('No follow-ups are due right now');
-        return;
+        toast('No follow-ups are due right now')
+        return
       }
-      toast.success(`Sent ${sentCount} follow-up SMS`);
+      toast.success(`Sent ${sentCount} follow-up SMS`)
     } catch (error) {
-      console.error('Failed to send follow-up SMS:', error);
-      toast.error('Failed to send due follow-up SMS');
+      console.error('Failed to send follow-up SMS:', error)
+      toast.error('Failed to send due follow-up SMS')
     } finally {
-      setIsRemessaging(false);
+      setIsRemessaging(false)
     }
-  }, [isRemessaging]);
+  }, [isRemessaging])
 
   const connectAndSendDueFollowUps = useCallback(async () => {
-    if (isConnecting || isRemessaging) return;
-    await connectTopFiveUntaggedLeads();
-    await sendDueFollowUpSms();
-  }, [isConnecting, isRemessaging, connectTopFiveUntaggedLeads, sendDueFollowUpSms]);
+    if (isConnecting || isRemessaging) return
+    await connectTopFiveUntaggedLeads()
+    await sendDueFollowUpSms()
+  }, [isConnecting, isRemessaging, connectTopFiveUntaggedLeads, sendDueFollowUpSms])
 
   useEffect(() => {
-    if (!pendingAction) return;
+    if (!pendingAction) return
 
     const runPendingAction = async () => {
       if (pendingAction === 'connect') {
-        await connectTopFiveUntaggedLeads();
+        await connectTopFiveUntaggedLeads()
       } else if (pendingAction === 'both') {
-        await connectAndSendDueFollowUps();
+        await connectAndSendDueFollowUps()
       }
-      if (onPendingActionHandled) onPendingActionHandled();
-    };
+      if (onPendingActionHandled) onPendingActionHandled()
+    }
 
-    runPendingAction();
-  }, [pendingAction, connectTopFiveUntaggedLeads, connectAndSendDueFollowUps, onPendingActionHandled]);
+    runPendingAction()
+  }, [
+    pendingAction,
+    connectTopFiveUntaggedLeads,
+    connectAndSendDueFollowUps,
+    onPendingActionHandled,
+  ])
 
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-4 pb-24">
-
       {/* Header */}
       <div className="flex items-center justify-between px-1">
         <h2 className="text-xl font-black text-gray-800 tracking-tight">Leads</h2>
@@ -430,7 +407,6 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
 
       {/* Action Panel */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-
         {/* Connect row */}
         <div className="flex items-center gap-4 px-4 py-4">
           <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center">
@@ -536,17 +512,27 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
                 className="text-gray-400 hover:text-gray-600 p-1 rounded-lg transition-colors disabled:opacity-40"
                 aria-label="Close"
               >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg
+                  className="w-4 h-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
               </button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+                <label
+                  htmlFor="newLeadName"
+                  className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block"
+                >
                   Name (optional)
                 </label>
                 <input
+                  id="newLeadName"
                   type="text"
                   value={newLeadName}
                   onChange={(e) => setNewLeadName(e.target.value)}
@@ -555,10 +541,14 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+                <label
+                  htmlFor="newLeadMobile"
+                  className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block"
+                >
                   Mobile *
                 </label>
                 <input
+                  id="newLeadMobile"
                   required
                   type="tel"
                   inputMode="numeric"
@@ -590,7 +580,9 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
                     <ButtonSpinner />
                     <span>Saving…</span>
                   </>
-                ) : 'Save Lead'}
+                ) : (
+                  'Save Lead'
+                )}
               </button>
             </div>
           </form>
@@ -600,7 +592,9 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
       {/* Lead List */}
       {loading ? (
         <div className="space-y-2">
-          {Array.from({ length: 4 }, (_, i) => <SkeletonCard key={i} />)}
+          {Array.from({ length: 4 }, (_, i) => (
+            <SkeletonCard key={i} />
+          ))}
         </div>
       ) : leads.length === 0 ? (
         <div className="bg-white rounded-2xl border border-dashed border-gray-200 py-16 flex flex-col items-center gap-3">
@@ -610,12 +604,12 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
         </div>
       ) : (
         <div className="space-y-2">
-          {leads.map(lead => (
+          {leads.map((lead) => (
             <LeadCard
               key={lead.id}
               lead={lead}
               onWhatsApp={sendWhatsApp}
-              onDelete={deleteLead}
+              onDelete={deleteLeadHandler}
             />
           ))}
         </div>
@@ -631,7 +625,6 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
       >
         <Plus size={24} strokeWidth={2.5} />
       </button>
-
     </div>
-  );
+  )
 }
