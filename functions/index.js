@@ -1,8 +1,9 @@
-const { onSchedule } = require("firebase-functions/v2/scheduler");
-const admin = require("firebase-admin");
-const crypto = require("crypto");
-const { logger } = require("firebase-functions");
-const { VertexAI } = require('@google-cloud/vertexai');
+const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore')
+const { onSchedule } = require('firebase-functions/v2/scheduler')
+const { setGlobalOptions } = require('firebase-functions/v2')
+const logger = require('firebase-functions/logger')
+const admin = require('firebase-admin')
+const { VertexAI } = require('@google-cloud/vertexai')
 
 admin.initializeApp()
 
@@ -36,8 +37,6 @@ setGlobalOptions({
 
 // Global Constants
 const STAFF_MOBILE = '917990943652'
-const MACRODROID_URL =
-  'https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms'
 
 // --- EXISTING FUNCTIONS ---
 
@@ -624,7 +623,6 @@ const MACRO_URL_FOLLOWUP =
   'https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms'
 const FOLLOW_UP_DAYS = [3, 7, 10, 15]
 const DAY_IN_MS = 24 * 60 * 60 * 1000
-const INDIA_COUNTRY_CODE = '91'
 
 function toDateObject(value) {
   if (!value) return null
@@ -637,12 +635,6 @@ function toDateObject(value) {
 
 function getLeadPhone(lead) {
   return lead.mobile || lead.phone || ''
-}
-
-function normalizeIndianPhone(phone) {
-  let clean = String(phone || '').replace(/\D/g, '')
-  if (clean.length === 10) clean = `${INDIA_COUNTRY_CODE}${clean}`
-  return clean
 }
 
 /**
@@ -666,32 +658,6 @@ Output only the plain text of the SMS template.`
   }
 }
 
-/**
- * Uses Gemini to generate a single engaging, fresh SMS template for the week.
- */
-async function generateWeeklySmsTemplate() {
-  const prompt = `Write a very short, engaging, and friendly SMS reminder (max 140 chars) for a regular customer to order "Anjani 200ml Packaged Drinking Water". 
-    The tone should be professional yet warm. 
-    Use a mix of Hindi and Gujarati (Hinglish/Gujlish style). 
-    Focus only on the 200ml bottles. 
-    Include a placeholder {name} exactly where the customer's name should go.
-    Include a call to action to reply or WhatsApp to order.
-    Avoid complex formatting. Just the plain text of the SMS template.`
-
-exports.sendRandomNotification = onSchedule({
-  schedule: "0 * * * *",
-  region: "asia-south1"
-}, async (event) => {
-  try {
-    const resp = await generativeModel.generateContent(prompt)
-    const text = resp.response.candidates[0].content.parts[0].text.trim()
-    return text
-  } catch (error) {
-    logger.error('Error generating weekly AI template:', error)
-    // Fallback to a static message if AI fails
-    return `Hello {name}, kem cho? Time for your weekly Anjani 200ml water refill! Message us to schedule delivery. 😊`
-  }
-}
 
 async function sendBackgroundSms({ macroUrl, phone, message }) {
   const packet = `${normalizeIndianPhone(phone)}@@@${message}`
@@ -1513,7 +1479,7 @@ Output only the plain SMS text, no quotes or formatting.`
     logger.error('Error generating defaulter SMS AI template:', error)
     return `Namaste {name} ji, Anjani Water ki taraf se payment reminder. Aapka ₹{amount} outstanding hai. Krupaya jaldi payment clear karein. WhatsApp ya cash — dono chalega. Dhanyavaad! 🙏`
   }
-});
+}
 
 // --- WEEKLY REGULAR CLIENT REMINDER SYSTEM ---
 
@@ -1787,26 +1753,6 @@ async function generateWeeklySmsTemplate() {
   }
 }
 
-/**
- * Uses Gemini to generate a single engaging, fresh SMS template for the week's payment reminders.
- */
-async function generateDefaulterPaymentSmsTemplate() {
-  const prompt = `Write a very polite, short, and friendly SMS reminder (max 140 chars) for a customer regarding their overdue outstanding payment balance for "Anjani 200ml Packaged Drinking Water".
-  The tone must be professional, gentle, and extremely polite, as we want to maintain a good relationship.
-  Use a mix of Hindi and Gujarati (Hinglish/Gujlish style) if appropriate, but keep it clear.
-  Include a placeholder {name} exactly where the customer's name should go, and {amount} exactly where the outstanding balance should go.
-  Include a call to action to reply or WhatsApp to settle the amount.
-  Avoid complex formatting. Just the plain text of the SMS template.`;
-
-  try {
-    const resp = await generativeModel.generateContent(prompt);
-    const text = resp.response.candidates[0].content.parts[0].text.trim();
-    return text;
-  } catch (error) {
-    logger.error("Error generating weekly payment AI template for defaulters:", error);
-    return `Namaste {name} ji, a gentle reminder from Anjani Water regarding your outstanding balance of Rs {amount}. Krupaya contact karein aur payment clear karein. Thank you! 🙏`;
-  }
-}
 
 /**
  * Gets the current week's cached defaulter SMS template from Firestore, or generates a new one.
