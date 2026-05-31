@@ -15,6 +15,7 @@ import {
   CreditCard,
   Users,
   TrendingUp,
+  Sliders,
   CheckSquare,
   LogOut,
   Bell,
@@ -42,8 +43,7 @@ import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
 import Login from './components/Login'
 import TasksPage from './TasksPage'
-import IntelligenceDashboard from './components/IntelligenceDashboard'
-import DefaulterReminderSettings from './components/DefaulterReminderSettings'
+import SettingsTab from './components/SettingsTab'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
@@ -67,6 +67,7 @@ function App() {
   const [stockStatementMonth, setStockStatementMonth] = useState(
     new Date().toISOString().slice(0, 7),
   )
+  const [pendingLeadAction, setPendingLeadAction] = useState(null)
   // ─────────────────────────────────────────
   // AUTH — DO NOT MODIFY WITHOUT TEAM REVIEW
   // ─────────────────────────────────────────
@@ -318,7 +319,8 @@ function App() {
     { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
     { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
     { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
-  ].filter((item) => userRole === 'admin' || item.id === 'orders')
+    { id: 'settings', label: 'Settings', icon: <Sliders size={20} /> },
+  ].filter(item => userRole === 'admin' || item.id === 'orders')
 
   const drawerNavItems = [
     { id: 'tasks', label: 'Tasks', icon: <CheckSquare size={20} /> },
@@ -1615,8 +1617,13 @@ function App() {
             </div>
           )}
           {activeTab === 'tasks' && <TasksPage />}
-          {activeTab === 'intelligence' && <IntelligenceDashboard />}
-          {activeTab === 'leads' && <LeadsDashboard pendingAction={null} />}
+          {activeTab === 'leads' && (
+            <LeadsDashboard
+              pendingAction={pendingLeadAction}
+              onPendingActionHandled={() => setPendingLeadAction(null)}
+            />
+          )}
+          {activeTab === 'settings' && <SettingsTab />}
         </div>
       </div>
 

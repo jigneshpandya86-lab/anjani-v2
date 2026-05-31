@@ -109,23 +109,14 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
         >
           <div className="flex justify-between items-start mb-2">
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-gray-900 leading-tight">
-                  {client.name || 'Unnamed Client'}
-                </h3>
-                {client.isDefaulter && (
-                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-red-100 text-red-600 border border-red-200">
-                    <AlertTriangle className="w-2.5 h-2.5" />
-                    Defaulter
-                  </span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h3 className="font-bold text-gray-900 leading-tight">{client.name || 'Unnamed Client'}</h3>
+                {client.isRegular && (
+                  <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase rounded bg-orange-100 text-orange-700 tracking-wider">Regular</span>
                 )}
               </div>
-              <p className="text-[10px] text-gray-500 font-mono">
-                ID: {client.shortId || 'LEGACY'}
-              </p>
-              <p className="text-[11px] text-gray-500 font-semibold">
-                Rate: ₹{Number(client.rate || 0).toLocaleString()}
-              </p>
+              <p className="text-[10px] text-gray-500 font-mono">ID: {client.shortId || 'LEGACY'}</p>
+              <p className="text-[11px] text-gray-500 font-semibold">Rate: ₹{Number(client.rate || 0).toLocaleString()}</p>
             </div>
             <div className="flex gap-3">
               <button

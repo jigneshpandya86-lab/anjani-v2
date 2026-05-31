@@ -7,12 +7,27 @@ const { VertexAI } = require('@google-cloud/vertexai')
 
 admin.initializeApp()
 
-// Initialize Vertex AI
-const project = process.env.GCLOUD_PROJECT || 'anjaniappnew'
-const vertexAI = new VertexAI({ project: project, location: 'us-central1' })
+const project = process.env.GCLOUD_PROJECT || 'anjaniappnew';
+const vertexAI = new VertexAI({ project: project, location: 'us-central1' });
 const generativeModel = vertexAI.getGenerativeModel({
   model: 'gemini-1.5-flash',
-})
+});
+
+const MACRODROID_URL = "https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms";
+const INDIA_COUNTRY_CODE = "91";
+
+function normalizeIndianPhone(phone) {
+  let clean = String(phone || "").replace(/\D/g, "");
+  if (clean.length === 10) clean = `${INDIA_COUNTRY_CODE}${clean}`;
+  return clean;
+}
+
+const PROMPTS = [
+  { title: 'Ready to connect?', body: 'Ready to connect with new leads?', link: '/leads' },
+  { title: 'Payments due', body: 'Check your outstanding payments', link: '/payments' },
+  { title: 'Follow up needed', body: 'Follow up with pending customers', link: '/clients' },
+  { title: 'New opportunities', body: 'Time to reach out to your leads!', link: '/leads' }
+];
 
 // Global settings for all functions
 setGlobalOptions({
@@ -22,8 +37,6 @@ setGlobalOptions({
 
 // Global Constants
 const STAFF_MOBILE = '917990943652'
-const MACRODROID_URL =
-  'https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms'
 
 // --- EXISTING FUNCTIONS ---
 
@@ -610,7 +623,6 @@ const MACRO_URL_FOLLOWUP =
   'https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms'
 const FOLLOW_UP_DAYS = [3, 7, 10, 15]
 const DAY_IN_MS = 24 * 60 * 60 * 1000
-const INDIA_COUNTRY_CODE = '91'
 
 function toDateObject(value) {
   if (!value) return null
@@ -623,12 +635,6 @@ function toDateObject(value) {
 
 function getLeadPhone(lead) {
   return lead.mobile || lead.phone || ''
-}
-
-function normalizeIndianPhone(phone) {
-  let clean = String(phone || '').replace(/\D/g, '')
-  if (clean.length === 10) clean = `${INDIA_COUNTRY_CODE}${clean}`
-  return clean
 }
 
 /**
@@ -652,28 +658,6 @@ Output only the plain text of the SMS template.`
   }
 }
 
-/**
- * Uses Gemini to generate a single engaging, fresh SMS template for the week.
- */
-async function generateWeeklySmsTemplate() {
-  const prompt = `Write a very short, engaging, and friendly SMS reminder (max 140 chars) for a regular customer to order "Anjani 200ml Packaged Drinking Water". 
-    The tone should be professional yet warm. 
-    Use a mix of Hindi and Gujarati (Hinglish/Gujlish style). 
-    Focus only on the 200ml bottles. 
-    Include a placeholder {name} exactly where the customer's name should go.
-    Include a call to action to reply or WhatsApp to order.
-    Avoid complex formatting. Just the plain text of the SMS template.`
-
-  try {
-    const resp = await generativeModel.generateContent(prompt)
-    const text = resp.response.candidates[0].content.parts[0].text.trim()
-    return text
-  } catch (error) {
-    logger.error('Error generating weekly AI template:', error)
-    // Fallback to a static message if AI fails
-    return `Hello {name}, kem cho? Time for your weekly Anjani 200ml water refill! Message us to schedule delivery. 😊`
-  }
-}
 
 async function sendBackgroundSms({ macroUrl, phone, message }) {
   const packet = `${normalizeIndianPhone(phone)}@@@${message}`
@@ -1497,112 +1481,323 @@ Output only the plain SMS text, no quotes or formatting.`
   }
 }
 
-exports.sendDefaulterPaymentReminders = onSchedule(
+// --- WEEKLY REGULAR CLIENT REMINDER SYSTEM ---
+
+exports.sendWeeklyRegularOrderReminder = onSchedule(
   {
-    schedule: '0 * * * *', // every hour, on the hour
-    timeZone: 'Asia/Kolkata',
-    retryCount: 1,
+    schedule: "0 * * * *", // Run hourly, checks config/regularReminder to see if it should execute
+    region: "asia-south1",
+    retryCount: 2
   },
   async (_event) => {
-    const db = admin.firestore()
-
-    // Load schedule config from Firestore
-    let config
+    logger.info("Starting weekly regular client order reminder job check.");
+    const db = admin.firestore();
+    
     try {
-      const configSnap = await db.collection('config').doc('defaulterReminder').get()
-      config = configSnap.exists ? configSnap.data() : null
-    } catch (e) {
-      logger.error('Failed to read defaulterReminder config:', e.message)
-      return
-    }
+      const configRef = db.collection('config').doc('regularReminder');
+      const configDoc = await configRef.get();
 
-    if (!config || !config.enabled) {
-      logger.info('Defaulter reminder is disabled or config missing. Skipping.')
-      return
-    }
-
-    // Check if current IST day and hour matches configured schedule
-    const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
-    const currentHour = nowIST.getHours()
-    const currentMinute = nowIST.getMinutes()
-    const currentDay = nowIST.getDay() // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-
-    const configHour = Number(config.hour ?? 10)
-    const configMinute = Number(config.minute ?? 0)
-    const configDays = config.days || [1, 3, 5] // Default to Mon, Wed, Fri
-
-    // 1. Check if today is a scheduled day
-    if (!configDays.includes(currentDay)) {
-      logger.info(`Today (Day ${currentDay}) is not a scheduled reminder day. Skipping.`)
-      return
-    }
-
-    // 2. Check if current hour matches (Allow a 5-minute window)
-    const minutesDiff = currentHour * 60 + currentMinute - (configHour * 60 + configMinute)
-    if (minutesDiff < 0 || minutesDiff > 5) {
-      logger.info(
-        `Not the scheduled time. Config: ${configHour}:${String(configMinute).padStart(2, '0')}, Current IST: ${currentHour}:${String(currentMinute).padStart(2, '0')}. Skipping.`,
-      )
-      return
-    }
-
-    logger.info(
-      `Running defaulter payment reminder job at IST ${currentHour}:${String(currentMinute).padStart(2, '0')}.`,
-    )
-
-    try {
-      const defaultersSnap = await db.collection('customers').where('isDefaulter', '==', true).get()
-
-      if (defaultersSnap.empty) {
-        logger.info('No clients tagged as defaulter. Exiting.')
-        return
+      if (!configDoc.exists) {
+        logger.warn("regularReminder config document not found. Exiting.");
+        return;
       }
 
-      const smsTemplate = await generateDefaulterPaymentSmsTemplate()
-      logger.info('Defaulter SMS template generated:', smsTemplate)
+      const configData = configDoc.data();
+      if (!configData.enabled) {
+        logger.info("Regular client reminders are disabled in config. Exiting.");
+        return;
+      }
 
-      const promises = defaultersSnap.docs.map(async (docSnap) => {
-        const customer = docSnap.data()
-        const mobile = customer.mobile || customer.phone
-        const name = customer.name || 'Customer'
-        const outstanding = Number(customer.outstanding || 0)
+      // Get current local time details in India time zone
+      const now = new Date();
+      const hourFormatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Kolkata",
+        hour: "numeric",
+        hour12: false
+      });
+      const currentHour = parseInt(hourFormatter.format(now), 10);
 
-        if (!mobile) {
-          logger.warn(`Defaulter ${docSnap.id} (${name}) has no mobile number. Skipping.`)
-          return
-        }
+      const weekdayFormatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Kolkata",
+        weekday: "short"
+      });
+      const dayName = weekdayFormatter.format(now);
+      const dayMap = { "Sun": 0, "Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4, "Fri": 5, "Sat": 6 };
+      const currentDayOfWeek = dayMap[dayName];
 
-        const message = smsTemplate
-          .replace('{name}', name)
-          .replace('{amount}', outstanding.toLocaleString('en-IN'))
+      // Check if today matches configured weekdays
+      if (Array.isArray(configData.days) && !configData.days.includes(currentDayOfWeek)) {
+        logger.info(`Today (weekday ${currentDayOfWeek} / ${dayName}) is not in the configured days [${configData.days.join(', ')}]. Exiting.`);
+        return;
+      }
 
-        const cleanPhone = normalizeIndianPhone(mobile)
-        const packet = `${cleanPhone}@@@${message}`
-        const finalUrl = `${MACRODROID_URL}?data=${encodeURIComponent(packet)}`
+      // Check if current hour matches configured hour
+      const configHour = parseInt(configData.hour, 10);
+      if (currentHour !== configHour) {
+        logger.info(`Current hour (${currentHour}) does not match configured hour (${configHour}). Exiting.`);
+        return;
+      }
+
+      const regularSnap = await db.collection('customers').where('isRegular', '==', true).get();
+      
+      if (regularSnap.empty) {
+        logger.info("No regular customers found for reminder. Exiting.");
+        return;
+      }
+
+      // Generate ONE fresh message template for the entire week
+      const weeklyTemplate = await generateWeeklySmsTemplate();
+      logger.info("Weekly AI template generated:", weeklyTemplate);
+
+      const promises = regularSnap.docs.map(async (doc) => {
+        const customer = doc.data();
+        const mobile = customer.mobile;
+        const name = customer.name || "Customer";
+
+        if (!mobile) return;
+
+        // Personalized for this client using the weekly template
+        const message = weeklyTemplate.replace("{name}", name);
+        
+        const cleanPhone = normalizeIndianPhone(mobile);
+        const packet = `${cleanPhone}@@@${message}`;
+        const finalUrl = `${MACRODROID_URL}?data=${encodeURIComponent(packet)}`;
 
         try {
-          const response = await fetch(finalUrl)
+          const response = await fetch(finalUrl);
           if (response.ok) {
-            logger.info(
-              `Defaulter reminder sent to ${name} (${cleanPhone}), outstanding: ₹${outstanding}`,
-            )
-            await docSnap.ref.update({
-              lastDefaulterReminderSent: admin.firestore.FieldValue.serverTimestamp(),
-            })
+            logger.info(`Weekly AI reminder sent to regular client: ${name} (${cleanPhone})`);
           } else {
-            logger.error(`Webhook failed for ${name} (${cleanPhone}): HTTP ${response.status}`)
+            logger.error(`Failed to send AI reminder to ${cleanPhone}:`, { status: response.status });
           }
         } catch (e) {
-          logger.error(`Error sending defaulter reminder to ${cleanPhone}:`, e.message)
+          logger.error(`Error calling AI webhook for ${cleanPhone}:`, { error: e.message });
         }
-      })
+      });
 
-      await Promise.all(promises)
-      logger.info(
-        `Defaulter reminder job complete. Processed ${defaultersSnap.docs.length} defaulter(s).`,
-      )
+      await Promise.all(promises);
+      logger.info("Finished sending weekly AI reminders to regular clients.");
     } catch (error) {
-      logger.error('Error in sendDefaulterPaymentReminders:', error)
+      logger.error("Error running weekly regular client AI reminder job:", error);
     }
+  }
+);
+
+// --- DEFAULTER PAYMENT REMINDER SYSTEM ---
+
+exports.sendWeeklyPaymentReminders = onSchedule(
+  {
+    schedule: "0 * * * *", // Run hourly, checks config/defaulterReminder to see if it should execute
+    region: "asia-south1",
+    retryCount: 2
   },
-)
+  async (_event) => {
+    logger.info("Running defaulter payment reminder job.");
+    const db = admin.firestore();
+    try {
+      const configRef = db.collection('config').doc('defaulterReminder');
+      const configDoc = await configRef.get();
+
+      if (!configDoc.exists) {
+        logger.warn("defaulterReminder config document not found. Exiting.");
+        return;
+      }
+
+      const configData = configDoc.data();
+      if (!configData.enabled) {
+        logger.info("Defaulter reminders are disabled in config. Exiting.");
+        return;
+      }
+
+      // Get current local time details in India time zone
+      const now = new Date();
+      const hourFormatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Kolkata",
+        hour: "numeric",
+        hour12: false
+      });
+      const currentHour = parseInt(hourFormatter.format(now), 10);
+
+      const weekdayFormatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Kolkata",
+        weekday: "short"
+      });
+      const dayName = weekdayFormatter.format(now);
+      const dayMap = { "Sun": 0, "Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4, "Fri": 5, "Sat": 6 };
+      const currentDayOfWeek = dayMap[dayName];
+
+      // Check if today matches configured weekdays
+      if (Array.isArray(configData.days) && !configData.days.includes(currentDayOfWeek)) {
+        logger.info(`Today (weekday ${currentDayOfWeek} / ${dayName}) is not in the configured days [${configData.days.join(', ')}]. Exiting.`);
+        return;
+      }
+
+      // Check if current hour matches configured hour
+      const configHour = parseInt(configData.hour, 10);
+      if (currentHour !== configHour) {
+        logger.info(`Current hour (${currentHour}) does not match configured hour (${configHour}). Exiting.`);
+        return;
+      }
+
+      // Query customers where isDefaulter is true
+      const defaultersSnapshot = await db.collection('customers').where('isDefaulter', '==', true).get();
+
+      if (defaultersSnapshot.empty) {
+        logger.info("No customers set as defaulter found. Exiting.");
+        return;
+      }
+
+      // Generate or fetch the weekly template
+      const template = await getOrCreateDefaulterSmsTemplate();
+      logger.info("Defaulter weekly payment template:", template);
+
+      let sentCount = 0;
+      let failCount = 0;
+      let skippedCount = 0;
+      const sentDetails = [];
+
+      const promises = defaultersSnapshot.docs.map(async (doc) => {
+        const customerData = doc.data();
+        const clientMobile = customerData.mobile || customerData.phone;
+        const amountDue = customerData.outstanding || 0;
+        const clientName = customerData.name || "Customer";
+
+        // Only send if they have an outstanding balance > 0
+        if (amountDue <= 0) {
+          logger.info(`Skipping defaulter customer ${clientName} because outstanding balance is <= 0.`);
+          skippedCount++;
+          return;
+        }
+
+        if (!clientMobile) {
+          logger.warn(`Defaulter customer document ${doc.id} is missing a mobile number.`);
+          skippedCount++;
+          return;
+        }
+        
+        const cleanPhone = normalizeIndianPhone(clientMobile);
+        const message = template
+          .replace("{name}", clientName)
+          .replace("{amount}", amountDue);
+
+        const packet = `${cleanPhone}@@@${message}`;
+        const finalUrl = `${MACRODROID_URL}?data=${encodeURIComponent(packet)}`;
+
+        try {
+          const response = await fetch(finalUrl);
+          if (response.ok) {
+            logger.info(`Defaulter payment reminder sent to ${clientName} (${cleanPhone})`);
+            await doc.ref.update({ 
+              lastPaymentReminderSent: admin.firestore.FieldValue.serverTimestamp()
+            });
+            sentCount++;
+            sentDetails.push(`${clientName} (₹${amountDue})`);
+          } else {
+            logger.error(`Failed to send defaulter payment reminder to ${cleanPhone}:`, { status: response.status });
+            failCount++;
+          }
+        } catch (e) {
+          logger.error(`Error sending defaulter payment reminder to ${cleanPhone}:`, { error: e.message });
+          failCount++;
+        }
+      });
+
+      await Promise.all(promises);
+      logger.info(`Finished processing defaulter payment reminders. Sent: ${sentCount}, Failed: ${failCount}, Skipped: ${skippedCount}`);
+
+      // Option C Alert: Send SMS summary to staff/admin mobile
+      if (sentCount > 0 || failCount > 0) {
+        const alertMessage = `Defaulter Reminders Job Run Summary:\n- Sent: ${sentCount} reminders [${sentDetails.join(', ')}]\n- Failed: ${failCount}\n- Skipped: ${skippedCount}`;
+        const cleanStaffPhone = normalizeIndianPhone("919925997750");
+        const alertPacket = `${cleanStaffPhone}@@@${alertMessage}`;
+        const alertUrl = `${MACRODROID_URL}?data=${encodeURIComponent(alertPacket)}`;
+        
+        try {
+          const alertResponse = await fetch(alertUrl);
+          if (alertResponse.ok) {
+            logger.info("Admin alert SMS sent successfully.");
+          } else {
+            logger.error("Failed to send admin alert SMS:", alertResponse.status);
+          }
+        } catch (alertErr) {
+          logger.error("Error sending admin alert SMS:", alertErr.message);
+        }
+      }
+    } catch (error) {
+      logger.error("Error running weekly payment reminder job:", error);
+    }
+  }
+);
+
+// --- AI GENERATIVE TEMPLATE HELPERS ---
+
+/**
+ * Uses Gemini to generate a single engaging, fresh SMS template for the week.
+ */
+async function generateWeeklySmsTemplate() {
+  const prompt = `Write a very short, engaging, and friendly SMS reminder (max 140 chars) for a regular customer to order "Anjani 200ml Packaged Drinking Water". 
+  The tone should be professional yet warm, extremely polite. 
+  Use a mix of Hindi and Gujarati (Hinglish/Gujlish style). 
+  Focus only on the 200ml bottles. 
+  Include a placeholder {name} exactly where the customer's name should go.
+  Include a call to action to reply or WhatsApp to order.
+  Avoid complex formatting. Just the plain text of the SMS template.`;
+
+  try {
+    const resp = await generativeModel.generateContent(prompt);
+    const text = resp.response.candidates[0].content.parts[0].text.trim();
+    return text;
+  } catch (error) {
+    logger.error("Error generating weekly AI template:", error);
+    return `Hello {name}, kem cho? Time for your weekly Anjani 200ml water refill! Message us to schedule delivery. 😊`;
+  }
+}
+
+
+/**
+ * Gets the current week's cached defaulter SMS template from Firestore, or generates a new one.
+ */
+async function getOrCreateDefaulterSmsTemplate() {
+  const db = admin.firestore();
+  const configRef = db.collection('config').doc('defaulterReminder');
+  const configDoc = await configRef.get();
+  
+  let configData = configDoc.exists ? configDoc.data() : {};
+  const now = new Date();
+  
+  // Helper to get week number (e.g. 2026-W22)
+  const getWeekNumber = (d) => {
+    const target = new Date(d.valueOf());
+    const dayNr = (d.getDay() + 6) % 7;
+    target.setDate(target.getDate() - dayNr + 3);
+    const firstThursday = target.valueOf();
+    target.setMonth(0, 1);
+    if (target.getDay() !== 4) {
+      target.setMonth(0, 1 + ((4 - target.getDay() + 7) % 7));
+    }
+    const weekNo = 1 + Math.ceil((firstThursday - target) / 604800000);
+    return `${target.getFullYear()}-W${weekNo}`;
+  };
+  
+  const currentWeekKey = getWeekNumber(now);
+  
+  if (configData.currentTemplate && configData.templateWeek === currentWeekKey) {
+    logger.info("Reusing existing weekly template for week:", currentWeekKey);
+    return configData.currentTemplate;
+  }
+  
+  logger.info("Generating new weekly template for week:", currentWeekKey);
+  const newTemplate = await generateDefaulterPaymentSmsTemplate();
+  
+  try {
+    await configRef.set({
+      currentTemplate: newTemplate,
+      templateWeek: currentWeekKey
+    }, { merge: true });
+    logger.info("Stored new weekly template in config/defaulterReminder.");
+  } catch (e) {
+    logger.error("Failed to save weekly template in Firestore config:", e);
+  }
+  
+  return newTemplate;
+}

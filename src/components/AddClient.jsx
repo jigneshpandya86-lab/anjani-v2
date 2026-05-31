@@ -19,27 +19,24 @@ export default function AddClient({ onDone, client }) {
     return Number.isFinite(parsed) ? parsed : null
   })
   const [locationLng, setLocationLng] = useState(() => {
-    const parsed = Number(client?.locationLng ?? client?.lng)
-    return Number.isFinite(parsed) ? parsed : null
-  })
-  const [isDefaulter, setIsDefaulter] = useState(client ? (client.isDefaulter ?? false) : false)
-  const [status, setStatus] = useState('idle')
+    const parsed = Number(client?.locationLng ?? client?.lng);
+    return Number.isFinite(parsed) ? parsed : null;
+  });
+  const [status, setStatus] = useState("idle");
+  const [isRegular, setIsRegular] = useState(client ? !!client.isRegular : false);
 
-  const addClient = useClientStore((state) => state.addClient)
-  const updateClient = useClientStore((state) => state.updateClient)
+  const addClient = useClientStore((state) => state.addClient);
+  const updateClient = useClientStore((state) => state.updateClient);
 
-  const handleLocationChange = useCallback(
-    ({ lat, lng, address: resolvedAddress, mapLink: resolvedMapLink }) => {
-      setLocationLat(lat)
-      setLocationLng(lng)
-      if (resolvedAddress) {
-        setLocationAddress(resolvedAddress)
-        setAddress((prev) => (prev.trim() ? prev : resolvedAddress))
-      }
-      if (resolvedMapLink) setMapLink(resolvedMapLink)
-    },
-    [],
-  )
+  const handleLocationChange = useCallback(({ lat, lng, address: resolvedAddress, mapLink: resolvedMapLink }) => {
+    setLocationLat(lat);
+    setLocationLng(lng);
+    if (resolvedAddress) {
+      setLocationAddress(resolvedAddress);
+      setAddress((prev) => (prev.trim() ? prev : resolvedAddress));
+    }
+    if (resolvedMapLink) setMapLink(resolvedMapLink);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -55,8 +52,8 @@ export default function AddClient({ onDone, client }) {
         mapLink: mapLink || '',
         locationLat: Number.isFinite(Number(locationLat)) ? Number(locationLat) : null,
         locationLng: Number.isFinite(Number(locationLng)) ? Number(locationLng) : null,
-        isDefaulter,
-      }
+        isRegular,
+      };
 
       if (client) {
         await updateClient(client.id, payload)
@@ -69,17 +66,17 @@ export default function AddClient({ onDone, client }) {
         toast.success('Client created successfully')
       }
 
-      setName('')
-      setPhone('')
-      setAddress('')
-      setRate('')
-      setLocationAddress('')
-      setMapLink('')
-      setLocationLat(null)
-      setLocationLng(null)
-      setIsDefaulter(false)
-      setStatus('idle')
-      if (onDone) onDone()
+      setName("");
+      setPhone("");
+      setAddress("");
+      setRate("");
+      setLocationAddress('');
+      setMapLink('');
+      setLocationLat(null);
+      setLocationLng(null);
+      setIsRegular(false);
+      setStatus("idle");
+      if (onDone) onDone();
     } catch (error) {
       toast.error('Failed to save client: ' + error.message)
       setStatus('idle')
@@ -90,7 +87,7 @@ export default function AddClient({ onDone, client }) {
     <div className="bg-white rounded-xl w-full">
       <div className="bg-amz-navy text-white p-4 rounded-t-xl flex items-center gap-2">
         <UserPlus className="text-amz-orange" />
-        <h2 className="font-bold text-lg">Add New Client</h2>
+        <h2 className="font-bold text-lg">{client ? "Edit Client" : "Add New Client"}</h2>
       </div>
 
       <div className="p-5">
@@ -208,36 +205,17 @@ export default function AddClient({ onDone, client }) {
               />
             </div>
 
-            <div>
-              <p className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">
-                Defaulter Status
-              </p>
-              <button
-                type="button"
-                onClick={() => setIsDefaulter((prev) => !prev)}
-                className={`flex items-center gap-2 w-full p-3 rounded-lg border text-sm font-semibold transition-all ${
-                  isDefaulter
-                    ? 'bg-red-50 border-red-300 text-red-700'
-                    : 'bg-gray-50 border-gray-300 text-gray-500'
-                }`}
-              >
-                <AlertTriangle
-                  className={`w-4 h-4 flex-shrink-0 ${isDefaulter ? 'text-red-500' : 'text-gray-400'}`}
-                />
-                <span className="flex-1 text-left">
-                  {isDefaulter ? 'Marked as Defaulter' : 'Not a Defaulter'}
-                </span>
-                <span
-                  className={`w-10 h-5 rounded-full transition-colors relative ${isDefaulter ? 'bg-red-500' : 'bg-gray-300'}`}
-                >
-                  <span
-                    className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${isDefaulter ? 'translate-x-5' : 'translate-x-0.5'}`}
-                  />
-                </span>
-              </button>
-              <p className="text-[10px] text-gray-400 mt-1">
-                Defaulters will receive automated payment reminder SMS.
-              </p>
+            <div className="flex items-center gap-2.5 py-1.5">
+              <input
+                type="checkbox"
+                id="isRegular"
+                checked={isRegular}
+                onChange={(e) => setIsRegular(e.target.checked)}
+                className="h-4.5 w-4.5 rounded border-gray-300 text-amz-orange focus:ring-amz-orange cursor-pointer"
+              />
+              <label htmlFor="isRegular" className="text-xs font-bold text-gray-700 uppercase tracking-wide cursor-pointer select-none">
+                Regular Client (Mark for scheduled order templates)
+              </label>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
