@@ -320,7 +320,6 @@ function App() {
     { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
     { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
     { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
-    { id: 'settings', label: 'Settings', icon: <Sliders size={20} /> },
   ].filter(item => userRole === 'admin' || item.id === 'orders')
 
   const drawerNavItems = [
@@ -331,6 +330,11 @@ function App() {
       icon: <Brain size={20} />,
     },
     ...navItems,
+    userRole === 'admin' && {
+      id: 'settings',
+      label: 'Settings',
+      icon: <Sliders size={20} />,
+    },
   ].filter(Boolean)
 
   const drawerQuickActions = [
@@ -1929,7 +1933,7 @@ function App() {
           <button
             key={item.id}
             onClick={() => setActiveTab(item.id)}
-            className={`flex flex-col items-center justify-center w-[19%] py-1 rounded-xl transition-all ${
+            className={`flex flex-col items-center justify-center w-[23%] py-1 rounded-xl transition-all ${
               activeTab === item.id
                 ? 'text-[#ff9900] bg-[#fff4e5] shadow-[0_4px_10px_rgba(255,153,0,0.15)]'
                 : 'text-gray-400 hover:text-gray-600'
