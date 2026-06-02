@@ -1860,3 +1860,119 @@ exports.sendOrderDeliveredSmsToClient = onDocumentWritten('orders/{docId}', asyn
     logger.error('Client Delivery SMS Error:', { orderId: event.params.docId, error: e.message })
   }
 })
+
+exports.sendDailyStockReportToNilesh = onSchedule(
+  {
+    schedule: '0 21 * * *',
+    timeZone: 'Asia/Kolkata',
+  },
+  async (_event) => {
+    logger.info('Running daily stock report job.')
+    try {
+      const db = admin.firestore()
+
+      // Calculate start of today in India timezone (Asia/Kolkata)
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+      })
+      const parts = formatter.formatToParts(new Date())
+      const year = parts.find(p => p.type === 'year').value
+      const month = parts.find(p => p.type === 'month').value.padStart(2, '0')
+      const day = parts.find(p => p.type === 'day').value.padStart(2, '0')
+      
+      const indiaDateStr = `${year}-${month}-${day}`
+      const startOfTodayIndia = new Date(`${indiaDateStr}T00:00:00.000+05:30`)
+
+      // 1. Fetch stock entries since start of today in India
+      const stockSnap = await db
+        .collection('stock')
+        .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startOfTodayIndia))
+        .get()
+
+      // 2. Exit early if there are no stock entries today (no movements)
+      if (stockSnap.empty) {
+        logger.info(`No stock additions or dispatches found for today (${indiaDateStr}). Skipping report SMS.`)
+        return
+      }
+
+      let additions = 0
+      let dispatches = 0
+      const stockList = []
+
+      stockSnap.forEach((doc) => {
+        const data = doc.data()
+        const qty = Number(data.qty || 0)
+        if (qty > 0) {
+          additions += qty
+        } else if (qty < 0) {
+          dispatches += Math.abs(qty)
+        }
+        stockList.push({
+          id: doc.id,
+          qty: Math.abs(qty),
+          narration: String(data.narration || ''),
+        })
+      })
+
+      // 3. Fetch closing stock summary
+      const summaryDoc = await db.collection('meta').doc('stockSummary').get()
+      const closingStock = summaryDoc.exists ? (Number(summaryDoc.data().totalQty) || 0) : 0
+
+      // 4. Calculate starting stock
+      const startingStock = closingStock - additions + dispatches
+
+      // 5. Difference analysis (filtered locally to bypass index requirements)
+      const ordersSnap = await db
+        .collection('orders')
+        .where('date', '==', indiaDateStr)
+        .get()
+
+      const deliveredOrders = []
+      ordersSnap.forEach((doc) => {
+        const data = doc.data()
+        if ((data.status || '').toLowerCase() === 'delivered') {
+          deliveredOrders.push({
+            id: doc.id,
+            orderId: data.orderId || doc.id,
+            ...data,
+          })
+        }
+      })
+
+      let differencesCount = 0
+      deliveredOrders.forEach((order) => {
+        const match = stockList.find(
+          (se) => se.narration.includes(order.orderId) || se.narration.includes(order.id),
+        )
+        if (!match) {
+          differencesCount++
+        }
+      })
+
+      // 6. Format SMS message (omitting the word "mismatch")
+      const message = `Anjani Water Stock Report (${indiaDateStr}): Today's Closing Stock is ${closingStock} boxes. (Start: ${startingStock}, Additions: +${additions}, Dispatches: -${dispatches}). Differences found: ${differencesCount}.`
+
+      logger.info(`Sending stock report to Nilesh: ${message}`)
+
+      // 7. Send via Macrodroid webhook
+      const cleanMobile = normalizeIndianPhone(STAFF_MOBILE)
+      const packet = `${cleanMobile}@@@${message}`
+
+      const baseUrl = MACRODROID_URL
+      const finalUrl = `${baseUrl}?data=${encodeURIComponent(packet)}`
+
+      const response = await fetch(finalUrl)
+      if (response.ok) {
+        logger.info(`Stock report SMS successfully sent to Nilesh for ${indiaDateStr}.`)
+      } else {
+        logger.error(`Failed to send stock report webhook: Status ${response.status}`)
+      }
+    } catch (e) {
+      logger.error('Error running daily stock report job:', e.message)
+    }
+  },
+)
+
