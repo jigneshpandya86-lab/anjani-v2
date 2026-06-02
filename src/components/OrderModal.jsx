@@ -8,30 +8,49 @@ export default function OrderModal({ orderToEdit, onClose }) {
   const clients = useClientStore((state) => state.clients)
   const addOrder = useClientStore((state) => state.addOrder)
   const updateOrder = useClientStore((state) => state.updateOrder)
-  const [formData, setFormData] = useState({
-    clientId: '',
-    qty: '',
-    rate: '',
-    date: '',
-    time: '',
-    address: '',
-    location: '',
-    mapLink: '',
-    locationLat: null,
-    locationLng: null,
-    proofUrl: '',
+  const [formData, setFormData] = useState(() => {
+    const now = new Date()
+    const yyyy = now.getFullYear()
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    const dd = String(now.getDate()).padStart(2, '0')
+    const localDate = `${yyyy}-${mm}-${dd}`
+    const hh = String(now.getHours()).padStart(2, '0')
+    const min = String(now.getMinutes()).padStart(2, '0')
+    const localTime = `${hh}:${min}`
+    return {
+      clientId: '',
+      qty: '',
+      rate: '',
+      date: localDate,
+      time: localTime,
+      address: '',
+      location: '',
+      mapLink: '',
+      locationLat: null,
+      locationLng: null,
+      proofUrl: '',
+    }
   })
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
+    const now = new Date()
+    const yyyy = now.getFullYear()
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    const dd = String(now.getDate()).padStart(2, '0')
+    const localDate = `${yyyy}-${mm}-${dd}`
+    const hh = String(now.getHours()).padStart(2, '0')
+    const min = String(now.getMinutes()).padStart(2, '0')
+    const localTime = `${hh}:${min}`
+
     if (orderToEdit) {
       // Map old legacy fields directly into the new inputs
       setFormData({
         clientId: orderToEdit.clientId || orderToEdit.customerId || '',
         qty: orderToEdit.qty || orderToEdit.quantity || orderToEdit.boxes || '',
         rate: orderToEdit.rate || orderToEdit.price || orderToEdit.amount || '',
-        date: orderToEdit.date || orderToEdit.deliveryDate || orderToEdit.orderDate || '',
-        time: orderToEdit.time || orderToEdit.deliveryTime || '',
+        date: orderToEdit.date || orderToEdit.deliveryDate || orderToEdit.orderDate || localDate,
+        time: orderToEdit.time || orderToEdit.deliveryTime || localTime,
         address: orderToEdit.address || orderToEdit.deliveryAddress || '',
         location:
           orderToEdit.location || orderToEdit.googleLocation || orderToEdit.locationName || '',
@@ -49,8 +68,8 @@ export default function OrderModal({ orderToEdit, onClose }) {
         clientId: '',
         qty: '',
         rate: '',
-        date: '',
-        time: '',
+        date: localDate,
+        time: localTime,
         address: '',
         location: '',
         mapLink: '',
