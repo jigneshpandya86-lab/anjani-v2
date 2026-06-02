@@ -1801,3 +1801,62 @@ async function getOrCreateDefaulterSmsTemplate() {
   
   return newTemplate;
 }
+
+exports.sendOrderDeliveredSmsToClient = onDocumentWritten('orders/{docId}', async (event) => {
+  const beforeData = event.data.before.exists ? event.data.before.data() : null
+  const afterData = event.data.after.exists ? event.data.after.data() : null
+
+  if (!afterData) {
+    logger.info(`Order ${event.params.docId} deleted. Skipping client delivery SMS.`)
+    return
+  }
+
+  const currentStatus = (afterData.status || '').toLowerCase()
+  const previousStatus = beforeData ? (beforeData.status || '').toLowerCase() : null
+
+  // We only want to send the SMS when status transitions to "delivered"
+  const justDelivered = currentStatus === 'delivered' && previousStatus !== 'delivered'
+
+  if (!justDelivered) {
+    logger.info(`Order ${event.params.docId} status is ${currentStatus} (previous: ${previousStatus}). Skipping client delivery SMS.`)
+    return
+  }
+
+  logger.info(`Sending Delivery SMS to client for order ${event.params.docId}`)
+
+  try {
+    // Resolve client details
+    const resolved = await resolveOrderContext({ ...afterData, id: event.params.docId })
+    
+    // Client name and mobile number
+    const clientName = sanitizeSmsField(resolved.name)
+    const clientMobile = resolved.mobile
+
+    if (!clientMobile || clientMobile === 'N/A') {
+      logger.warn(`No mobile number found for order ${event.params.docId}. Cannot send client SMS.`)
+      return
+    }
+
+    // Construct the template
+    // "Thank You [Client Name] your order with Anjani water is delivered, Stay hydrated."
+    const message = `Thank You ${clientName} your order with Anjani water is delivered, Stay hydrated.`
+    
+    const cleanMobile = normalizeIndianPhone(clientMobile)
+    const packet = `${cleanMobile}@@@${message}`
+
+    const baseUrl = MACRODROID_URL
+    const finalUrl = `${baseUrl}?data=${encodeURIComponent(packet)}`
+
+    const response = await fetch(finalUrl)
+    if (response.ok) {
+      logger.info(`Delivery SMS Webhook Sent to Client (${clientName}) for order: ${event.params.docId}`)
+    } else {
+      logger.error('Client Delivery SMS webhook failed:', {
+        orderId: event.params.docId,
+        status: response.status,
+      })
+    }
+  } catch (e) {
+    logger.error('Client Delivery SMS Error:', { orderId: event.params.docId, error: e.message })
+  }
+})
