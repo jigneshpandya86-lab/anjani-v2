@@ -41,26 +41,92 @@ const STAFF_MOBILE = '917990943652'
 // --- EXISTING FUNCTIONS ---
 
 exports.sendSmsViaMacrodroid = onDocumentCreated('leads/{docId}', async (event) => {
-  const newLeadData = event.data.data()
+  const db = admin.firestore()
+  const leadRef = db.collection('leads').doc(event.params.docId)
 
-  if (newLeadData.Tag) {
-    logger.info(`Lead ${event.params.docId} already has a tag: ${newLeadData.Tag}. Skipping SMS.`)
+  let leadData = null
+  try {
+    await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(leadRef)
+      if (!doc.exists) {
+        throw new Error('Lead document does not exist')
+      }
+      const data = doc.data()
+      if (data.Tag) {
+        throw new Error(`ALREADY_PROCESSED: Tag is ${data.Tag}`)
+      }
+      transaction.update(leadRef, { Tag: 'SENDING' })
+      leadData = data
+    })
+  } catch (err) {
+    if (err.message.includes('ALREADY_PROCESSED')) {
+      logger.info(`Lead ${event.params.docId} already has tag or is sending: ${err.message}. Skipping SMS.`)
+      return
+    }
+    logger.error(`Transaction failed for lead ${event.params.docId}: ${err.message}`)
     return
   }
 
-  if (!newLeadData.mobile) {
+  if (!leadData.mobile) {
     logger.error('ERROR: Missing mobile number for lead', { docId: event.params.docId })
+    await leadRef.update({ Tag: 'FAILED_NO_MOBILE' })
     return
   }
 
-  let cleanPhone = String(newLeadData.mobile).replace(/\D/g, '')
-  if (cleanPhone.length === 10) {
-    cleanPhone = '91' + cleanPhone
+  let cleanPhone = String(leadData.mobile).replace(/\D/g, '')
+  if (!cleanPhone) {
+    logger.error('ERROR: Empty mobile number for lead', { docId: event.params.docId })
+    await leadRef.update({ Tag: 'FAILED_NO_MOBILE' })
+    return
+  }
+
+  let last10 = cleanPhone
+  if (cleanPhone.length >= 10) {
+    last10 = cleanPhone.slice(-10)
+  }
+
+  try {
+    const q1 = db.collection('leads').where('mobile', '==', last10).get()
+    const q2 = db.collection('leads').where('mobile', '==', '91' + last10).get()
+    const [snap1, snap2] = await Promise.all([q1, q2])
+
+    let alreadySent = false
+    const checkSnap = (snap) => {
+      for (const doc of snap.docs) {
+        if (doc.id !== event.params.docId) {
+          const d = doc.data()
+          if (d.Tag === 'SMS_SENT' || d.Tag === 'SENDING') {
+            alreadySent = true
+            break
+          }
+        }
+      }
+    }
+    checkSnap(snap1)
+    if (!alreadySent) checkSnap(snap2)
+
+    if (alreadySent) {
+      logger.info(`Lead ${event.params.docId} (${cleanPhone}) has a duplicate document that was already sent SMS or is sending. Marking as DUPLICATE.`)
+      await leadRef.update({
+        Tag: 'SMS_DUPLICATE_SKIPPED',
+        skippedAt: admin.firestore.FieldValue.serverTimestamp(),
+      })
+      return
+    }
+  } catch (err) {
+    logger.error(`Error checking duplicate lead mobile numbers for doc ${event.params.docId}:`, err)
+  }
+
+  let smsPhone = cleanPhone
+  if (smsPhone.length === 10) {
+    smsPhone = '91' + smsPhone
+  } else if (smsPhone.length > 10 && !smsPhone.startsWith('91')) {
+    smsPhone = '91' + smsPhone.slice(-10)
   }
 
   const message =
     'Events in Vadodara? Serve Anjani Water 200ml bottles! Perfect size, zero waste. Special rates on bulk buys! Order here: https://wa.me/919925997750'
-  const packet = `${cleanPhone}@@@${message}`
+  const packet = `${smsPhone}@@@${message}`
 
   const baseUrl = 'https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms'
   const finalUrl = `${baseUrl}?data=${encodeURIComponent(packet)}`
@@ -69,8 +135,7 @@ exports.sendSmsViaMacrodroid = onDocumentCreated('leads/{docId}', async (event) 
     const response = await fetch(finalUrl)
 
     if (response.ok) {
-      logger.info('SMS Webhook Sent to ' + cleanPhone)
-      const leadRef = admin.firestore().collection('leads').doc(event.params.docId)
+      logger.info('SMS Webhook Sent to ' + smsPhone)
       await leadRef.update({
         Tag: 'SMS_SENT',
         smsSentAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -78,9 +143,11 @@ exports.sendSmsViaMacrodroid = onDocumentCreated('leads/{docId}', async (event) 
       logger.info('Updated Tag to SMS_SENT for doc: ' + event.params.docId)
     } else {
       logger.error('Macrodroid webhook failed:', response.status)
+      await leadRef.update({ Tag: 'FAILED' })
     }
   } catch (e) {
     logger.error('SMS Error: ' + e.message)
+    await leadRef.update({ Tag: 'FAILED' })
   }
 })
 
@@ -787,28 +854,28 @@ async function processDueFollowUpsInternal() {
   return { checked, sent, markedDone, skipped }
 }
 
-// Scheduled job: twice a week (Tuesday and Friday at 20:00 PM India Time)
+// Scheduled job: weekly (Friday at 20:00 PM India Time)
 exports.scheduleDueFollowUps = onSchedule(
   {
-    schedule: '0 20 * * 2,5', // 8 PM on Tuesday and Friday
+    schedule: '0 20 * * 5', // 8 PM on Friday
     timeZone: 'Asia/Kolkata',
     retryCount: 2,
   },
   async () => {
-    logger.info('Starting bi-weekly follow-up job...')
+    logger.info('Starting weekly follow-up job...')
     const result = await processDueFollowUpsInternal()
-    logger.info('Bi-weekly follow-up job finished.', { result })
+    logger.info('Weekly follow-up job finished.', { result })
   },
 )
 
 exports.sendStaffLeadReminders = onSchedule(
   {
-    schedule: '0 19 * * 3,6', // 7 PM on Wednesday and Saturday
+    schedule: '0 19 * * 6', // 7 PM on Saturday
     timeZone: 'Asia/Kolkata',
     retryCount: 2,
   },
   async () => {
-    logger.info('Running bi-weekly staff lead reminder job.')
+    logger.info('Running weekly staff lead reminder job.')
     const staffMobile = STAFF_MOBILE
     const db = admin.firestore()
 
@@ -974,11 +1041,11 @@ exports.sendIntelligentOrderReminders = onSchedule(
 
 /**
  * Scheduled job to discover new B2B leads using Vertex AI.
- * Runs every Sunday at 08:00 AM India Time.
+ * Runs bi-weekly on the 1st and 15th of the month at 08:00 AM India Time.
  */
 exports.discoverLeadsWithAI = onSchedule(
   {
-    schedule: '0 8 * * 0',
+    schedule: '0 8 1,15 * *',
     timeZone: 'Asia/Kolkata',
     retryCount: 1,
   },
@@ -1049,19 +1116,21 @@ exports.discoverLeadsWithAI = onSchedule(
         if (addedCount >= 5) break
 
         if (lead.mobile && String(lead.mobile).length >= 10) {
-          const cleanPhone = String(lead.mobile).replace(/\D/g, '').slice(-10)
+          const cleanPhone = String(lead.mobile).replace(/\D/g, '')
+          let last10 = cleanPhone
+          if (cleanPhone.length >= 10) {
+            last10 = cleanPhone.slice(-10)
+          }
 
-          // Check if lead already exists to avoid duplicates
-          const existingLeadSnap = await db
-            .collection('leads')
-            .where('mobile', '==', cleanPhone)
-            .limit(1)
-            .get()
+          // Check if lead already exists to avoid duplicates (checking both 10-digit and 12-digit versions)
+          const q1 = db.collection('leads').where('mobile', '==', last10).limit(1).get()
+          const q2 = db.collection('leads').where('mobile', '==', '91' + last10).limit(1).get()
+          const [snap1, snap2] = await Promise.all([q1, q2])
 
-          if (existingLeadSnap.empty) {
+          if (snap1.empty && snap2.empty) {
             await db.collection('leads').add({
               name: lead.name || 'Unknown',
-              mobile: cleanPhone,
+              mobile: last10,
               business_type: lead.business_type || 'Unknown',
               relevance_score: lead.relevance_score || 0,
               source: 'AI_Discovery',
@@ -1069,9 +1138,9 @@ exports.discoverLeadsWithAI = onSchedule(
               Tag: null, // Trigger the SMS webhook
             })
             addedCount++
-            logger.info(`Added new lead: ${lead.name} (${cleanPhone})`)
+            logger.info(`Added new lead: ${lead.name} (${last10})`)
           } else {
-            logger.info(`Lead already exists: ${cleanPhone}`)
+            logger.info(`Lead already exists: ${last10}`)
           }
         }
       }
