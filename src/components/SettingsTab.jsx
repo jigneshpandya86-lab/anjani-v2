@@ -28,6 +28,11 @@ export default function SettingsTab() {
   const [regularHour, setRegularHour] = useState(10);
   const [regularDays, setRegularDays] = useState([3]);
 
+  // Stock Summary Report Schedule State
+  const [stockEnabled, setStockEnabled] = useState(false);
+  const [stockHour, setStockHour] = useState(21);
+  const [stockDays, setStockDays] = useState([0, 1, 2, 3, 4, 5, 6]);
+
   useEffect(() => {
     async function loadSettings() {
       try {
@@ -45,6 +50,19 @@ export default function SettingsTab() {
           setRegularEnabled(!!data.enabled);
           setRegularHour(data.hour !== undefined ? Number(data.hour) : 10);
           setRegularDays(Array.isArray(data.days) ? data.days : [3]);
+        }
+
+        const stockSnap = await getDoc(doc(db, 'config', 'stockReminder'));
+        if (stockSnap.exists()) {
+          const data = stockSnap.data();
+          setStockEnabled(!!data.enabled);
+          setStockHour(data.hour !== undefined ? Number(data.hour) : 21);
+          setStockDays(Array.isArray(data.days) ? data.days : [0, 1, 2, 3, 4, 5, 6]);
+        } else {
+          // Default configs if document not yet created
+          setStockEnabled(true);
+          setStockHour(21);
+          setStockDays([0, 1, 2, 3, 4, 5, 6]);
         }
       } catch (err) {
         console.error('Failed to load scheduler configs:', err);
@@ -68,6 +86,12 @@ export default function SettingsTab() {
     );
   };
 
+  const toggleStockDay = (dayVal) => {
+    setStockDays((prev) =>
+      prev.includes(dayVal) ? prev.filter((d) => d !== dayVal) : [...prev, dayVal].sort()
+    );
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -85,6 +109,14 @@ export default function SettingsTab() {
         enabled: regularEnabled,
         hour: Number(regularHour),
         days: regularDays,
+        minute: 0,
+      }, { merge: true });
+
+      // 3. Save Stock Report settings
+      await setDoc(doc(db, 'config', 'stockReminder'), {
+        enabled: stockEnabled,
+        hour: Number(stockHour),
+        days: stockDays,
         minute: 0,
       }, { merge: true });
 
@@ -258,6 +290,79 @@ export default function SettingsTab() {
             )}
             {!defaulterEnabled && (
               <p className="text-xs text-gray-400 italic">Defaulter payment reminders are currently disabled.</p>
+            )}
+          </div>
+
+          {/* Section C: Daily Stock Summary to Nilesh */}
+          <div className="space-y-4">
+            <div className="flex justify-between items-center border-b pb-2">
+              <div className="flex items-center gap-2">
+                <BellRing className="text-blue-500 w-5 h-5" />
+                <h3 className="font-bold text-gray-800 text-sm md:text-base">Daily Stock Summary to Staff</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStockEnabled((prev) => !prev)}
+                className="text-gray-600 focus:outline-none"
+              >
+                {stockEnabled ? (
+                  <ToggleRight className="w-12 h-12 text-green-500" />
+                ) : (
+                  <ToggleLeft className="w-12 h-12 text-gray-400" />
+                )}
+              </button>
+            </div>
+
+            {stockEnabled && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fadeIn">
+                <div>
+                  <label htmlFor="stockHourSelect" className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" />
+                    Report Send Hour (24-hr format)
+                  </label>
+                  <select
+                    id="stockHourSelect"
+                    value={stockHour}
+                    onChange={(e) => setStockHour(Number(e.target.value))}
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-400 outline-none"
+                  >
+                    {Array.from({ length: 24 }).map((_, i) => (
+                      <option key={i} value={i}>
+                        {String(i).padStart(2, '0')}:00 {i >= 12 ? 'PM' : 'AM'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <span className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5" />
+                    Trigger Weekdays
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {DAYS_OF_WEEK.map((d) => {
+                      const isSelected = stockDays.includes(d.value);
+                      return (
+                        <button
+                          key={d.value}
+                          type="button"
+                          onClick={() => toggleStockDay(d.value)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                            isSelected
+                              ? 'bg-orange-500 border-orange-600 text-white'
+                              : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {d.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+            {!stockEnabled && (
+              <p className="text-xs text-gray-400 italic">Daily stock summary notifications to staff are currently disabled.</p>
             )}
           </div>
 
