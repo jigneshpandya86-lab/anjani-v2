@@ -550,76 +550,7 @@ exports.sendWeeklyPaymentReminders = onSchedule(
     timeZone: 'Asia/Kolkata',
   },
   async (_event) => {
-    logger.info('Running weekly payment reminder job.')
-    try {
-      const customersRef = admin.firestore().collection('customers')
-      const dueCustomersSnapshot = await customersRef.where('outstanding', '>', 100).get()
-
-      if (dueCustomersSnapshot.empty) {
-        logger.info('No customers with outstanding > 100 found. Exiting.')
-        return
-      }
-
-      // Generate ONE fresh message template for the entire week
-      const weeklyPaymentTemplate = await generateWeeklyPaymentSmsTemplate()
-      logger.info('Weekly payment AI template generated:', weeklyPaymentTemplate)
-
-      const promises = dueCustomersSnapshot.docs
-        .filter((doc) => !doc.data().isDefaulter) // Exclude defaulters as they have their own schedule
-        .map((doc) => {
-          const customerData = doc.data()
-        const clientMobile = customerData.mobile || customerData.phone
-        const amountDue = customerData.outstanding
-        const clientName = customerData.name || 'Customer'
-
-        if (!clientMobile) {
-          logger.warn(`Customer document ${doc.id} is missing a mobile number.`)
-          return Promise.resolve()
-        }
-
-        let cleanPhone = String(clientMobile).replace(/\D/g, '')
-        if (cleanPhone.length === 10) {
-          cleanPhone = '91' + cleanPhone
-        }
-
-        // Personalized for this client using the weekly template
-        const message = weeklyPaymentTemplate
-          .replace('{name}', clientName)
-          .replace('{amount}', amountDue)
-
-        const packet = `${cleanPhone}@@@${message}`
-        const baseUrl =
-          'https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms'
-        const finalUrl = `${baseUrl}?data=${encodeURIComponent(packet)}`
-
-        return fetch(finalUrl)
-          .then(async (response) => {
-            if (response.ok) {
-              logger.info(`Payment reminder sent to ${clientName} (${cleanPhone})`)
-              try {
-                await doc.ref.update({
-                  lastPaymentReminderSent: admin.firestore.FieldValue.serverTimestamp(),
-                })
-                logger.info(`Updated lastPaymentReminderSent for customer: ${doc.id}`)
-              } catch (updateError) {
-                logger.error(`Failed to update customer ${doc.id}:`, updateError)
-              }
-            } else {
-              logger.error(`Failed to send payment reminder to ${cleanPhone}:`, {
-                status: response.status,
-              })
-            }
-          })
-          .catch((e) => {
-            logger.error(`Error sending payment reminder to ${cleanPhone}:`, { error: e.message })
-          })
-      })
-
-      await Promise.all(promises)
-      logger.info('Finished processing payment reminders.')
-    } catch (error) {
-      logger.error('Error running weekly payment reminder job:', error)
-    }
+    logger.info('sendWeeklyPaymentReminders (Monday schedule) deactivated in favor of hourlySmsScheduler. Exiting.')
   },
 )
 
@@ -632,56 +563,7 @@ exports.sendWeeklyRegularOrderReminder = onSchedule(
     retryCount: 2,
   },
   async (_event) => {
-    logger.info('Starting weekly regular client order reminder job.')
-    const db = admin.firestore()
-
-    try {
-      const regularSnap = await db.collection('customers').where('isRegular', '==', true).get()
-
-      if (regularSnap.empty) {
-        logger.info('No regular customers found for reminder. Exiting.')
-        return
-      }
-
-      // Generate ONE fresh message template for the entire week
-      const weeklyTemplate = await generateWeeklySmsTemplate()
-      logger.info('Weekly AI template generated:', weeklyTemplate)
-
-      const promises = regularSnap.docs.map(async (doc) => {
-        const customer = doc.data()
-        const mobile = customer.mobile
-        const name = customer.name || 'Customer'
-
-        if (!mobile) return
-
-        // Personalized for this client using the weekly template
-        const message = weeklyTemplate.replace('{name}', name)
-
-        const cleanPhone = normalizeIndianPhone(mobile)
-        const packet = `${cleanPhone}@@@${message}`
-        const baseUrl =
-          'https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms'
-        const finalUrl = `${baseUrl}?data=${encodeURIComponent(packet)}`
-
-        try {
-          const response = await fetch(finalUrl)
-          if (response.ok) {
-            logger.info(`Weekly AI reminder sent to regular client: ${name} (${cleanPhone})`)
-          } else {
-            logger.error(`Failed to send AI reminder to ${cleanPhone}:`, {
-              status: response.status,
-            })
-          }
-        } catch (e) {
-          logger.error(`Error calling AI webhook for ${cleanPhone}:`, { error: e.message })
-        }
-      })
-
-      await Promise.all(promises)
-      logger.info('Finished sending weekly AI reminders to regular clients.')
-    } catch (error) {
-      logger.error('Error running weekly regular client AI reminder job:', error)
-    }
+    logger.info('sendWeeklyRegularOrderReminder (Wednesday schedule) deactivated in favor of hourlySmsScheduler. Exiting.');
   },
 )
 
@@ -704,9 +586,10 @@ function getLeadPhone(lead) {
   return lead.mobile || lead.phone || ''
 }
 
-/**
- * Uses Gemini to generate a single engaging, fresh SMS template for the week's payment reminders.
- */
+/*
+ * Note: generateWeeklyPaymentSmsTemplate is commented out because the general weekly payment reminder schedule (for non-defaulters) was deactivated.
+ * Keep this for future reference if general payment reminders are re-enabled.
+ *
 async function generateWeeklyPaymentSmsTemplate() {
   const prompt = `Write an extremely polite, humble, and friendly SMS reminder (max 140 chars) for a customer regarding their outstanding payment balance for "Anjani 200ml Packaged Drinking Water".
 Tone: Very respectful, friendly, and soft (like family business). Use "Ji" for respect.
@@ -724,6 +607,7 @@ Output only the plain text of the SMS template.`
     return `Namaste {name} ji, a gentle reminder from Anjani Water for your pending balance of Rs {amount}. Krupaya apna payment clear karein. Thank you! 🙏`
   }
 }
+*/
 
 
 async function sendBackgroundSms({ macroUrl, phone, message }) {
@@ -1559,96 +1443,7 @@ exports.sendWeeklyRegularOrderReminder = onSchedule(
     retryCount: 2
   },
   async (_event) => {
-    logger.info("Starting weekly regular client order reminder job check.");
-    const db = admin.firestore();
-    
-    try {
-      const configRef = db.collection('config').doc('regularReminder');
-      const configDoc = await configRef.get();
-
-      if (!configDoc.exists) {
-        logger.warn("regularReminder config document not found. Exiting.");
-        return;
-      }
-
-      const configData = configDoc.data();
-      if (!configData.enabled) {
-        logger.info("Regular client reminders are disabled in config. Exiting.");
-        return;
-      }
-
-      // Get current local time details in India time zone
-      const now = new Date();
-      const hourFormatter = new Intl.DateTimeFormat("en-US", {
-        timeZone: "Asia/Kolkata",
-        hour: "numeric",
-        hour12: false
-      });
-      const currentHour = parseInt(hourFormatter.format(now), 10);
-
-      const weekdayFormatter = new Intl.DateTimeFormat("en-US", {
-        timeZone: "Asia/Kolkata",
-        weekday: "short"
-      });
-      const dayName = weekdayFormatter.format(now);
-      const dayMap = { "Sun": 0, "Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4, "Fri": 5, "Sat": 6 };
-      const currentDayOfWeek = dayMap[dayName];
-
-      // Check if today matches configured weekdays
-      if (Array.isArray(configData.days) && !configData.days.includes(currentDayOfWeek)) {
-        logger.info(`Today (weekday ${currentDayOfWeek} / ${dayName}) is not in the configured days [${configData.days.join(', ')}]. Exiting.`);
-        return;
-      }
-
-      // Check if current hour matches configured hour
-      const configHour = parseInt(configData.hour, 10);
-      if (currentHour !== configHour) {
-        logger.info(`Current hour (${currentHour}) does not match configured hour (${configHour}). Exiting.`);
-        return;
-      }
-
-      const regularSnap = await db.collection('customers').where('isRegular', '==', true).get();
-      
-      if (regularSnap.empty) {
-        logger.info("No regular customers found for reminder. Exiting.");
-        return;
-      }
-
-      // Generate ONE fresh message template for the entire week
-      const weeklyTemplate = await generateWeeklySmsTemplate();
-      logger.info("Weekly AI template generated:", weeklyTemplate);
-
-      const promises = regularSnap.docs.map(async (doc) => {
-        const customer = doc.data();
-        const mobile = customer.mobile;
-        const name = customer.name || "Customer";
-
-        if (!mobile) return;
-
-        // Personalized for this client using the weekly template
-        const message = weeklyTemplate.replace("{name}", name);
-        
-        const cleanPhone = normalizeIndianPhone(mobile);
-        const packet = `${cleanPhone}@@@${message}`;
-        const finalUrl = `${MACRODROID_URL}?data=${encodeURIComponent(packet)}`;
-
-        try {
-          const response = await fetch(finalUrl);
-          if (response.ok) {
-            logger.info(`Weekly AI reminder sent to regular client: ${name} (${cleanPhone})`);
-          } else {
-            logger.error(`Failed to send AI reminder to ${cleanPhone}:`, { status: response.status });
-          }
-        } catch (e) {
-          logger.error(`Error calling AI webhook for ${cleanPhone}:`, { error: e.message });
-        }
-      });
-
-      await Promise.all(promises);
-      logger.info("Finished sending weekly AI reminders to regular clients.");
-    } catch (error) {
-      logger.error("Error running weekly regular client AI reminder job:", error);
-    }
+    logger.info("sendWeeklyRegularOrderReminder (Hourly scheduler) deactivated in favor of hourlySmsScheduler. Exiting.");
   }
 );
 
@@ -1661,140 +1456,7 @@ exports.sendWeeklyPaymentReminders = onSchedule(
     retryCount: 2
   },
   async (_event) => {
-    logger.info("Running defaulter payment reminder job.");
-    const db = admin.firestore();
-    try {
-      const configRef = db.collection('config').doc('defaulterReminder');
-      const configDoc = await configRef.get();
-
-      if (!configDoc.exists) {
-        logger.warn("defaulterReminder config document not found. Exiting.");
-        return;
-      }
-
-      const configData = configDoc.data();
-      if (!configData.enabled) {
-        logger.info("Defaulter reminders are disabled in config. Exiting.");
-        return;
-      }
-
-      // Get current local time details in India time zone
-      const now = new Date();
-      const hourFormatter = new Intl.DateTimeFormat("en-US", {
-        timeZone: "Asia/Kolkata",
-        hour: "numeric",
-        hour12: false
-      });
-      const currentHour = parseInt(hourFormatter.format(now), 10);
-
-      const weekdayFormatter = new Intl.DateTimeFormat("en-US", {
-        timeZone: "Asia/Kolkata",
-        weekday: "short"
-      });
-      const dayName = weekdayFormatter.format(now);
-      const dayMap = { "Sun": 0, "Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4, "Fri": 5, "Sat": 6 };
-      const currentDayOfWeek = dayMap[dayName];
-
-      // Check if today matches configured weekdays
-      if (Array.isArray(configData.days) && !configData.days.includes(currentDayOfWeek)) {
-        logger.info(`Today (weekday ${currentDayOfWeek} / ${dayName}) is not in the configured days [${configData.days.join(', ')}]. Exiting.`);
-        return;
-      }
-
-      // Check if current hour matches configured hour
-      const configHour = parseInt(configData.hour, 10);
-      if (currentHour !== configHour) {
-        logger.info(`Current hour (${currentHour}) does not match configured hour (${configHour}). Exiting.`);
-        return;
-      }
-
-      // Query customers where isDefaulter is true
-      const defaultersSnapshot = await db.collection('customers').where('isDefaulter', '==', true).get();
-
-      if (defaultersSnapshot.empty) {
-        logger.info("No customers set as defaulter found. Exiting.");
-        return;
-      }
-
-      // Generate or fetch the weekly template
-      const template = await getOrCreateDefaulterSmsTemplate();
-      logger.info("Defaulter weekly payment template:", template);
-
-      let sentCount = 0;
-      let failCount = 0;
-      let skippedCount = 0;
-      const sentDetails = [];
-
-      const promises = defaultersSnapshot.docs.map(async (doc) => {
-        const customerData = doc.data();
-        const clientMobile = customerData.mobile || customerData.phone;
-        const amountDue = customerData.outstanding || 0;
-        const clientName = customerData.name || "Customer";
-
-        // Only send if they have an outstanding balance > 0
-        if (amountDue <= 0) {
-          logger.info(`Skipping defaulter customer ${clientName} because outstanding balance is <= 0.`);
-          skippedCount++;
-          return;
-        }
-
-        if (!clientMobile) {
-          logger.warn(`Defaulter customer document ${doc.id} is missing a mobile number.`);
-          skippedCount++;
-          return;
-        }
-        
-        const cleanPhone = normalizeIndianPhone(clientMobile);
-        const message = template
-          .replace("{name}", clientName)
-          .replace("{amount}", amountDue);
-
-        const packet = `${cleanPhone}@@@${message}`;
-        const finalUrl = `${MACRODROID_URL}?data=${encodeURIComponent(packet)}`;
-
-        try {
-          const response = await fetch(finalUrl);
-          if (response.ok) {
-            logger.info(`Defaulter payment reminder sent to ${clientName} (${cleanPhone})`);
-            await doc.ref.update({ 
-              lastPaymentReminderSent: admin.firestore.FieldValue.serverTimestamp()
-            });
-            sentCount++;
-            sentDetails.push(`${clientName} (₹${amountDue})`);
-          } else {
-            logger.error(`Failed to send defaulter payment reminder to ${cleanPhone}:`, { status: response.status });
-            failCount++;
-          }
-        } catch (e) {
-          logger.error(`Error sending defaulter payment reminder to ${cleanPhone}:`, { error: e.message });
-          failCount++;
-        }
-      });
-
-      await Promise.all(promises);
-      logger.info(`Finished processing defaulter payment reminders. Sent: ${sentCount}, Failed: ${failCount}, Skipped: ${skippedCount}`);
-
-      // Option C Alert: Send SMS summary to staff/admin mobile
-      if (sentCount > 0 || failCount > 0) {
-        const alertMessage = `Defaulter Reminders Job Run Summary:\n- Sent: ${sentCount} reminders [${sentDetails.join(', ')}]\n- Failed: ${failCount}\n- Skipped: ${skippedCount}`;
-        const cleanStaffPhone = normalizeIndianPhone("919925997750");
-        const alertPacket = `${cleanStaffPhone}@@@${alertMessage}`;
-        const alertUrl = `${MACRODROID_URL}?data=${encodeURIComponent(alertPacket)}`;
-        
-        try {
-          const alertResponse = await fetch(alertUrl);
-          if (alertResponse.ok) {
-            logger.info("Admin alert SMS sent successfully.");
-          } else {
-            logger.error("Failed to send admin alert SMS:", alertResponse.status);
-          }
-        } catch (alertErr) {
-          logger.error("Error sending admin alert SMS:", alertErr.message);
-        }
-      }
-    } catch (error) {
-      logger.error("Error running weekly payment reminder job:", error);
-    }
+    logger.info("sendWeeklyPaymentReminders (Hourly scheduler) deactivated in favor of hourlySmsScheduler. Exiting.");
   }
 );
 
@@ -2042,4 +1704,237 @@ exports.sendDailyStockReportToNilesh = onSchedule(
     }
   },
 )
+
+// --- UNIFIED HOURLY SMS SCHEDULER SYSTEM ---
+
+/**
+ * Helper to process Regular Client SMS Reminders
+ */
+async function processRegularClientReminders(db, currentHour, currentDayOfWeek) {
+  try {
+    const configRef = db.collection('config').doc('regularReminder');
+    const configDoc = await configRef.get();
+
+    if (!configDoc.exists) {
+      logger.warn("regularReminder config document not found. Skipping.");
+      return;
+    }
+
+    const configData = configDoc.data();
+    if (!configData.enabled) {
+      logger.info("Regular client reminders are disabled in config. Skipping.");
+      return;
+    }
+
+    // Check if today matches configured weekdays
+    if (Array.isArray(configData.days) && !configData.days.includes(currentDayOfWeek)) {
+      logger.info(`Regular Reminders: Today (weekday ${currentDayOfWeek}) is not in the configured days [${configData.days.join(', ')}]. Skipping.`);
+      return;
+    }
+
+    // Check if current hour matches configured hour
+    const configHour = parseInt(configData.hour, 10);
+    if (currentHour !== configHour) {
+      logger.info(`Regular Reminders: Current hour (${currentHour}) does not match configured hour (${configHour}). Skipping.`);
+      return;
+    }
+
+    const regularSnap = await db.collection('customers').where('isRegular', '==', true).get();
+    
+    if (regularSnap.empty) {
+      logger.info("No regular customers found for reminder. Skipping.");
+      return;
+    }
+
+    // Generate ONE fresh message template for the entire week
+    const weeklyTemplate = await generateWeeklySmsTemplate();
+    logger.info("Weekly AI template generated:", weeklyTemplate);
+
+    const promises = regularSnap.docs.map(async (doc) => {
+      const customer = doc.data();
+      const mobile = customer.mobile;
+      const name = customer.name || "Customer";
+
+      if (!mobile) return;
+
+      const message = weeklyTemplate.replace("{name}", name);
+
+      try {
+        await sendBackgroundSms({
+          macroUrl: MACRODROID_URL,
+          phone: mobile,
+          message,
+        });
+        logger.info(`Weekly AI reminder sent to regular client: ${name} (${normalizeIndianPhone(mobile)})`);
+      } catch (e) {
+        logger.error(`Error calling AI webhook for regular client ${normalizeIndianPhone(mobile)}:`, { error: e.message });
+      }
+    });
+
+    await Promise.all(promises);
+    logger.info("Finished processing weekly AI reminders for regular clients.");
+  } catch (error) {
+    logger.error("Error processing weekly regular client AI reminders:", error);
+  }
+}
+
+/**
+ * Helper to process Defaulter Client Payment SMS Reminders
+ */
+async function processDefaulterPaymentReminders(db, currentHour, currentDayOfWeek) {
+  try {
+    const configRef = db.collection('config').doc('defaulterReminder');
+    const configDoc = await configRef.get();
+
+    if (!configDoc.exists) {
+      logger.warn("defaulterReminder config document not found. Skipping.");
+      return;
+    }
+
+    const configData = configDoc.data();
+    if (!configData.enabled) {
+      logger.info("Defaulter reminders are disabled in config. Skipping.");
+      return;
+    }
+
+    // Check if today matches configured weekdays
+    if (Array.isArray(configData.days) && !configData.days.includes(currentDayOfWeek)) {
+      logger.info(`Defaulter Reminders: Today (weekday ${currentDayOfWeek}) is not in the configured days [${configData.days.join(', ')}]. Skipping.`);
+      return;
+    }
+
+    // Check if current hour matches configured hour
+    const configHour = parseInt(configData.hour, 10);
+    if (currentHour !== configHour) {
+      logger.info(`Defaulter Reminders: Current hour (${currentHour}) does not match configured hour (${configHour}). Skipping.`);
+      return;
+    }
+
+    // Query customers where isDefaulter is true
+    const defaultersSnapshot = await db.collection('customers').where('isDefaulter', '==', true).get();
+
+    if (defaultersSnapshot.empty) {
+      logger.info("No customers set as defaulter found. Skipping.");
+      return;
+    }
+
+    // Generate or fetch the weekly template
+    const template = await getOrCreateDefaulterSmsTemplate();
+    logger.info("Defaulter weekly payment template:", template);
+
+    let sentCount = 0;
+    let failCount = 0;
+    let skippedCount = 0;
+    const sentDetails = [];
+
+    const promises = defaultersSnapshot.docs.map(async (doc) => {
+      const customerData = doc.data();
+      const clientMobile = customerData.mobile || customerData.phone;
+      const amountDue = customerData.outstanding || 0;
+      const clientName = customerData.name || "Customer";
+
+      if (amountDue <= 0) {
+        logger.info(`Skipping defaulter customer ${clientName} because outstanding balance is <= 0.`);
+        skippedCount++;
+        return;
+      }
+
+      if (!clientMobile) {
+        logger.warn(`Defaulter customer document ${doc.id} is missing a mobile number.`);
+        skippedCount++;
+        return;
+      }
+      
+      const message = template
+        .replace("{name}", clientName)
+        .replace("{amount}", amountDue);
+
+      try {
+        await sendBackgroundSms({
+          macroUrl: MACRODROID_URL,
+          phone: clientMobile,
+          message,
+        });
+        logger.info(`Defaulter payment reminder sent to ${clientName} (${normalizeIndianPhone(clientMobile)})`);
+        await doc.ref.update({ 
+          lastPaymentReminderSent: admin.firestore.FieldValue.serverTimestamp()
+        });
+        sentCount++;
+        sentDetails.push(`${clientName} (₹${amountDue})`);
+      } catch (e) {
+        logger.error(`Error sending defaulter payment reminder to ${normalizeIndianPhone(clientMobile)}:`, { error: e.message });
+        failCount++;
+      }
+    });
+
+    await Promise.all(promises);
+    logger.info(`Finished processing defaulter payment reminders. Sent: ${sentCount}, Failed: ${failCount}, Skipped: ${skippedCount}`);
+
+    // Alert: Send SMS summary to staff/admin mobile
+    if (sentCount > 0 || failCount > 0) {
+      const alertMessage = `Defaulter Reminders Job Run Summary:\n- Sent: ${sentCount} reminders [${sentDetails.join(', ')}]\n- Failed: ${failCount}\n- Skipped: ${skippedCount}`;
+      try {
+        await sendBackgroundSms({
+          macroUrl: MACRODROID_URL,
+          phone: "919925997750",
+          message: alertMessage,
+        });
+        logger.info("Admin alert SMS sent successfully.");
+      } catch (alertErr) {
+        logger.error("Error sending admin alert SMS:", alertErr.message);
+      }
+    }
+  } catch (error) {
+    logger.error("Error processing weekly defaulter payment reminders:", error);
+  }
+}
+
+/**
+ * Unified Hourly SMS Scheduler
+ * Runs hourly from 9 AM to 8 PM India Time (0 9-20 * * *).
+ * Centralizes all background scheduled SMS notifications.
+ */
+exports.hourlySmsScheduler = onSchedule(
+  {
+    schedule: "0 9-20 * * *",
+    region: "asia-south1",
+    timeZone: "Asia/Kolkata",
+    retryCount: 2,
+  },
+  async (_event) => {
+    logger.info("Starting unified hourly SMS scheduler...");
+    const db = admin.firestore();
+
+    try {
+      const now = new Date();
+      
+      const hourFormatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Kolkata",
+        hour: "numeric",
+        hour12: false
+      });
+      const currentHour = parseInt(hourFormatter.format(now), 10);
+
+      const weekdayFormatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Kolkata",
+        weekday: "short"
+      });
+      const dayName = weekdayFormatter.format(now);
+      const dayMap = { "Sun": 0, "Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4, "Fri": 5, "Sat": 6 };
+      const currentDayOfWeek = dayMap[dayName];
+
+      logger.info(`Current local time in India: Weekday ${currentDayOfWeek} (${dayName}), Hour ${currentHour}:00`);
+
+      // Run active reminder checkers concurrently
+      await Promise.all([
+        processRegularClientReminders(db, currentHour, currentDayOfWeek),
+        processDefaulterPaymentReminders(db, currentHour, currentDayOfWeek)
+      ]);
+
+      logger.info("Unified hourly SMS scheduler completed.");
+    } catch (error) {
+      logger.error("Error running unified hourly SMS scheduler:", error);
+    }
+  }
+);
 
