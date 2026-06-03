@@ -2021,23 +2021,21 @@ exports.sendDailyStockReportToNilesh = onSchedule(
         }
       })
 
-      // 6. Format SMS message (omitting the word "mismatch")
-      const message = `Anjani Water Stock Report (${indiaDateStr}): Today's Closing Stock is ${closingStock} boxes. (Start: ${startingStock}, Additions: +${additions}, Dispatches: -${dispatches}). Differences found: ${differencesCount}.`
+      // 6. Format SMS message (kept concise to remain under 160 character limit)
+      const message = `Anjani Stock Report (${indiaDateStr}): Closing: ${closingStock} boxes. (Start: ${startingStock}, Add: +${additions}, Disp: -${dispatches}). Diff: ${differencesCount}.`
 
       logger.info(`Sending stock report to Nilesh: ${message}`)
 
-      // 7. Send via Macrodroid webhook
-      const cleanMobile = normalizeIndianPhone(STAFF_MOBILE)
-      const packet = `${cleanMobile}@@@${message}`
-
-      const baseUrl = MACRODROID_URL
-      const finalUrl = `${baseUrl}?data=${encodeURIComponent(packet)}`
-
-      const response = await fetch(finalUrl)
-      if (response.ok) {
+      // 7. Send via Macrodroid webhook using standardized sendBackgroundSms helper
+      try {
+        await sendBackgroundSms({
+          macroUrl: MACRODROID_URL,
+          phone: STAFF_MOBILE,
+          message,
+        })
         logger.info(`Stock report SMS successfully sent to Nilesh for ${indiaDateStr}.`)
-      } else {
-        logger.error(`Failed to send stock report webhook: Status ${response.status}`)
+      } catch (err) {
+        logger.error(`Failed to send stock report webhook: ${err.message}`)
       }
     } catch (e) {
       logger.error('Error running daily stock report job:', e.message)
