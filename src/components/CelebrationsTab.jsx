@@ -6,6 +6,26 @@ import toast from 'react-hot-toast';
 
 const RELATIONS = ['Friend', 'Relative', 'Client', 'Other'];
 
+const MONTHS = [
+  { value: '01', label: 'Jan (01)' },
+  { value: '02', label: 'Feb (02)' },
+  { value: '03', label: 'Mar (03)' },
+  { value: '04', label: 'Apr (04)' },
+  { value: '05', label: 'May (05)' },
+  { value: '06', label: 'Jun (06)' },
+  { value: '07', label: 'Jul (07)' },
+  { value: '08', label: 'Aug (08)' },
+  { value: '09', label: 'Sep (09)' },
+  { value: '10', label: 'Oct (10)' },
+  { value: '11', label: 'Nov (11)' },
+  { value: '12', label: 'Dec (12)' },
+];
+
+const DAYS = Array.from({ length: 31 }, (_, i) => {
+  const d = String(i + 1).padStart(2, '0');
+  return { value: d, label: d };
+});
+
 export default function CelebrationsTab() {
   const [loading, setLoading] = useState(true);
   const [savingContact, setSavingContact] = useState(false);
@@ -17,8 +37,10 @@ export default function CelebrationsTab() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [relation, setRelation] = useState('Friend');
-  const [birthday, setBirthday] = useState('');
-  const [anniversary, setAnniversary] = useState('');
+  const [bMonth, setBMonth] = useState('');
+  const [bDay, setBDay] = useState('');
+  const [aMonth, setAMonth] = useState('');
+  const [aDay, setADay] = useState('');
 
   // Load celebrations list
   useEffect(() => {
@@ -73,17 +95,20 @@ export default function CelebrationsTab() {
   // Save / Update Contact Doc
   const handleSubmitContact = async (e) => {
     e.preventDefault();
-    if (!name.trim() || !phone.trim() || !birthday) {
+    if (!name.trim() || !phone.trim() || !bMonth || !bDay) {
       toast.error('Name, Phone, and Birthday are required');
+      return;
+    }
+    if ((aMonth && !aDay) || (!aMonth && aDay)) {
+      toast.error('Both Month and Day are required for Anniversary (or leave both blank)');
       return;
     }
 
     setSavingContact(true);
     const cleanedPhone = phone.replace(/\D/g, '');
 
-    // Store only MM-DD (month and date) without year
-    const birthdaySave = birthday.length === 10 ? birthday.substring(5) : birthday;
-    const anniversarySave = anniversary ? (anniversary.length === 10 ? anniversary.substring(5) : anniversary) : null;
+    const birthdaySave = `${bMonth}-${bDay}`;
+    const anniversarySave = (aMonth && aDay) ? `${aMonth}-${aDay}` : null;
 
     const contactData = {
       name: name.trim(),
@@ -111,8 +136,10 @@ export default function CelebrationsTab() {
       setName('');
       setPhone('');
       setRelation('Friend');
-      setBirthday('');
-      setAnniversary('');
+      setBMonth('');
+      setBDay('');
+      setAMonth('');
+      setADay('');
     } catch (err) {
       console.error(err);
       toast.error('Failed to save contact');
@@ -126,11 +153,36 @@ export default function CelebrationsTab() {
     setName(c.name);
     setPhone(c.phone);
     setRelation(c.relation || 'Friend');
-    // Prepend dummy year to MM-DD string to format as YYYY-MM-DD for standard date input
-    const bValue = c.birthday ? (c.birthday.length === 5 ? `2000-${c.birthday}` : c.birthday) : '';
-    const aValue = c.anniversary ? (c.anniversary.length === 5 ? `2000-${c.anniversary}` : c.anniversary) : '';
-    setBirthday(bValue);
-    setAnniversary(aValue);
+    
+    // Parse birthday (MM-DD or YYYY-MM-DD)
+    if (c.birthday) {
+      const parts = c.birthday.split('-');
+      if (parts.length === 2) {
+        setBMonth(parts[0]);
+        setBDay(parts[1]);
+      } else if (parts.length === 3) {
+        setBMonth(parts[1]);
+        setBDay(parts[2]);
+      }
+    } else {
+      setBMonth('');
+      setBDay('');
+    }
+
+    // Parse anniversary (MM-DD or YYYY-MM-DD)
+    if (c.anniversary) {
+      const parts = c.anniversary.split('-');
+      if (parts.length === 2) {
+        setAMonth(parts[0]);
+        setADay(parts[1]);
+      } else if (parts.length === 3) {
+        setAMonth(parts[1]);
+        setADay(parts[2]);
+      }
+    } else {
+      setAMonth('');
+      setADay('');
+    }
   };
 
   const handleDelete = async (id) => {
@@ -150,8 +202,10 @@ export default function CelebrationsTab() {
     setName('');
     setPhone('');
     setRelation('Friend');
-    setBirthday('');
-    setAnniversary('');
+    setBMonth('');
+    setBDay('');
+    setAMonth('');
+    setADay('');
   };
 
   const filteredContacts = contacts.filter((c) =>
@@ -222,7 +276,7 @@ export default function CelebrationsTab() {
           )}
         </div>
 
-        <form onSubmit={handleSubmitContact} className="grid grid-cols-1 gap-3 md:grid-cols-4 md:items-end">
+        <form onSubmit={handleSubmitContact} className="grid grid-cols-1 gap-3 md:grid-cols-5 md:items-end">
           <div>
             <label htmlFor="celebratorName" className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
               <User className="h-3 w-3" />
@@ -273,37 +327,67 @@ export default function CelebrationsTab() {
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label htmlFor="celebratorBirthday" className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                <Calendar className="h-3 w-3" />
-                Birthday
-              </label>
-              <input
-                id="celebratorBirthday"
-                type="date"
+          <div>
+            <label className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+              <Calendar className="h-3 w-3" />
+              Birthday
+            </label>
+            <div className="grid grid-cols-2 gap-1.5">
+              <select
                 required
-                value={birthday}
-                onChange={(e) => setBirthday(e.target.value)}
-                className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-orange-400"
-              />
-            </div>
-            <div>
-              <label htmlFor="celebratorAnniversary" className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                <Calendar className="h-3 w-3" />
-                Anniversary
-              </label>
-              <input
-                id="celebratorAnniversary"
-                type="date"
-                value={anniversary}
-                onChange={(e) => setAnniversary(e.target.value)}
-                className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-orange-400"
-              />
+                value={bMonth}
+                onChange={(e) => setBMonth(e.target.value)}
+                className="w-full rounded-md border border-gray-300 bg-white px-1.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-orange-400"
+              >
+                <option value="">Month</option>
+                {MONTHS.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+              <select
+                required
+                value={bDay}
+                onChange={(e) => setBDay(e.target.value)}
+                className="w-full rounded-md border border-gray-300 bg-white px-1.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-orange-400"
+              >
+                <option value="">Day</option>
+                {DAYS.map((d) => (
+                  <option key={d.value} value={d.value}>{d.label}</option>
+                ))}
+              </select>
             </div>
           </div>
 
-          <div className="md:col-span-4 flex justify-end gap-2 pt-2">
+          <div>
+            <label className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+              <Calendar className="h-3 w-3" />
+              Anniversary
+            </label>
+            <div className="grid grid-cols-2 gap-1.5">
+              <select
+                value={aMonth}
+                onChange={(e) => setAMonth(e.target.value)}
+                className="w-full rounded-md border border-gray-300 bg-white px-1.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-orange-400"
+              >
+                <option value="">Month</option>
+                {MONTHS.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+              <select
+                value={aDay}
+                onChange={(e) => setADay(e.target.value)}
+                className="w-full rounded-md border border-gray-300 bg-white px-1.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-orange-400"
+              >
+                <option value="">Day</option>
+                {DAYS.map((d) => (
+                  <option key={d.value} value={d.value}>{d.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="md:col-span-5 flex justify-end gap-2 pt-2">
             {editingId && (
               <button
                 type="button"
