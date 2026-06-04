@@ -33,6 +33,11 @@ export default function SettingsTab() {
   const [stockHour, setStockHour] = useState(21);
   const [stockDays, setStockDays] = useState([0, 1, 2, 3, 4, 5, 6]);
 
+  // Defaulter Call List to Staff State
+  const [staffAlertEnabled, setStaffAlertEnabled] = useState(true);
+  const [staffAlertHour, setStaffAlertHour] = useState(11);
+  const [staffAlertDays, setStaffAlertDays] = useState([6]);
+
   useEffect(() => {
     async function loadSettings() {
       try {
@@ -64,6 +69,18 @@ export default function SettingsTab() {
           setStockHour(21);
           setStockDays([0, 1, 2, 3, 4, 5, 6]);
         }
+
+        const staffAlertSnap = await getDoc(doc(db, 'config', 'defaulterStaffAlert'));
+        if (staffAlertSnap.exists()) {
+          const data = staffAlertSnap.data();
+          setStaffAlertEnabled(!!data.enabled);
+          setStaffAlertHour(data.hour !== undefined ? Number(data.hour) : 11);
+          setStaffAlertDays(Array.isArray(data.days) ? data.days : [6]);
+        } else {
+          setStaffAlertEnabled(true);
+          setStaffAlertHour(11);
+          setStaffAlertDays([6]);
+        }
       } catch (err) {
         console.error('Failed to load scheduler configs:', err);
         toast.error('Failed to load schedule configurations');
@@ -88,6 +105,12 @@ export default function SettingsTab() {
 
   const toggleStockDay = (dayVal) => {
     setStockDays((prev) =>
+      prev.includes(dayVal) ? prev.filter((d) => d !== dayVal) : [...prev, dayVal].sort()
+    );
+  };
+
+  const toggleStaffAlertDay = (dayVal) => {
+    setStaffAlertDays((prev) =>
       prev.includes(dayVal) ? prev.filter((d) => d !== dayVal) : [...prev, dayVal].sort()
     );
   };
@@ -117,6 +140,14 @@ export default function SettingsTab() {
         enabled: stockEnabled,
         hour: Number(stockHour),
         days: stockDays,
+        minute: 0,
+      }, { merge: true });
+
+      // 4. Save Defaulter Staff Alert settings
+      await setDoc(doc(db, 'config', 'defaulterStaffAlert'), {
+        enabled: staffAlertEnabled,
+        hour: Number(staffAlertHour),
+        days: staffAlertDays,
         minute: 0,
       }, { merge: true });
 
@@ -363,6 +394,79 @@ export default function SettingsTab() {
             )}
             {!stockEnabled && (
               <p className="text-xs text-gray-400 italic">Daily stock summary notifications to staff are currently disabled.</p>
+            )}
+          </div>
+
+          {/* Section D: Defaulter Call List to Staff */}
+          <div className="space-y-4">
+            <div className="flex justify-between items-center border-b pb-2">
+              <div className="flex items-center gap-2">
+                <BellRing className="text-indigo-500 w-5 h-5" />
+                <h3 className="font-bold text-gray-800 text-sm md:text-base">Defaulter Call List to Staff</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStaffAlertEnabled((prev) => !prev)}
+                className="text-gray-600 focus:outline-none"
+              >
+                {staffAlertEnabled ? (
+                  <ToggleRight className="w-12 h-12 text-green-500" />
+                ) : (
+                  <ToggleLeft className="w-12 h-12 text-gray-400" />
+                )}
+              </button>
+            </div>
+
+            {staffAlertEnabled && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fadeIn">
+                <div>
+                  <label htmlFor="staffAlertHourSelect" className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" />
+                    Alert Trigger Hour (24-hr format)
+                  </label>
+                  <select
+                    id="staffAlertHourSelect"
+                    value={staffAlertHour}
+                    onChange={(e) => setStaffAlertHour(Number(e.target.value))}
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-400 outline-none"
+                  >
+                    {Array.from({ length: 24 }).map((_, i) => (
+                      <option key={i} value={i}>
+                        {String(i).padStart(2, '0')}:00 {i >= 12 ? 'PM' : 'AM'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <span className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5" />
+                    Trigger Weekdays
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {DAYS_OF_WEEK.map((d) => {
+                      const isSelected = staffAlertDays.includes(d.value);
+                      return (
+                        <button
+                          key={d.value}
+                          type="button"
+                          onClick={() => toggleStaffAlertDay(d.value)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                            isSelected
+                              ? 'bg-orange-500 border-orange-600 text-white'
+                              : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {d.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+            {!staffAlertEnabled && (
+              <p className="text-xs text-gray-400 italic">Defaulter call alerts to staff are currently disabled.</p>
             )}
           </div>
 
