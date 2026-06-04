@@ -1826,7 +1826,8 @@ exports.hourlySmsScheduler = onSchedule(
       await Promise.all([
         processRegularClientReminders(db, currentHour, currentDayOfWeek),
         processDefaulterPaymentReminders(db, currentHour, currentDayOfWeek),
-        processDailyStockReportToNilesh(db, currentHour, currentDayOfWeek)
+        processDailyStockReportToNilesh(db, currentHour, currentDayOfWeek),
+        processDefaulterAlertToStaff(db, currentHour, currentDayOfWeek)
       ]);
 
       logger.info("Unified hourly SMS scheduler completed.");
@@ -1974,6 +1975,94 @@ async function processDailyStockReportToNilesh(db, currentHour, currentDayOfWeek
     }
   } catch (error) {
     logger.error("Error processing daily stock report to Nilesh:", error);
+  }
+}
+
+/**
+ * Helper to process Defaulter Staff Alert to Nilesh (or staff)
+ * Queries all defaulter customers with outstanding > 0, formats a list,
+ * and sends an instruction SMS to STAFF_MOBILE.
+ */
+async function processDefaulterAlertToStaff(db, currentHour, currentDayOfWeek) {
+  try {
+    const configRef = db.collection('config').doc('defaulterStaffAlert');
+    const configDoc = await configRef.get();
+
+    // Default configuration if document doesn't exist
+    let enabled = true;
+    let configHour = 11; // Default to 11:00 AM
+    let days = [6]; // Default to Saturday
+
+    if (configDoc.exists) {
+      const configData = configDoc.data();
+      enabled = typeof configData.enabled === 'boolean' ? configData.enabled : enabled;
+      configHour = configData.hour !== undefined ? parseInt(configData.hour, 10) : configHour;
+      days = Array.isArray(configData.days) ? configData.days : days;
+    }
+
+    if (!enabled) {
+      logger.info("Defaulter Staff Alert: Disabled in config. Skipping.");
+      return;
+    }
+
+    // Check if today matches configured weekdays
+    if (!days.includes(currentDayOfWeek)) {
+      logger.info(`Defaulter Staff Alert: Today (weekday ${currentDayOfWeek}) is not in the configured days [${days.join(', ')}]. Skipping.`);
+      return;
+    }
+
+    // Check if current hour matches configured hour
+    if (currentHour !== configHour) {
+      logger.info(`Defaulter Staff Alert: Current hour (${currentHour}) does not match configured hour (${configHour}). Skipping.`);
+      return;
+    }
+
+    logger.info("Defaulter Staff Alert: Querying defaulter clients...");
+
+    const snapshot = await db
+      .collection('customers')
+      .where('isDefaulter', '==', true)
+      .get();
+
+    if (snapshot.empty) {
+      logger.info("Defaulter Staff Alert: No defaulters found. Skipping.");
+      return;
+    }
+
+    const defaultersList = [];
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      const name = data.name || "Customer";
+      const outstanding = Number(data.outstanding || 0);
+      if (outstanding > 0) {
+        defaultersList.push({ name, outstanding });
+      }
+    });
+
+    if (defaultersList.length === 0) {
+      logger.info("Defaulter Staff Alert: No defaulters with outstanding balance > 0. Skipping.");
+      return;
+    }
+
+    // Format list: "[Name]: Rs [Amount]"
+    // Instruction: "Nilesh, call these defaulters to ask for payment & report back:\n[Name]: Rs [Amount]..."
+    const listLines = defaultersList.map(c => `${c.name}: Rs ${c.outstanding}`).join('\n');
+    const message = `Nilesh, call these defaulters to ask for payment & report back:\n${listLines}`;
+
+    logger.info(`Defaulter Staff Alert: Sending SMS to Nilesh: ${message}`);
+
+    try {
+      await sendBackgroundSms({
+        macroUrl: MACRODROID_URL,
+        phone: STAFF_MOBILE,
+        message,
+      });
+      logger.info("Defaulter Staff Alert: Message successfully sent to Nilesh.");
+    } catch (err) {
+      logger.error(`Defaulter Staff Alert: Failed to send SMS to Nilesh: ${err.message}`);
+    }
+  } catch (error) {
+    logger.error("Error processing defaulter alert to staff:", error);
   }
 }
 
