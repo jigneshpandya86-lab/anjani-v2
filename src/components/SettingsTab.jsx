@@ -30,22 +30,22 @@ function SchedulerCard({
   title,
 }) {
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(210px,1fr)_180px_minmax(260px,1.25fr)_auto] md:items-center">
-        <div className="flex items-center gap-2 border-b border-gray-100 pb-2 md:border-b-0 md:pb-0">
+    <section className="rounded-lg border border-gray-200 bg-white p-2.5 px-3.5 shadow-sm">
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(210px,1fr)_130px_minmax(230px,1fr)_auto] md:items-center">
+        <div className="flex items-center gap-2 border-b border-gray-100 pb-1.5 md:border-b-0 md:pb-0">
           <BellRing className={`${iconColor} h-4 w-4 shrink-0`} />
           <div>
-            <h3 className="text-sm font-bold leading-tight text-gray-800">{title}</h3>
-            {!enabled && <p className="mt-0.5 text-xs italic text-gray-400">{inactiveText}</p>}
+            <h3 className="text-xs font-bold leading-tight text-gray-800">{title}</h3>
+            {!enabled && <p className="mt-0.5 text-[11px] italic text-gray-400">{inactiveText}</p>}
           </div>
         </div>
 
         <div className={`${enabled ? '' : 'opacity-50'} min-w-0`}>
           <label
             htmlFor={id}
-            className="mb-1 flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-gray-600"
+            className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500"
           >
-            <Clock className="h-3.5 w-3.5" />
+            <Clock className="h-3 w-3" />
             {hourLabel}
           </label>
           <select
@@ -53,7 +53,7 @@ function SchedulerCard({
             value={hour}
             onChange={(e) => onHourChange(Number(e.target.value))}
             disabled={!enabled}
-            className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-400 disabled:cursor-not-allowed"
+            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-orange-400 disabled:cursor-not-allowed"
           >
             {HOUR_OPTIONS.map((optionHour) => (
               <option key={optionHour} value={optionHour}>
@@ -64,8 +64,8 @@ function SchedulerCard({
         </div>
 
         <div className={`${enabled ? '' : 'opacity-50'}`}>
-          <span className="mb-1 flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-gray-600">
-            <Calendar className="h-3.5 w-3.5" />
+          <span className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+            <Calendar className="h-3 w-3" />
             Trigger Weekdays
           </span>
           <div className="flex flex-wrap gap-1">
@@ -77,7 +77,7 @@ function SchedulerCard({
                   type="button"
                   onClick={() => onToggleDay(day.value)}
                   disabled={!enabled}
-                  className={`min-w-10 rounded-md border px-2.5 py-1 text-xs font-bold transition-all ${
+                  className={`min-w-8 rounded-md border px-2 py-0.5 text-[11px] font-bold transition-all ${
                     isSelected
                       ? 'border-orange-600 bg-orange-500 text-white'
                       : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
@@ -96,9 +96,9 @@ function SchedulerCard({
           className="justify-self-end text-gray-600 focus:outline-none"
         >
           {enabled ? (
-            <ToggleRight className="h-10 w-10 text-green-500" />
+            <ToggleRight className="h-8 w-8 text-green-500" />
           ) : (
-            <ToggleLeft className="h-10 w-10 text-gray-400" />
+            <ToggleLeft className="h-8 w-8 text-gray-400" />
           )}
         </button>
       </div>
@@ -277,14 +277,14 @@ export default function SettingsTab() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl p-2 md:p-3">
-      <div className="overflow-hidden rounded-xl border border-gray-100 bg-gray-50 shadow-sm">
-        <div className="flex items-center gap-2 bg-[#131921] px-4 py-3 text-white">
-          <Sliders className="h-5 w-5 text-orange-400" />
-          <h2 className="text-base font-bold md:text-lg">System Scheduler Settings</h2>
+    <div className="mx-auto max-w-4xl p-1.5 md:p-2">
+      <div className="overflow-hidden rounded-lg border border-gray-100 bg-gray-50 shadow-sm">
+        <div className="flex items-center gap-1.5 bg-[#131921] px-3.5 py-2 text-white">
+          <Sliders className="h-4.5 w-4.5 text-orange-400" />
+          <h2 className="text-sm font-bold md:text-base">System Scheduler Settings</h2>
         </div>
 
-        <form onSubmit={handleSave} className="space-y-3 p-3 md:p-4">
+        <form onSubmit={handleSave} className="space-y-2 p-2.5 md:p-3">
           <SchedulerCard
             enabled={regularEnabled}
             hour={regularHour}
@@ -341,13 +341,13 @@ export default function SettingsTab() {
             title="Defaulter Call List to Staff"
           />
 
-          <div className="flex justify-end border-t pt-3">
+          <div className="flex justify-end border-t pt-2">
             <button
               type="submit"
               disabled={saving}
-              className="flex cursor-pointer items-center gap-2 rounded-lg border border-[#a88734] bg-gradient-to-b from-[#f7dfa5] to-[#f0c14b] px-5 py-2.5 text-sm font-bold text-gray-900 shadow-sm transition-all hover:bg-gradient-to-b hover:from-[#f5d78e] hover:to-[#eeb933] active:shadow-inner disabled:opacity-50"
+              className="flex cursor-pointer items-center gap-1.5 rounded-md border border-[#a88734] bg-gradient-to-b from-[#f7dfa5] to-[#f0c14b] px-4 py-2 text-xs font-bold text-gray-900 shadow-sm transition-all hover:bg-gradient-to-b hover:from-[#f5d78e] hover:to-[#eeb933] active:shadow-inner disabled:opacity-50"
             >
-              <Save className="h-4 w-4" />
+              <Save className="h-3.5 w-3.5" />
               {saving ? 'Saving...' : 'Save Scheduler Settings'}
             </button>
           </div>
