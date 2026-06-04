@@ -2133,8 +2133,8 @@ async function processDailyGreetings(db, currentHour) {
 
       if (!phone) return;
 
-      const birthdayMD = birthday ? birthday.substring(5) : '';
-      const anniversaryMD = anniversary ? anniversary.substring(5) : '';
+      const birthdayMD = birthday ? (birthday.length === 5 ? birthday : birthday.substring(5)) : '';
+      const anniversaryMD = anniversary ? (anniversary.length === 5 ? anniversary : anniversary.substring(5)) : '';
 
       const updates = {};
 

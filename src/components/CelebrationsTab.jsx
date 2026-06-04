@@ -81,12 +81,16 @@ export default function CelebrationsTab() {
     setSavingContact(true);
     const cleanedPhone = phone.replace(/\D/g, '');
 
+    // Store only MM-DD (month and date) without year
+    const birthdaySave = birthday.length === 10 ? birthday.substring(5) : birthday;
+    const anniversarySave = anniversary ? (anniversary.length === 10 ? anniversary.substring(5) : anniversary) : null;
+
     const contactData = {
       name: name.trim(),
       phone: cleanedPhone,
       relation,
-      birthday,
-      anniversary: anniversary || null,
+      birthday: birthdaySave,
+      anniversary: anniversarySave,
       updatedAt: new Date()
     };
 
@@ -122,8 +126,11 @@ export default function CelebrationsTab() {
     setName(c.name);
     setPhone(c.phone);
     setRelation(c.relation || 'Friend');
-    setBirthday(c.birthday);
-    setAnniversary(c.anniversary || '');
+    // Prepend dummy year to MM-DD string to format as YYYY-MM-DD for standard date input
+    const bValue = c.birthday ? (c.birthday.length === 5 ? `2000-${c.birthday}` : c.birthday) : '';
+    const aValue = c.anniversary ? (c.anniversary.length === 5 ? `2000-${c.anniversary}` : c.anniversary) : '';
+    setBirthday(bValue);
+    setAnniversary(aValue);
   };
 
   const handleDelete = async (id) => {
@@ -153,12 +160,28 @@ export default function CelebrationsTab() {
     (c.relation && c.relation.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
+  // Format MM-DD or YYYY-MM-DD into a readable local date (e.g. "Jun 4")
+  const formatMonthDay = (dateStr) => {
+    if (!dateStr) return '-';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const [, month, day] = parts;
+      const date = new Date(2000, parseInt(month, 10) - 1, parseInt(day, 10));
+      return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    } else if (parts.length === 2) {
+      const [month, day] = parts;
+      const date = new Date(2000, parseInt(month, 10) - 1, parseInt(day, 10));
+      return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    }
+    return dateStr;
+  };
+
   const getOccasionText = (c) => {
     const today = new Date();
     const currentMonthDay = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     
-    const bMonthDay = c.birthday ? c.birthday.substring(5) : '';
-    const aMonthDay = c.anniversary ? c.anniversary.substring(5) : '';
+    const bMonthDay = c.birthday ? (c.birthday.length === 5 ? c.birthday : c.birthday.substring(5)) : '';
+    const aMonthDay = c.anniversary ? (c.anniversary.length === 5 ? c.anniversary : c.anniversary.substring(5)) : '';
 
     if (bMonthDay === currentMonthDay && aMonthDay === currentMonthDay) {
       return '🎂 Birthday & 💑 Anniversary Today!';
@@ -356,10 +379,10 @@ export default function CelebrationsTab() {
                         </span>
                       </td>
                       <td className="px-4 py-2 font-medium text-gray-500">
-                        {c.birthday ? new Date(c.birthday).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '-'}
+                        {formatMonthDay(c.birthday)}
                       </td>
                       <td className="px-4 py-2 font-medium text-gray-500">
-                        {c.anniversary ? new Date(c.anniversary).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '-'}
+                        {formatMonthDay(c.anniversary)}
                       </td>
                       <td className="px-4 py-2">
                         {occasionText && (
