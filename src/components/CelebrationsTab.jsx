@@ -328,12 +328,13 @@ export default function CelebrationsTab() {
           </div>
 
           <div>
-            <label className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+            <label htmlFor="celebratorBMonth" className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
               <Calendar className="h-3 w-3" />
               Birthday
             </label>
             <div className="grid grid-cols-2 gap-1.5">
               <select
+                id="celebratorBMonth"
                 required
                 value={bMonth}
                 onChange={(e) => setBMonth(e.target.value)}
@@ -359,12 +360,13 @@ export default function CelebrationsTab() {
           </div>
 
           <div>
-            <label className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+            <label htmlFor="celebratorAMonth" className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
               <Calendar className="h-3 w-3" />
               Anniversary
             </label>
             <div className="grid grid-cols-2 gap-1.5">
               <select
+                id="celebratorAMonth"
                 value={aMonth}
                 onChange={(e) => setAMonth(e.target.value)}
                 className="w-full rounded-md border border-gray-300 bg-white px-1.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-orange-400"
