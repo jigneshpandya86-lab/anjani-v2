@@ -1,23 +1,16 @@
 import { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase-config';
-import { Gift, Calendar, Clock, Save, Sliders, ToggleLeft, ToggleRight, Trash2, Edit2, User, Phone, BookOpen, Search, UserPlus } from 'lucide-react';
+import { Gift, Calendar, Trash2, Edit2, User, Phone, BookOpen, Search, UserPlus } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const RELATIONS = ['Friend', 'Relative', 'Client', 'Other'];
 
 export default function CelebrationsTab() {
   const [loading, setLoading] = useState(true);
-  const [savingConfig, setSavingConfig] = useState(false);
   const [savingContact, setSavingContact] = useState(false);
   const [contacts, setContacts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Scheduler Config State
-  const [enabled, setEnabled] = useState(true);
-  const [hour, setHour] = useState(10);
-  const [birthdayTemplate, setBirthdayTemplate] = useState('Happy Birthday {name}! Wishing you a wonderful day filled with joy, health, and success. - Anjani Water');
-  const [anniversaryTemplate, setAnniversaryTemplate] = useState('Happy Wedding Anniversary {name}! Wishing you both a lifetime of love, happiness, and companionship. - Anjani Water');
 
   // Contact Form State
   const [editingId, setEditingId] = useState(null);
@@ -27,24 +20,8 @@ export default function CelebrationsTab() {
   const [birthday, setBirthday] = useState('');
   const [anniversary, setAnniversary] = useState('');
 
-  // Load scheduler config and celebrations list
+  // Load celebrations list
   useEffect(() => {
-    async function loadConfig() {
-      try {
-        const configSnap = await getDoc(doc(db, 'config', 'greetingsConfig'));
-        if (configSnap.exists()) {
-          const data = configSnap.data();
-          setEnabled(data.enabled !== undefined ? !!data.enabled : true);
-          setHour(data.hour !== undefined ? Number(data.hour) : 10);
-          setBirthdayTemplate(data.birthdayTemplate || 'Happy Birthday {name}! Wishing you a wonderful day filled with joy, health, and success. - Anjani Water');
-          setAnniversaryTemplate(data.anniversaryTemplate || 'Happy Wedding Anniversary {name}! Wishing you both a lifetime of love, happiness, and companionship. - Anjani Water');
-        }
-      } catch (err) {
-        console.error('Failed to load greetings config:', err);
-      }
-    }
-
-    loadConfig();
 
     const q = query(collection(db, 'celebrations'), orderBy('name', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -91,26 +68,7 @@ export default function CelebrationsTab() {
     }
   };
 
-  // Save Config Doc
-  const handleSaveConfig = async (e) => {
-    e.preventDefault();
-    setSavingConfig(true);
-    try {
-      await setDoc(doc(db, 'config', 'greetingsConfig'), {
-        enabled,
-        hour: Number(hour),
-        birthdayTemplate,
-        anniversaryTemplate,
-        updatedAt: new Date()
-      }, { merge: true });
-      toast.success('Greetings configuration saved successfully!');
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to save configuration');
-    } finally {
-      setSavingConfig(false);
-    }
-  };
+
 
   // Save / Update Contact Doc
   const handleSubmitContact = async (e) => {
@@ -222,89 +180,6 @@ export default function CelebrationsTab() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-2 md:p-3">
-      {/* Configuration Section */}
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between bg-[#131921] px-3.5 py-2 text-white">
-          <div className="flex items-center gap-1.5">
-            <Sliders className="h-4.5 w-4.5 text-orange-400" />
-            <h2 className="text-sm font-bold md:text-base">Automatic Greetings Config</h2>
-          </div>
-          <button
-            type="button"
-            onClick={() => setEnabled(!enabled)}
-            className="text-white focus:outline-none"
-          >
-            {enabled ? (
-              <ToggleRight className="h-7 w-7 text-green-400" />
-            ) : (
-              <ToggleLeft className="h-7 w-7 text-gray-400" />
-            )}
-          </button>
-        </div>
-
-        {enabled && (
-          <form onSubmit={handleSaveConfig} className="p-3.5 space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-              <div className="md:col-span-1">
-                <label htmlFor="greetingsHourSelect" className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                  <Clock className="h-3.5 w-3.5" />
-                  Greeting Send Hour
-                </label>
-                <select
-                  id="greetingsHourSelect"
-                  value={hour}
-                  onChange={(e) => setHour(Number(e.target.value))}
-                  className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-orange-400"
-                >
-                  {Array.from({ length: 24 }).map((_, i) => (
-                    <option key={i} value={i}>
-                      {String(i).padStart(2, '0')}:00 {i >= 12 ? 'PM' : 'AM'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="md:col-span-2 text-right">
-                <button
-                  type="submit"
-                  disabled={savingConfig}
-                  className="w-full md:w-auto inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-md border border-[#a88734] bg-gradient-to-b from-[#f7dfa5] to-[#f0c14b] px-4 py-1.5 text-xs font-bold text-gray-900 shadow-sm transition-all hover:bg-gradient-to-b hover:from-[#f5d78e] hover:to-[#eeb933] active:shadow-inner disabled:opacity-50"
-                >
-                  <Save className="h-3.5 w-3.5" />
-                  {savingConfig ? 'Saving...' : 'Save Greetings Config'}
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              <div>
-                <label htmlFor="birthdayTemplateInput" className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-gray-500">Birthday Message Template</label>
-                <textarea
-                  id="birthdayTemplateInput"
-                  rows={2}
-                  value={birthdayTemplate}
-                  onChange={(e) => setBirthdayTemplate(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 p-2 text-xs outline-none focus:ring-2 focus:ring-orange-400"
-                  placeholder="Use {name} for dynamic greeting..."
-                />
-              </div>
-
-              <div>
-                <label htmlFor="anniversaryTemplateInput" className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-gray-500">Anniversary Message Template</label>
-                <textarea
-                  id="anniversaryTemplateInput"
-                  rows={2}
-                  value={anniversaryTemplate}
-                  onChange={(e) => setAnniversaryTemplate(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 p-2 text-xs outline-none focus:ring-2 focus:ring-orange-400"
-                  placeholder="Use {name} for dynamic greeting..."
-                />
-              </div>
-            </div>
-          </form>
-        )}
-      </div>
-
       {/* Add / Edit Contact Panel */}
       <div className="rounded-lg border border-gray-200 bg-white p-3.5 shadow-sm">
         <div className="mb-3.5 flex items-center justify-between border-b pb-2">

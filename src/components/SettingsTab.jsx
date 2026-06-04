@@ -126,9 +126,16 @@ export default function SettingsTab() {
   const [stockDays, setStockDays] = useState([0, 1, 2, 3, 4, 5, 6])
 
   // Defaulter Call List to Staff State
-  const [staffAlertEnabled, setStaffAlertEnabled] = useState(true);
-  const [staffAlertHour, setStaffAlertHour] = useState(11);
-  const [staffAlertDays, setStaffAlertDays] = useState([6]);
+  const [staffAlertEnabled, setStaffAlertEnabled] = useState(true)
+  const [staffAlertHour, setStaffAlertHour] = useState(11)
+  const [staffAlertDays, setStaffAlertDays] = useState([6])
+
+  // Greetings Schedule State
+  const [greetingsEnabled, setGreetingsEnabled] = useState(true)
+  const [greetingsHour, setGreetingsHour] = useState(10)
+  const [greetingsDays, setGreetingsDays] = useState([0, 1, 2, 3, 4, 5, 6])
+  const [greetingsBirthdayTemplate, setGreetingsBirthdayTemplate] = useState('Happy Birthday {name}! Wishing you a wonderful day filled with joy, health, and success. - Anjani Water')
+  const [greetingsAnniversaryTemplate, setGreetingsAnniversaryTemplate] = useState('Happy Wedding Anniversary {name}! Wishing you both a lifetime of love, happiness, and companionship. - Anjani Water')
 
   useEffect(() => {
     async function loadSettings() {
@@ -162,16 +169,32 @@ export default function SettingsTab() {
           setStockDays([0, 1, 2, 3, 4, 5, 6])
         }
 
-        const staffAlertSnap = await getDoc(doc(db, 'config', 'defaulterStaffAlert'));
+        const staffAlertSnap = await getDoc(doc(db, 'config', 'defaulterStaffAlert'))
         if (staffAlertSnap.exists()) {
-          const data = staffAlertSnap.data();
-          setStaffAlertEnabled(!!data.enabled);
-          setStaffAlertHour(data.hour !== undefined ? Number(data.hour) : 11);
-          setStaffAlertDays(Array.isArray(data.days) ? data.days : [6]);
+          const data = staffAlertSnap.data()
+          setStaffAlertEnabled(!!data.enabled)
+          setStaffAlertHour(data.hour !== undefined ? Number(data.hour) : 11)
+          setStaffAlertDays(Array.isArray(data.days) ? data.days : [6])
         } else {
-          setStaffAlertEnabled(true);
-          setStaffAlertHour(11);
-          setStaffAlertDays([6]);
+          setStaffAlertEnabled(true)
+          setStaffAlertHour(11)
+          setStaffAlertDays([6])
+        }
+
+        const greetingsSnap = await getDoc(doc(db, 'config', 'greetingsConfig'))
+        if (greetingsSnap.exists()) {
+          const data = greetingsSnap.data()
+          setGreetingsEnabled(data.enabled !== undefined ? !!data.enabled : true)
+          setGreetingsHour(data.hour !== undefined ? Number(data.hour) : 10)
+          setGreetingsDays(Array.isArray(data.days) ? data.days : [0, 1, 2, 3, 4, 5, 6])
+          setGreetingsBirthdayTemplate(data.birthdayTemplate || 'Happy Birthday {name}! Wishing you a wonderful day filled with joy, health, and success. - Anjani Water')
+          setGreetingsAnniversaryTemplate(data.anniversaryTemplate || 'Happy Wedding Anniversary {name}! Wishing you both a lifetime of love, happiness, and companionship. - Anjani Water')
+        } else {
+          setGreetingsEnabled(true)
+          setGreetingsHour(10)
+          setGreetingsDays([0, 1, 2, 3, 4, 5, 6])
+          setGreetingsBirthdayTemplate('Happy Birthday {name}! Wishing you a wonderful day filled with joy, health, and success. - Anjani Water')
+          setGreetingsAnniversaryTemplate('Happy Wedding Anniversary {name}! Wishing you both a lifetime of love, happiness, and companionship. - Anjani Water')
         }
       } catch (err) {
         console.error('Failed to load scheduler configs:', err)
@@ -203,9 +226,15 @@ export default function SettingsTab() {
 
   const toggleStaffAlertDay = (dayVal) => {
     setStaffAlertDays((prev) =>
-      prev.includes(dayVal) ? prev.filter((d) => d !== dayVal) : [...prev, dayVal].sort()
-    );
-  };
+      prev.includes(dayVal) ? prev.filter((d) => d !== dayVal) : [...prev, dayVal].sort(),
+    )
+  }
+
+  const toggleGreetingsDay = (dayVal) => {
+    setGreetingsDays((prev) =>
+      prev.includes(dayVal) ? prev.filter((d) => d !== dayVal) : [...prev, dayVal].sort(),
+    )
+  }
 
   const handleSave = async (e) => {
     e.preventDefault()
@@ -254,6 +283,20 @@ export default function SettingsTab() {
           enabled: staffAlertEnabled,
           hour: Number(staffAlertHour),
           days: staffAlertDays,
+          minute: 0,
+        },
+        { merge: true },
+      )
+
+      // 5. Save Greetings settings
+      await setDoc(
+        doc(db, 'config', 'greetingsConfig'),
+        {
+          enabled: greetingsEnabled,
+          hour: Number(greetingsHour),
+          days: greetingsDays,
+          birthdayTemplate: greetingsBirthdayTemplate,
+          anniversaryTemplate: greetingsAnniversaryTemplate,
           minute: 0,
         },
         { merge: true },
@@ -340,6 +383,51 @@ export default function SettingsTab() {
             selectedDays={staffAlertDays}
             title="Defaulter Call List to Staff"
           />
+
+          <SchedulerCard
+            enabled={greetingsEnabled}
+            hour={greetingsHour}
+            hourLabel="Greeting Hour"
+            id="greetingsHourSelect"
+            inactiveText="Daily automatic greetings are disabled."
+            iconColor="text-pink-500"
+            onHourChange={setGreetingsHour}
+            onToggle={() => setGreetingsEnabled((prev) => !prev)}
+            onToggleDay={toggleGreetingsDay}
+            selectedDays={greetingsDays}
+            title="Daily Automatic Greetings"
+          />
+
+          {greetingsEnabled && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-white border border-gray-200 rounded-lg -mt-1 animate-fadeIn">
+              <div>
+                <label htmlFor="birthdayTemplateSelect" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                  Birthday Message Template
+                </label>
+                <textarea
+                  id="birthdayTemplateSelect"
+                  rows={2}
+                  value={greetingsBirthdayTemplate}
+                  onChange={(e) => setGreetingsBirthdayTemplate(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 p-2 text-xs outline-none focus:ring-2 focus:ring-orange-400"
+                  placeholder="Use {name} for dynamic greeting..."
+                />
+              </div>
+              <div>
+                <label htmlFor="anniversaryTemplateSelect" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                  Anniversary Message Template
+                </label>
+                <textarea
+                  id="anniversaryTemplateSelect"
+                  rows={2}
+                  value={greetingsAnniversaryTemplate}
+                  onChange={(e) => setGreetingsAnniversaryTemplate(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 p-2 text-xs outline-none focus:ring-2 focus:ring-orange-400"
+                  placeholder="Use {name} for dynamic greeting..."
+                />
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end border-t pt-2">
             <button
