@@ -1827,7 +1827,8 @@ exports.hourlySmsScheduler = onSchedule(
         processRegularClientReminders(db, currentHour, currentDayOfWeek),
         processDefaulterPaymentReminders(db, currentHour, currentDayOfWeek),
         processDailyStockReportToNilesh(db, currentHour, currentDayOfWeek),
-        processDefaulterAlertToStaff(db, currentHour, currentDayOfWeek)
+        processDefaulterAlertToStaff(db, currentHour, currentDayOfWeek),
+        processDailyGreetings(db, currentHour)
       ]);
 
       logger.info("Unified hourly SMS scheduler completed.");
@@ -2063,6 +2064,122 @@ async function processDefaulterAlertToStaff(db, currentHour, currentDayOfWeek) {
     }
   } catch (error) {
     logger.error("Error processing defaulter alert to staff:", error);
+  }
+}
+
+/**
+ * Helper to process daily Birthday and Anniversary greetings.
+ * Runs at the configured hour and sends messages if matches today's date in India.
+ */
+async function processDailyGreetings(db, currentHour) {
+  try {
+    const configRef = db.collection('config').doc('greetingsConfig');
+    const configDoc = await configRef.get();
+
+    // Default configuration if document doesn't exist
+    let enabled = true;
+    let configHour = 10; // Default to 10:00 AM
+    let birthdayTemplate = "Happy Birthday {name}! Wishing you a wonderful day filled with joy, health, and success. - Anjani Water";
+    let anniversaryTemplate = "Happy Wedding Anniversary {name}! Wishing you both a lifetime of love, happiness, and companionship. - Anjani Water";
+
+    if (configDoc.exists) {
+      const configData = configDoc.data();
+      enabled = typeof configData.enabled === 'boolean' ? configData.enabled : enabled;
+      configHour = configData.hour !== undefined ? parseInt(configData.hour, 10) : configHour;
+      birthdayTemplate = configData.birthdayTemplate || birthdayTemplate;
+      anniversaryTemplate = configData.anniversaryTemplate || anniversaryTemplate;
+    }
+
+    if (!enabled) {
+      logger.info("Daily Greetings: Disabled in config. Skipping.");
+      return;
+    }
+
+    // Check if current hour matches configured hour
+    if (currentHour !== configHour) {
+      logger.info(`Daily Greetings: Current hour (${currentHour}) does not match configured hour (${configHour}). Skipping.`);
+      return;
+    }
+
+    logger.info("Daily Greetings: Checking birthdays and anniversaries...");
+
+    // Get current date in India timezone (Asia/Kolkata)
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    });
+    const parts = formatter.formatToParts(new Date());
+    const currentYear = parseInt(parts.find(p => p.type === 'year').value, 10);
+    const month = parts.find(p => p.type === 'month').value.padStart(2, '0');
+    const day = parts.find(p => p.type === 'day').value.padStart(2, '0');
+    const todayMonthDay = `${month}-${day}`; // e.g. "06-04"
+
+    const snapshot = await db.collection('celebrations').get();
+    if (snapshot.empty) {
+      logger.info("Daily Greetings: No celebrators found. Exiting.");
+      return;
+    }
+
+    const promises = snapshot.docs.map(async (docSnap) => {
+      const data = docSnap.data();
+      const name = data.name || 'Friend';
+      const phone = data.phone;
+      const birthday = data.birthday || '';
+      const anniversary = data.anniversary || '';
+      const lastSentBirthdayYear = data.lastSentBirthdayYear || 0;
+      const lastSentAnniversaryYear = data.lastSentAnniversaryYear || 0;
+
+      if (!phone) return;
+
+      const birthdayMD = birthday ? birthday.substring(5) : '';
+      const anniversaryMD = anniversary ? anniversary.substring(5) : '';
+
+      const updates = {};
+
+      // Check Birthday
+      if (birthdayMD === todayMonthDay && lastSentBirthdayYear !== currentYear) {
+        const message = birthdayTemplate.replace('{name}', name);
+        logger.info(`Daily Greetings: Sending Birthday greeting to ${name} (${phone}): ${message}`);
+        try {
+          await sendBackgroundSms({
+            macroUrl: MACRODROID_URL,
+            phone,
+            message,
+          });
+          updates.lastSentBirthdayYear = currentYear;
+        } catch (err) {
+          logger.error(`Daily Greetings: Failed to send birthday greeting to ${name}: ${err.message}`);
+        }
+      }
+
+      // Check Anniversary
+      if (anniversaryMD === todayMonthDay && lastSentAnniversaryYear !== currentYear) {
+        const message = anniversaryTemplate.replace('{name}', name);
+        logger.info(`Daily Greetings: Sending Anniversary greeting to ${name} (${phone}): ${message}`);
+        try {
+          await sendBackgroundSms({
+            macroUrl: MACRODROID_URL,
+            phone,
+            message,
+          });
+          updates.lastSentAnniversaryYear = currentYear;
+        } catch (err) {
+          logger.error(`Daily Greetings: Failed to send anniversary greeting to ${name}: ${err.message}`);
+        }
+      }
+
+      // If any greeting was sent, update the tracking years in database
+      if (Object.keys(updates).length > 0) {
+        await docSnap.ref.update(updates);
+      }
+    });
+
+    await Promise.all(promises);
+    logger.info("Daily Greetings processing completed.");
+  } catch (error) {
+    logger.error("Error processing daily greetings:", error);
   }
 }
 

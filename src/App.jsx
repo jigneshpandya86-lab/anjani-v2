@@ -21,6 +21,7 @@ import {
   Bell,
   CheckCheck,
   Brain,
+  Gift,
 } from 'lucide-react'
 import {
   collection,
@@ -46,6 +47,7 @@ import TasksPage from './TasksPage'
 import SettingsTab from './components/SettingsTab'
 import DefaulterReminderSettings from './components/DefaulterReminderSettings'
 import IntelligenceDashboard from './components/IntelligenceDashboard'
+import CelebrationsTab from './components/CelebrationsTab'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
@@ -329,6 +331,11 @@ function App() {
       id: 'intelligence',
       label: 'Intelligence Hub',
       icon: <Brain size={20} />,
+    },
+    userRole === 'admin' && {
+      id: 'celebrations',
+      label: 'Celebrations',
+      icon: <Gift size={20} />,
     },
     ...navItems,
     userRole === 'admin' && {
@@ -1642,6 +1649,7 @@ function App() {
           )}
           {activeTab === 'tasks' && <TasksPage />}
           {activeTab === 'intelligence' && <IntelligenceDashboard />}
+          {activeTab === 'celebrations' && <CelebrationsTab />}
           {activeTab === 'leads' && (
             <LeadsDashboard
               pendingAction={pendingLeadAction}
