@@ -45,6 +45,7 @@ import Login from './components/Login'
 import TasksPage from './TasksPage'
 import SettingsTab from './components/SettingsTab'
 import DefaulterReminderSettings from './components/DefaulterReminderSettings'
+import IntelligenceDashboard from './components/IntelligenceDashboard'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
@@ -1640,6 +1641,7 @@ function App() {
             </div>
           )}
           {activeTab === 'tasks' && <TasksPage />}
+          {activeTab === 'intelligence' && <IntelligenceDashboard />}
           {activeTab === 'leads' && (
             <LeadsDashboard
               pendingAction={pendingLeadAction}
