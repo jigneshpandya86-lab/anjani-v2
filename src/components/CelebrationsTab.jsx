@@ -26,21 +26,30 @@ const DAYS = Array.from({ length: 31 }, (_, i) => {
   return { value: d, label: d };
 });
 
+const getTodayMD = () => {
+  const today = new Date();
+  const m = String(today.getMonth() + 1).padStart(2, '0');
+  const d = String(today.getDate()).padStart(2, '0');
+  return { month: m, day: d };
+};
+
 export default function CelebrationsTab() {
   const [loading, setLoading] = useState(true);
   const [savingContact, setSavingContact] = useState(false);
   const [contacts, setContacts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const todayMD = getTodayMD();
+
   // Contact Form State
   const [editingId, setEditingId] = useState(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [relation, setRelation] = useState('Friend');
-  const [bMonth, setBMonth] = useState('');
-  const [bDay, setBDay] = useState('');
-  const [aMonth, setAMonth] = useState('');
-  const [aDay, setADay] = useState('');
+  const [bMonth, setBMonth] = useState(todayMD.month);
+  const [bDay, setBDay] = useState(todayMD.day);
+  const [aMonth, setAMonth] = useState(todayMD.month);
+  const [aDay, setADay] = useState(todayMD.day);
 
   // Load celebrations list
   useEffect(() => {
@@ -95,8 +104,12 @@ export default function CelebrationsTab() {
   // Save / Update Contact Doc
   const handleSubmitContact = async (e) => {
     e.preventDefault();
-    if (!name.trim() || !phone.trim() || !bMonth || !bDay) {
-      toast.error('Name, Phone, and Birthday are required');
+    if (!name.trim() || !phone.trim()) {
+      toast.error('Name and Phone are required');
+      return;
+    }
+    if ((bMonth && !bDay) || (!bMonth && bDay)) {
+      toast.error('Both Month and Day are required for Birthday (or leave both blank)');
       return;
     }
     if ((aMonth && !aDay) || (!aMonth && aDay)) {
@@ -107,7 +120,7 @@ export default function CelebrationsTab() {
     setSavingContact(true);
     const cleanedPhone = phone.replace(/\D/g, '');
 
-    const birthdaySave = `${bMonth}-${bDay}`;
+    const birthdaySave = (bMonth && bDay) ? `${bMonth}-${bDay}` : null;
     const anniversarySave = (aMonth && aDay) ? `${aMonth}-${aDay}` : null;
 
     const contactData = {
@@ -136,10 +149,10 @@ export default function CelebrationsTab() {
       setName('');
       setPhone('');
       setRelation('Friend');
-      setBMonth('');
-      setBDay('');
-      setAMonth('');
-      setADay('');
+      setBMonth(todayMD.month);
+      setBDay(todayMD.day);
+      setAMonth(todayMD.month);
+      setADay(todayMD.day);
     } catch (err) {
       console.error(err);
       toast.error('Failed to save contact');
@@ -202,10 +215,10 @@ export default function CelebrationsTab() {
     setName('');
     setPhone('');
     setRelation('Friend');
-    setBMonth('');
-    setBDay('');
-    setAMonth('');
-    setADay('');
+    setBMonth(todayMD.month);
+    setBDay(todayMD.day);
+    setAMonth(todayMD.month);
+    setADay(todayMD.day);
   };
 
   const filteredContacts = contacts.filter((c) =>
@@ -335,7 +348,6 @@ export default function CelebrationsTab() {
             <div className="grid grid-cols-2 gap-1.5">
               <select
                 id="celebratorBMonth"
-                required
                 value={bMonth}
                 onChange={(e) => setBMonth(e.target.value)}
                 className="w-full rounded-md border border-gray-300 bg-white px-1.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-orange-400"
@@ -346,7 +358,6 @@ export default function CelebrationsTab() {
                 ))}
               </select>
               <select
-                required
                 value={bDay}
                 onChange={(e) => setBDay(e.target.value)}
                 className="w-full rounded-md border border-gray-300 bg-white px-1.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-orange-400"
