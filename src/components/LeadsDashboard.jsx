@@ -182,7 +182,7 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
   // ── Handlers (stable references via useCallback) ────────────────────────
 
   const sendWhatsApp = useCallback((lead) => {
-    const msg = `Dear Sir/Madam, Greetings from *Annapurna Foods, Vadodara*! ✨ \n\nPlanning an event? Make it premium with our 200ml Packaged Water Bottles. Perfect size and crystal clear quality. 💧\n\nShall we discuss your requirement?`
+    const msg = `Hello! 🌟 I'm *Jignesh Pandya*, owner of *Anjani Water*, Vadodara. 💧\n\nWe provide **200ml premium packaged water** across all areas of Vadodara, Gujarat. ✨\n\n*Why choose Anjani Water?*\n✅ **Zero Waste**: Perfect 200ml size for events & offices.\n✅ **Premium Quality**: 100% pure, hygienic & crystal clear.\n✅ **Best Rates & Free Delivery**: Direct from plant to your doorstep.\n\nWould you like to try a free sample? Please *reply with 1* if you want to try the sample! 👍`
     window.open(`https://wa.me/91${lead.mobile}?text=${encodeURIComponent(msg)}`, '_blank')
   }, [])
 

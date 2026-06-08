@@ -33,8 +33,8 @@ export const sendBackgroundSms = async ({ macroUrl, phone, message }) => {
 }
 
 export const buildInitialSmsMessage = () => {
-  const waLink = BUSINESS_WHATSAPP_NUMBER ? `https://wa.me/${BUSINESS_WHATSAPP_NUMBER}` : ''
-  return `Dear Sir/Madam, Events in Vadodara? Serve Anjani Water 200ml bottles! Perfect size, zero waste. Special rates on bulk buys! Order here: ${waLink}`
+  const waLink = BUSINESS_WHATSAPP_NUMBER ? `\nChat/Order: https://wa.me/${BUSINESS_WHATSAPP_NUMBER}` : ''
+  return `Hello! I'm Jignesh Pandya, owner of Anjani Water. We supply 200ml premium water in Vadodara. Zero waste, pure quality & direct bulk rates! Reply 1 for free sample!${waLink}`
 }
 
 export const buildFollowUpSmsMessage = ({ reminderDay }) => {
