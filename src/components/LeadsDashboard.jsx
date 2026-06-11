@@ -295,12 +295,18 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
     try {
       const prompt = `Write a short, engaging 2-sentence B2B WhatsApp sales pitch for Anjani Water, Vadodara, offering 200ml premium packaged water bottles. Keep it under 200 characters and use 1-2 emojis. Direct it to a client named ${lead.name || 'Sir/Madam'}. Use a ${tone.toLowerCase()} yet warm tone. Respond with ONLY the message text.`
       
+      const headers = {
+        "Content-Type": "application/json"
+      };
+      const hfToken = import.meta.env.VITE_HF_API_KEY;
+      if (hfToken) {
+        headers["Authorization"] = `Bearer ${hfToken}`;
+      }
+
       const response = await fetch(
         "https://api-inference.huggingface.co/models/google/gemma-2-2b-it",
         {
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers,
           method: "POST",
           body: JSON.stringify({ inputs: prompt }),
         }
