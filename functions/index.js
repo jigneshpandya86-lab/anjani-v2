@@ -938,36 +938,24 @@ exports.discoverLeadsWithAI = onSchedule(
     const db = admin.firestore()
 
     try {
-      // 1. Data Gathering (Mock implementation for now)
-      // In a real scenario, this could be a fetch to Google Places, Eventbrite, or a news API.
-      const mockRawData = `
-        Upcoming events in Vadodara:
-        - "Grand Wedding Expo" at Royal Palace Banquet (Contact: 9876543210).
-        - "Corporate Tech Summit 2026" hosted by Elite Events Management. Call 9123456789 for inquiries.
-        - New catering service "Spice & Serve" opening next week. Phone: 8888899999.
-        `
-
-      logger.info('Gathered raw data for AI evaluation.')
-
-      // 2. AI Evaluation & Extraction
-      // Capping input data size to 2000 characters to keep prompt tokens (and costs) under control.
-      const promptInput = mockRawData.substring(0, 2000)
+      // 1. AI Web Search & Lead Discovery
       const prompt = `
-        Extract at most 5 most relevant B2B leads (like event venues, event organizers, or caterers) from the following text. 
+        Search Google for major branded car showrooms (such as Maruti Suzuki, Hyundai, Honda, Tata Motors, Mahindra, Toyota, Kia, Skoda) located in Vadodara, Gujarat, India.
+        Find and extract their verified 10-digit mobile numbers (do not include landline numbers starting with 0265 or +91-265).
         Return ONLY a raw JSON array containing objects with the keys: 
-        'name', 'mobile' (extract only the 10-digit number), 'business_type', and 'relevance_score' (1-10).
+        'name', 'mobile' (extract only the 10-digit number as a clean string), 'business_type' (use 'Car Showroom'), and 'relevance_score' (1-10).
         Do not include markdown blocks like \`\`\`json or anything else. Just the raw JSON array.
-        
-        Text:
-        ${promptInput}
-        `
+      `
 
-      // Using generationConfig to cap output tokens and maintain cost control.
+      logger.info('Performing AI lead discovery search with Google Grounding...')
+
+      // Using generationConfig and Google Search tool for live web retrieval
       const result = await generativeModel.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        tools: [{ googleSearchRetrieval: {} }],
         generationConfig: {
-          maxOutputTokens: 800, // Capping response size
-          temperature: 0.1, // Ensuring focused, structured output
+          maxOutputTokens: 1000,
+          temperature: 0.1,
         },
       })
       const aiResponseText = result.response.candidates[0].content.parts[0].text
@@ -996,8 +984,8 @@ exports.discoverLeadsWithAI = onSchedule(
       // 3. Database Insertion
       let addedCount = 0
       for (const lead of leads) {
-        // Strictly cap at 5 additions per run to prevent excessive Firestore writes and keep bill in control.
-        if (addedCount >= 5) break
+        // Strictly cap at 10 additions per run to prevent excessive Firestore writes and keep bill in control.
+        if (addedCount >= 10) break
 
         if (lead.mobile && String(lead.mobile).length >= 10) {
           const cleanPhone = String(lead.mobile).replace(/\D/g, '')
