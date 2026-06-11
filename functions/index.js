@@ -1018,7 +1018,7 @@ exports.discoverLeadsWithAI = onSchedule(
               business_type: lead.business_type || 'Unknown',
               relevance_score: lead.relevance_score || 0,
               source: 'AI_Discovery',
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              createdAt: new Date().toISOString(),
               Tag: null, // Trigger the SMS webhook
             })
             addedCount++

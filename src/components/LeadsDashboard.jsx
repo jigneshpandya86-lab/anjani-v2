@@ -251,7 +251,6 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
           mobile,
           source: 'manual',
           Tag: null,
-          createdAt: serverTimestamp(),
         })
         toast.success('Lead added')
         setNewLeadName('')

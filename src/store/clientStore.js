@@ -299,7 +299,7 @@ export const useClientStore = create((set, get) => ({
   addLead: async (leadData) => {
     await addDoc(collection(db, 'leads'), {
       ...leadData,
-      createdAt: serverTimestamp(),
+      createdAt: new Date().toISOString(),
     })
   },
 
