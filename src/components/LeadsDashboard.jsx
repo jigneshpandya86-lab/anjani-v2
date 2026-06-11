@@ -3,7 +3,6 @@ import {
   collection,
   query,
   doc,
-  serverTimestamp,
   where,
   limit,
   getDocs,
