@@ -225,8 +225,19 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
   const saveManualLead = useCallback(
     async (e) => {
       e.preventDefault()
-      const mobile = newLeadMobile.trim()
       const name = newLeadName.trim()
+
+      // Normalize mobile number: strip non-digits (spaces, +, -, etc.)
+      let mobile = newLeadMobile.replace(/\D/g, '')
+
+      // Remove leading 0 if 11 digits
+      if (mobile.length === 11 && mobile.startsWith('0')) {
+        mobile = mobile.substring(1)
+      }
+      // Remove leading 91 country code if 12 digits
+      else if (mobile.length === 12 && mobile.startsWith('91')) {
+        mobile = mobile.substring(2)
+      }
 
       if (!/^\d{10}$/.test(mobile)) {
         toast.error('Please enter a valid 10-digit mobile number')
@@ -551,12 +562,9 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
                   id="newLeadMobile"
                   required
                   type="tel"
-                  inputMode="numeric"
-                  pattern="\d{10}"
-                  maxLength={10}
                   value={newLeadMobile}
-                  onChange={(e) => setNewLeadMobile(e.target.value.replace(/\D/g, ''))}
-                  placeholder="10-digit number"
+                  onChange={(e) => setNewLeadMobile(e.target.value)}
+                  placeholder="e.g. +91 99259 97750 or 09925997750"
                   className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-200 text-sm"
                 />
               </div>
