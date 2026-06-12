@@ -570,7 +570,7 @@ exports.sendWeeklyRegularOrderReminder = onSchedule(
 // Constants and Helpers for the Follow-Up Logic
 const MACRO_URL_FOLLOWUP =
   'https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms'
-const FOLLOW_UP_DAYS = [3, 7, 10, 15]
+const FOLLOW_UP_DAYS = [20, 45]
 const DAY_IN_MS = 24 * 60 * 60 * 1000
 
 function toDateObject(value) {
@@ -686,26 +686,39 @@ async function processDueFollowUpsInternal() {
   let markedDone = 0
   let skipped = 0
 
-  const processingPromises = snap.docs.map(async (leadDoc) => {
+  const processedMobiles = new Set()
+
+  for (const leadDoc of snap.docs) {
     checked += 1
     const lead = leadDoc.data()
     lead.id = leadDoc.id // For logging
     const mobile = getLeadPhone(lead)
     if (!mobile) {
       skipped += 1
-      return
+      continue
     }
+
+    const cleanPhone = String(mobile).replace(/\D/g, '')
+    const last10 = cleanPhone.slice(-10)
+
+    if (processedMobiles.has(last10)) {
+      logger.info(`Duplicate mobile ${last10} found in this follow-up batch. Marking doc ${lead.id} as FOLLOWUP_DONE without sending SMS.`)
+      await leadDoc.ref.update({ Tag: 'FOLLOWUP_DONE' })
+      markedDone += 1
+      continue
+    }
+    processedMobiles.add(last10)
 
     const context = getDueReminderContext(lead, now)
     if (!context) {
       skipped += 1
-      return
+      continue
     }
 
     if (context.shouldMarkComplete) {
       await leadDoc.ref.update({ Tag: 'FOLLOWUP_DONE' })
       markedDone += 1
-      return
+      continue
     }
 
     try {
@@ -731,9 +744,7 @@ async function processDueFollowUpsInternal() {
       logger.error(`Failed to process follow-up for lead ${lead.id}:`, e)
       skipped += 1
     }
-  })
-
-  await Promise.all(processingPromises)
+  }
 
   return { checked, sent, markedDone, skipped }
 }

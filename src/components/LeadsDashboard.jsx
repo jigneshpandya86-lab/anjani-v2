@@ -429,11 +429,22 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
 
       const now = new Date()
       let sentCount = 0
+      const processedMobiles = new Set()
 
       for (const leadDoc of snapshot.docs) {
         const lead = leadDoc.data()
         const mobile = getLeadPhone(lead)
         if (!mobile) continue
+
+        const cleanPhone = String(mobile).replace(/\D/g, '')
+        const last10 = cleanPhone.slice(-10)
+
+        if (processedMobiles.has(last10)) {
+          console.log(`Duplicate mobile ${last10} found in follow-up batch. Marking doc ${leadDoc.id} as FOLLOWUP_DONE.`)
+          await updateLead(leadDoc.id, { Tag: 'FOLLOWUP_DONE' })
+          continue
+        }
+        processedMobiles.add(last10)
 
         const context = getDueReminderContext(lead, now)
         if (!context) continue

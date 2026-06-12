@@ -4,7 +4,7 @@ const INDIA_COUNTRY_CODE = '91'
 const DAY_IN_MS = 24 * 60 * 60 * 1000
 const BUSINESS_WHATSAPP_NUMBER = import.meta.env.VITE_BUSINESS_WHATSAPP_NUMBER || ''
 
-export const FOLLOW_UP_DAYS = [3, 7, 10, 15]
+export const FOLLOW_UP_DAYS = [20, 45]
 
 export const getLeadPhone = (lead) => lead.mobile || lead.phone || ''
 
