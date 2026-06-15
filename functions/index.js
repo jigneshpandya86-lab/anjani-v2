@@ -10,7 +10,7 @@ admin.initializeApp()
 const project = process.env.GCLOUD_PROJECT || 'anjaniappnew';
 const vertexAI = new VertexAI({ project: project, location: 'us-central1' });
 const generativeModel = vertexAI.getGenerativeModel({
-  model: 'gemini-1.5-flash',
+  model: 'gemini-2.5-flash',
 });
 
 const MACRODROID_URL = "https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms";
