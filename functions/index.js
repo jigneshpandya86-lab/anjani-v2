@@ -1338,78 +1338,8 @@ exports.hourlyDeliveryReminders = onSchedule(
 )
 
 // --- STAFF TASKS (JOBS) SYSTEM ---
+// Reminders for staff tasks have been disabled per user request.
 
-/**
- * Intelligent Staff Task Reminders
- * Runs daily at 9:00 AM IST to remind staff of their 'new' and 'due' tasks.
- */
-exports.intelligentStaffTaskReminders = onSchedule(
-  {
-    schedule: '0 9 * * *', // 9:00 AM every day
-    timeZone: 'Asia/Kolkata',
-    retryCount: 1,
-  },
-  async (_event) => {
-    logger.info('Starting intelligent staff task reminders job...')
-    const db = admin.firestore()
-    const now = new Date()
-
-    try {
-      // Query tasks that are new or due
-      const jobsSnapshot = await db.collection('Jobs').where('stage', 'in', ['new', 'due']).get()
-
-      if (jobsSnapshot.empty) {
-        logger.info('No new or due tasks found. Exiting.')
-        return
-      }
-
-      const pendingTasks = []
-      jobsSnapshot.forEach((doc) => {
-        const data = doc.data()
-        const taskDueDate = data.dueDate ? data.dueDate.toDate() : null
-
-        // Only include tasks that are past due or due within the next 24 hours
-        if (taskDueDate && taskDueDate <= new Date(now.getTime() + 24 * 60 * 60 * 1000)) {
-          pendingTasks.push(`- ${data.text} (Due: ${taskDueDate.toLocaleDateString()})`)
-        }
-      })
-
-      if (pendingTasks.length === 0) {
-        logger.info('No tasks require immediate reminders today.')
-        return
-      }
-
-      // Limit the number of tasks sent to the AI to prevent exceeding prompt size
-      const tasksSummary = pendingTasks.slice(0, 10).join('\n')
-
-      const prompt = `You are the automated assistant for Anjani Water. Write a highly conversational, friendly, and natural SMS (max 160 characters) to the staff team reminding them about their pending tasks for today.
-Here are the pending tasks:
-${tasksSummary}
-
-Keep the message short, professional but warm (Hinglish is okay). Don't list all tasks, just summarize the count and urge them to check the app/dashboard to complete them. End with a motivating remark.`
-
-      // Use Gemini to generate the human-like message
-      const result = await generativeModel.generateContent(prompt)
-      const aiMessage = result.response.candidates[0].content.parts[0].text.trim()
-      logger.info('Generated AI Staff Reminder:', aiMessage)
-
-      const STAFF_MOBILE_NUMBER = '917990943652' // Hardcoded as per existing standard
-      const MACRO_WEBHOOK =
-        'https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms'
-      const packet = `${STAFF_MOBILE_NUMBER}@@@${aiMessage}`
-      const finalUrl = `${MACRO_WEBHOOK}?data=${encodeURIComponent(packet)}`
-
-      const response = await fetch(finalUrl)
-      if (response.ok) {
-        logger.info('Successfully sent intelligent staff task reminder via SMS.')
-      } else {
-        logger.error('Failed to send staff task reminder SMS:', response.status)
-      }
-    } catch (error) {
-      logger.error('Error in intelligent staff task reminders job:', error)
-    }
-  },
-)
 
 // --- DEFAULTER PAYMENT REMINDER SYSTEM ---
 // Runs every hour and checks Firestore config/defaulterReminder for the configured send time.
