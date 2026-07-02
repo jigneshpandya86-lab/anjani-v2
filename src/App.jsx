@@ -22,6 +22,7 @@ import {
   CheckCheck,
   Brain,
   Gift,
+  Receipt,
 } from 'lucide-react'
 import {
   collection,
@@ -48,6 +49,7 @@ import SettingsTab from './components/SettingsTab'
 import DefaulterReminderSettings from './components/DefaulterReminderSettings'
 import IntelligenceDashboard from './components/IntelligenceDashboard'
 import CelebrationsTab from './components/CelebrationsTab'
+import ExpensesDashboard from './components/ExpensesDashboard'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
@@ -336,6 +338,11 @@ function App() {
       id: 'celebrations',
       label: 'Celebrations',
       icon: <Gift size={20} />,
+    },
+    userRole === 'admin' && {
+      id: 'expenses',
+      label: 'Expenses',
+      icon: <Receipt size={20} />,
     },
     ...navItems,
     userRole === 'admin' && {
@@ -1650,6 +1657,7 @@ function App() {
           {activeTab === 'tasks' && <TasksPage />}
           {activeTab === 'intelligence' && <IntelligenceDashboard />}
           {activeTab === 'celebrations' && <CelebrationsTab />}
+          {activeTab === 'expenses' && userRole === 'admin' && <ExpensesDashboard />}
           {activeTab === 'leads' && (
             <LeadsDashboard
               pendingAction={pendingLeadAction}

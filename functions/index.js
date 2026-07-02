@@ -2112,3 +2112,44 @@ async function processDailyGreetings(db, currentHour) {
   }
 }
 
+/**
+ * Triggered when a new expense document is created.
+ * Sends a notification to the admin via app/FCM broadcast and SMS.
+ */
+exports.onExpenseCreated = onDocumentCreated('expenses/{docId}', async (event) => {
+  const data = event.data.data()
+
+  if (!data) {
+    logger.error('No data found in created expense document')
+    return
+  }
+
+  const category = data.category || 'Miscellaneous'
+  const amount = Number(data.amount || 0)
+  const note = data.note ? ` (${data.note})` : ''
+  const dateObj = data.date ? data.date.toDate() : new Date()
+  const timeStr = dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+  const dateStr = dateObj.toLocaleDateString('en-IN')
+
+  const notificationMessage = `Expense Recorded: ₹${amount} for "${category}"${note} at ${timeStr} on ${dateStr}.`
+  
+  logger.info(`onExpenseCreated: Processing new expense: ${notificationMessage}`)
+
+  try {
+    // 1. Send inside-app & FCM broadcast notification (Admin is primary user of notifications tab)
+    await broadcastNotification(notificationMessage, 'Expense Alert', null, 'expense-created')
+    
+    // 2. Send SMS alert to Admin (STAFF_MOBILE)
+    const STAFF_MOBILE = '917990943652' // Hardcoded as per existing standard
+    const smsMessage = `Anjani Water Expense Alert:\n₹${amount} spent on ${category}${note}.\nTime: ${timeStr}, ${dateStr}.`
+    await sendBackgroundSms({
+      macroUrl: MACRODROID_URL,
+      phone: STAFF_MOBILE,
+      message: smsMessage
+    })
+    
+    logger.info('onExpenseCreated: Expense notification and SMS successfully sent to admin.')
+  } catch (error) {
+    logger.error('Error sending expense notifications to admin:', error)
+  }
+})
