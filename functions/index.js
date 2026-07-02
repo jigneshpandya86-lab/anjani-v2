@@ -2114,7 +2114,7 @@ async function processDailyGreetings(db, currentHour) {
 
 /**
  * Triggered when a new expense document is created.
- * Sends a notification to the admin via app/FCM broadcast and SMS.
+ * Broadcasts an app/FCM notification and sends an SMS to the admin.
  */
 exports.onExpenseCreated = onDocumentCreated('expenses/{docId}', async (event) => {
   const data = event.data.data()
