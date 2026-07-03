@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   collection,
   addDoc,
@@ -58,6 +58,9 @@ export default function ExpensesDashboard() {
   // Category management
   const [newCategoryName, setNewCategoryName] = useState('')
   const [showCatPanel, setShowCatPanel] = useState(false)
+
+  // Period filter state: 'this-month', 'last-30', 'this-fy', 'all-time'
+  const [period, setPeriod] = useState('this-month')
 
   // Default DateTime to now (Indian timezone compatible local string format)
   useEffect(() => {
@@ -158,20 +161,73 @@ export default function ExpensesDashboard() {
     }
   }, [categories, category])
 
+  // --- Date Range Filter Helpers ---
+  const getOrderDate = useCallback((o) => {
+    if (o.deliveryDate && typeof o.deliveryDate === 'string') {
+      const parts = o.deliveryDate.split('-').map(Number)
+      if (parts.length === 3) return new Date(parts[0], parts[1] - 1, parts[2])
+    }
+    if (o.orderDate && typeof o.orderDate === 'string') {
+      const parts = o.orderDate.split('-').map(Number)
+      if (parts.length === 3) return new Date(parts[0], parts[1] - 1, parts[2])
+    }
+    if (o.createdAt?.toDate) return o.createdAt.toDate()
+    return null
+  }, [])
+
+  const getPaymentDate = useCallback((p) => {
+    const rawDate = p.date || p.createdAt
+    if (!rawDate) return null
+    if (rawDate.toDate) return rawDate.toDate()
+    return new Date(rawDate)
+  }, [])
+
+  const getExpenseDate = useCallback((e) => {
+    if (e.date?.toDate) return e.date.toDate()
+    return e.date ? new Date(e.date) : null
+  }, [])
+
+  const filterByDateRange = useCallback((items, range, dateFieldExtractor) => {
+    if (range === 'all-time') return items
+
+    const now = new Date()
+    let limitDate
+
+    if (range === 'this-month') {
+      limitDate = new Date(now.getFullYear(), now.getMonth(), 1)
+    } else if (range === 'last-30') {
+      limitDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    } else if (range === 'this-fy') {
+      const startYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1
+      limitDate = new Date(startYear, 3, 1)
+    } else {
+      return items
+    }
+
+    return items.filter((item) => {
+      const itemDate = dateFieldExtractor(item)
+      return itemDate && itemDate >= limitDate
+    })
+  }, [])
+
   // --- Financial Calculations ---
   const totals = useMemo(() => {
+    const filteredOrders = filterByDateRange(orders, period, getOrderDate)
+    const filteredPayments = filterByDateRange(payments, period, getPaymentDate)
+    const filteredExpenses = filterByDateRange(expenses, period, getExpenseDate)
+
     // Total Revenue: sum of Delivered orders
-    const totalRevenue = orders
+    const totalRevenue = filteredOrders
       .filter((o) => o.status === 'Delivered')
       .reduce((sum, o) => sum + Number(o.amount || 0), 0)
 
     // Total Cash Collected: sum of payments where type is payment/undefined (and not invoice/reversal)
-    const totalCashCollected = payments
+    const totalCashCollected = filteredPayments
       .filter((p) => p.type === 'payment' || p.type === undefined || p.mode)
       .reduce((sum, p) => sum + Number(p.amount || 0), 0)
 
     // Total Expenses
-    const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0)
+    const totalExpenses = filteredExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0)
 
     const accrualProfit = totalRevenue - totalExpenses
     const cashProfit = totalCashCollected - totalExpenses
@@ -183,7 +239,11 @@ export default function ExpensesDashboard() {
       accrualProfit,
       cashProfit,
     }
-  }, [orders, payments, expenses])
+  }, [orders, payments, expenses, period, filterByDateRange, getOrderDate, getPaymentDate, getExpenseDate])
+
+  const filteredExpensesList = useMemo(() => {
+    return filterByDateRange(expenses, period, getExpenseDate)
+  }, [expenses, period, filterByDateRange, getExpenseDate])
 
   // --- Form Handlers ---
   const handleRecordExpense = async (e) => {
@@ -318,6 +378,32 @@ export default function ExpensesDashboard() {
           <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">
             Realtime
           </span>
+        </div>
+
+        {/* Period Selector Tabs */}
+        <div className="relative mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
+          <span className="text-[9px] text-white/50 font-black uppercase tracking-wider">Period</span>
+          <div className="flex items-center gap-0.5 bg-black/20 rounded-xl p-0.5 border border-white/5">
+            {[
+              { id: 'this-month', label: 'This Month' },
+              { id: 'last-30', label: 'Last 30 Days' },
+              { id: 'this-fy', label: 'This FY' },
+              { id: 'all-time', label: 'All Time' },
+            ].map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setPeriod(p.id)}
+                className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase transition-all ${
+                  period === p.id
+                    ? 'bg-white text-[#0f1f46] shadow-sm'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {loadingFinance ? (
@@ -535,14 +621,14 @@ export default function ExpensesDashboard() {
             <Loader2 className="animate-spin text-blue-500 mr-2" size={20} />
             Loading entries...
           </div>
-        ) : expenses.length === 0 ? (
+        ) : filteredExpensesList.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-gray-400 text-center space-y-2 border border-dashed border-gray-100 rounded-2xl bg-gray-50/50">
             <AlertCircle size={32} className="text-gray-300" />
-            <p className="text-xs font-bold italic">No expenses recorded yet</p>
+            <p className="text-xs font-bold italic">No expenses recorded for this period</p>
           </div>
         ) : (
           <div className="divide-y divide-gray-50 max-h-[400px] overflow-y-auto pr-1">
-            {expenses.map((exp) => (
+            {filteredExpensesList.map((exp) => (
               <div key={exp.id} className="flex items-center justify-between py-3 gap-3 first:pt-0 last:pb-0">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
