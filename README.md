@@ -129,3 +129,7 @@ This repo includes `.github/workflows/random-fcm-notification.yml` to send an FC
 ### App-side requirement for token-based sends
 
 If you use `FCM_TARGET_TOKEN`, your Android app must fetch and log/send its FCM registration token to your backend/admin so you can store it as a GitHub secret.
+
+---
+_Last deployment verification: July 3, 2026_
+
