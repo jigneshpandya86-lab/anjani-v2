@@ -1757,7 +1757,8 @@ exports.hourlySmsScheduler = onSchedule(
         processDefaulterPaymentReminders(db, currentHour, currentDayOfWeek),
         processDailyStockReportToNilesh(db, currentHour, currentDayOfWeek),
         processDefaulterAlertToStaff(db, currentHour, currentDayOfWeek),
-        processDailyGreetings(db, currentHour)
+        processDailyGreetings(db, currentHour),
+        processDailyExpenseReport(db, currentHour)
       ]);
 
       logger.info("Unified hourly SMS scheduler completed.");
@@ -2113,43 +2114,67 @@ async function processDailyGreetings(db, currentHour) {
 }
 
 /**
- * Triggered when a new expense document is created.
- * Broadcasts an app/FCM notification and sends an SMS to the admin.
+ * Helper to process Daily Expense summary to Nilesh / Admin in the evening (9:00 PM IST)
  */
-exports.onExpenseCreated = onDocumentCreated('expenses/{docId}', async (event) => {
-  const data = event.data.data()
-
-  if (!data) {
-    logger.error('No data found in created expense document')
-    return
+async function processDailyExpenseReport(db, currentHour) {
+  if (currentHour !== 21) {
+    return; // Only run at 9:00 PM local India Time
   }
-
-  const category = data.category || 'Miscellaneous'
-  const amount = Number(data.amount || 0)
-  const note = data.note ? ` (${data.note})` : ''
-  const dateObj = data.date ? data.date.toDate() : new Date()
-  const timeStr = dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
-  const dateStr = dateObj.toLocaleDateString('en-IN')
-
-  const notificationMessage = `Expense Recorded: ₹${amount} for "${category}"${note} at ${timeStr} on ${dateStr}.`
-  
-  logger.info(`onExpenseCreated: Processing new expense: ${notificationMessage}`)
 
   try {
-    // 1. Send inside-app & FCM broadcast notification (Admin is primary user of notifications tab)
-    await broadcastNotification(notificationMessage, 'Expense Alert', null, 'expense-created')
+    logger.info("Daily Expense Report: Processing evening expense summary...");
+    const now = new Date();
     
-    // 2. Send SMS alert to Admin (STAFF_MOBILE)
-    const STAFF_MOBILE = '917990943652' // Hardcoded as per existing standard
-    const smsMessage = `Anjani Water Expense Alert:\n₹${amount} spent on ${category}${note}.\nTime: ${timeStr}, ${dateStr}.`
-    await sendBackgroundSms({
-      macroUrl: MACRODROID_URL,
-      phone: STAFF_MOBILE,
-      message: smsMessage
-    })
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    });
     
-    logger.info('onExpenseCreated: Expense notification and SMS successfully sent to admin.')
+    const parts = formatter.formatToParts(now);
+    const year = parts.find(p => p.type === 'year').value;
+    const month = parts.find(p => p.type === 'month').value;
+    const day = parts.find(p => p.type === 'day').value;
+
+    const istStartStr = `${year}-${month}-${day}T00:00:00+05:30`;
+    const istEndStr = `${year}-${month}-${day}T23:59:59+05:30`;
+    
+    const startTimestamp = admin.firestore.Timestamp.fromDate(new Date(istStartStr));
+    const endTimestamp = admin.firestore.Timestamp.fromDate(new Date(istEndStr));
+
+    const expenseSnap = await db.collection('expenses')
+      .where('date', '>=', startTimestamp)
+      .where('date', '<=', endTimestamp)
+      .get();
+
+    if (expenseSnap.empty) {
+      logger.info("Daily Expense Report: No expenses recorded today. Skipping.");
+      return;
+    }
+
+    let totalAmount = 0;
+    const categoryBreakdown = {};
+
+    expenseSnap.forEach((doc) => {
+      const exp = doc.data();
+      const amt = Number(exp.amount || 0);
+      totalAmount += amt;
+
+      const cat = exp.category || 'Miscellaneous';
+      categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + amt;
+    });
+
+    const breakdownStr = Object.entries(categoryBreakdown)
+      .map(([cat, amt]) => `${cat}: ₹${amt}`)
+      .join(', ');
+
+    const notificationMessage = `Today's Expense Summary: Total: ₹${totalAmount}. Breakdown: ${breakdownStr}.`;
+
+    // Broadcast push/in-app notification
+    await broadcastNotification(notificationMessage, 'Daily Expense Summary', null, 'daily-expense-summary');
+    logger.info("Daily Expense Report: FCM notification successfully sent to admin.");
   } catch (error) {
-    logger.error('Error sending expense notifications to admin:', error)
+    logger.error("Error processing daily expense report:", error);
   }
-})
+}
