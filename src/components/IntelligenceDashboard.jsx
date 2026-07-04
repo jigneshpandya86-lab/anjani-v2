@@ -69,10 +69,20 @@ const IntelligenceDashboard = () => {
     return () => unsubscribe()
   }, [])
 
-  // Auto-run if no report exists
+  // Auto-run if no report exists or if the report is stale (older than 4 hours)
   useEffect(() => {
-    if (!loading && !report && !refreshing) {
+    if (loading || refreshing) return
+
+    if (!report) {
       runAnalysis(true)
+    } else if (report.timestamp) {
+      const reportDate = report.timestamp.toDate ? report.timestamp.toDate() : new Date(report.timestamp)
+      const diffMs = Date.now() - reportDate.getTime()
+      const diffHours = diffMs / (1000 * 60 * 60)
+      if (diffHours > 4) {
+        console.log(`Report is stale (${diffHours.toFixed(1)} hours old). Auto-refreshing in background...`)
+        runAnalysis(true)
+      }
     }
   }, [loading, report])
 
