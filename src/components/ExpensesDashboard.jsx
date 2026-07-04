@@ -54,6 +54,7 @@ export default function ExpensesDashboard() {
   const [dateTime, setDateTime] = useState('')
   const [note, setNote] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showDatePicker, setShowDatePicker] = useState(false)
 
   // Category management
   const [newCategoryName, setNewCategoryName] = useState('')
@@ -372,23 +373,23 @@ export default function ExpensesDashboard() {
   const isProfitCash = totals.cashProfit >= 0
 
   return (
-    <div className="space-y-4 pb-24">
+    <div className="space-y-2.5 pb-20">
       {/* ─── Header Card: Running Profit (Zoho Books Style) ─── */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0f1f46] via-[#143366] to-[#1e4a88] p-4 text-white shadow-[0_16px_30px_rgba(15,31,70,0.25)]">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0f1f46] via-[#143366] to-[#1e4a88] p-3 text-white shadow-[0_16px_30px_rgba(15,31,70,0.25)]">
         <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/10 blur-[2px]" />
         <div className="pointer-events-none absolute -left-16 bottom-2 h-28 w-28 rounded-full bg-white/10" />
 
         <div className="relative flex items-center justify-between">
-          <h2 className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.16em] text-white/70">
-            <PiggyBank size={13} /> Profit & Loss Dashboard
+          <h2 className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/70">
+            <PiggyBank size={12} /> Profit & Loss Dashboard
           </h2>
-          <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">
+          <span className="text-[8px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider">
             Realtime
           </span>
         </div>
 
         {/* Period Selector Tabs */}
-        <div className="relative mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
+        <div className="relative mt-2 flex items-center justify-between gap-2 border-t border-white/10 pt-2">
           <span className="text-[9px] text-white/50 font-black uppercase tracking-wider">Period</span>
           <div className="flex items-center gap-0.5 bg-black/20 rounded-xl p-0.5 border border-white/5">
             {[
@@ -401,7 +402,7 @@ export default function ExpensesDashboard() {
                 key={p.id}
                 type="button"
                 onClick={() => setPeriod(p.id)}
-                className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase transition-all ${
+                className={`px-1.5 py-0.5 rounded-md text-[7.5px] font-black uppercase transition-all ${
                   period === p.id
                     ? 'bg-white text-[#0f1f46] shadow-sm'
                     : 'text-white/60 hover:text-white hover:bg-white/5'
@@ -414,25 +415,25 @@ export default function ExpensesDashboard() {
         </div>
 
         {loadingFinance ? (
-          <div className="flex items-center gap-2 py-6 text-white/60">
-            <Loader2 className="animate-spin" size={18} />
+          <div className="flex items-center gap-2 py-4 text-white/60">
+            <Loader2 className="animate-spin" size={16} />
             <span className="text-xs font-bold">Calculating running profit...</span>
           </div>
         ) : (
-          <div className="relative mt-3 grid grid-cols-2 gap-4 border-t border-white/10 pt-3">
+          <div className="relative mt-2 grid grid-cols-2 gap-3 border-t border-white/10 pt-2">
             <div>
-              <p className="text-[10px] text-white/60 font-black uppercase tracking-wide">Accrual Net Profit</p>
-              <h3 className={`text-2xl font-black mt-1 ${isProfitAccrual ? 'text-emerald-400' : 'text-red-400'}`}>
+              <p className="text-[8.5px] text-white/60 font-black uppercase tracking-wide">Accrual Net Profit</p>
+              <h3 className={`text-xl font-black mt-0.5 ${isProfitAccrual ? 'text-emerald-400' : 'text-red-400'}`}>
                 {formatCurrency(totals.accrualProfit)}
               </h3>
-              <p className="text-[9px] text-white/40 mt-0.5">Sales - Expenses</p>
+              <p className="text-[7.5px] text-white/40 mt-0.5">Sales - Expenses</p>
             </div>
             <div>
-              <p className="text-[10px] text-white/60 font-black uppercase tracking-wide">Cash Flow Net Profit</p>
-              <h3 className={`text-2xl font-black mt-1 ${isProfitCash ? 'text-emerald-400' : 'text-red-400'}`}>
+              <p className="text-[8.5px] text-white/60 font-black uppercase tracking-wide">Cash Flow Net Profit</p>
+              <h3 className={`text-xl font-black mt-0.5 ${isProfitCash ? 'text-emerald-400' : 'text-red-400'}`}>
                 {formatCurrency(totals.cashProfit)}
               </h3>
-              <p className="text-[9px] text-white/40 mt-0.5">Cash - Expenses</p>
+              <p className="text-[7.5px] text-white/40 mt-0.5">Cash - Expenses</p>
             </div>
           </div>
         )}
@@ -440,39 +441,39 @@ export default function ExpensesDashboard() {
 
       {/* ─── Financial Summaries Grid ─── */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="bg-white border border-emerald-100 rounded-2xl p-2.5 shadow-sm">
-          <p className="text-gray-400 text-[9px] font-black uppercase tracking-wider">Total Sales</p>
-          <p className="text-sm font-black text-emerald-700 mt-0.5">
+        <div className="bg-white border border-emerald-100 rounded-xl p-2 shadow-sm">
+          <p className="text-gray-400 text-[8px] font-black uppercase tracking-wider">Total Sales</p>
+          <p className="text-xs font-black text-emerald-700 mt-0.5">
             {formatCurrency(totals.totalRevenue)}
           </p>
         </div>
-        <div className="bg-white border border-blue-100 rounded-2xl p-2.5 shadow-sm">
-          <p className="text-gray-400 text-[9px] font-black uppercase tracking-wider">Cash Recd</p>
-          <p className="text-sm font-black text-blue-700 mt-0.5">
+        <div className="bg-white border border-blue-100 rounded-xl p-2 shadow-sm">
+          <p className="text-gray-400 text-[8px] font-black uppercase tracking-wider">Cash Recd</p>
+          <p className="text-xs font-black text-blue-700 mt-0.5">
             {formatCurrency(totals.totalCashCollected)}
           </p>
         </div>
-        <div className="bg-white border border-red-100 rounded-2xl p-2.5 shadow-sm">
-          <p className="text-gray-400 text-[9px] font-black uppercase tracking-wider">Total Exp</p>
-          <p className="text-sm font-black text-red-700 mt-0.5">
+        <div className="bg-white border border-red-100 rounded-xl p-2 shadow-sm">
+          <p className="text-gray-400 text-[8px] font-black uppercase tracking-wider">Total Exp</p>
+          <p className="text-xs font-black text-red-700 mt-0.5">
             {formatCurrency(totals.totalExpenses)}
           </p>
         </div>
       </div>
 
       {/* ─── Record Expense Section ─── */}
-      <div className="bg-white border border-gray-100 rounded-3xl p-4 shadow-sm space-y-3">
-        <div className="flex items-center justify-between border-b border-gray-50 pb-2">
-          <h3 className="text-sm font-black uppercase tracking-wide text-gray-800 flex items-center gap-1.5">
-            <Receipt size={16} className="text-orange-500" />
+      <div className="bg-white border border-gray-100 rounded-2xl p-3 shadow-sm space-y-2">
+        <div className="flex items-center justify-between border-b border-gray-50 pb-1.5">
+          <h3 className="text-xs font-black uppercase tracking-wide text-gray-800 flex items-center gap-1">
+            <Receipt size={14} className="text-orange-500" />
             Record Daily Expense
           </h3>
           <button
             type="button"
             onClick={() => setShowCatPanel(!showCatPanel)}
-            className="text-xs text-[#ff9900] font-black flex items-center gap-1 hover:underline"
+            className="text-[10px] text-[#ff9900] font-black flex items-center gap-1 hover:underline"
           >
-            <Tag size={12} />
+            <Tag size={10} />
             {showCatPanel ? 'Close Editor' : 'Manage Categories'}
           </button>
         </div>
@@ -528,13 +529,13 @@ export default function ExpensesDashboard() {
         )}
 
         {/* ── Expense Input Form ── */}
-        <form onSubmit={handleRecordExpense} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label htmlFor="expense-amount" className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">
-              Expense Amount (₹)
+        <form onSubmit={handleRecordExpense} className="grid grid-cols-2 gap-2">
+          <div className="space-y-0.5">
+            <label htmlFor="expense-amount" className="text-[8.5px] font-black text-gray-500 uppercase tracking-wider block">
+              Amount (₹)
             </label>
             <div className="relative flex items-center">
-              <span className="absolute left-3 text-gray-400 font-bold">₹</span>
+              <span className="absolute left-2.5 text-gray-400 font-bold text-xs">₹</span>
               <input
                 id="expense-amount"
                 type="number"
@@ -542,13 +543,13 @@ export default function ExpensesDashboard() {
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.00"
                 required
-                className="w-full pl-7 pr-3 py-2.5 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-black outline-none focus:ring-2 focus:ring-orange-400/20 transition-all"
+                className="w-full pl-6 pr-2 py-1.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-black outline-none focus:ring-2 focus:ring-orange-400/20 transition-all"
               />
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label htmlFor="expense-category" className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">
+          <div className="space-y-0.5">
+            <label htmlFor="expense-category" className="text-[8.5px] font-black text-gray-500 uppercase tracking-wider block">
               Category
             </label>
             <select
@@ -556,7 +557,7 @@ export default function ExpensesDashboard() {
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               required
-              className="w-full px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-orange-400/20 transition-all cursor-pointer"
+              className="w-full px-2 py-1.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-400/20 transition-all cursor-pointer"
             >
               {categories.map((cat) => (
                 <option key={cat} value={cat}>
@@ -566,22 +567,48 @@ export default function ExpensesDashboard() {
             </select>
           </div>
 
-          <div className="space-y-1">
-            <label htmlFor="expense-date" className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">
-              Date & Time
-            </label>
-            <input
-              id="expense-date"
-              type="datetime-local"
-              value={dateTime}
-              onChange={(e) => setDateTime(e.target.value)}
-              required
-              className="w-full px-3 py-2 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-orange-400/20 transition-all"
-            />
+          <div className="col-span-2">
+            {!showDatePicker ? (
+              <div className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-xl px-2.5 py-1.5">
+                <span className="text-[8.5px] font-black text-gray-500 uppercase tracking-wider">
+                  Date: Today (Now)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowDatePicker(true)}
+                  className="text-[8.5px] text-[#ff9900] font-black uppercase hover:underline"
+                >
+                  Change Date
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-0.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="expense-date" className="text-[8.5px] font-black text-gray-500 uppercase tracking-wider block">
+                    Date & Time
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowDatePicker(false)}
+                    className="text-[8.5px] text-gray-400 font-bold hover:underline"
+                  >
+                    Use Current Time
+                  </button>
+                </div>
+                <input
+                  id="expense-date"
+                  type="datetime-local"
+                  value={dateTime}
+                  onChange={(e) => setDateTime(e.target.value)}
+                  required
+                  className="w-full px-2 py-1.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-400/20 transition-all"
+                />
+              </div>
+            )}
           </div>
 
-          <div className="space-y-1">
-            <label htmlFor="expense-note" className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">
+          <div className="col-span-2 space-y-0.5">
+            <label htmlFor="expense-note" className="text-[8.5px] font-black text-gray-500 uppercase tracking-wider block">
               Narration / Notes
             </label>
             <input
@@ -590,24 +617,24 @@ export default function ExpensesDashboard() {
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="e.g. Fuel for delivery van"
-              className="w-full px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-orange-400/20 transition-all"
+              className="w-full px-2 py-1.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-400/20 transition-all"
             />
           </div>
 
-          <div className="md:col-span-2 pt-1">
+          <div className="col-span-2 pt-0.5">
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full bg-gradient-to-r from-orange-500 to-[#ff9900] text-white py-3 rounded-2xl font-black text-xs uppercase tracking-wider shadow-md hover:from-orange-600 hover:to-orange-500 active:scale-98 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+              className="w-full bg-gradient-to-r from-orange-500 to-[#ff9900] text-white py-2 rounded-xl font-black text-[10px] uppercase tracking-wider shadow-md hover:from-orange-600 hover:to-orange-500 active:scale-98 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="animate-spin" size={14} />
+                  <Loader2 className="animate-spin" size={12} />
                   Saving...
                 </>
               ) : (
                 <>
-                  <Plus size={14} strokeWidth={2.5} />
+                  <Plus size={12} strokeWidth={2.5} />
                   Record Expense
                 </>
               )}
