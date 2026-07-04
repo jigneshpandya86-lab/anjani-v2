@@ -163,6 +163,10 @@ export default function ExpensesDashboard() {
 
   // --- Date Range Filter Helpers ---
   const getOrderDate = useCallback((o) => {
+    if (o.date && typeof o.date === 'string') {
+      const parts = o.date.split('-').map(Number)
+      if (parts.length === 3) return new Date(parts[0], parts[1] - 1, parts[2])
+    }
     if (o.deliveryDate && typeof o.deliveryDate === 'string') {
       const parts = o.deliveryDate.split('-').map(Number)
       if (parts.length === 3) return new Date(parts[0], parts[1] - 1, parts[2])
@@ -219,7 +223,10 @@ export default function ExpensesDashboard() {
     // Total Revenue: sum of Delivered orders
     const totalRevenue = filteredOrders
       .filter((o) => o.status === 'Delivered')
-      .reduce((sum, o) => sum + Number(o.amount || 0), 0)
+      .reduce((sum, o) => {
+        const amt = o.amount || (Number(o.qty || 0) * Number(o.rate || 0))
+        return sum + Number(amt || 0)
+      }, 0)
 
     // Total Cash Collected: sum of payments where type is payment/undefined (and not invoice/reversal)
     const totalCashCollected = filteredPayments
