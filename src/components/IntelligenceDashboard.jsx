@@ -23,6 +23,7 @@ const IntelligenceDashboard = () => {
   const [refreshing, setRefreshing] = useState(false)
   const [dateRange, setDateRange] = useState('month') // today, week, month
   const [selectedDetail, setSelectedDetail] = useState(null) // 'revenue', 'orders', 'outstanding', null
+  const [selectedSegment, setSelectedSegment] = useState(null) // 'Champion', 'Regular', 'New', 'At Risk', null
 
   const runAnalysis = async (silent = false) => {
     if (refreshing) return
@@ -87,6 +88,19 @@ const IntelligenceDashboard = () => {
     () => report?.sales?.[dateRange] || { revenue: 0, count: 0 },
     [report, dateRange],
   )
+
+  const revenueDrilldownList = useMemo(() => {
+    if (dateRange === 'today') return report?.drillDown?.todayDelivered || []
+    if (dateRange === 'week') return report?.drillDown?.weekDelivered || []
+    return report?.drillDown?.monthDelivered || []
+  }, [report, dateRange])
+
+  const segmentCustomersList = useMemo(() => {
+    if (!selectedSegment || !report?.customerSegments) return []
+    return report.customerSegments
+      .filter((c) => c.segment === selectedSegment)
+      .sort((a, b) => b.monetary - a.monetary)
+  }, [report, selectedSegment])
 
   if (loading) {
     return (
@@ -270,21 +284,54 @@ const IntelligenceDashboard = () => {
             </div>
           </div>
 
-          <div className="bg-blue-50 rounded-3xl p-4 border border-blue-100">
-            <h4 className="text-[8px] font-black text-blue-600 uppercase tracking-[0.2em] mb-3">
-              Pulse Check
+          <div className="bg-blue-50 rounded-3xl p-4 border border-blue-100 space-y-3">
+            <h4 className="text-[8px] font-black text-blue-600 uppercase tracking-[0.2em]">
+              Pulse Check & Segments
             </h4>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-xl font-black text-gray-900">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedSegment('Champion')}
+                className="bg-white hover:bg-emerald-50/50 border border-emerald-100 rounded-2xl p-2.5 shadow-xs text-left active:scale-95 transition-all"
+              >
+                <p className="text-lg font-black text-emerald-600">
                   {report?.summary?.champions || 0}
                 </p>
                 <p className="text-[8px] font-bold text-gray-500 uppercase">Champions</p>
-              </div>
-              <div>
-                <p className="text-xl font-black text-red-600">{report?.summary?.atRisk || 0}</p>
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => setSelectedSegment('Regular')}
+                className="bg-white hover:bg-blue-50/50 border border-blue-100 rounded-2xl p-2.5 shadow-xs text-left active:scale-95 transition-all"
+              >
+                <p className="text-lg font-black text-blue-600">
+                  {report?.summary?.regulars || 0}
+                </p>
+                <p className="text-[8px] font-bold text-gray-500 uppercase">Regulars</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedSegment('New')}
+                className="bg-white hover:bg-indigo-50/50 border border-indigo-100 rounded-2xl p-2.5 shadow-xs text-left active:scale-95 transition-all"
+              >
+                <p className="text-lg font-black text-indigo-600">
+                  {report?.summary?.newCustomers || 0}
+                </p>
+                <p className="text-[8px] font-bold text-gray-500 uppercase">New</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedSegment('At Risk')}
+                className="bg-white hover:bg-red-50/50 border border-red-100 rounded-2xl p-2.5 shadow-xs text-left active:scale-95 transition-all"
+              >
+                <p className="text-lg font-black text-red-600">
+                  {report?.summary?.atRisk || 0}
+                </p>
                 <p className="text-[8px] font-bold text-gray-500 uppercase">At Risk</p>
-              </div>
+              </button>
             </div>
           </div>
         </div>
@@ -395,7 +442,7 @@ const IntelligenceDashboard = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {selectedDetail === 'revenue' &&
-                    report?.drillDown?.todayDelivered?.map((order, i) => (
+                    revenueDrilldownList?.map((order, i) => (
                       <tr key={i} className="hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-4">
                           <p className="text-sm font-black text-gray-900">{order.clientName}</p>
@@ -444,16 +491,21 @@ const IntelligenceDashboard = () => {
                           <p className="text-sm font-black text-red-600">
                             {formatCurrency(client.outstanding)}
                           </p>
-                          <button className="mt-1 text-[9px] font-black text-blue-600 uppercase">
-                            Call Client
-                          </button>
+                          {client.mobile && (
+                            <button
+                              onClick={() => window.open(`tel:${client.mobile}`)}
+                              className="mt-1 text-[9px] font-black text-blue-600 uppercase hover:underline"
+                            >
+                              Call Client
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
                 </tbody>
               </table>
 
-              {((selectedDetail === 'revenue' && !report?.drillDown?.todayDelivered?.length) ||
+              {((selectedDetail === 'revenue' && !revenueDrilldownList?.length) ||
                 (selectedDetail === 'orders' && !report?.drillDown?.pending?.length) ||
                 (selectedDetail === 'outstanding' && !report?.drillDown?.outstanding?.length)) && (
                 <div className="py-20 text-center space-y-3">
@@ -470,6 +522,98 @@ const IntelligenceDashboard = () => {
             <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-center sm:hidden">
               <button
                 onClick={() => setSelectedDetail(null)}
+                className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs"
+              >
+                Close View
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Segment Customers Modal */}
+      {selectedSegment && (
+        <div className="fixed inset-0 z-[1100] flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-3xl rounded-t-[32px] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
+              <h3 className="text-lg font-black text-gray-900 uppercase tracking-tighter flex items-center gap-2">
+                <Brain className="text-blue-600 animate-pulse" size={20} />
+                {selectedSegment === 'Champion' && <span className="text-emerald-600">Champion</span>}
+                {selectedSegment === 'Regular' && <span className="text-blue-600">Regular</span>}
+                {selectedSegment === 'New' && <span className="text-indigo-600">New</span>}
+                {selectedSegment === 'At Risk' && <span className="text-red-600">At Risk</span>}
+                <span>Customers</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSelectedSegment(null)}
+                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-gray-500 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-4">
+              <table className="w-full text-left">
+                <thead className="bg-gray-50 text-[10px] font-black text-gray-500 uppercase sticky top-0">
+                  <tr>
+                    <th className="px-4 py-3 rounded-l-xl">Customer Details</th>
+                    <th className="px-4 py-3">Retention Stats</th>
+                    <th className="px-4 py-3 text-right rounded-r-xl">LTV (Spending)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {segmentCustomersList.map((client, i) => (
+                    <tr key={i} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-4">
+                        <p className="text-sm font-black text-gray-900">{client.clientName}</p>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                          {client.mobile || 'No mobile'}
+                        </p>
+                      </td>
+                      <td className="px-4 py-4">
+                        <p className="text-xs font-bold text-gray-700">
+                          Last Order: {client.recency === 0 ? 'Today' : client.recency === 1 ? 'Yesterday' : `${client.recency} days ago`}
+                        </p>
+                        <p className="text-[10px] text-gray-400 font-medium">
+                          Frequency: {client.frequency} orders
+                        </p>
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <p className="text-sm font-black text-blue-600">
+                          {formatCurrency(client.monetary)}
+                        </p>
+                        {client.mobile && (
+                          <button
+                            type="button; window.open"
+                            onClick={() => window.open(`tel:${client.mobile}`)}
+                            className="mt-1 text-[9px] font-black text-emerald-600 uppercase hover:underline"
+                          >
+                            Call Customer
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {segmentCustomersList.length === 0 && (
+                <div className="py-20 text-center space-y-3">
+                  <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto">
+                    <Brain className="text-gray-300" size={24} />
+                  </div>
+                  <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">
+                    No customers in this segment
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-center sm:hidden">
+              <button
+                type="button"
+                onClick={() => setSelectedSegment(null)}
                 className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs"
               >
                 Close View

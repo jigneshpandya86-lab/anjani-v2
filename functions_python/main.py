@@ -61,9 +61,17 @@ def run_intelligence_analysis(req: https_fn.CallableRequest) -> any:
     }
 
     # --- DRILL-DOWN DATA (Lists for clicking on cards) ---
-    today_delivered_list = df_delivered[df_delivered['date_dt'] >= today_start].to_dict(orient='records')
+    def safe_to_dict(df):
+        if 'date_dt' in df.columns:
+            return df.drop(columns=['date_dt']).to_dict(orient='records')
+        return df.to_dict(orient='records')
+
+    today_delivered_list = safe_to_dict(df_delivered[df_delivered['date_dt'] >= today_start])
+    week_delivered_list = safe_to_dict(df_delivered[df_delivered['date_dt'] >= week_start])
+    month_delivered_list = safe_to_dict(df_delivered[df_delivered['date_dt'] >= month_start])
+    
     # Filter for clean pending orders
-    pending_list = df_orders[~df_orders['status_norm'].isin(['delivered', 'completed', 'cancelled'])].sort_values('date_dt', ascending=False).head(20).to_dict(orient='records')
+    pending_list = safe_to_dict(df_orders[~df_orders['status_norm'].isin(['delivered', 'completed', 'cancelled'])].sort_values('date_dt', ascending=False).head(20))
     
     # Outstanding List
     outstanding_clients = [
@@ -100,6 +108,10 @@ def run_intelligence_analysis(req: https_fn.CallableRequest) -> any:
     
     rfm['segment'] = rfm.apply(segment_customer, axis=1)
 
+    # Map mobile number to RFM
+    client_mobiles = {c.get('name'): c.get('mobile', '') for c in clients_list if c.get('name')}
+    rfm['mobile'] = rfm.index.map(lambda name: client_mobiles.get(name, ''))
+
     # Refill Alerts
     refill_alerts = []
     for name, group in df_orders.sort_values('date_dt').groupby('clientName'):
@@ -111,8 +123,10 @@ def run_intelligence_analysis(req: https_fn.CallableRequest) -> any:
                 predicted_next = last_order + timedelta(days=avg_interval)
                 days_until = (predicted_next - today_start).days
                 if -3 <= days_until <= 3:
+                    mob = client_mobiles.get(name, '')
                     refill_alerts.append({
                         'name': name,
+                        'mobile': mob,
                         'avgInterval': round(avg_interval, 1),
                         'lastOrder': last_order.strftime('%Y-%m-%d'),
                         'predictedDate': predicted_next.strftime('%Y-%m-%d'),
@@ -127,6 +141,8 @@ def run_intelligence_analysis(req: https_fn.CallableRequest) -> any:
         'totalOutstanding': float(total_outstanding),
         'drillDown': {
             'todayDelivered': today_delivered_list,
+            'weekDelivered': week_delivered_list,
+            'monthDelivered': month_delivered_list,
             'pending': pending_list,
             'outstanding': outstanding_clients[:50] # Top 50 outstanding
         },
@@ -134,6 +150,8 @@ def run_intelligence_analysis(req: https_fn.CallableRequest) -> any:
             'totalRevenue': float(df_delivered['amount'].sum()),
             'activeCustomers': int(len(rfm)),
             'champions': int(len(rfm[rfm['segment'] == 'Champion'])),
+            'regulars': int(len(rfm[rfm['segment'] == 'Regular'])),
+            'newCustomers': int(len(rfm[rfm['segment'] == 'New'])),
             'atRisk': int(len(rfm[rfm['segment'] == 'At Risk']))
         },
         'refillAlerts': sorted(refill_alerts, key=lambda x: x['urgency'] == 'High', reverse=True),
