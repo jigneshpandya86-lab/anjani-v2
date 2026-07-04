@@ -33,9 +33,55 @@ def run_intelligence_analysis(req: https_fn.CallableRequest) -> any:
 
     # --- DATAFRAME PROCESSING ---
     df_orders = pd.DataFrame(orders_list)
-    # Ensure date is treated correctly (handles string YYYY-MM-DD or full timestamp strings)
-    df_orders['date_dt'] = pd.to_datetime(df_orders['date']).dt.tz_localize(None)
-    df_orders['amount'] = pd.to_numeric(df_orders['qty'], errors='coerce') * pd.to_numeric(df_orders['rate'], errors='coerce')
+    
+    def parse_order_date(row):
+        d = row.get('date')
+        if pd.notna(d) and d != '':
+            return pd.to_datetime(d)
+        
+        dd = row.get('deliveryDate')
+        if pd.notna(dd) and dd != '':
+            return pd.to_datetime(dd)
+        
+        od = row.get('orderDate')
+        if pd.notna(od) and od != '':
+            return pd.to_datetime(od)
+        
+        ca = row.get('createdAt')
+        if pd.notna(ca):
+            if hasattr(ca, 'toDate'):
+                return pd.to_datetime(ca.toDate())
+            elif isinstance(ca, dict) and '_seconds' in ca:
+                return pd.to_datetime(ca['_seconds'], unit='s')
+            return pd.to_datetime(ca)
+            
+        return pd.NaT
+
+    def parse_order_amount(row):
+        amt = row.get('amount')
+        if pd.notna(amt) and amt != '':
+            try:
+                val = float(amt)
+                if val > 0:
+                    return val
+            except:
+                pass
+        
+        qty = row.get('qty')
+        if pd.isna(qty) or qty == '':
+            qty = row.get('boxes')
+        
+        rate = row.get('rate')
+        if pd.isna(qty) or qty == '' or pd.isna(rate) or rate == '':
+            return 0.0
+        
+        try:
+            return float(qty) * float(rate)
+        except:
+            return 0.0
+
+    df_orders['date_dt'] = df_orders.apply(parse_order_date, axis=1)
+    df_orders['amount'] = df_orders.apply(parse_order_amount, axis=1)
     df_orders['status_norm'] = df_orders['status'].str.strip().str.lower()
     
     # Filter for revenue (Delivered or Completed)
