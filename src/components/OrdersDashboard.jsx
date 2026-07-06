@@ -417,29 +417,25 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
               const mapsUrl = getMapsUrl(order)
               if (!address && !mapsUrl) return null
               return (
-                <div className="mb-4 bg-orange-50/40 border border-orange-100/50 p-3.5 rounded-2xl space-y-2.5">
-                  <div className="flex items-start gap-2.5">
-                    <MapPin size={15} className="text-[#ff9900] shrink-0 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">
-                        Delivery Address
-                      </p>
-                      <p className="text-xs font-bold text-gray-700 leading-snug mt-0.5">
-                        {address || 'Coordinates Only'}
-                      </p>
-                    </div>
+                <div className="mb-4 bg-orange-50/40 border border-orange-100/50 px-3 py-2 rounded-2xl flex items-center justify-between gap-3 min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                    <MapPin size={14} className="text-[#ff9900] shrink-0" />
+                    <span className="text-xs font-bold text-gray-700 truncate" title={address}>
+                      {address || 'Location Coordinates'}
+                    </span>
                   </div>
                   
-                  <div className="flex items-center gap-2 pt-1.5 border-t border-orange-100/30">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     {mapsUrl && (
                       <a
                         href={mapsUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-orange-50 border border-orange-200 text-[#ff9900] text-[9px] font-black uppercase rounded-lg shadow-2xs active:scale-95 transition-all"
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-white hover:bg-orange-50 border border-orange-200 text-[#ff9900] text-[9px] font-black uppercase rounded-lg shadow-2xs active:scale-95 transition-all"
+                        title="Get Directions"
                       >
                         <Navigation size={10} />
-                        Get Directions
+                        Go
                       </a>
                     )}
                     {address && (
@@ -449,10 +445,11 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
                           navigator.clipboard.writeText(address)
                           toast.success('Address copied!')
                         }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-gray-50 border border-gray-200 text-gray-600 text-[9px] font-black uppercase rounded-lg shadow-2xs active:scale-95 transition-all"
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-white hover:bg-gray-50 border border-gray-200 text-gray-600 text-[9px] font-black uppercase rounded-lg shadow-2xs active:scale-95 transition-all"
+                        title="Copy Address"
                       >
                         <Copy size={10} />
-                        Copy Address
+                        Copy
                       </button>
                     )}
                   </div>
