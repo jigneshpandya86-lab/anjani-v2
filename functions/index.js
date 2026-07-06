@@ -13,7 +13,7 @@ const generativeModel = vertexAI.getGenerativeModel({
   model: 'gemini-2.5-flash',
 });
 
-const MACRODROID_URL = "https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms";
+const MACRODROID_URL = "https://trigger.macrodroid.com/25efcbac-eb13-4461-ae90-3158ba6c5b90/anjani_sms";
 const INDIA_COUNTRY_CODE = "91";
 
 function normalizeIndianPhone(phone) {
@@ -128,7 +128,7 @@ exports.sendSmsViaMacrodroid = onDocumentCreated('leads/{docId}', async (event) 
     'Events in Vadodara? Serve Anjani Water 200ml bottles! Perfect size, zero waste. Special rates on bulk buys! Order here: https://wa.me/919925997750'
   const packet = `${smsPhone}@@@${message}`
 
-  const baseUrl = 'https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms'
+  const baseUrl = 'https://trigger.macrodroid.com/25efcbac-eb13-4461-ae90-3158ba6c5b90/anjani_sms'
   const finalUrl = `${baseUrl}?data=${encodeURIComponent(packet)}`
 
   try {
@@ -446,7 +446,7 @@ MapLink: ${resolved.mapLink}`
 
   const staffMobile = '917990943652'
   const packet = `${staffMobile}@@@${message}`
-  const baseUrl = 'https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms'
+  const baseUrl = 'https://trigger.macrodroid.com/25efcbac-eb13-4461-ae90-3158ba6c5b90/anjani_sms'
   const finalUrl = `${baseUrl}?data=${encodeURIComponent(packet)}`
 
   try {
@@ -569,7 +569,7 @@ exports.sendWeeklyRegularOrderReminder = onSchedule(
 
 // Constants and Helpers for the Follow-Up Logic
 const MACRO_URL_FOLLOWUP =
-  'https://trigger.macrodroid.com/c54612db-2ff7-4ff5-ac00-e428c1011e31/anjani_sms'
+  'https://trigger.macrodroid.com/25efcbac-eb13-4461-ae90-3158ba6c5b90/anjani_sms'
 const FOLLOW_UP_DAYS = [20, 45]
 const DAY_IN_MS = 24 * 60 * 60 * 1000
 
