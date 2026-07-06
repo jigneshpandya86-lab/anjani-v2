@@ -59,6 +59,7 @@ function App() {
   const [editOrder, setEditOrder] = useState(null)
   const [editClient, setEditClient] = useState(null)
   const [addClientOpen, setAddClientOpen] = useState(false)
+  const [addExpenseOpen, setAddExpenseOpen] = useState(false)
   const [payClient, setPayClient] = useState(null)
   const [paymentPrefill, setPaymentPrefill] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -325,6 +326,7 @@ function App() {
     { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
     { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
     { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
+    { id: 'expenses', label: 'Expenses', icon: <Receipt size={20} /> },
   ].filter(item => userRole === 'admin' || item.id === 'orders')
 
   const drawerNavItems = [
@@ -338,11 +340,6 @@ function App() {
       id: 'celebrations',
       label: 'Celebrations',
       icon: <Gift size={20} />,
-    },
-    userRole === 'admin' && {
-      id: 'expenses',
-      label: 'Expenses',
-      icon: <Receipt size={20} />,
     },
     ...navItems,
     userRole === 'admin' && {
@@ -1657,7 +1654,13 @@ function App() {
           {activeTab === 'tasks' && <TasksPage />}
           {activeTab === 'intelligence' && <IntelligenceDashboard />}
           {activeTab === 'celebrations' && <CelebrationsTab />}
-          {activeTab === 'expenses' && userRole === 'admin' && <ExpensesDashboard />}
+          {activeTab === 'expenses' && userRole === 'admin' && (
+            <ExpensesDashboard
+              showAddForm={addExpenseOpen}
+              onOpenAddForm={() => setAddExpenseOpen(true)}
+              onCloseAddForm={() => setAddExpenseOpen(false)}
+            />
+          )}
           {activeTab === 'leads' && (
             <LeadsDashboard
               pendingAction={pendingLeadAction}
@@ -1969,7 +1972,7 @@ function App() {
           <button
             key={item.id}
             onClick={() => setActiveTab(item.id)}
-            className={`flex flex-col items-center justify-center w-[23%] py-1 rounded-xl transition-all ${
+            className={`flex flex-col items-center justify-center flex-1 py-1 rounded-xl transition-all ${
               activeTab === item.id
                 ? 'text-[#ff9900] bg-[#fff4e5] shadow-[0_4px_10px_rgba(255,153,0,0.15)]'
                 : 'text-gray-400 hover:text-gray-600'
@@ -2017,6 +2020,17 @@ function App() {
           }}
           className="fixed right-4 bottom-24 z-[998] h-14 w-14 rounded-full bg-[#ff9900] text-white shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
           aria-label="Record payment"
+        >
+          <Plus size={24} strokeWidth={2.5} />
+        </button>
+      )}
+
+      {/* FAB: Record Expense (Expenses tab) */}
+      {activeTab === 'expenses' && userRole === 'admin' && (
+        <button
+          onClick={() => setAddExpenseOpen(true)}
+          className="fixed right-4 bottom-24 z-[998] h-14 w-14 rounded-full bg-[#ff9900] text-white shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
+          aria-label="Record expense"
         >
           <Plus size={24} strokeWidth={2.5} />
         </button>

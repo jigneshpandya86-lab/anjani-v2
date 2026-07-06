@@ -24,6 +24,8 @@ import {
   FileText,
   AlertCircle,
   Copy,
+  X,
+  Clock,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -39,7 +41,7 @@ const DEFAULT_CATEGORIES = [
   'Miscellaneous',
 ]
 
-export default function ExpensesDashboard() {
+export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseAddForm }) {
   const [expenses, setExpenses] = useState([])
   const [orders, setOrders] = useState([])
   const [payments, setPayments] = useState([])
@@ -310,7 +312,7 @@ export default function ExpensesDashboard() {
     setDateTime(localISOTime)
 
     toast.success('Expense copied! Date set to now.')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    onOpenAddForm()
   }
 
   const handleAddCategory = async (e) => {
@@ -475,194 +477,17 @@ export default function ExpensesDashboard() {
         </div>
       </div>
 
-      {/* ─── Record Expense Section ─── */}
-      <div className="bg-white border border-gray-100 rounded-2xl p-3 shadow-sm space-y-2">
-        <div className="flex items-center justify-between border-b border-gray-50 pb-1.5">
-          <h3 className="text-xs font-black uppercase tracking-wide text-gray-800 flex items-center gap-1">
-            <Receipt size={14} className="text-orange-500" />
-            Record Daily Expense
-          </h3>
-          <button
-            type="button"
-            onClick={() => setShowCatPanel(!showCatPanel)}
-            className="text-[10px] text-[#ff9900] font-black flex items-center gap-1 hover:underline"
-          >
-            <Tag size={10} />
-            {showCatPanel ? 'Close Editor' : 'Manage Categories'}
-          </button>
-        </div>
-
-        {/* ── Category Editor Panel ── */}
-        {showCatPanel && (
-          <div className="bg-orange-50/50 rounded-2xl p-3 border border-orange-100 space-y-2">
-            <h4 className="text-[10px] font-black text-orange-800 uppercase tracking-wider">
-              Expense Categories Manager
-            </h4>
-            
-            {loadingCategories ? (
-              <Loader2 className="animate-spin text-orange-500" size={16} />
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {categories.map((cat) => (
-                  <span
-                    key={cat}
-                    className="inline-flex items-center gap-1 text-[11px] bg-white border border-orange-200 text-orange-850 px-2 py-0.5 rounded-full font-bold shadow-xs"
-                  >
-                    {cat}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveCategory(cat)}
-                      className="text-red-400 hover:text-red-600 transition-colors"
-                      title={`Delete "${cat}"`}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            <form onSubmit={handleAddCategory} className="flex gap-2 pt-1.5">
-              <input
-                type="text"
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                placeholder="New Category Name..."
-                aria-label="New category name"
-                className="flex-1 px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-orange-500 font-bold"
-              />
-              <button
-                type="submit"
-                className="bg-[#ff9900] text-white px-3 py-1.5 rounded-xl font-bold text-xs uppercase hover:bg-orange-600 active:scale-95 transition-all flex items-center gap-1"
-              >
-                <Plus size={13} />
-                Add
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* ── Expense Input Form ── */}
-        <form onSubmit={handleRecordExpense} className="grid grid-cols-2 gap-2">
-          <div className="space-y-0.5">
-            <label htmlFor="expense-amount" className="text-[8.5px] font-black text-gray-500 uppercase tracking-wider block">
-              Amount (₹)
-            </label>
-            <div className="relative flex items-center">
-              <span className="absolute left-2.5 text-gray-400 font-bold text-xs">₹</span>
-              <input
-                id="expense-amount"
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
-                required
-                className="w-full pl-6 pr-2 py-1.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-black outline-none focus:ring-2 focus:ring-orange-400/20 transition-all"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-0.5">
-            <label htmlFor="expense-category" className="text-[8.5px] font-black text-gray-500 uppercase tracking-wider block">
-              Category
-            </label>
-            <select
-              id="expense-category"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              required
-              className="w-full px-2 py-1.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-400/20 transition-all cursor-pointer"
-            >
-              {categories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="col-span-2">
-            {!showDatePicker ? (
-              <div className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-xl px-2.5 py-1.5">
-                <span className="text-[8.5px] font-black text-gray-500 uppercase tracking-wider">
-                  Date: Today (Now)
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowDatePicker(true)}
-                  className="text-[8.5px] text-[#ff9900] font-black uppercase hover:underline"
-                >
-                  Change Date
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-0.5">
-                <div className="flex items-center justify-between">
-                  <label htmlFor="expense-date" className="text-[8.5px] font-black text-gray-500 uppercase tracking-wider block">
-                    Date & Time
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowDatePicker(false)}
-                    className="text-[8.5px] text-gray-400 font-bold hover:underline"
-                  >
-                    Use Current Time
-                  </button>
-                </div>
-                <input
-                  id="expense-date"
-                  type="datetime-local"
-                  value={dateTime}
-                  onChange={(e) => setDateTime(e.target.value)}
-                  required
-                  className="w-full px-2 py-1.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-400/20 transition-all"
-                />
-              </div>
-            )}
-          </div>
-
-          <div className="col-span-2 space-y-0.5">
-            <label htmlFor="expense-note" className="text-[8.5px] font-black text-gray-500 uppercase tracking-wider block">
-              Narration / Notes
-            </label>
-            <input
-              id="expense-note"
-              type="text"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="e.g. Fuel for delivery van"
-              className="w-full px-2 py-1.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-orange-400/20 transition-all"
-            />
-          </div>
-
-          <div className="col-span-2 pt-0.5">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-gradient-to-r from-orange-500 to-[#ff9900] text-white py-2 rounded-xl font-black text-[10px] uppercase tracking-wider shadow-md hover:from-orange-600 hover:to-orange-500 active:scale-98 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="animate-spin" size={12} />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Plus size={12} strokeWidth={2.5} />
-                  Record Expense
-                </>
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
-
       {/* ─── Recent Expenses Feed ─── */}
-      <div className="bg-white border border-gray-100 rounded-3xl p-4 shadow-sm space-y-3">
-        <h3 className="text-sm font-black uppercase tracking-wide text-gray-800 flex items-center gap-1.5">
-          <FileText size={16} className="text-blue-500" />
-          Recent Expenses
-        </h3>
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between pt-2">
+          <h3 className="text-xs font-black uppercase tracking-wide text-gray-800 flex items-center gap-1.5">
+            <FileText size={14} className="text-blue-500" />
+            Recent Expenses
+          </h3>
+          <div className="text-[10px] text-gray-400 font-extrabold uppercase">
+            {filteredExpensesList.length} Entries
+          </div>
+        </div>
 
         {loadingExpenses ? (
           <div className="flex items-center justify-center py-12 text-gray-400 font-bold italic">
@@ -675,42 +500,261 @@ export default function ExpensesDashboard() {
             <p className="text-xs font-bold italic">No expenses recorded for this period</p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-50 max-h-[400px] overflow-y-auto pr-1">
+          <div className="max-h-[500px] overflow-y-auto pr-1">
             {filteredExpensesList.map((exp) => (
-              <div key={exp.id} className="flex items-center justify-between py-3 gap-3 first:pt-0 last:pb-0">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-gray-800">{exp.category}</span>
-                    <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-bold">
-                      {formatDate(exp.date)}
-                    </span>
+              <div
+                key={exp.id}
+                className="relative overflow-hidden bg-white px-2.5 py-2.5 rounded-xl shadow-[0_4px_12px_rgba(15,23,42,0.05)] border border-gray-100 border-l-[3px] border-l-red-500 transition-all hover:-translate-y-0.5 hover:shadow-[0_8px_16px_rgba(15,23,42,0.08)] mb-2"
+              >
+                <div className="relative space-y-1">
+                  <div className="flex items-start gap-2">
+                    <div className="p-1.5 rounded-lg shadow-inner bg-red-50 text-red-500 shrink-0">
+                      <Receipt size={13} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className="truncate font-extrabold text-sm text-gray-900 leading-tight">
+                          {exp.category}
+                        </p>
+                        {exp.note && (
+                          <span className="shrink-0 text-[9px] font-semibold text-gray-500 tracking-wide bg-gray-100 px-1.5 py-0.5 rounded-full max-w-[120px] truncate" title={exp.note}>
+                            {exp.note}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyExpense(exp)}
+                      className="shrink-0 flex items-center justify-center rounded-md bg-orange-50 p-1 text-orange-500 transition-colors hover:bg-orange-100 active:scale-90"
+                      title="Copy Entry"
+                    >
+                      <Copy size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteExpense(exp.id, exp.category, exp.amount)}
+                      className="shrink-0 flex items-center justify-center rounded-md bg-red-50 p-1 text-red-500 transition-colors hover:bg-red-100 active:scale-90"
+                      title="Delete Entry"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                    <p className="shrink-0 font-black text-base leading-none text-red-500">
+                      -{formatCurrency(exp.amount)}
+                    </p>
                   </div>
-                  {exp.note && <p className="text-xs text-gray-400 mt-0.5 truncate">{exp.note}</p>}
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-black text-red-500 tracking-tight whitespace-nowrap">
-                    -{formatCurrency(exp.amount)}
-                  </span>
-                  <button
-                    onClick={() => handleCopyExpense(exp)}
-                    className="text-orange-400 p-2 hover:bg-orange-50 rounded-xl transition-colors active:scale-90"
-                    title="Copy Entry"
-                  >
-                    <Copy size={15} />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteExpense(exp.id, exp.category, exp.amount)}
-                    className="text-red-400 p-2 hover:bg-red-50 rounded-xl transition-colors active:scale-90"
-                    title="Delete Entry"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                  <div className="flex items-center justify-between gap-2 pl-8">
+                    <p className="truncate text-[10px] text-gray-500 flex items-center gap-1 uppercase tracking-wide font-bold">
+                      <Clock size={10} /> {formatDate(exp.date)}
+                    </p>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Record Expense Modal overlay */}
+      {showAddForm && (
+        <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-lg rounded-t-[32px] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                  <Receipt className="text-orange-500" size={20} />
+                  Record Expense
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">Log a new business expense</p>
+              </div>
+              <button
+                type="button"
+                onClick={onCloseAddForm}
+                className="p-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-gray-500 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-5 space-y-5">
+              {/* Category Editor Toggle inside Modal */}
+              <div className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                <span className="text-xs font-extrabold text-gray-600">
+                  Manage Categories
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowCatPanel(!showCatPanel)}
+                  className="text-xs text-[#ff9900] font-black uppercase hover:underline"
+                >
+                  {showCatPanel ? 'Hide Manager' : 'Show Manager'}
+                </button>
+              </div>
+
+              {showCatPanel && (
+                <div className="bg-orange-50/50 rounded-2xl p-4 border border-orange-100 space-y-3">
+                  <h4 className="text-xs font-black text-orange-850 uppercase tracking-wider">
+                    Categories List
+                  </h4>
+                  {loadingCategories ? (
+                    <Loader2 className="animate-spin text-orange-500" size={16} />
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {categories.map((cat) => (
+                        <span
+                          key={cat}
+                          className="inline-flex items-center gap-1.5 text-xs bg-white border border-orange-200 text-orange-850 px-3 py-1 rounded-full font-bold shadow-2xs"
+                        >
+                          {cat}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCategory(cat)}
+                            className="text-red-400 hover:text-red-600 transition-colors font-bold text-sm"
+                            title={`Delete "${cat}"`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleAddCategory} className="flex gap-2 pt-2">
+                    <input
+                      type="text"
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      placeholder="New Category Name..."
+                      required
+                      className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#ff9900] font-bold"
+                    />
+                    <button
+                      type="submit"
+                      className="bg-[#ff9900] text-white px-4 py-2 rounded-xl font-black text-xs uppercase hover:bg-orange-600 active:scale-95 transition-all flex items-center gap-1.5"
+                    >
+                      <Plus size={14} />
+                      Add
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {/* Main Expense Form */}
+              <form onSubmit={async (e) => {
+                e.preventDefault()
+                await handleRecordExpense(e)
+                onCloseAddForm()
+              }} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label htmlFor="modal-expense-amount" className="block text-xs font-black text-gray-500 uppercase tracking-wider">
+                    Amount (₹)
+                  </label>
+                  <div className="relative flex items-center">
+                    <span className="absolute left-3.5 text-gray-400 font-bold text-sm">₹</span>
+                    <input
+                      id="modal-expense-amount"
+                      type="number"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="0.00"
+                      required
+                      className="w-full pl-8 pr-4 py-3 bg-white border border-gray-300 rounded-xl text-base font-black outline-none focus:ring-2 focus:ring-[#ff9900] transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="modal-expense-category" className="block text-xs font-black text-gray-500 uppercase tracking-wider">
+                    Category
+                  </label>
+                  <select
+                    id="modal-expense-category"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    required
+                    className="w-full px-3 py-3 bg-white border border-gray-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#ff9900] cursor-pointer"
+                  >
+                    <option value="" disabled>Select category</option>
+                    {categories.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="modal-expense-date" className="block text-xs font-black text-gray-500 uppercase tracking-wider">
+                      Date & Time
+                    </label>
+                    {showDatePicker && (
+                      <button
+                        type="button"
+                        onClick={() => setShowDatePicker(false)}
+                        className="text-xs text-[#ff9900] font-black uppercase hover:underline"
+                      >
+                        Use Current Time
+                      </button>
+                    )}
+                  </div>
+                  {!showDatePicker ? (
+                    <div className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5">
+                      <span className="text-xs font-bold text-gray-600">
+                        Today (Current Time)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowDatePicker(true)}
+                        className="text-xs text-[#ff9900] font-black uppercase hover:underline"
+                      >
+                        Set Custom Date
+                      </button>
+                    </div>
+                  ) : (
+                    <input
+                      id="modal-expense-date"
+                      type="datetime-local"
+                      value={dateTime}
+                      onChange={(e) => setDateTime(e.target.value)}
+                      required
+                      className="w-full px-3 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#ff9900]"
+                    />
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="modal-expense-note" className="block text-xs font-black text-gray-500 uppercase tracking-wider">
+                    Narration / Notes
+                  </label>
+                  <input
+                    id="modal-expense-note"
+                    type="text"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="e.g. Fuel for delivery van"
+                    className="w-full px-3 py-3 bg-white border border-gray-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#ff9900]"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full bg-[#131921] hover:bg-black text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg disabled:opacity-50 mt-2"
+                >
+                  {isSubmitting ? (
+                    'Recording...'
+                  ) : (
+                    <>
+                      <Plus size={20} strokeWidth={2.5} /> Record Expense
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
