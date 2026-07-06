@@ -150,11 +150,12 @@ export default function StockDashboard({ onOpenReport }) {
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0f1f46] via-[#143366] to-[#1e4a88] p-3.5 text-white shadow-[0_16px_30px_rgba(15,31,70,0.25)]">
         <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/10 blur-[2px]" />
         <div className="pointer-events-none absolute -left-16 bottom-2 h-28 w-28 rounded-full bg-white/10" />
-        <div className="relative flex items-start justify-between gap-2">
-          <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-white/70">
+        
+        <div className="relative flex items-center justify-between gap-2">
+          <h2 className="truncate text-[11px] font-extrabold uppercase tracking-[0.16em] text-white/70">
             Stock Ledger
-          </p>
-          <div className="flex items-center gap-1.5 text-[10px] bg-white/20 text-white px-2 py-1 rounded-full font-black uppercase shadow-sm backdrop-blur-sm">
+          </h2>
+          <div className="shrink-0 flex items-center gap-1.5 text-[10px] bg-white/20 text-white px-2 py-1 rounded-full font-black uppercase shadow-sm backdrop-blur-sm">
             <input
               type="date"
               className="w-[96px] bg-transparent text-white text-[10px] font-bold outline-none"
@@ -170,55 +171,57 @@ export default function StockDashboard({ onOpenReport }) {
             />
           </div>
         </div>
-        <div className="relative mt-2 flex items-end justify-between gap-2">
-          <div className="flex items-baseline gap-2">
-            <h2 className="text-3xl leading-none font-black whitespace-nowrap text-white">
-              {totalStock.toLocaleString()}{' '}
-              <span className="text-[10px] font-bold text-white/80 uppercase tracking-[0.08em]">
-                Boxes
-              </span>
-            </h2>
+        
+        <div className="relative mt-2 flex items-center justify-between gap-2">
+          <p className="truncate text-3xl font-black leading-none">
+            {totalStock.toLocaleString()}{' '}
+            <span className="text-[10px] font-extrabold text-white/75 uppercase tracking-wide">
+              BXS
+            </span>
+          </p>
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={handleRecalculate}
               disabled={isSyncing || loading}
-              className={`p-1 rounded-full bg-white/10 hover:bg-white/20 transition-all ${isSyncing ? 'animate-spin' : ''}`}
+              className={`p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-all ${isSyncing ? 'animate-spin' : ''}`}
               title="Recalculate Total from Ledger"
             >
-              <RefreshCw size={12} className="text-white/70" />
+              <RefreshCw size={11} className="text-white" />
             </button>
             <button
               onClick={onOpenReport}
-              className="p-1 rounded-full bg-white/10 hover:bg-white/20 transition-all ml-1"
+              className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-all"
               title="Generate Stock Statement Report"
             >
-              <FileText size={12} className="text-white/70" />
+              <FileText size={11} className="text-white" />
             </button>
+            {(startDate || endDate) && (
+              <button
+                onClick={() => {
+                  const { start, end } = getDefaultDateRange()
+                  setStartDate(start)
+                  setEndDate(end)
+                }}
+                className="text-[9px] font-black uppercase bg-white/20 px-2 py-1 rounded-lg hover:bg-white/30 transition-all"
+              >
+                Clear
+              </button>
+            )}
           </div>
-          {(startDate || endDate) && (
-            <button
-              onClick={() => {
-                const { start, end } = getDefaultDateRange()
-                setStartDate(start)
-                setEndDate(end)
-              }}
-              className="text-[10px] font-semibold text-white/80 uppercase px-1.5"
-            >
-              Clear
-            </button>
-          )}
         </div>
       </div>
 
       {/* Ledger Entries */}
-      <div className="space-y-2 pb-6">
-        <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-[0.2em] px-1 flex items-center justify-between gap-2 mt-3">
-          <span className="flex items-center gap-2">
-            <History size={12} /> Movement Log
-          </span>
-          <span className="text-[9px] text-slate-400 font-medium normal-case tracking-normal">
-            Showing up to {Math.min(filtered.length, MIN_VISIBLE_ITEMS)} of {filtered.length}
-          </span>
-        </h3>
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between pt-2">
+          <h3 className="text-xs font-black uppercase tracking-wide text-gray-800 flex items-center gap-1.5">
+            <History size={14} className="text-blue-500" />
+            Movement Log
+          </h3>
+          <div className="text-[10px] text-gray-400 font-extrabold uppercase">
+            {filtered.length} Entries
+          </div>
+        </div>
         {filtered.slice(0, MIN_VISIBLE_ITEMS).map((entry, index) => {
           const isIncrease = entry.qty > 0
           return (

@@ -389,25 +389,25 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
   const isProfitCash = totals.cashProfit >= 0
 
   return (
-    <div className="space-y-2.5 pb-20">
+    <div className="space-y-2 pb-20">
       {/* ─── Header Card: Running Profit (Zoho Books Style) ─── */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0f1f46] via-[#143366] to-[#1e4a88] p-3 text-white shadow-[0_16px_30px_rgba(15,31,70,0.25)]">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0f1f46] via-[#143366] to-[#1e4a88] p-3.5 text-white shadow-[0_16px_30px_rgba(15,31,70,0.25)]">
         <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/10 blur-[2px]" />
         <div className="pointer-events-none absolute -left-16 bottom-2 h-28 w-28 rounded-full bg-white/10" />
 
-        <div className="relative flex items-center justify-between">
-          <h2 className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/70">
-            <PiggyBank size={12} /> Profit & Loss Dashboard
+        <div className="relative flex items-center justify-between gap-2">
+          <h2 className="truncate text-[11px] font-extrabold uppercase tracking-[0.16em] text-white/70">
+            Profit & Loss Dashboard
           </h2>
-          <span className="text-[8px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider">
-            Realtime
-          </span>
+          <div className="shrink-0 flex items-center gap-1 text-[10px] bg-white/20 text-white px-2 py-1 rounded-full font-black uppercase shadow-sm backdrop-blur-sm">
+            <PiggyBank size={11} /> Realtime
+          </div>
         </div>
 
         {/* Period Selector Tabs */}
         <div className="relative mt-2 flex items-center justify-between gap-2 border-t border-white/10 pt-2">
-          <span className="text-[9px] text-white/50 font-black uppercase tracking-wider">Period</span>
-          <div className="flex items-center gap-0.5 bg-black/20 rounded-xl p-0.5 border border-white/5">
+          <span className="text-[10px] text-white/70 font-extrabold uppercase tracking-wide">Period</span>
+          <div className="flex items-center gap-0.5 bg-white/10 rounded-xl p-0.5 border border-white/5">
             {[
               { id: 'this-month', label: 'This Month' },
               { id: 'last-30', label: 'Last 30 Days' },
@@ -418,7 +418,7 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
                 key={p.id}
                 type="button"
                 onClick={() => setPeriod(p.id)}
-                className={`px-1.5 py-0.5 rounded-md text-[7.5px] font-black uppercase transition-all ${
+                className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${
                   period === p.id
                     ? 'bg-white text-[#0f1f46] shadow-sm'
                     : 'text-white/60 hover:text-white hover:bg-white/5'
@@ -438,18 +438,18 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
         ) : (
           <div className="relative mt-2 grid grid-cols-2 gap-3 border-t border-white/10 pt-2">
             <div>
-              <p className="text-[8.5px] text-white/60 font-black uppercase tracking-wide">Accrual Net Profit</p>
-              <h3 className={`text-xl font-black mt-0.5 ${isProfitAccrual ? 'text-emerald-400' : 'text-red-400'}`}>
+              <p className="text-[11px] text-white/70 font-extrabold uppercase tracking-wide">Accrual Profit</p>
+              <h3 className={`text-2xl font-black mt-1 leading-none ${isProfitAccrual ? 'text-emerald-400' : 'text-red-400'}`}>
                 {formatCurrency(totals.accrualProfit)}
               </h3>
-              <p className="text-[7.5px] text-white/40 mt-0.5">Sales - Expenses</p>
+              <p className="text-[9px] text-white/45 font-bold mt-0.5">Sales - Expenses</p>
             </div>
             <div>
-              <p className="text-[8.5px] text-white/60 font-black uppercase tracking-wide">Cash Flow Net Profit</p>
-              <h3 className={`text-xl font-black mt-0.5 ${isProfitCash ? 'text-emerald-400' : 'text-red-400'}`}>
+              <p className="text-[11px] text-white/70 font-extrabold uppercase tracking-wide">Cash Flow Profit</p>
+              <h3 className={`text-2xl font-black mt-1 leading-none ${isProfitCash ? 'text-emerald-400' : 'text-red-400'}`}>
                 {formatCurrency(totals.cashProfit)}
               </h3>
-              <p className="text-[7.5px] text-white/40 mt-0.5">Cash - Expenses</p>
+              <p className="text-[9px] text-white/45 font-bold mt-0.5">Cash - Expenses</p>
             </div>
           </div>
         )}
