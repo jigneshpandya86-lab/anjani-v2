@@ -16,6 +16,8 @@ import {
   Sun,
   CalendarDays,
   Phone,
+  MapPin,
+  Navigation,
 } from 'lucide-react'
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage'
 import { app } from '../firebase-config'
@@ -63,6 +65,42 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
       return order.mobile || order.phone || ''
     },
     [clients],
+  )
+
+  const getDisplayAddress = useCallback(
+    (order) => {
+      if (order.address && order.address.trim() !== '') {
+        return order.address
+      }
+      if (order.clientId) {
+        const c = clients.find((c) => c.id === order.clientId)
+        if (c && c.address && c.address.trim() !== '') {
+          return c.address
+        }
+      }
+      return ''
+    },
+    [clients],
+  )
+
+  const getMapsUrl = useCallback(
+    (order) => {
+      if (order.locationLat && order.locationLng) {
+        return `https://www.google.com/maps/search/?api=1&query=${order.locationLat},${order.locationLng}`
+      }
+      if (order.clientId) {
+        const c = clients.find((c) => c.id === order.clientId)
+        if (c && c.locationLat && c.locationLng) {
+          return `https://www.google.com/maps/search/?api=1&query=${c.locationLat},${c.locationLng}`
+        }
+      }
+      const addr = getDisplayAddress(order)
+      if (addr) {
+        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`
+      }
+      return null
+    },
+    [clients, getDisplayAddress],
   )
 
   const statusPriority = useMemo(() => ({ Pending: 0, Confirmed: 1, Delivered: 2 }), [])
@@ -373,15 +411,74 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
               )}
             </div>
 
+            {/* Delivery Address & Maps block */}
+            {(() => {
+              const address = getDisplayAddress(order)
+              const mapsUrl = getMapsUrl(order)
+              if (!address && !mapsUrl) return null
+              return (
+                <div className="mb-4 bg-orange-50/40 border border-orange-100/50 p-3.5 rounded-2xl space-y-2.5">
+                  <div className="flex items-start gap-2.5">
+                    <MapPin size={15} className="text-[#ff9900] shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">
+                        Delivery Address
+                      </p>
+                      <p className="text-xs font-bold text-gray-700 leading-snug mt-0.5">
+                        {address || 'Coordinates Only'}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 pt-1.5 border-t border-orange-100/30">
+                    {mapsUrl && (
+                      <a
+                        href={mapsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-orange-50 border border-orange-200 text-[#ff9900] text-[9px] font-black uppercase rounded-lg shadow-2xs active:scale-95 transition-all"
+                      >
+                        <Navigation size={10} />
+                        Get Directions
+                      </a>
+                    )}
+                    {address && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(address)
+                          toast.success('Address copied!')
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-gray-50 border border-gray-200 text-gray-600 text-[9px] font-black uppercase rounded-lg shadow-2xs active:scale-95 transition-all"
+                      >
+                        <Copy size={10} />
+                        Copy Address
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* Action Bar */}
             <div className="flex justify-between items-center gap-2">
               <div className="flex gap-2">
                 <button
                   onClick={() => shareOrder(order)}
                   className="bg-[#25D366]/10 text-[#25D366] p-2 rounded-xl"
+                  title="Share details"
                 >
                   <Smartphone size={16} />
                 </button>
+                {order.status !== 'Delivered' && (
+                  <button
+                    onClick={() => callClient(order)}
+                    className="bg-green-50 text-green-600 p-2 rounded-xl"
+                    title="Call client"
+                  >
+                    <Phone size={16} />
+                  </button>
+                )}
                 {userRole === 'admin' && (
                   <>
                     <button
@@ -409,23 +506,12 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
                       }}
                       onChange={(event) => uploadDeliveryProof(order, event)}
                     />
-                    {order.status !== 'Delivered' && (
-                      <>
-                        <button
-                          onClick={() => callClient(order)}
-                          className="bg-green-50 text-green-600 p-2 rounded-xl"
-                          title="Call client"
-                        >
-                          <Phone size={16} />
-                        </button>
-                        <button
-                          onClick={() => onEdit(order)}
-                          className="bg-blue-50 text-blue-500 p-2 rounded-xl"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                      </>
-                    )}
+                    <button
+                      onClick={() => onEdit(order)}
+                      className="bg-blue-50 text-blue-500 p-2 rounded-xl"
+                    >
+                      <Edit2 size={16} />
+                    </button>
                     <button
                       onClick={() => onCopy(order)}
                       className="bg-gray-100 text-gray-500 p-2 rounded-xl"
