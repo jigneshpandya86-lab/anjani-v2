@@ -23,6 +23,7 @@ import {
   Receipt,
   FileText,
   AlertCircle,
+  Copy,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -297,6 +298,19 @@ export default function ExpensesDashboard() {
       console.error('Failed to delete expense:', err)
       toast.error('Deletion failed')
     }
+  }
+  const handleCopyExpense = (exp) => {
+    setAmount(exp.amount || '')
+    setCategory(exp.category || '')
+    setNote(exp.note || '')
+
+    // Set date time to now (local string format)
+    const tzoffset = new Date().getTimezoneOffset() * 60000
+    const localISOTime = new Date(Date.now() - tzoffset).toISOString().slice(0, 16)
+    setDateTime(localISOTime)
+
+    toast.success('Expense copied! Date set to now.')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const handleAddCategory = async (e) => {
@@ -677,6 +691,13 @@ export default function ExpensesDashboard() {
                   <span className="text-sm font-black text-red-500 tracking-tight whitespace-nowrap">
                     -{formatCurrency(exp.amount)}
                   </span>
+                  <button
+                    onClick={() => handleCopyExpense(exp)}
+                    className="text-orange-400 p-2 hover:bg-orange-50 rounded-xl transition-colors active:scale-90"
+                    title="Copy Entry"
+                  >
+                    <Copy size={15} />
+                  </button>
                   <button
                     onClick={() => handleDeleteExpense(exp.id, exp.category, exp.amount)}
                     className="text-red-400 p-2 hover:bg-red-50 rounded-xl transition-colors active:scale-90"
