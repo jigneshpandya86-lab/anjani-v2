@@ -107,17 +107,26 @@ def run_intelligence_analysis(req: https_fn.CallableRequest) -> any:
     }
 
     # --- DRILL-DOWN DATA (Lists for clicking on cards) ---
-    def safe_to_dict(df):
-        if 'date_dt' in df.columns:
-            return df.drop(columns=['date_dt']).to_dict(orient='records')
-        return df.to_dict(orient='records')
+    def clean_df_for_firestore(df):
+        if df.empty:
+            return []
+        df_clean = df.copy()
+        if 'date_dt' in df_clean.columns:
+            df_clean = df_clean.drop(columns=['date_dt'])
+        
+        # Standardize all datatypes to object and replace NaN/NaT with None
+        for col in df_clean.columns:
+            df_clean[col] = df_clean[col].astype(object)
+            df_clean[col] = df_clean[col].where(df_clean[col].notna(), None)
+            
+        return df_clean.to_dict(orient='records')
 
-    today_delivered_list = safe_to_dict(df_delivered[df_delivered['date_dt'] >= today_start])
-    week_delivered_list = safe_to_dict(df_delivered[df_delivered['date_dt'] >= week_start])
-    month_delivered_list = safe_to_dict(df_delivered[df_delivered['date_dt'] >= month_start])
+    today_delivered_list = clean_df_for_firestore(df_delivered[df_delivered['date_dt'] >= today_start])
+    week_delivered_list = clean_df_for_firestore(df_delivered[df_delivered['date_dt'] >= week_start])
+    month_delivered_list = clean_df_for_firestore(df_delivered[df_delivered['date_dt'] >= month_start])
     
     # Filter for clean pending orders
-    pending_list = safe_to_dict(df_orders[~df_orders['status_norm'].isin(['delivered', 'completed', 'cancelled'])].sort_values('date_dt', ascending=False).head(20))
+    pending_list = clean_df_for_firestore(df_orders[~df_orders['status_norm'].isin(['delivered', 'completed', 'cancelled'])].sort_values('date_dt', ascending=False).head(20))
     
     # Outstanding List
     outstanding_clients = [

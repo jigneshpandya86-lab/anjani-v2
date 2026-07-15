@@ -1035,6 +1035,50 @@ exports.discoverLeadsWithAI = onSchedule(
   },
 )
 
+/**
+ * Helper to send a notification to a specific user's active device tokens.
+ */
+async function sendNotificationToUser(
+  userId,
+  message,
+  title = 'Anjani Alert',
+  tag = 'user-notification',
+) {
+  const db = admin.firestore()
+  try {
+    const snapshot = await db.collection('userDevices').doc(userId).collection('tokens').get()
+    const tokens = []
+    snapshot.forEach((doc) => {
+      const data = doc.data()
+      if (data.token && data.status !== 'invalid') {
+        tokens.push(data.token)
+      }
+    })
+
+    logger.info(`sendNotificationToUser (${userId}): Found ${tokens.length} active tokens.`)
+
+    if (tokens.length === 0) {
+      logger.info(`sendNotificationToUser (${userId}): No active tokens found.`)
+      return
+    }
+
+    const messages = tokens.map((token) => ({
+      token,
+      notification: { title, body: message },
+      data: {
+        title,
+        body: message,
+        click_action: 'https://app1.anjaniwater.in',
+      },
+    }))
+
+    const response = await admin.messaging().sendEach(messages)
+    logger.info(`sendNotificationToUser (${userId}): Successfully sent ${response.successCount} messages; failures: ${response.failureCount}`)
+  } catch (error) {
+    logger.error(`Error in sendNotificationToUser for user ${userId}:`, error)
+  }
+}
+
 // --- NOTIFICATION SYSTEM FUNCTIONS ---
 const { onCall } = require('firebase-functions/v2/https')
 
@@ -1758,7 +1802,8 @@ exports.hourlySmsScheduler = onSchedule(
         processDailyStockReportToNilesh(db, currentHour, currentDayOfWeek),
         processDefaulterAlertToStaff(db, currentHour, currentDayOfWeek),
         processDailyGreetings(db, currentHour),
-        processDailyExpenseReport(db, currentHour)
+        processDailyExpenseReport(db, currentHour),
+        processRecurringExpenses(db, currentHour)
       ]);
 
       logger.info("Unified hourly SMS scheduler completed.");
@@ -2149,7 +2194,14 @@ async function processDailyExpenseReport(db, currentHour) {
       .get();
 
     if (expenseSnap.empty) {
-      logger.info("Daily Expense Report: No expenses recorded today. Skipping.");
+      logger.info("Daily Expense Report: No expenses recorded today. Sending reminder to owner.");
+      const ownerUid = '99sjK9Fgn4Y6jv4tZiIsTOoGVLm1';
+      await sendNotificationToUser(
+        ownerUid,
+        "Reminder: You haven't recorded any expenses today. Please open the app and log them if any.",
+        "Daily Expense Reminder",
+        "expense-reminder"
+      );
       return;
     }
 
@@ -2176,5 +2228,99 @@ async function processDailyExpenseReport(db, currentHour) {
     logger.info("Daily Expense Report: FCM notification successfully sent to admin.");
   } catch (error) {
     logger.error("Error processing daily expense report:", error);
+  }
+}
+
+/**
+ * Helper to process recurring expenses daily at 9:00 AM IST
+ */
+async function processRecurringExpenses(db, currentHour) {
+  if (currentHour !== 9) {
+    return; // Only run at 9:00 AM local India Time
+  }
+
+  try {
+    logger.info("Recurring Expenses: Processing daily templates...");
+    const now = new Date();
+    
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    });
+    
+    const parts = formatter.formatToParts(now);
+    const year = parts.find(p => p.type === 'year').value;
+    const month = parts.find(p => p.type === 'month').value;
+    const day = parts.find(p => p.type === 'day').value;
+    const todayStr = `${year}-${month}-${day}`;
+
+    // Get all active templates where nextOccurrenceDate <= todayStr
+    const snapshot = await db.collection('recurringExpenses')
+      .where('status', '==', 'active')
+      .where('nextOccurrenceDate', '<=', todayStr)
+      .get();
+
+    if (snapshot.empty) {
+      logger.info("Recurring Expenses: No pending occurrences for today.");
+      return;
+    }
+
+    const batch = db.batch();
+    const promises = [];
+
+    snapshot.forEach((doc) => {
+      const template = doc.data();
+      const templateId = doc.id;
+      const occurrenceDateStr = template.nextOccurrenceDate;
+
+      // 1. Create the new expense entry
+      const expenseRef = db.collection('expenses').doc();
+      const expenseData = {
+        amount: Number(template.amount),
+        category: template.category,
+        note: template.note || '',
+        date: admin.firestore.Timestamp.fromDate(new Date(`${occurrenceDateStr}T10:00:00+05:30`)),
+        recurringTemplateId: templateId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+      
+      batch.set(expenseRef, expenseData);
+
+      // 2. Calculate the next occurrence date
+      const occurrenceDate = new Date(`${occurrenceDateStr}T12:00:00`); // Use noon to avoid timezone shift
+      let nextDate = new Date(occurrenceDate);
+
+      if (template.frequency === 'weekly') {
+        nextDate.setDate(nextDate.getDate() + 7);
+      } else if (template.frequency === 'monthly') {
+        nextDate.setMonth(nextDate.getMonth() + 1);
+      } else if (template.frequency === 'yearly') {
+        nextDate.setFullYear(nextDate.getFullYear() + 1);
+      } else {
+        nextDate.setMonth(nextDate.getMonth() + 1);
+      }
+
+      const nextYear = nextDate.getFullYear();
+      const nextMonth = String(nextDate.getMonth() + 1).padStart(2, '0');
+      const nextDay = String(nextDate.getDate()).padStart(2, '0');
+      const nextOccurrenceStr = `${nextYear}-${nextMonth}-${nextDay}`;
+
+      // 3. Update the template document
+      const templateRef = db.collection('recurringExpenses').doc(templateId);
+      batch.update(templateRef, {
+        nextOccurrenceDate: nextOccurrenceStr,
+        lastGeneratedDate: occurrenceDateStr,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      logger.info(`Recurring Expenses: Generated expense for template "${template.note}" (${templateId}) for date ${occurrenceDateStr}. Next: ${nextOccurrenceStr}`);
+    });
+
+    await batch.commit();
+    logger.info(`Recurring Expenses: Successfully generated ${snapshot.size} expenses.`);
+  } catch (error) {
+    logger.error("Error processing recurring expenses:", error);
   }
 }

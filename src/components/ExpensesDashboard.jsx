@@ -26,6 +26,10 @@ import {
   Copy,
   X,
   Clock,
+  Play,
+  Pause,
+  CalendarCheck,
+  Car,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -59,6 +63,19 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
 
+  // Recurring Template state
+  const [recurringTemplates, setRecurringTemplates] = useState([])
+  const [loadingTemplates, setLoadingTemplates] = useState(true)
+  const [subTab, setSubTab] = useState('logs') // 'logs' or 'recurring'
+
+  // Modal form additions for recurring/km
+  const [isRecurring, setIsRecurring] = useState(false)
+  const [frequency, setFrequency] = useState('monthly')
+  const [nextOccurrenceDate, setNextOccurrenceDate] = useState('')
+  const [logKm, setLogKm] = useState(false)
+  const [startKm, setStartKm] = useState('')
+  const [endKm, setEndKm] = useState('')
+
   // Category management
   const [newCategoryName, setNewCategoryName] = useState('')
   const [showCatPanel, setShowCatPanel] = useState(false)
@@ -72,6 +89,29 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
     const localISOTime = new Date(Date.now() - tzoffset).toISOString().slice(0, 16)
     setDateTime(localISOTime)
   }, [])
+
+  // Default nextOccurrenceDate to today
+  useEffect(() => {
+    if (!nextOccurrenceDate) {
+      setNextOccurrenceDate(new Date().toISOString().slice(0, 10))
+    }
+  }, [nextOccurrenceDate])
+
+  // Sync isRecurring when modal is opened
+  useEffect(() => {
+    if (showAddForm) {
+      setIsRecurring(subTab === 'recurring')
+    }
+  }, [showAddForm, subTab])
+
+  // Auto-toggle logKm on Fuel / Transport category
+  useEffect(() => {
+    if (category === 'Fuel / Transport') {
+      setLogKm(true)
+    } else {
+      setLogKm(false)
+    }
+  }, [category])
 
   // 1. Subscribe to Expenses
   useEffect(() => {
@@ -90,6 +130,27 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
         console.error('Error loading expenses:', err)
         toast.error('Failed to load expenses')
         setLoadingExpenses(false)
+      }
+    )
+    return () => unsubscribe()
+  }, [])
+
+  // Subscribe to Recurring Templates
+  useEffect(() => {
+    const q = query(collection(db, 'recurringExpenses'), orderBy('createdAt', 'desc'))
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const list = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }))
+        setRecurringTemplates(list)
+        setLoadingTemplates(false)
+      },
+      (err) => {
+        console.error('Error loading recurring templates:', err)
+        setLoadingTemplates(false)
       }
     )
     return () => unsubscribe()
@@ -240,6 +301,9 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
     // Total Expenses
     const totalExpenses = filteredExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0)
 
+    // Total Vehicle KM run
+    const totalVehicleKm = filteredExpenses.reduce((sum, e) => sum + Number(e.totalKm || 0), 0)
+
     const accrualProfit = totalRevenue - totalExpenses
     const cashProfit = totalCashCollected - totalExpenses
 
@@ -249,6 +313,7 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
       totalExpenses,
       accrualProfit,
       cashProfit,
+      totalVehicleKm,
     }
   }, [orders, payments, expenses, period, filterByDateRange, getOrderDate, getPaymentDate, getExpenseDate])
 
@@ -270,19 +335,55 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
 
     setIsSubmitting(true)
     try {
-      const expenseDate = dateTime ? new Date(dateTime) : new Date()
-      await addDoc(collection(db, 'expenses'), {
-        amount: Number(amount),
-        category: category,
-        date: Timestamp.fromDate(expenseDate),
-        createdAt: serverTimestamp(),
-        note: note.trim(),
-      })
+      if (isRecurring) {
+        // Create recurring expense template
+        await addDoc(collection(db, 'recurringExpenses'), {
+          amount: Number(amount),
+          category: category,
+          note: note.trim(),
+          frequency: frequency,
+          nextOccurrenceDate: nextOccurrenceDate || new Date().toISOString().slice(0, 10),
+          status: 'active',
+          createdAt: serverTimestamp(),
+        })
+        toast.success('Recurring expense template created!')
+      } else {
+        // Create standard expense entry
+        const expenseDate = dateTime ? new Date(dateTime) : new Date()
+        const payload = {
+          amount: Number(amount),
+          category: category,
+          date: Timestamp.fromDate(expenseDate),
+          createdAt: serverTimestamp(),
+          note: note.trim(),
+        }
 
-      // Reset form (except category & date/time)
+        if (logKm && startKm && endKm) {
+          const s = Number(startKm)
+          const ek = Number(endKm)
+          if (ek < s) {
+            toast.error('End KM must be greater than or equal to Start KM')
+            setIsSubmitting(false)
+            return
+          }
+          payload.startKm = s
+          payload.endKm = ek
+          payload.totalKm = ek - s
+        }
+
+        await addDoc(collection(db, 'expenses'), payload)
+        toast.success('Expense recorded successfully')
+      }
+
+      // Reset form
       setAmount('')
       setNote('')
-      toast.success('Expense recorded successfully')
+      setIsRecurring(false)
+      setStartKm('')
+      setEndKm('')
+      const tzoffset = new Date().getTimezoneOffset() * 60000
+      const localISOTime = new Date(Date.now() - tzoffset).toISOString().slice(0, 16)
+      setDateTime(localISOTime)
     } catch (err) {
       console.error('Error saving expense:', err)
       toast.error('Failed to save expense: ' + err.message)
@@ -456,104 +557,247 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
       </div>
 
       {/* ─── Financial Summaries Grid ─── */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="bg-white border border-emerald-100 rounded-xl p-2 shadow-sm">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="bg-white border border-emerald-100 rounded-xl p-2.5 shadow-sm">
           <p className="text-gray-400 text-[8px] font-black uppercase tracking-wider">Total Sales</p>
           <p className="text-xs font-black text-emerald-700 mt-0.5">
             {formatCurrency(totals.totalRevenue)}
           </p>
         </div>
-        <div className="bg-white border border-blue-100 rounded-xl p-2 shadow-sm">
+        <div className="bg-white border border-blue-100 rounded-xl p-2.5 shadow-sm">
           <p className="text-gray-400 text-[8px] font-black uppercase tracking-wider">Cash Recd</p>
           <p className="text-xs font-black text-blue-700 mt-0.5">
             {formatCurrency(totals.totalCashCollected)}
           </p>
         </div>
-        <div className="bg-white border border-red-100 rounded-xl p-2 shadow-sm">
+        <div className="bg-white border border-red-100 rounded-xl p-2.5 shadow-sm">
           <p className="text-gray-400 text-[8px] font-black uppercase tracking-wider">Total Exp</p>
           <p className="text-xs font-black text-red-700 mt-0.5">
             {formatCurrency(totals.totalExpenses)}
           </p>
         </div>
+        <div className="bg-white border border-amber-100 rounded-xl p-2.5 shadow-sm">
+          <p className="text-gray-400 text-[8px] font-black uppercase tracking-wider">Vehicle Run</p>
+          <p className="text-xs font-black text-amber-700 mt-0.5 flex items-center gap-1">
+            <Car size={12} className="text-amber-500" />
+            {totals.totalVehicleKm.toLocaleString()} KM
+          </p>
+        </div>
       </div>
 
-      {/* ─── Recent Expenses Feed ─── */}
-      <div className="space-y-2.5">
-        <div className="flex items-center justify-between pt-2">
-          <h3 className="text-xs font-black uppercase tracking-wide text-gray-800 flex items-center gap-1.5">
-            <FileText size={14} className="text-blue-500" />
-            Recent Expenses
-          </h3>
-          <div className="text-[10px] text-gray-400 font-extrabold uppercase">
-            {filteredExpensesList.length} Entries
-          </div>
-        </div>
+      {/* Tab Switcher: Expenses Log vs Recurring Templates */}
+      <div className="flex bg-gray-150/70 rounded-xl p-1 mt-1 border border-gray-200/50">
+        <button
+          type="button"
+          onClick={() => setSubTab('logs')}
+          className={`flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+            subTab === 'logs'
+              ? 'bg-white text-gray-900 shadow-xs'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Receipt size={12} />
+          Expenses Log
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab('recurring')}
+          className={`flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+            subTab === 'recurring'
+              ? 'bg-white text-gray-900 shadow-xs'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Clock size={12} />
+          Recurring Templates
+        </button>
+      </div>
 
-        {loadingExpenses ? (
-          <div className="flex items-center justify-center py-12 text-gray-400 font-bold italic">
-            <Loader2 className="animate-spin text-blue-500 mr-2" size={20} />
-            Loading entries...
+      {/* ─── Main Content Sections ─── */}
+      {subTab === 'logs' ? (
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between pt-2">
+            <h3 className="text-xs font-black uppercase tracking-wide text-gray-800 flex items-center gap-1.5">
+              <FileText size={14} className="text-blue-500" />
+              Recent Expenses
+            </h3>
+            <div className="text-[10px] text-gray-400 font-extrabold uppercase">
+              {filteredExpensesList.length} Entries
+            </div>
           </div>
-        ) : filteredExpensesList.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-gray-400 text-center space-y-2 border border-dashed border-gray-100 rounded-2xl bg-gray-50/50">
-            <AlertCircle size={32} className="text-gray-300" />
-            <p className="text-xs font-bold italic">No expenses recorded for this period</p>
-          </div>
-        ) : (
-          <div className="max-h-[500px] overflow-y-auto pr-1">
-            {filteredExpensesList.map((exp) => (
-              <div
-                key={exp.id}
-                className="relative overflow-hidden bg-white px-2.5 py-2.5 rounded-xl shadow-[0_4px_12px_rgba(15,23,42,0.05)] border border-gray-100 border-l-[3px] border-l-red-500 transition-all hover:-translate-y-0.5 hover:shadow-[0_8px_16px_rgba(15,23,42,0.08)] mb-2"
-              >
-                <div className="relative space-y-1">
-                  <div className="flex items-start gap-2">
-                    <div className="p-1.5 rounded-lg shadow-inner bg-red-50 text-red-500 shrink-0">
-                      <Receipt size={13} />
+
+          {loadingExpenses ? (
+            <div className="flex items-center justify-center py-12 text-gray-400 font-bold italic">
+              <Loader2 className="animate-spin text-blue-500 mr-2" size={20} />
+              Loading entries...
+            </div>
+          ) : filteredExpensesList.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-gray-400 text-center space-y-2 border border-dashed border-gray-100 rounded-2xl bg-gray-50/50">
+              <AlertCircle size={32} className="text-gray-300" />
+              <p className="text-xs font-bold italic">No expenses recorded for this period</p>
+            </div>
+          ) : (
+            <div className="max-h-[500px] overflow-y-auto pr-1">
+              {filteredExpensesList.map((exp) => (
+                <div
+                  key={exp.id}
+                  className="relative overflow-hidden bg-white px-2.5 py-2.5 rounded-xl shadow-[0_4px_12px_rgba(15,23,42,0.05)] border border-gray-100 border-l-[3px] border-l-red-500 transition-all hover:-translate-y-0.5 hover:shadow-[0_8px_16px_rgba(15,23,42,0.08)] mb-2"
+                >
+                  <div className="relative space-y-1">
+                    <div className="flex items-start gap-2">
+                      <div className="p-1.5 rounded-lg shadow-inner bg-red-50 text-red-500 shrink-0">
+                        <Receipt size={13} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-extrabold text-sm text-gray-900 leading-tight">
+                            {exp.category}
+                          </p>
+                          {exp.note && (
+                            <span className="shrink-0 text-[9px] font-semibold text-gray-500 tracking-wide bg-gray-100 px-1.5 py-0.5 rounded-full max-w-[120px] truncate" title={exp.note}>
+                              {exp.note}
+                            </span>
+                          )}
+                        </div>
+                        {exp.totalKm && (
+                          <p className="text-[10px] font-bold text-amber-700 flex items-center gap-1 mt-0.5">
+                            <Car size={11} /> {exp.startKm.toLocaleString()} KM ➔ {exp.endKm.toLocaleString()} KM ({exp.totalKm.toLocaleString()} KM)
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyExpense(exp)}
+                        className="shrink-0 flex items-center justify-center rounded-md bg-orange-50 p-1 text-orange-500 transition-colors hover:bg-orange-100 active:scale-90"
+                        title="Copy Entry"
+                      >
+                        <Copy size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteExpense(exp.id, exp.category, exp.amount)}
+                        className="shrink-0 flex items-center justify-center rounded-md bg-red-50 p-1 text-red-500 transition-colors hover:bg-red-100 active:scale-90"
+                        title="Delete Entry"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                      <p className="shrink-0 font-black text-base leading-none text-red-500">
+                        -{formatCurrency(exp.amount)}
+                      </p>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <p className="truncate font-extrabold text-sm text-gray-900 leading-tight">
-                          {exp.category}
+                    <div className="flex items-center justify-between gap-2 pl-8">
+                      <p className="truncate text-[10px] text-gray-500 flex items-center gap-1 uppercase tracking-wide font-bold">
+                        <Clock size={10} /> {formatDate(exp.date)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between pt-2">
+            <h3 className="text-xs font-black uppercase tracking-wide text-gray-800 flex items-center gap-1.5">
+              <Clock size={14} className="text-blue-500" />
+              Active Templates
+            </h3>
+            <div className="text-[10px] text-gray-400 font-extrabold uppercase">
+              {recurringTemplates.length} Templates
+            </div>
+          </div>
+
+          {loadingTemplates ? (
+            <div className="flex items-center justify-center py-12 text-gray-400 font-bold italic">
+              <Loader2 className="animate-spin text-blue-500 mr-2" size={20} />
+              Loading templates...
+            </div>
+          ) : recurringTemplates.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-gray-400 text-center space-y-2 border border-dashed border-gray-100 rounded-2xl bg-gray-50/50">
+              <AlertCircle size={32} className="text-gray-300" />
+              <p className="text-xs font-bold italic">No recurring templates found</p>
+            </div>
+          ) : (
+            <div className="max-h-[500px] overflow-y-auto pr-1">
+              {recurringTemplates.map((template) => {
+                const isActive = template.status === 'active'
+                return (
+                  <div
+                    key={template.id}
+                    className={`relative overflow-hidden bg-white px-2.5 py-2.5 rounded-xl shadow-[0_4px_12px_rgba(15,23,42,0.05)] border border-gray-150 border-l-[3px] ${isActive ? 'border-l-emerald-500' : 'border-l-gray-300'} transition-all hover:-translate-y-0.5 hover:shadow-[0_8px_16px_rgba(15,23,42,0.08)] mb-2`}
+                  >
+                    <div className="relative space-y-1">
+                      <div className="flex items-start gap-2">
+                        <div className={`p-1.5 rounded-lg shadow-inner ${isActive ? 'bg-emerald-55/10 text-emerald-600' : 'bg-gray-100 text-gray-450'} shrink-0`}>
+                          <Clock size={13} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <p className="truncate font-extrabold text-sm text-gray-900 leading-tight">
+                              {template.note || 'Recurring Expense'}
+                            </p>
+                            <span className="shrink-0 text-[8px] font-black text-white bg-[#ff9900] px-1.5 py-0.5 rounded-full uppercase tracking-wider">
+                              {template.frequency}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-gray-500 mt-0.5 font-bold uppercase tracking-wide">
+                            Category: {template.category}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const newStatus = isActive ? 'paused' : 'active'
+                            await updateDoc(doc(db, 'recurringExpenses', template.id), {
+                              status: newStatus
+                            })
+                            toast.success(`Template ${newStatus === 'active' ? 'activated' : 'paused'}`)
+                          }}
+                          className={`shrink-0 flex items-center justify-center rounded-md p-1.5 transition-colors ${
+                            isActive 
+                              ? 'bg-amber-50 text-amber-600 hover:bg-amber-100' 
+                              : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+                          } active:scale-90`}
+                          title={isActive ? "Pause automation" : "Resume automation"}
+                        >
+                          {isActive ? <Pause size={12} /> : <Play size={12} />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const confirmDelete = window.confirm(`Delete template "${template.note}"?`)
+                            if (!confirmDelete) return
+                            await deleteDoc(doc(db, 'recurringExpenses', template.id))
+                            toast.success('Template deleted')
+                          }}
+                          className="shrink-0 flex items-center justify-center rounded-md bg-red-50 p-1.5 text-red-500 transition-colors hover:bg-red-100 active:scale-90"
+                          title="Delete Template"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                        <p className="shrink-0 font-black text-base leading-none text-gray-900">
+                          ₹{Number(template.amount).toLocaleString('en-IN')}
                         </p>
-                        {exp.note && (
-                          <span className="shrink-0 text-[9px] font-semibold text-gray-500 tracking-wide bg-gray-100 px-1.5 py-0.5 rounded-full max-w-[120px] truncate" title={exp.note}>
-                            {exp.note}
-                          </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 pl-8 border-t border-gray-50 pt-1">
+                        <p className="truncate text-[10px] text-gray-500 flex items-center gap-1 uppercase tracking-wide font-bold">
+                          <CalendarCheck size={10} /> Next Due: {template.nextOccurrenceDate}
+                        </p>
+                        {template.lastGeneratedDate && (
+                          <p className="shrink-0 text-[8px] text-gray-400 font-extrabold uppercase tracking-wide">
+                            Last Generated: {template.lastGeneratedDate}
+                          </p>
                         )}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyExpense(exp)}
-                      className="shrink-0 flex items-center justify-center rounded-md bg-orange-50 p-1 text-orange-500 transition-colors hover:bg-orange-100 active:scale-90"
-                      title="Copy Entry"
-                    >
-                      <Copy size={12} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteExpense(exp.id, exp.category, exp.amount)}
-                      className="shrink-0 flex items-center justify-center rounded-md bg-red-50 p-1 text-red-500 transition-colors hover:bg-red-100 active:scale-90"
-                      title="Delete Entry"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                    <p className="shrink-0 font-black text-base leading-none text-red-500">
-                      -{formatCurrency(exp.amount)}
-                    </p>
                   </div>
-                  <div className="flex items-center justify-between gap-2 pl-8">
-                    <p className="truncate text-[10px] text-gray-500 flex items-center gap-1 uppercase tracking-wide font-bold">
-                      <Clock size={10} /> {formatDate(exp.date)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Record Expense Modal overlay */}
       {showAddForm && (
@@ -736,6 +980,117 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
                     className="w-full px-3 py-3 bg-white border border-gray-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#ff9900]"
                   />
                 </div>
+
+                {/* Recurring Template Settings Options */}
+                <div className="flex items-center justify-between bg-gray-55/80 border border-gray-150 rounded-xl px-3 py-2.5 mt-2">
+                  <div className="flex items-center gap-2">
+                    <Clock size={15} className="text-gray-450" />
+                    <div>
+                      <span className="text-xs font-black text-gray-700 block">
+                        Is Recurring Template?
+                      </span>
+                      <span className="text-[9px] text-gray-400 block font-bold uppercase tracking-wider">
+                        Auto-generate expense at intervals
+                      </span>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={isRecurring}
+                    onChange={(e) => setIsRecurring(e.target.checked)}
+                    className="w-4 h-4 text-[#ff9900] border-gray-300 rounded focus:ring-[#ff9900] cursor-pointer"
+                  />
+                </div>
+
+                {isRecurring ? (
+                  <div className="bg-orange-50/20 rounded-2xl p-4 border border-orange-100/50 space-y-3">
+                    <div className="space-y-1">
+                      <label className="block text-xs font-black text-gray-500 uppercase tracking-wider">
+                        Frequency
+                      </label>
+                      <select
+                        value={frequency}
+                        onChange={(e) => setFrequency(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#ff9900]"
+                      >
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="yearly">Yearly</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-black text-gray-500 uppercase tracking-wider">
+                        First Occurrence Date
+                      </label>
+                      <input
+                        type="date"
+                        value={nextOccurrenceDate}
+                        onChange={(e) => setNextOccurrenceDate(e.target.value)}
+                        required
+                        className="w-full px-3 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#ff9900]"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Vehicle KM Options */}
+                    <div className="flex items-center justify-between bg-gray-55/80 border border-gray-150 rounded-xl px-3 py-2.5 mt-2">
+                      <div className="flex items-center gap-2">
+                        <Car size={15} className="text-gray-450" />
+                        <div>
+                          <span className="text-xs font-black text-gray-700 block">
+                            Log Vehicle Mileage?
+                          </span>
+                          <span className="text-[9px] text-gray-400 block font-bold uppercase tracking-wider">
+                            Record trip odometer readings
+                          </span>
+                        </div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={logKm}
+                        onChange={(e) => setLogKm(e.target.checked)}
+                        className="w-4 h-4 text-[#ff9900] border-gray-300 rounded focus:ring-[#ff9900] cursor-pointer"
+                      />
+                    </div>
+
+                    {logKm && (
+                      <div className="bg-amber-50/10 rounded-2xl p-4 border border-amber-100/50 grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="block text-xs font-black text-gray-500 uppercase tracking-wider">
+                            Start KM
+                          </label>
+                          <input
+                            type="number"
+                            value={startKm}
+                            onChange={(e) => setStartKm(e.target.value)}
+                            placeholder="e.g. 10250"
+                            required
+                            className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#ff9900]"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-xs font-black text-gray-500 uppercase tracking-wider">
+                            End KM
+                          </label>
+                          <input
+                            type="number"
+                            value={endKm}
+                            onChange={(e) => setEndKm(e.target.value)}
+                            placeholder="e.g. 10340"
+                            required
+                            className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#ff9900]"
+                          />
+                        </div>
+                        {startKm && endKm && Number(endKm) >= Number(startKm) && (
+                          <div className="col-span-2 text-center text-xs font-black text-amber-700 mt-1">
+                            Trip Distance: {(Number(endKm) - Number(startKm)).toLocaleString()} KM
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
 
                 <button
                   type="submit"
