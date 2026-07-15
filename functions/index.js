@@ -1042,7 +1042,7 @@ async function sendNotificationToUser(
   userId,
   message,
   title = 'Anjani Alert',
-  tag = 'user-notification',
+  _tag = 'user-notification',
 ) {
   const db = admin.firestore()
   try {
@@ -2268,7 +2268,6 @@ async function processRecurringExpenses(db, currentHour) {
     }
 
     const batch = db.batch();
-    const promises = [];
 
     snapshot.forEach((doc) => {
       const template = doc.data();

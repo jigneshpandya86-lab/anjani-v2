@@ -1005,10 +1005,11 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
                 {isRecurring ? (
                   <div className="bg-orange-50/20 rounded-2xl p-4 border border-orange-100/50 space-y-3">
                     <div className="space-y-1">
-                      <label className="block text-xs font-black text-gray-500 uppercase tracking-wider">
+                      <label htmlFor="modal-recurring-frequency" className="block text-xs font-black text-gray-500 uppercase tracking-wider">
                         Frequency
                       </label>
                       <select
+                        id="modal-recurring-frequency"
                         value={frequency}
                         onChange={(e) => setFrequency(e.target.value)}
                         className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#ff9900]"
@@ -1019,10 +1020,11 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
                       </select>
                     </div>
                     <div className="space-y-1">
-                      <label className="block text-xs font-black text-gray-500 uppercase tracking-wider">
+                      <label htmlFor="modal-recurring-start" className="block text-xs font-black text-gray-500 uppercase tracking-wider">
                         First Occurrence Date
                       </label>
                       <input
+                        id="modal-recurring-start"
                         type="date"
                         value={nextOccurrenceDate}
                         onChange={(e) => setNextOccurrenceDate(e.target.value)}
@@ -1057,10 +1059,11 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
                     {logKm && (
                       <div className="bg-amber-50/10 rounded-2xl p-4 border border-amber-100/50 grid grid-cols-2 gap-3">
                         <div className="space-y-1">
-                          <label className="block text-xs font-black text-gray-500 uppercase tracking-wider">
+                          <label htmlFor="modal-vehicle-start" className="block text-xs font-black text-gray-500 uppercase tracking-wider">
                             Start KM
                           </label>
                           <input
+                            id="modal-vehicle-start"
                             type="number"
                             value={startKm}
                             onChange={(e) => setStartKm(e.target.value)}
@@ -1070,10 +1073,11 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="block text-xs font-black text-gray-500 uppercase tracking-wider">
+                          <label htmlFor="modal-vehicle-end" className="block text-xs font-black text-gray-500 uppercase tracking-wider">
                             End KM
                           </label>
                           <input
+                            id="modal-vehicle-end"
                             type="number"
                             value={endKm}
                             onChange={(e) => setEndKm(e.target.value)}
