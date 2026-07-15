@@ -12,6 +12,7 @@ import {
   limit,
   setDoc,
   Timestamp,
+  deleteField,
 } from 'firebase/firestore'
 import { db } from '../firebase-config'
 import {
@@ -30,6 +31,7 @@ import {
   Pause,
   CalendarCheck,
   Car,
+  Pencil,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -69,6 +71,7 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
   const [subTab, setSubTab] = useState('logs') // 'logs' or 'recurring'
 
   // Modal form additions for recurring/km
+  const [editingExpenseId, setEditingExpenseId] = useState(null)
   const [isRecurring, setIsRecurring] = useState(false)
   const [frequency, setFrequency] = useState('monthly')
   const [nextOccurrenceDate, setNextOccurrenceDate] = useState('')
@@ -321,6 +324,50 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
     return filterByDateRange(expenses, period, getExpenseDate)
   }, [expenses, period, filterByDateRange, getExpenseDate])
 
+  const handleCloseModal = () => {
+    setEditingExpenseId(null)
+    setAmount('')
+    setNote('')
+    setIsRecurring(false)
+    setStartKm('')
+    setEndKm('')
+    const tzoffset = new Date().getTimezoneOffset() * 60000
+    const localISOTime = new Date(Date.now() - tzoffset).toISOString().slice(0, 16)
+    setDateTime(localISOTime)
+    setShowDatePicker(false)
+    onCloseAddForm()
+  }
+
+  const handleEditClick = (exp, isRec = false) => {
+    setEditingExpenseId(exp.id)
+    setAmount(exp.amount.toString())
+    setCategory(exp.category)
+    setNote(exp.note || '')
+    setIsRecurring(isRec)
+
+    if (isRec) {
+      setFrequency(exp.frequency || 'monthly')
+      setNextOccurrenceDate(exp.nextOccurrenceDate || '')
+    } else {
+      const expDate = exp.date?.seconds ? new Date(exp.date.seconds * 1000) : new Date(exp.date)
+      const tzoffset = expDate.getTimezoneOffset() * 60000
+      const localISOTime = new Date(expDate.getTime() - tzoffset).toISOString().slice(0, 16)
+      setDateTime(localISOTime)
+      setShowDatePicker(true)
+
+      if (exp.startKm !== undefined || exp.endKm !== undefined) {
+        setLogKm(true)
+        setStartKm(exp.startKm !== undefined ? exp.startKm.toString() : '')
+        setEndKm(exp.endKm !== undefined ? exp.endKm.toString() : '')
+      } else {
+        setLogKm(false)
+        setStartKm('')
+        setEndKm('')
+      }
+    }
+    onOpenAddForm()
+  }
+
   // --- Form Handlers ---
   const handleRecordExpense = async (e) => {
     e.preventDefault()
@@ -336,25 +383,31 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
     setIsSubmitting(true)
     try {
       if (isRecurring) {
-        // Create recurring expense template
-        await addDoc(collection(db, 'recurringExpenses'), {
+        const payload = {
           amount: Number(amount),
           category: category,
           note: note.trim(),
           frequency: frequency,
           nextOccurrenceDate: nextOccurrenceDate || new Date().toISOString().slice(0, 10),
           status: 'active',
-          createdAt: serverTimestamp(),
-        })
-        toast.success('Recurring expense template created!')
+        }
+
+        if (editingExpenseId) {
+          await updateDoc(doc(db, 'recurringExpenses', editingExpenseId), payload)
+          toast.success('Recurring template updated!')
+        } else {
+          await addDoc(collection(db, 'recurringExpenses'), {
+            ...payload,
+            createdAt: serverTimestamp(),
+          })
+          toast.success('Recurring expense template created!')
+        }
       } else {
-        // Create standard expense entry
         const expenseDate = dateTime ? new Date(dateTime) : new Date()
         const payload = {
           amount: Number(amount),
           category: category,
           date: Timestamp.fromDate(expenseDate),
-          createdAt: serverTimestamp(),
           note: note.trim(),
         }
 
@@ -369,21 +422,25 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
           payload.startKm = s
           payload.endKm = ek
           payload.totalKm = ek - s
+        } else if (editingExpenseId) {
+          payload.startKm = deleteField()
+          payload.endKm = deleteField()
+          payload.totalKm = deleteField()
         }
 
-        await addDoc(collection(db, 'expenses'), payload)
-        toast.success('Expense recorded successfully')
+        if (editingExpenseId) {
+          await updateDoc(doc(db, 'expenses', editingExpenseId), payload)
+          toast.success('Expense entry updated successfully')
+        } else {
+          await addDoc(collection(db, 'expenses'), {
+            ...payload,
+            createdAt: serverTimestamp(),
+          })
+          toast.success('Expense recorded successfully')
+        }
       }
 
-      // Reset form
-      setAmount('')
-      setNote('')
-      setIsRecurring(false)
-      setStartKm('')
-      setEndKm('')
-      const tzoffset = new Date().getTimezoneOffset() * 60000
-      const localISOTime = new Date(Date.now() - tzoffset).toISOString().slice(0, 16)
-      setDateTime(localISOTime)
+      handleCloseModal()
     } catch (err) {
       console.error('Error saving expense:', err)
       toast.error('Failed to save expense: ' + err.message)
@@ -667,6 +724,14 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
                       </div>
                       <button
                         type="button"
+                        onClick={() => handleEditClick(exp, false)}
+                        className="shrink-0 flex items-center justify-center rounded-md bg-blue-50 p-1 text-blue-500 transition-colors hover:bg-blue-100 active:scale-90"
+                        title="Edit Entry"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleCopyExpense(exp)}
                         className="shrink-0 flex items-center justify-center rounded-md bg-orange-50 p-1 text-orange-500 transition-colors hover:bg-orange-100 active:scale-90"
                         title="Copy Entry"
@@ -747,6 +812,14 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
                         </div>
                         <button
                           type="button"
+                          onClick={() => handleEditClick(template, true)}
+                          className="shrink-0 flex items-center justify-center rounded-md bg-blue-50 p-1.5 text-blue-500 transition-colors hover:bg-blue-100 active:scale-90"
+                          title="Edit Template"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          type="button"
                           onClick={async () => {
                             const newStatus = isActive ? 'paused' : 'active'
                             await updateDoc(doc(db, 'recurringExpenses', template.id), {
@@ -807,13 +880,15 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
               <div>
                 <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                   <Receipt className="text-orange-500" size={20} />
-                  Record Expense
+                  {editingExpenseId ? 'Edit Expense' : 'Record Expense'}
                 </h2>
-                <p className="text-xs text-gray-500 mt-0.5">Log a new business expense</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {editingExpenseId ? 'Update expense details' : 'Log a new business expense'}
+                </p>
               </div>
               <button
                 type="button"
-                onClick={onCloseAddForm}
+                onClick={handleCloseModal}
                 className="p-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-gray-500 transition-colors"
               >
                 <X size={20} />
@@ -1102,10 +1177,18 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
                   className="w-full bg-[#131921] hover:bg-black text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg disabled:opacity-50 mt-2"
                 >
                   {isSubmitting ? (
-                    'Recording...'
+                    'Saving...'
                   ) : (
                     <>
-                      <Plus size={20} strokeWidth={2.5} /> Record Expense
+                      {editingExpenseId ? (
+                        <>
+                          <Pencil size={20} strokeWidth={2.5} /> Save Changes
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={20} strokeWidth={2.5} /> Record Expense
+                        </>
+                      )}
                     </>
                   )}
                 </button>
