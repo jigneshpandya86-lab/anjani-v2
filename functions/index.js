@@ -2256,23 +2256,29 @@ async function processRecurringExpenses(db, currentHour) {
     const day = parts.find(p => p.type === 'day').value;
     const todayStr = `${year}-${month}-${day}`;
 
-    // Get all active templates where nextOccurrenceDate <= todayStr
+    // Get all active templates
     const snapshot = await db.collection('recurringExpenses')
       .where('status', '==', 'active')
-      .where('nextOccurrenceDate', '<=', todayStr)
       .get();
 
     if (snapshot.empty) {
-      logger.info("Recurring Expenses: No pending occurrences for today.");
+      logger.info("Recurring Expenses: No active templates found.");
       return;
     }
 
     const batch = db.batch();
+    let generatedCount = 0;
 
     snapshot.forEach((doc) => {
       const template = doc.data();
       const templateId = doc.id;
       const occurrenceDateStr = template.nextOccurrenceDate;
+
+      if (!occurrenceDateStr || occurrenceDateStr > todayStr) {
+        return;
+      }
+
+      generatedCount++;
 
       // 1. Create the new expense entry
       const expenseRef = db.collection('expenses').doc();
@@ -2317,8 +2323,12 @@ async function processRecurringExpenses(db, currentHour) {
       logger.info(`Recurring Expenses: Generated expense for template "${template.note}" (${templateId}) for date ${occurrenceDateStr}. Next: ${nextOccurrenceStr}`);
     });
 
-    await batch.commit();
-    logger.info(`Recurring Expenses: Successfully generated ${snapshot.size} expenses.`);
+    if (generatedCount > 0) {
+      await batch.commit();
+      logger.info(`Recurring Expenses: Successfully generated ${generatedCount} expenses.`);
+    } else {
+      logger.info("Recurring Expenses: No pending occurrences due today.");
+    }
   } catch (error) {
     logger.error("Error processing recurring expenses:", error);
   }
