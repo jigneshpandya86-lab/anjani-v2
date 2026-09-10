@@ -1,8 +1,40 @@
 import { useState, useEffect } from 'react'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from '../firebase-config'
-import { Calendar, Clock, BellRing, Save, Sliders, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Calendar, Clock, BellRing, Save, Sliders, ToggleLeft, ToggleRight, Sparkles, MapPin, Flame } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+const getCurrentSeasonInfo = () => {
+  const m = new Date().getMonth() + 1
+  if (m === 9 || m === 10) {
+    return {
+      title: '🪔 Navratri & Pre-Diwali Festival Surge (Active)',
+      description: 'Dynamic Target: Caterers, Garba Mandals, Party Plots, Banquet Halls & Sweet Vendors.',
+      badge: 'Aggressive 2x/Week (12+ Leads/Run)',
+      color: 'bg-amber-50 text-amber-900 border-amber-300',
+    }
+  } else if (m === 11 || m === 12 || m === 1 || m === 2) {
+    return {
+      title: '💍 Peak Gujarati Wedding Season (Active)',
+      description: 'Dynamic Target: Wedding Caterers, Banquet Venues, Farmhouses, Decorators & Bus Fleets.',
+      badge: 'Aggressive 2x/Week (12+ Leads/Run)',
+      color: 'bg-rose-50 text-rose-900 border-rose-300',
+    }
+  } else if (m >= 3 && m <= 5) {
+    return {
+      title: '☀️ Summer Heatwave Bulk Surge (Active)',
+      description: 'Dynamic Target: Makarpura & Nandesari GIDC Factories, Real Estate Builder Sales Offices.',
+      badge: 'High Push Weekly (10 Leads/Run)',
+      color: 'bg-orange-50 text-orange-900 border-orange-300',
+    }
+  }
+  return {
+    title: '🏢 Routine Business Demand (Active)',
+    description: 'Dynamic Target: Corporate Offices, Car Showrooms, Clinics & Commercial Complexes.',
+    badge: 'Steady Weekly (5-6 Leads/Run)',
+    color: 'bg-blue-50 text-blue-900 border-blue-300',
+  }
+}
 
 const DAYS_OF_WEEK = [
   { value: 0, label: 'Sun' },
@@ -137,6 +169,12 @@ export default function SettingsTab() {
   const [greetingsBirthdayTemplate, setGreetingsBirthdayTemplate] = useState('Happy Birthday {name}! Wishing you a wonderful day filled with joy, health, and success. - Anjani Water')
   const [greetingsAnniversaryTemplate, setGreetingsAnniversaryTemplate] = useState('Happy Wedding Anniversary {name}! Wishing you both a lifetime of love, happiness, and companionship. - Anjani Water')
 
+  // Dynamic AI Lead Discovery State
+  const [leadDiscoveryEnabled, setLeadDiscoveryEnabled] = useState(true)
+  const [leadDiscoveryHour, setLeadDiscoveryHour] = useState(9)
+  const [leadDiscoveryDays, setLeadDiscoveryDays] = useState([1])
+  const [leadDiscoveryMode, setLeadDiscoveryMode] = useState('auto') // 'auto', 'aggressive', 'normal'
+
   useEffect(() => {
     async function loadSettings() {
       try {
@@ -196,6 +234,20 @@ export default function SettingsTab() {
           setGreetingsBirthdayTemplate('Happy Birthday {name}! Wishing you a wonderful day filled with joy, health, and success. - Anjani Water')
           setGreetingsAnniversaryTemplate('Happy Wedding Anniversary {name}! Wishing you both a lifetime of love, happiness, and companionship. - Anjani Water')
         }
+
+        const leadSnap = await getDoc(doc(db, 'config', 'leadDiscoveryConfig'))
+        if (leadSnap.exists()) {
+          const data = leadSnap.data()
+          setLeadDiscoveryEnabled(data.enabled !== undefined ? !!data.enabled : true)
+          setLeadDiscoveryHour(data.hour !== undefined ? Number(data.hour) : 9)
+          setLeadDiscoveryDays(Array.isArray(data.days) ? data.days : [1])
+          setLeadDiscoveryMode(data.mode || 'auto')
+        } else {
+          setLeadDiscoveryEnabled(true)
+          setLeadDiscoveryHour(9)
+          setLeadDiscoveryDays([1])
+          setLeadDiscoveryMode('auto')
+        }
       } catch (err) {
         console.error('Failed to load scheduler configs:', err)
         toast.error('Failed to load schedule configurations')
@@ -232,6 +284,12 @@ export default function SettingsTab() {
 
   const toggleGreetingsDay = (dayVal) => {
     setGreetingsDays((prev) =>
+      prev.includes(dayVal) ? prev.filter((d) => d !== dayVal) : [...prev, dayVal].sort(),
+    )
+  }
+
+  const toggleLeadDiscoveryDay = (dayVal) => {
+    setLeadDiscoveryDays((prev) =>
       prev.includes(dayVal) ? prev.filter((d) => d !== dayVal) : [...prev, dayVal].sort(),
     )
   }
@@ -297,6 +355,19 @@ export default function SettingsTab() {
           days: greetingsDays,
           birthdayTemplate: greetingsBirthdayTemplate,
           anniversaryTemplate: greetingsAnniversaryTemplate,
+          minute: 0,
+        },
+        { merge: true },
+      )
+
+      // 6. Save AI Dynamic Lead Discovery settings
+      await setDoc(
+        doc(db, 'config', 'leadDiscoveryConfig'),
+        {
+          enabled: leadDiscoveryEnabled,
+          hour: Number(leadDiscoveryHour),
+          days: leadDiscoveryDays,
+          mode: leadDiscoveryMode,
           minute: 0,
         },
         { merge: true },
@@ -425,6 +496,73 @@ export default function SettingsTab() {
                   className="w-full rounded-md border border-gray-300 p-2 text-xs outline-none focus:ring-2 focus:ring-orange-400"
                   placeholder="Use {name} for dynamic greeting..."
                 />
+              </div>
+            </div>
+          )}
+
+          {/* AI Dynamic Lead Discovery Card */}
+          <SchedulerCard
+            enabled={leadDiscoveryEnabled}
+            hour={leadDiscoveryHour}
+            hourLabel="Discovery Hour"
+            id="leadDiscoveryHourSelect"
+            inactiveText="Dynamic AI Lead Discovery is disabled."
+            iconColor="text-purple-600"
+            onHourChange={setLeadDiscoveryHour}
+            onToggle={() => setLeadDiscoveryEnabled((prev) => !prev)}
+            onToggleDay={toggleLeadDiscoveryDay}
+            selectedDays={leadDiscoveryDays}
+            title="AI Dynamic Lead Discovery (Festival & Season Radar)"
+          />
+
+          {leadDiscoveryEnabled && (
+            <div className="space-y-2 p-3 bg-white border border-gray-200 rounded-lg -mt-1 animate-fadeIn">
+              {/* Dynamic Season Status Banner */}
+              {(() => {
+                const season = getCurrentSeasonInfo()
+                return (
+                  <div className={`p-2.5 rounded-md border text-xs flex flex-col md:flex-row md:items-center justify-between gap-1.5 ${season.color}`}>
+                    <div>
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <Sparkles className="h-4 w-4 text-purple-600 shrink-0" />
+                        <span>{season.title}</span>
+                      </div>
+                      <p className="mt-0.5 text-[11px] opacity-90">{season.description}</p>
+                    </div>
+                    <span className="self-start md:self-auto rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide shadow-xs shrink-0">
+                      {season.badge}
+                    </span>
+                  </div>
+                )
+              })()}
+
+              {/* Mode Selection */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">
+                <div>
+                  <label htmlFor="leadDiscoveryModeSelect" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                    Aggressiveness Radar Mode
+                  </label>
+                  <select
+                    id="leadDiscoveryModeSelect"
+                    value={leadDiscoveryMode}
+                    onChange={(e) => setLeadDiscoveryMode(e.target.value)}
+                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-orange-400"
+                  >
+                    <option value="auto">Auto (Dynamic Festival Radar)</option>
+                    <option value="aggressive">Force High (2x/Week, 12+ Leads)</option>
+                    <option value="normal">Normal (1x/Week, 5 Leads)</option>
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
+                  <span className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                    <MapPin className="h-3 w-3 text-red-500" />
+                    Vadodara High-Conversion Coverage Zones
+                  </span>
+                  <div className="text-[11px] text-gray-600 bg-gray-50 p-1.5 rounded border border-gray-200">
+                    <strong>Zones:</strong> Gotri, Makarpura, Bhayli, Sevasi, Vasna Road, Alkapuri, Akota, Manjalpur, Karelibaug, Sayajigunj, Fatehgunj, Waghodia Road, Atladra, Gorwa, Chhani, Sama, Harni, Nandesari & Por.
+                  </div>
+                </div>
               </div>
             </div>
           )}
