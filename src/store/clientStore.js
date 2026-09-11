@@ -17,6 +17,7 @@ import {
   deleteField,
 } from 'firebase/firestore'
 import { db } from '../firebase-config'
+import { DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 
 let stockUnsubscribe = null
 let stockSubscriberCount = 0
@@ -74,14 +75,42 @@ const buildClientShortId = (clientDocId) => {
   return `CLT-${safeId.slice(0, 6).padEnd(6, '0')}`
 }
 
-const normalizeOrderWriteData = (data = {}) => ({
-  ...data,
-  address: data.address === undefined ? '' : String(data.address).trim(),
-  location: data.location === undefined ? '' : String(data.location).trim(),
-  mapLink: data.mapLink === undefined ? '' : String(data.mapLink).trim(),
-  locationLat: Number.isFinite(Number(data.locationLat)) ? Number(data.locationLat) : null,
-  locationLng: Number.isFinite(Number(data.locationLng)) ? Number(data.locationLng) : null,
-})
+const normalizeOrderWriteData = (data = {}) => {
+  const result = {
+    ...data,
+    address: data.address === undefined ? '' : String(data.address).trim(),
+    location: data.location === undefined ? '' : String(data.location).trim(),
+    mapLink: data.mapLink === undefined ? '' : String(data.mapLink).trim(),
+    locationLat: Number.isFinite(Number(data.locationLat)) ? Number(data.locationLat) : null,
+    locationLng: Number.isFinite(Number(data.locationLng)) ? Number(data.locationLng) : null,
+  }
+
+  if (Array.isArray(data.items) && data.items.length > 0) {
+    result.items = data.items.map((it) => {
+      const itQty = Number(it.qty) || 0
+      const itRate = Number(it.rate) || 0
+      const itSku = it.sku || DEFAULT_SKU
+      const itMeta = getSkuMeta(itSku)
+      return {
+        sku: itSku,
+        qty: itQty,
+        rate: itRate,
+        amount: itQty * itRate,
+        unit: it.unit || itMeta.unit,
+      }
+    })
+    result.totalQty = result.items.reduce((sum, it) => sum + it.qty, 0)
+    result.totalAmount = result.items.reduce((sum, it) => sum + it.amount, 0)
+    result.qty = result.totalQty
+    result.rate =
+      Number(data.rate) ||
+      (result.totalQty > 0 ? Math.round((result.totalAmount / result.totalQty) * 100) / 100 : 0)
+    result.sku =
+      result.items.length === 1 ? result.items[0].sku : result.items.map((it) => it.sku).join(', ')
+  }
+
+  return result
+}
 
 const getLegacyLocationCleanupPatch = () => ({
   mapLink: deleteField(),
@@ -253,6 +282,30 @@ export const useClientStore = create((set, get) => ({
     await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(parsedQty) }, { merge: true })
   },
 
+  addStockBatch: async (entries, defaultNarration = 'Stock Inward') => {
+    let netTotal = 0
+    for (const entry of entries) {
+      const parsedQty = Number(entry.qty) || 0
+      if (parsedQty === 0) continue
+      const sku = entry.sku || DEFAULT_SKU
+      await addDoc(collection(db, 'stock'), {
+        qty: parsedQty,
+        sku,
+        narration: entry.narration || defaultNarration || `Stock Inward (${sku})`,
+        type: parsedQty > 0 ? 'addition' : 'dispatch',
+        date: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      })
+      netTotal += parsedQty
+    }
+    if (netTotal !== 0) {
+      await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(netTotal) }, { merge: true })
+      set((state) => ({
+        stockTotal: (Number(state.stockTotal) || 0) + netTotal,
+      }))
+    }
+  },
+
   deleteStockEntry: async (id) => {
     const stockRef = doc(db, 'stock', id)
     const stockSnap = await getDoc(stockRef)
@@ -343,6 +396,28 @@ export const useClientStore = create((set, get) => ({
     const normalizedData = normalizeOrderWriteData(data)
     const orderId = `ORD-${Date.now()}`
     const selectedClient = get().clients.find((client) => client.id === normalizedData.clientId)
+
+    let items = normalizedData.items
+    if (!Array.isArray(items) || items.length === 0) {
+      const itQty = Number(data.qty) || 0
+      const itRate = Number(data.rate) || 0
+      const itSku = data.sku || DEFAULT_SKU
+      const itMeta = getSkuMeta(itSku)
+      items = [
+        {
+          sku: itSku,
+          qty: itQty,
+          rate: itRate,
+          amount: itQty * itRate,
+          unit: itMeta.unit,
+        },
+      ]
+    }
+    const totalQty = items.reduce((sum, it) => sum + it.qty, 0)
+    const totalAmount = items.reduce((sum, it) => sum + it.amount, 0)
+    const primarySku =
+      items.length === 1 ? items[0].sku : items.map((it) => it.sku).join(', ')
+
     await addDoc(collection(db, 'orders'), {
       ...normalizedData,
       orderId,
@@ -353,8 +428,14 @@ export const useClientStore = create((set, get) => ({
       mapLink: normalizedData.mapLink || selectedClient?.mapLink || '',
       locationLat: normalizedData.locationLat ?? selectedClient?.locationLat ?? null,
       locationLng: normalizedData.locationLng ?? selectedClient?.locationLng ?? null,
-      qty: Number(data.qty),
-      rate: Number(data.rate),
+      items,
+      totalQty,
+      totalAmount,
+      qty: totalQty,
+      rate:
+        Number(data.rate) ||
+        (totalQty > 0 ? Math.round((totalAmount / totalQty) * 100) / 100 : 0),
+      sku: primarySku,
       status: 'Pending',
       createdAt: serverTimestamp(),
     })
@@ -456,17 +537,64 @@ export const useClientStore = create((set, get) => ({
         const hasLegacyProducedDelivered = raw.produced !== undefined || raw.delivered !== undefined
         const hasDirectQty =
           raw.qty !== undefined || raw.boxes !== undefined || raw.quantity !== undefined
-        let qty = Number(raw.qty || raw.boxes || raw.quantity) || 0
+        let baseQty = Number(raw.qty || raw.boxes || raw.quantity) || 0
 
         if (hasLegacyProducedDelivered && !hasDirectQty) {
-          qty = (Number(raw.produced) || 0) - (Number(raw.delivered) || 0)
+          baseQty = (Number(raw.produced) || 0) - (Number(raw.delivered) || 0)
         }
+
+        const rawItems = Array.isArray(raw.items) && raw.items.length > 0 ? raw.items : null
+        let items = []
+        if (rawItems) {
+          items = rawItems.map((it) => {
+            const itQty = Number(it.qty) || 0
+            const itRate = Number(it.rate) || 0
+            const itSku = it.sku || DEFAULT_SKU
+            const itMeta = getSkuMeta(itSku)
+            return {
+              sku: itSku,
+              qty: itQty,
+              rate: itRate,
+              amount: itQty * itRate,
+              unit: it.unit || itMeta.unit,
+            }
+          })
+        } else {
+          const primarySku = raw.sku || raw.product || DEFAULT_SKU
+          const itMeta = getSkuMeta(primarySku)
+          const itRate = Number(raw.rate) || 0
+          items = [
+            {
+              sku: primarySku,
+              qty: baseQty,
+              rate: itRate,
+              amount: baseQty * itRate,
+              unit: itMeta.unit,
+            },
+          ]
+        }
+
+        const totalQty = items.reduce((sum, it) => sum + it.qty, 0)
+        const totalAmount =
+          raw.totalAmount !== undefined
+            ? Number(raw.totalAmount)
+            : items.reduce((sum, it) => sum + it.amount, 0)
+
+        const skuSummary =
+          items.length === 1
+            ? items[0].sku
+            : items.map((it) => `${it.qty}× ${it.sku}`).join(', ')
 
         return {
           ...raw,
-          qty,
-          sku: raw.sku || raw.product || 'Anjani 200ml',
-          rate: Number(raw.rate) || 0,
+          items,
+          totalQty,
+          totalAmount,
+          qty: totalQty,
+          sku: raw.sku || skuSummary,
+          rate:
+            Number(raw.rate) ||
+            (totalQty > 0 ? Math.round((totalAmount / totalQty) * 100) / 100 : 0),
           date: raw.date || raw.deliveryDate || raw.orderDate || '',
           time: raw.time || raw.deliveryTime || '',
           clientId: raw.clientId || raw.customerId || '',
@@ -523,10 +651,17 @@ export const useClientStore = create((set, get) => ({
       shouldMarkDelivered &&
       (!alreadyPostedToStock || previousStatus !== 'Delivered')
     ) {
-      // Use the NEW quantity and rate being saved, falling back to existing if not provided
-      const qty = Number(normalizedData.qty ?? existing.qty ?? existing.boxes ?? existing.quantity) || 0
-      const rate = Number(normalizedData.rate ?? existing.rate) || 0
-      const stockDelta = -Math.abs(qty)
+      const items = normalizedData.items || existing.items || [
+        {
+          sku: existing.sku || DEFAULT_SKU,
+          qty:
+            Number(
+              normalizedData.qty ?? existing.qty ?? existing.boxes ?? existing.quantity,
+            ) || 0,
+          rate: Number(normalizedData.rate ?? existing.rate) || 0,
+        },
+      ]
+
       const clientName = await getOrderClientName(existing, get().clients)
       const deliveredNarration = formatOrderNarration(
         'Order Delivered',
@@ -534,48 +669,62 @@ export const useClientStore = create((set, get) => ({
         clientName,
       )
 
-      // OPTIMIZATION: The following 5 write operations should be batched into a single Firestore
-      // transaction for atomicity and reduced billing. This requires careful refactoring to ensure
-      // payment accuracy is maintained. Candidate for Phase 2 optimization.
-      // Transaction would cover: stock debit, stock summary update, payment add, payment record, and
-      // customer outstanding update. See PR #298 for optimization approach documentation.
+      let totalStockDelta = 0
+      let totalAmount = 0
+      const stockEntryIds = []
 
-      // 1. Debit stock
-      const stockDocRef = await addDoc(collection(db, 'stock'), {
-        qty: stockDelta,
-        sku: existing.sku || 'Anjani 200ml',
-        narration: deliveredNarration,
-        type: 'dispatch',
-        date: serverTimestamp(),
-        createdAt: serverTimestamp(),
-      })
+      for (const item of items) {
+        const itemQty = Number(item.qty) || 0
+        const itemRate = Number(item.rate) || 0
+        if (itemQty <= 0) continue
+
+        const itemDelta = -Math.abs(itemQty)
+        totalStockDelta += itemDelta
+        totalAmount += itemQty * itemRate
+        const itemSku = item.sku || DEFAULT_SKU
+
+        const stockDocRef = await addDoc(collection(db, 'stock'), {
+          qty: itemDelta,
+          sku: itemSku,
+          narration:
+            items.length > 1
+              ? `${deliveredNarration} (${itemSku})`
+              : deliveredNarration,
+          type: 'dispatch',
+          date: serverTimestamp(),
+          createdAt: serverTimestamp(),
+        })
+        stockEntryIds.push(stockDocRef.id)
+      }
+
       extraOrderPatch = {
-        stockEntryId: stockDocRef.id,
+        stockEntryIds,
+        stockEntryId: stockEntryIds[0] || null,
         stockPostedAt: serverTimestamp(),
       }
-      await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(stockDelta) }, { merge: true })
 
-      // Keep stock total responsive; movement list should come from persisted snapshot
-      // so we don't show temporary in-memory rows that later disappear on sync failure.
-      set((state) => ({
-        stockTotal: (Number(state.stockTotal) || 0) + stockDelta,
-      }))
+      if (totalStockDelta !== 0) {
+        await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(totalStockDelta) }, { merge: true })
+        set((state) => ({
+          stockTotal: (Number(state.stockTotal) || 0) + totalStockDelta,
+        }))
+      }
 
       // 2. Create invoice transaction in payments
-      const amount = Math.abs(qty) * rate
-      if (existing.clientId && amount > 0) {
+      if (existing.clientId && totalAmount > 0) {
         await addDoc(collection(db, 'payments'), {
           clientId: existing.clientId,
-          amount,
+          amount: totalAmount,
           type: 'invoice',
           method: 'SYSTEM',
           narration: deliveredNarration,
           date: serverTimestamp(),
           createdAt: serverTimestamp(),
+          orderId: existing.orderId || id,
         })
         // 3. Increase customer outstanding atomically
         await updateDoc(doc(db, 'customers', existing.clientId), {
-          outstanding: increment(amount),
+          outstanding: increment(totalAmount),
         })
       }
     }
@@ -593,35 +742,54 @@ export const useClientStore = create((set, get) => ({
       if (orderSnap.exists()) {
         const existing = orderSnap.data()
         if (existing.status === 'Delivered') {
-          const qty = Math.abs(Number(existing.qty || 0))
-          const rate = Number(existing.rate || 0)
-          const amount = qty * rate
-          const reversalClientId = existing.clientId || existing.customerId || ''
-          const orderRef = existing.orderId || id
+          const items = existing.items || [
+            {
+              sku: existing.sku || DEFAULT_SKU,
+              qty: Math.abs(Number(existing.qty || 0)),
+              rate: Number(existing.rate || 0),
+            },
+          ]
           const clientName = await getOrderClientName(existing, get().clients)
           const reversalNarration = formatOrderNarration(
             'Order Deleted (Reversal)',
-            orderRef,
+            existing.orderId || id,
             clientName,
           )
 
-          // 1. Reverse stock debit
-          if (qty > 0) {
+          let totalReversalQty = 0
+          let totalReversalAmount = 0
+
+          for (const it of items) {
+            const itQty = Math.abs(Number(it.qty || 0))
+            const itRate = Number(it.rate) || 0
+            if (itQty <= 0) continue
+
+            totalReversalQty += itQty
+            totalReversalAmount += itQty * itRate
+            const itSku = it.sku || DEFAULT_SKU
+
             await addDoc(collection(db, 'stock'), {
-              qty,
-              narration: reversalNarration,
+              qty: itQty,
+              sku: itSku,
+              narration:
+                items.length > 1
+                  ? `${reversalNarration} (${itSku})`
+                  : reversalNarration,
               type: 'reversal',
               date: serverTimestamp(),
               createdAt: serverTimestamp(),
             })
-            await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(qty) }, { merge: true })
           }
 
-          // 2. Reverse payment and customer outstanding
-          if (reversalClientId && amount > 0) {
+          if (totalReversalQty > 0) {
+            await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(totalReversalQty) }, { merge: true })
+          }
+
+          const reversalClientId = existing.clientId || existing.customerId || ''
+          if (reversalClientId && totalReversalAmount > 0) {
             await addDoc(collection(db, 'payments'), {
               clientId: reversalClientId,
-              amount: -amount,
+              amount: -totalReversalAmount,
               type: 'reversal',
               method: 'SYSTEM',
               narration: reversalNarration,
@@ -629,7 +797,7 @@ export const useClientStore = create((set, get) => ({
               createdAt: serverTimestamp(),
             })
             await updateDoc(doc(db, 'customers', reversalClientId), {
-              outstanding: increment(-amount),
+              outstanding: increment(-totalReversalAmount),
             })
           }
         }

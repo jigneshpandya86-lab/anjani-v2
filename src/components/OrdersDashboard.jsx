@@ -159,16 +159,22 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
           const mobile = getDisplayMobile(o)
           const matchesStatus = filter === 'All' || o.status === filter
           const matchesDate = doesMatchDateFilter(o)
-          const matchesSku = skuFilter === 'All' || (o.sku || DEFAULT_SKU) === skuFilter
+          const orderItems = o.items || []
+          const matchesSku =
+            skuFilter === 'All' ||
+            (o.sku || DEFAULT_SKU) === skuFilter ||
+            orderItems.some((it) => (it.sku || DEFAULT_SKU) === skuFilter)
           const searchLower = searchQuery.toLowerCase()
-          const qtyText = String(o.qty ?? o.boxes ?? o.quantity ?? '')
+          const qtyText = String(o.totalQty ?? o.qty ?? o.boxes ?? o.quantity ?? '')
           const skuText = String(o.sku || '').toLowerCase()
+          const itemsText = orderItems.map((it) => `${it.sku} ${it.qty}`).join(' ').toLowerCase()
           const matchesSearch =
             name.toLowerCase().includes(searchLower) ||
             (o.orderId || '').toLowerCase().includes(searchLower) ||
             mobile.includes(searchLower) ||
             qtyText.includes(searchLower) ||
-            skuText.includes(searchLower)
+            skuText.includes(searchLower) ||
+            itemsText.includes(searchLower)
           return matchesStatus && matchesDate && matchesSku && matchesSearch
         })
         .sort((a, b) => {
@@ -203,11 +209,37 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
 
   const shareOrder = useCallback(
     (order) => {
-      const skuLabel = order.sku || DEFAULT_SKU
       const address = getDisplayAddress(order)
       const mapsUrl = getMapsUrl(order)
       const clientObj = order.clientId ? clients.find((c) => c.id === order.clientId) : null
       const location = String(order.location || clientObj?.location || '').trim()
+
+      const items =
+        order.items && order.items.length > 0
+          ? order.items
+          : [
+              {
+                sku: order.sku || DEFAULT_SKU,
+                qty: order.qty || 0,
+                rate: order.rate || 0,
+              },
+            ]
+
+      let itemsListText = ''
+      items.forEach((it) => {
+        const itMeta = getSkuMeta(it.sku)
+        itemsListText += `• ${it.qty} ${itMeta.unit} — *${it.sku}*\n`
+      })
+
+      const totalQty =
+        order.totalQty || items.reduce((s, it) => s + (Number(it.qty) || 0), 0)
+      const totalAmount =
+        order.totalAmount !== undefined
+          ? order.totalAmount
+          : items.reduce(
+              (s, it) => s + (Number(it.qty) || 0) * (Number(it.rate) || 0),
+              0,
+            )
 
       let addressSection = `*Address:*\n${address || 'Address not available'}`
       if (location && location !== address) {
@@ -217,7 +249,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
         addressSection += `\n*Map Link:* ${mapsUrl}`
       }
 
-      const msg = `🚚 *NEW DELIVERY ASSIGNMENT*\n\n*ID:* ${order.orderId || 'N/A'}\n*Client:* ${getDisplayName(order)}\n*Mobile:* ${getDisplayMobile(order)}\n*Item / SKU:* ${skuLabel}\n*Qty:* ${order.qty || 0} Boxes/Cases\n*Date:* ${order.date || 'TBD'} at ${order.time || 'TBD'}\n\n${addressSection}`
+      const msg = `🚚 *NEW DELIVERY ASSIGNMENT*\n\n*ID:* ${order.orderId || 'N/A'}\n*Client:* ${getDisplayName(order)}\n*Mobile:* ${getDisplayMobile(order)}\n*Date:* ${order.date || 'TBD'} at ${order.time || 'TBD'}\n\n*Items to Deliver:*\n${itemsListText}*Total Qty:* ${totalQty} Boxes/Cases\n*Total Value:* ₹${totalAmount.toLocaleString('en-IN')}\n\n${addressSection}`
       window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
     },
     [getDisplayName, getDisplayMobile, getDisplayAddress, getMapsUrl, clients],
@@ -229,7 +261,12 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
     pending.forEach((o, i) => {
       const addr = getDisplayAddress(o)
       const addrStr = addr ? ` | ${addr}` : ''
-      msg += `${i + 1}. ${getDisplayName(o)} - ${o.qty} Bxs (${o.sku || '200ml'}) - ${o.date} ${o.time}${addrStr}\n`
+      const items =
+        o.items && o.items.length > 0
+          ? o.items
+          : [{ sku: o.sku || '200ml', qty: o.qty }]
+      const itemsSummary = items.map((it) => `${it.qty}× ${it.sku}`).join(', ')
+      msg += `${i + 1}. ${getDisplayName(o)} - ${itemsSummary} - ${o.date} ${o.time}${addrStr}\n`
     })
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
   }, [orders, getDisplayName, getDisplayAddress])
@@ -431,15 +468,17 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
                   >
                     {order.status || 'LEGACY'}
                   </span>
-                  <span
-                    className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border ${
-                      (order.sku || '').includes('Bailey')
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                        : 'border-blue-200 bg-blue-50 text-blue-800'
-                    }`}
-                  >
-                    {order.sku || DEFAULT_SKU}
-                  </span>
+                  {order.items && order.items.length > 1 ? (
+                    <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border border-purple-200 bg-purple-50 text-purple-800">
+                      {order.items.length} SKUs
+                    </span>
+                  ) : (
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border ${getSkuMeta(order.sku || DEFAULT_SKU).badgeClass}`}
+                    >
+                      {order.sku || DEFAULT_SKU}
+                    </span>
+                  )}
                 </div>
                 <h3 className="font-black text-gray-900 text-lg mt-2 leading-none">
                   {getDisplayName(order)}
@@ -447,16 +486,34 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
               </div>
               <div className="text-right">
                 <p className="text-xl font-black text-[#ff9900]">
-                  {order.qty || 0}{' '}
+                  {order.totalQty || order.qty || 0}{' '}
                   <span className="text-[10px] text-gray-400 font-bold">
-                    {getSkuMeta(order.sku).shortLabel}
+                    Units
                   </span>
                 </p>
-                <p className="text-[10px] text-gray-400 font-bold mt-1 tracking-tighter">
-                  ₹{((order.qty || 0) * (order.rate || 0)).toLocaleString()}
+                <p className="text-[10px] text-gray-500 font-bold mt-1 tracking-tighter">
+                  ₹{(order.totalAmount !== undefined ? order.totalAmount : (order.qty || 0) * (order.rate || 0)).toLocaleString('en-IN')}
                 </p>
               </div>
             </div>
+
+            {/* Line Items Breakdown Pills */}
+            {order.items && order.items.length > 1 && (
+              <div className="mb-3 flex flex-wrap gap-1.5">
+                {order.items.map((it, i) => {
+                  const meta = getSkuMeta(it.sku)
+                  return (
+                    <span
+                      key={i}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${meta.badgeClass}`}
+                    >
+                      <span>{it.qty} {meta.unit.includes('Box') ? 'bxs' : 'cs'}</span>
+                      <span className="font-medium opacity-80">• {it.sku}</span>
+                    </span>
+                  )
+                })}
+              </div>
+            )}
 
             <div className="mb-4 flex items-center justify-between gap-2 bg-gray-50 p-2 rounded-lg">
               <div className="flex items-center gap-2 text-xs font-bold text-gray-500">

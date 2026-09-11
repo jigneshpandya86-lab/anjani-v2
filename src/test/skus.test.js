@@ -38,4 +38,17 @@ describe('WATER_SKUS Configuration', () => {
     expect(getSkuMeta('').label).toBe('Anjani 200ml')
     expect(getSkuMeta('Unknown Product').label).toBe('Anjani 200ml')
   })
+
+  it('calculates totals correctly for multi-SKU line items', () => {
+    const items = [
+      { sku: 'Bailey 500ml', qty: 10, rate: 120 },
+      { sku: 'Bailey 1 Liter', qty: 5, rate: 150 },
+      { sku: 'Anjani 200ml', qty: 20, rate: 80 },
+    ]
+    const totalQty = items.reduce((acc, it) => acc + Number(it.qty), 0)
+    const totalAmount = items.reduce((acc, it) => acc + Number(it.qty) * Number(it.rate), 0)
+
+    expect(totalQty).toBe(35)
+    expect(totalAmount).toBe(10 * 120 + 5 * 150 + 20 * 80) // 1200 + 750 + 1600 = 3550
+  })
 })

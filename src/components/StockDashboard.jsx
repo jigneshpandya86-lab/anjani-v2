@@ -7,28 +7,24 @@ import {
   Tag,
   ArrowUpRight,
   ArrowDownLeft,
-  X,
   Trash2,
   RefreshCw,
   FileText,
 } from 'lucide-react'
 import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
+import AddStockModal from './AddStockModal'
 
 export default function StockDashboard({ onOpenReport }) {
   const {
     stockEntries,
     stockTotal,
-    addStockManual,
     deleteStockEntry,
     fetchStock,
     recalculateStockTotal,
     loading,
   } = useClientStore()
   const [showAdd, setShowAdd] = useState(false)
-  const [qty, setQty] = useState('')
-  const [narration, setNarration] = useState('')
   const [skuFilter, setSkuFilter] = useState('All')
-  const [addSku, setAddSku] = useState(DEFAULT_SKU)
   const [isSyncing, setIsSyncing] = useState(false)
 
   const handleRecalculate = async () => {
@@ -122,22 +118,6 @@ export default function StockDashboard({ onOpenReport }) {
     return true
   })
 
-  const handleAdd = async (e) => {
-    e.preventDefault()
-    if (!qty) return
-    await addStockManual(qty, narration, addSku)
-    setQty('')
-    setNarration('')
-    setAddSku(DEFAULT_SKU)
-    setShowAdd(false)
-  }
-
-  const closeAddModal = () => {
-    setShowAdd(false)
-    setQty('')
-    setNarration('')
-    setAddSku(DEFAULT_SKU)
-  }
 
   const handleDelete = async (entry) => {
     const label = entry.narration || entry.note || 'this entry'
@@ -336,72 +316,13 @@ export default function StockDashboard({ onOpenReport }) {
       {showAdd && (
         <div
           className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4"
-          onClick={closeAddModal}
+          onClick={() => setShowAdd(false)}
         >
           <div
-            className="relative bg-white rounded-2xl w-full max-w-lg p-5 pt-12"
+            className="relative bg-white rounded-2xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              type="button"
-              onClick={closeAddModal}
-              className="absolute top-3 right-3 p-2 rounded-lg text-gray-500 bg-gray-100 hover:bg-gray-200"
-              aria-label="Close stock form"
-            >
-              <X size={18} />
-            </button>
-            <h3 className="font-black text-[#131921] text-lg mb-1">Add Stock</h3>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">
-              Manual Inventory Entry
-            </p>
-            <form onSubmit={handleAdd} className="space-y-4">
-              <div>
-                <label
-                  htmlFor="qty-input"
-                  className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide"
-                >
-                  Quantity (Boxes)
-                </label>
-                <input
-                  id="qty-input"
-                  type="number"
-                  placeholder="Quantity (+ for in, - for out)"
-                  className="w-full p-3 bg-gray-50 rounded-xl border border-gray-300 outline-none font-bold focus:ring-2 focus:ring-amz-orange focus:border-amz-orange"
-                  value={qty}
-                  onChange={(e) => setQty(e.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="narration-input"
-                  className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide"
-                >
-                  Narration / Note
-                </label>
-                <input
-                  id="narration-input"
-                  type="text"
-                  placeholder="e.g. Received from factory"
-                  className="w-full p-3 bg-gray-50 rounded-xl border border-gray-300 outline-none text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange"
-                  value={narration}
-                  onChange={(e) => setNarration(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={closeAddModal}
-                  className="w-full bg-gray-100 border border-gray-300 text-gray-700 font-bold py-3 px-4 rounded-lg shadow-sm hover:bg-gray-200 active:shadow-inner transition-all"
-                >
-                  Cancel
-                </button>
-                <button className="w-full bg-gradient-to-b from-[#f7dfa5] to-[#f0c14b] border border-[#a88734] text-gray-900 font-bold py-3 px-4 rounded-lg shadow-sm hover:bg-gradient-to-b hover:from-[#f5d78e] hover:to-[#eeb933] active:shadow-inner transition-all">
-                  Save Entry
-                </button>
-              </div>
-            </form>
+            <AddStockModal onClose={() => setShowAdd(false)} />
           </div>
         </div>
       )}

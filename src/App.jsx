@@ -645,15 +645,37 @@ function App() {
   }
 
   const buildSimpleInvoicePdfFile = ({ order, clientName, mobile }) => {
-    const qty = Number(order.qty) || 0
-    const rate = Number(order.rate) || 0
-    const total = qty * rate
+    const rawItems =
+      Array.isArray(order.items) && order.items.length > 0
+        ? order.items
+        : [
+            {
+              sku: order.sku || order.product || 'Anjani 200ml',
+              qty: Number(order.qty) || 0,
+              rate: Number(order.rate) || 0,
+            },
+          ]
+
+    const items = rawItems.map((it) => {
+      const skuName = it.sku || 'Anjani 200ml'
+      const unit = skuName.toLowerCase().includes('anjani') ? 'Boxes' : 'Cases'
+      const qty = Number(it.qty) || 0
+      const rate = Number(it.rate) || 0
+      return {
+        sku: skuName,
+        unit,
+        qty,
+        rate,
+        amount: qty * rate,
+        description: `${skuName} Supply`,
+      }
+    })
+
+    const grandTotal =
+      Number(order.totalAmount) || items.reduce((sum, it) => sum + it.amount, 0)
     const orderId = order.orderId || order.id || 'NA'
     const issuedAt = new Date().toLocaleString('en-IN')
     const invoiceDateTime = `${order.date || '-'} ${order.time || ''}`.trim()
-    const skuName = order.sku || order.product || 'Anjani 200ml'
-    const itemUnit = skuName.toLowerCase().includes('anjani') ? 'Boxes' : 'Cases'
-    const itemDescription = `${skuName} Supply`
     // Flatten multi-line address into a single line, cap at 80 chars
     const clientAddress = String(order.address || '')
       .replace(/[\r\n]+/g, ', ')
@@ -664,6 +686,32 @@ function App() {
       `BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${escapePdfText(text)}) Tj ET`
     const boldAt = (x, y, size, text) =>
       `BT /F2 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${escapePdfText(text)}) Tj ET`
+
+    const tableHeaderY = clientAddress ? 606 : 622
+    const rowHeight = 24
+    const itemStreamLines = []
+    let currentY = tableHeaderY
+
+    items.forEach((item, idx) => {
+      const rowY = currentY - rowHeight
+      const bg = idx % 2 === 0 ? '0.96 0.96 0.96 rg' : '1 1 1 rg'
+      itemStreamLines.push(
+        bg,
+        `40 ${rowY} 515 ${rowHeight} re f`,
+        '0.88 0.88 0.88 RG',
+        '0.5 w',
+        `40 ${rowY} 515 ${rowHeight} re S`,
+        '0 0 0 rg',
+        textAt(52, rowY + 7, 9, item.description),
+        textAt(305, rowY + 7, 9, `${item.qty} ${item.unit}`),
+        textAt(385, rowY + 7, 9, `INR ${item.rate.toLocaleString('en-IN')}`),
+        textAt(475, rowY + 7, 9, `INR ${item.amount.toLocaleString('en-IN')}`),
+      )
+      currentY = rowY
+    })
+
+    const totalBoxY = currentY - 45
+    const footerStartY = totalBoxY - 20
 
     const stream = [
       'q',
@@ -712,61 +760,55 @@ function App() {
 
       // ── ITEM TABLE HEADER ─────────────────────────────────────────────
       '0.15 0.15 0.15 rg',
-      `40 ${clientAddress ? 606 : 622} 515 20 re f`,
+      `40 ${tableHeaderY} 515 20 re f`,
       '1 1 1 rg',
-      textAt(52, clientAddress ? 612 : 628, 9, 'Description'),
-      textAt(305, clientAddress ? 612 : 628, 9, 'Qty'),
-      textAt(385, clientAddress ? 612 : 628, 9, 'Rate'),
-      textAt(475, clientAddress ? 612 : 628, 9, 'Amount'),
+      textAt(52, tableHeaderY + 6, 9, 'Description'),
+      textAt(305, tableHeaderY + 6, 9, 'Qty'),
+      textAt(385, tableHeaderY + 6, 9, 'Rate'),
+      textAt(475, tableHeaderY + 6, 9, 'Amount'),
 
-      // ── ITEM ROW ──────────────────────────────────────────────────────
-      '0.96 0.96 0.96 rg',
-      `40 ${clientAddress ? 574 : 590} 515 30 re f`,
-      '0 0 0 rg',
-      textAt(52, clientAddress ? 586 : 602, 10, itemDescription),
-      textAt(305, clientAddress ? 586 : 602, 10, `${qty} ${itemUnit}`),
-      textAt(385, clientAddress ? 586 : 602, 10, `INR ${rate.toLocaleString('en-IN')}`),
-      textAt(475, clientAddress ? 586 : 602, 10, `INR ${total.toLocaleString('en-IN')}`),
+      // ── ITEM ROWS ─────────────────────────────────────────────────────
+      ...itemStreamLines,
 
       // ── TOTAL ─────────────────────────────────────────────────────────
       '0.92 0.92 0.92 rg',
-      `350 ${clientAddress ? 528 : 544} 205 40 re f`,
+      `350 ${totalBoxY} 205 36 re f`,
       '0.75 0.75 0.75 RG',
       '1 w',
-      `350 ${clientAddress ? 528 : 544} 205 40 re S`,
+      `350 ${totalBoxY} 205 36 re S`,
       '0 0 0 rg',
-      textAt(362, clientAddress ? 551 : 567, 10, 'Total'),
-      boldAt(440, clientAddress ? 551 : 567, 12, `INR ${total.toLocaleString('en-IN')}`),
+      textAt(362, totalBoxY + 13, 10, 'Total'),
+      boldAt(440, totalBoxY + 13, 12, `INR ${grandTotal.toLocaleString('en-IN')}`),
 
       // ── FOOTER ────────────────────────────────────────────────────────
       '0.7 0.7 0.7 RG',
       '1 w',
-      `40 ${clientAddress ? 508 : 524} m 555 ${clientAddress ? 508 : 524} l S`,
+      `40 ${footerStartY} m 555 ${footerStartY} l S`,
 
       // Notes
       '0.4 0.4 0.4 rg',
-      boldAt(40, clientAddress ? 495 : 511, 9, 'Notes'),
+      boldAt(40, footerStartY - 13, 9, 'Notes'),
       '0 0 0 rg',
-      textAt(40, clientAddress ? 481 : 497, 9, 'Thanks for your business.'),
+      textAt(40, footerStartY - 27, 9, 'Thanks for your business.'),
 
       // Bank details
       '0.8 0.8 0.8 RG',
       '0.5 w',
-      `40 ${clientAddress ? 468 : 484} m 555 ${clientAddress ? 468 : 484} l S`,
+      `40 ${footerStartY - 40} m 555 ${footerStartY - 40} l S`,
       '0.4 0.4 0.4 rg',
-      boldAt(40, clientAddress ? 455 : 471, 9, "Company's Bank Details"),
+      boldAt(40, footerStartY - 53, 9, "Company's Bank Details"),
       '0 0 0 rg',
-      textAt(40, clientAddress ? 441 : 457, 9, 'Bank Name: Kotak Mahindra Bank'),
-      textAt(40, clientAddress ? 427 : 443, 9, 'Account Holder: Annapurna Foods'),
-      textAt(40, clientAddress ? 413 : 429, 9, 'IFSC Code: KKBK0002748'),
-      textAt(40, clientAddress ? 399 : 415, 9, 'Account Number: 1712426768'),
+      textAt(40, footerStartY - 67, 9, 'Bank Name: Kotak Mahindra Bank'),
+      textAt(40, footerStartY - 81, 9, 'Account Holder: Annapurna Foods'),
+      textAt(40, footerStartY - 95, 9, 'IFSC Code: KKBK0002748'),
+      textAt(40, footerStartY - 109, 9, 'Account Number: 1712426768'),
 
       // Contact
       '0.8 0.8 0.8 RG',
       '0.5 w',
-      `40 ${clientAddress ? 387 : 403} m 555 ${clientAddress ? 387 : 403} l S`,
+      `40 ${footerStartY - 121} m 555 ${footerStartY - 121} l S`,
       '0 0 0 rg',
-      textAt(40, clientAddress ? 374 : 390, 9, 'Contact Number: 9925997750'),
+      textAt(40, footerStartY - 134, 9, 'Contact Number: 9925997750'),
 
       'Q',
     ].join('\n')
@@ -799,7 +841,8 @@ function App() {
 
   const handleRecordPaymentFromOrder = (order) => {
     const client = clients.find((c) => c.id === order.clientId)
-    const amount = (Number(order.qty) || 0) * (Number(order.rate) || 0)
+    const amount =
+      Number(order.totalAmount) || (Number(order.qty) || 0) * (Number(order.rate) || 0)
     const now = new Date()
     const date = now.toISOString().slice(0, 10)
     const time = now.toLocaleTimeString('en-GB', {
@@ -821,7 +864,9 @@ function App() {
     const client = clients.find((c) => c.id === order.clientId)
     const clientName = client?.name || order.clientName || order.customerName || 'Unknown Client'
     const mobile = client?.mobile || order.mobile || order.phone || ''
-    const amount = ((Number(order.qty) || 0) * (Number(order.rate) || 0)).toLocaleString('en-IN')
+    const amountVal =
+      Number(order.totalAmount) || (Number(order.qty) || 0) * (Number(order.rate) || 0)
+    const amount = amountVal.toLocaleString('en-IN')
     const pdfFile = buildSimpleInvoicePdfFile({ order, clientName, mobile })
     const invoiceTitle = `Invoice ${order.orderId || order.id || ''}`
     const msg = `${invoiceTitle}\nClient: ${clientName}\nAmount: Rs.${amount}`

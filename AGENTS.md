@@ -25,7 +25,12 @@ All water products are defined centrally in `src/constants/skus.js`:
 ## Pricing Model & Per-SKU Rates
 1. **Client Default Rate:** Stored in `customer.rate` (number).
 2. **Client Per-SKU Rates:** Stored in `customer.skuRates = { [skuName]: number }`. Configured in `src/components/AddClient.jsx` under the expandable "SKU-Specific Rates" section.
-3. **Order Creation / Autofill:** In `src/components/OrderModal.jsx`, switching SKUs automatically autofills the rate using `client.skuRates?.[targetSku]`, falling back to `client.rate` if no custom rate is set.
+3. **Multi-SKU Line Items (Zoho Books Pattern):**
+   - In `src/components/OrderModal.jsx`, an order can contain multiple line items (`items: [{ sku, qty, rate }]`).
+   - Selecting a client and SKU automatically fills the rate from `client.skuRates?.[targetSku] || client.rate`.
+   - Lines can be added dynamically with "+ Add Item" and deleted with trash icon.
+   - Live subtotal per row, total quantity, and grand total amount are calculated and persisted.
+   - Backward compatible: legacy orders without `items` are automatically normalized into a 1-element `items` array with top-level `qty`, `rate`, and `sku` preserved.
 
 ---
 
@@ -40,23 +45,34 @@ All water products are defined centrally in `src/constants/skus.js`:
 3. **WhatsApp Pre-filled Delivery Message:**
    - In `OrdersDashboard.jsx` -> `shareOrder(order)`, clicking the green message/share button generates a prefilled message containing:
      - Order ID, Client Name, Mobile
-     - Item / SKU name and Quantity (Boxes/Cases)
+     - Bulleted list of every item: `• {qty} {unit} — *{sku}*`
+     - Total Quantity and Total Amount
      - Delivery Date & Time
      - Full Address
      - Direct Google Maps navigation URL (`*Map Link:* https://maps.google.com/?api=1&query=...`)
 
 ---
 
-## Stock Ledger & Dispatches
+## Stock Ledger & Dispatches (Multi-SKU & Batch Inward)
 - Stock collection: `collection(db, 'stock')`.
 - Each stock movement document stores `{ qty, narration, type, sku, createdAt }`.
-- When an order is marked `Delivered` in `clientStore.js`, stock is debited using the exact `order.sku || 'Anjani 200ml'`.
-- `StockDashboard.jsx` and `AddStockModal.jsx` provide SKU filtering and SKU selection for incoming stock additions.
+- **Delivered Order Dispatch:**
+  - When an order is marked `Delivered` in `clientStore.js`, stock is debited individually for each SKU in `order.items` (or fallback top-level `order.sku`).
+  - Deleting a delivered order reverses each line-item's debit individually.
+- **Factory Batch Stock Inward (`AddStockModal.jsx`):**
+  - Allows receiving plant shipments across all 5 SKUs in a single entry (`addStockBatch(entries, defaultNarration)`).
+  - Also supports single-SKU manual inward (+) and wastage/outward (-) adjustments.
+  - Automatically syncs total quantity aggregate in `meta/stockSummary`.
+- `StockDashboard.jsx` includes full SKU filtering and integrates `AddStockModal`.
 
 ---
 
 ## PDF Invoices (`src/App.jsx`)
-- PDF invoice generator `buildSimpleInvoicePdfFile()` generates the invoice title and row description dynamically based on `order.sku` (e.g. `Bailey 1 Liter Supply - 10 Cases`).
+- PDF invoice generator `buildSimpleInvoicePdfFile()` generates itemized multi-row PDF invoices matching Zoho Books format:
+  - Header with Annapurna Foods business details & GSTIN.
+  - Dynamic table rows for each SKU item with Description, Qty (Boxes/Cases), Rate, and Row Amount.
+  - Subtotal and Grand Total bar.
+  - Kotak Mahindra Bank transfer details and contact information.
 
 ---
 
