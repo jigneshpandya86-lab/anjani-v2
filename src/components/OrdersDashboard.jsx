@@ -71,15 +71,21 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
 
   const getDisplayAddress = useCallback(
     (order) => {
-      if (order.address && order.address.trim() !== '') {
-        return order.address
-      }
+      const direct = String(order.address || order.deliveryAddress || '').trim()
+      if (direct) return direct
+
       if (order.clientId) {
-        const c = clients.find((c) => c.id === order.clientId)
-        if (c && c.address && c.address.trim() !== '') {
-          return c.address
-        }
+        const c = clients.find((client) => client.id === order.clientId)
+        const clientAddr = String(c?.address || c?.deliveryAddress || '').trim()
+        if (clientAddr) return clientAddr
+
+        const clientLoc = String(c?.location || c?.locationName || c?.googleLocation || '').trim()
+        if (clientLoc) return clientLoc
       }
+
+      const fallbackLoc = String(order.location || order.area || '').trim()
+      if (fallbackLoc) return fallbackLoc
+
       return ''
     },
     [clients],
@@ -198,20 +204,35 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
   const shareOrder = useCallback(
     (order) => {
       const skuLabel = order.sku || DEFAULT_SKU
-      const msg = `🚚 *NEW DELIVERY ASSIGNMENT*\n\n*ID:* ${order.orderId || 'N/A'}\n*Client:* ${getDisplayName(order)}\n*Mobile:* ${getDisplayMobile(order)}\n*Item / SKU:* ${skuLabel}\n*Qty:* ${order.qty || 0} Boxes/Cases\n*Date:* ${order.date || 'TBD'} at ${order.time || 'TBD'}\n\n*Address:*\n${order.address || 'N/A'}\n\n*Location:* ${order.location || 'N/A'}`
+      const address = getDisplayAddress(order)
+      const mapsUrl = getMapsUrl(order)
+      const clientObj = order.clientId ? clients.find((c) => c.id === order.clientId) : null
+      const location = String(order.location || clientObj?.location || '').trim()
+
+      let addressSection = `*Address:*\n${address || 'Address not available'}`
+      if (location && location !== address) {
+        addressSection += `\n*Location / Area:* ${location}`
+      }
+      if (mapsUrl) {
+        addressSection += `\n*Map Link:* ${mapsUrl}`
+      }
+
+      const msg = `🚚 *NEW DELIVERY ASSIGNMENT*\n\n*ID:* ${order.orderId || 'N/A'}\n*Client:* ${getDisplayName(order)}\n*Mobile:* ${getDisplayMobile(order)}\n*Item / SKU:* ${skuLabel}\n*Qty:* ${order.qty || 0} Boxes/Cases\n*Date:* ${order.date || 'TBD'} at ${order.time || 'TBD'}\n\n${addressSection}`
       window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
     },
-    [getDisplayName, getDisplayMobile],
+    [getDisplayName, getDisplayMobile, getDisplayAddress, getMapsUrl, clients],
   )
 
   const shareDispatchPlan = useCallback(() => {
     const pending = orders.filter((o) => o.status !== 'Delivered')
     let msg = `📋 *UPCOMING DISPATCH PLAN*\n\n`
     pending.forEach((o, i) => {
-      msg += `${i + 1}. ${getDisplayName(o)} - ${o.qty} Bxs (${o.sku || '200ml'}) - ${o.date} ${o.time}\n`
+      const addr = getDisplayAddress(o)
+      const addrStr = addr ? ` | ${addr}` : ''
+      msg += `${i + 1}. ${getDisplayName(o)} - ${o.qty} Bxs (${o.sku || '200ml'}) - ${o.date} ${o.time}${addrStr}\n`
     })
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
-  }, [orders, getDisplayName])
+  }, [orders, getDisplayName, getDisplayAddress])
 
   const callClient = useCallback(
     (order) => {
