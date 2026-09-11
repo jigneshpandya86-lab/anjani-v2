@@ -3,6 +3,7 @@ import { useClientStore } from '../store/clientStore'
 import { Package, Clock, IndianRupee, Image as ImageIcon, MapPinned } from 'lucide-react'
 import toast from 'react-hot-toast'
 import GoogleMapPicker from './GoogleMapPicker'
+import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 
 export default function OrderModal({ orderToEdit, onClose }) {
   const clients = useClientStore((state) => state.clients)
@@ -19,6 +20,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
     const localTime = `${hh}:${min}`
     return {
       clientId: '',
+      sku: DEFAULT_SKU,
       qty: '',
       rate: '',
       date: localDate,
@@ -47,6 +49,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
       // Map old legacy fields directly into the new inputs
       setFormData({
         clientId: orderToEdit.clientId || orderToEdit.customerId || '',
+        sku: orderToEdit.sku || orderToEdit.product || DEFAULT_SKU,
         qty: orderToEdit.qty || orderToEdit.quantity || orderToEdit.boxes || '',
         rate: orderToEdit.rate || orderToEdit.price || orderToEdit.amount || '',
         date: orderToEdit.date || orderToEdit.deliveryDate || orderToEdit.orderDate || localDate,
@@ -66,6 +69,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
     } else {
       setFormData({
         clientId: '',
+        sku: DEFAULT_SKU,
         qty: '',
         rate: '',
         date: localDate,
@@ -89,7 +93,9 @@ export default function OrderModal({ orderToEdit, onClose }) {
       const next = { ...prev }
       let changed = false
 
-      const nextRate = Number(selectedClient.rate) || 0
+      const currentSku = prev.sku || DEFAULT_SKU
+      const customSkuRate = selectedClient.skuRates?.[currentSku]
+      const nextRate = Number(customSkuRate ?? selectedClient.rate) || 0
       if ((prev.rate === '' || Number(prev.rate) <= 0) && nextRate) {
         next.rate = String(nextRate)
         changed = true
@@ -133,6 +139,19 @@ export default function OrderModal({ orderToEdit, onClose }) {
     })
   }, [clients, formData.clientId])
 
+  const handleSkuChange = (newSku) => {
+    setFormData((prev) => {
+      const selectedClient = clients.find((client) => client.id === prev.clientId)
+      const customSkuRate = selectedClient?.skuRates?.[newSku]
+      const nextRate = customSkuRate ? String(customSkuRate) : prev.rate
+      return {
+        ...prev,
+        sku: newSku,
+        rate: nextRate,
+      }
+    })
+  }
+
   const handleLocationChange = ({ lat, lng, address, mapLink }) => {
     setFormData((prev) => ({
       ...prev,
@@ -149,6 +168,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
     try {
       const payload = {
         ...formData,
+        sku: formData.sku || DEFAULT_SKU,
         address: String(formData.address || '').trim(),
         location: String(formData.location || '').trim(),
         mapLink: String(formData.mapLink || '').trim(),
@@ -177,18 +197,61 @@ export default function OrderModal({ orderToEdit, onClose }) {
     }
   }
 
+  const currentSkuMeta = getSkuMeta(formData.sku)
   const total = (Number(formData.qty) || 0) * (Number(formData.rate) || 0)
 
   return (
     <div className="space-y-4">
-      <div className="text-center mb-6">
+      <div className="text-center mb-4">
         <h2 className="text-xl font-black uppercase text-gray-800 tracking-tight">
           {orderToEdit?.id ? 'Edit Order' : 'New Order'}
         </h2>
-        <p className="text-xs text-gray-400 font-bold">200ML BOTTLE SKU</p>
+        <div className="inline-flex items-center gap-1.5 mt-1 px-2.5 py-0.5 rounded-full text-xs font-bold border border-blue-200 bg-blue-50 text-blue-800">
+          <span>{formData.sku || DEFAULT_SKU}</span>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* SKU Selector */}
+        <div>
+          <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 block mb-1.5">
+            Select Water Brand & SKU
+          </span>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {WATER_SKUS.map((item) => {
+              const isSelected = (formData.sku || DEFAULT_SKU) === item.label
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleSkuChange(item.label)}
+                  className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                    isSelected
+                      ? 'border-[#ff9900] bg-orange-50/80 shadow-xs ring-2 ring-[#ff9900]'
+                      : 'border-gray-200 bg-gray-50 hover:bg-white text-gray-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span
+                      className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
+                        item.brand === 'Bailey'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          : 'bg-blue-100 text-blue-800 border border-blue-200'
+                      }`}
+                    >
+                      {item.brand}
+                    </span>
+                    <span className="text-[10px] font-bold text-gray-400">{item.shortLabel}</span>
+                  </div>
+                  <div className="mt-1 font-black text-xs text-gray-900 leading-tight">
+                    {item.label}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
         <div>
           <label
             htmlFor="client-select"
@@ -218,7 +281,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
               htmlFor="qty-input"
               className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1"
             >
-              Quantity (Boxes)
+              Quantity ({currentSkuMeta.unit})
             </label>
             <div className="relative">
               <Package className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
@@ -237,7 +300,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
               htmlFor="rate-input"
               className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1"
             >
-              Rate / Box (₹)
+              Rate / {currentSkuMeta.unit.includes('Box') ? 'Box' : 'Unit'} (₹)
             </label>
             <div className="relative">
               <IndianRupee className="absolute left-3 top-3 w-4 h-4 text-gray-400" />

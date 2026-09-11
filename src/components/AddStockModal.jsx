@@ -3,8 +3,10 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase-config'
 import { PackagePlus, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 
 export default function AddStockModal({ onClose }) {
+  const [sku, setSku] = useState(DEFAULT_SKU)
   const [qty, setQty] = useState('')
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
@@ -17,8 +19,9 @@ export default function AddStockModal({ onClose }) {
     try {
       await addDoc(collection(db, 'stock'), {
         qty: Number(qty),
+        sku: sku || DEFAULT_SKU,
         type: 'addition',
-        narration: note || 'Manual Addition',
+        narration: note ? `${note} (${sku})` : `Manual Addition (${sku})`,
         date: serverTimestamp(),
       })
       toast.success('Stock added successfully')
@@ -29,6 +32,8 @@ export default function AddStockModal({ onClose }) {
       setLoading(false)
     }
   }
+
+  const currentSkuMeta = getSkuMeta(sku)
 
   return (
     <div className="space-y-6">
@@ -42,10 +47,31 @@ export default function AddStockModal({ onClose }) {
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
           <label
+            htmlFor="sku-select"
+            className="block text-xs font-bold text-gray-500 uppercase mb-2"
+          >
+            Product / Water SKU
+          </label>
+          <select
+            id="sku-select"
+            value={sku}
+            onChange={(e) => setSku(e.target.value)}
+            className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:ring-2 focus:ring-[#ff9900] outline-none"
+          >
+            {WATER_SKUS.map((s) => (
+              <option key={s.id} value={s.label}>
+                {s.label} ({s.unit})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label
             htmlFor="qty-input"
             className="block text-xs font-bold text-gray-500 uppercase mb-2"
           >
-            Quantity (Boxes)
+            Quantity ({currentSkuMeta.unit})
           </label>
           <div className="relative">
             <PackagePlus className="absolute left-3 top-3.5 w-5 h-5 text-gray-400" />

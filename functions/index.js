@@ -209,6 +209,7 @@ async function resolveOrderContext(orderDataOrId, clientIdOverride = null) {
     orderId: orderId || 'N/A',
     name: orderData.clientName || orderData.name || orderData.customer || clientData?.name || 'N/A',
     mobile: orderData.mobile || orderData.phone || clientData?.mobile || clientData?.phone || 'N/A',
+    sku: orderData.sku || orderData.product || 'Anjani 200ml',
     qty: orderData.qty || orderData.quantity || orderData.boxes || 'N/A',
     date: orderData.date || orderData.deliveryDate || orderData.orderDate || 'N/A',
     time: orderData.time || orderData.deliveryTime || 'N/A',
@@ -247,6 +248,8 @@ exports.sendOrderSmsToStaff = onDocumentWritten('orders/{docId}', async (event) 
   const importantFields = [
     'clientName',
     'name',
+    'sku',
+    'product',
     'qty',
     'quantity',
     'date',
@@ -337,6 +340,7 @@ exports.sendOrderSmsToStaff = onDocumentWritten('orders/{docId}', async (event) 
   // Sanitize all resolved fields for safe SMS construction
   const sName = sanitizeSmsField(resolved.name)
   const sMobile = sanitizeSmsField(resolved.mobile)
+  const sSku = sanitizeSmsField(resolved.sku || 'Anjani 200ml')
   const sQty = sanitizeSmsField(resolved.qty)
   const sDate = sanitizeSmsField(resolved.date)
   const sTime = sanitizeSmsField(resolved.time)
@@ -347,6 +351,7 @@ exports.sendOrderSmsToStaff = onDocumentWritten('orders/{docId}', async (event) 
   const message = `${statusHeader} Details:
 Client: ${sName}
 Mobile: ${sMobile}
+SKU: ${sSku}
 Qty: ${sQty}
 Date: ${sDate}
 Time: ${sTime}
@@ -354,7 +359,7 @@ Address: ${sAddress}
 Location: ${sLocation}
 MapLink: ${sMapLink}`
 
-  const pushMessage = `${statusHeader}: ${sQty} for ${sName} at ${sTime} (${sDate}).`
+  const pushMessage = `${statusHeader}: ${sQty} ${sSku} for ${sName} at ${sTime} (${sDate}).`
 
   logger.info(`Constructed Staff message for ${event.params.docId}: ${message}`)
 
@@ -417,9 +422,11 @@ exports.sendOrderReminder = async function sendOrderReminder(doc, type, skipPush
     return
   }
 
+  const sSku = sanitizeSmsField(resolved.sku || 'Anjani 200ml')
   const message = `DELIVERY REMINDER (${type}):
 Client: ${resolved.name}
 Mobile: ${resolved.mobile}
+SKU: ${sSku}
 Qty: ${resolved.qty}
 Date: ${resolved.date}
 Time: ${resolved.time}

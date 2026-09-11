@@ -181,7 +181,7 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
   // ── Handlers (stable references via useCallback) ────────────────────────
 
   const sendWhatsApp = useCallback((lead) => {
-    const msg = `Hello! 🌟 I'm *Jignesh Pandya*, owner of *Anjani Water*, Vadodara. 💧\n\nWe provide **200ml premium packaged water** across all areas of Vadodara, Gujarat. ✨\n\n*Why choose Anjani Water?*\n✅ **Zero Waste**: Perfect 200ml size for events & offices.\n✅ **Premium Quality**: 100% pure, hygienic & crystal clear.\n✅ **Best Rates & Free Delivery**: Direct from plant to your doorstep.\n\nWould you like to try a free sample? Please *reply with 1* if you want to try the sample! 👍`
+    const msg = `Hello! 🌟 I'm *Jignesh Pandya*, owner of *Annapurna Foods* (Authorized Distributorship for *Anjani & Bailey Water*, Vadodara). 💧\n\nWe provide **Anjani 200ml** as well as **Bailey Packaged Drinking Water (250ml, 500ml, 1 Liter & 2 Liter)** across all areas of Vadodara, Gujarat. ✨\n\n*Why choose us?*\n✅ **Full SKU Range**: Anjani 200ml + Bailey 250ml, 500ml, 1L, 2L for offices, restaurants & events.\n✅ **Certified Pure Quality**: 100% pure, sealed & hygienic.\n✅ **Best Bulk Rates & Fast Delivery**: Direct doorstep delivery.\n\nWould you like to try a free sample or get a bulk quote? Please *reply with 1*! 👍`
     window.open(`https://wa.me/91${lead.mobile}?text=${encodeURIComponent(msg)}`, '_blank')
   }, [])
 

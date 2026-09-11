@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react'
 import { useClientStore } from '../store/clientStore'
-import { UserPlus, CheckCircle, MapPinned, AlertTriangle } from 'lucide-react'
+import { UserPlus, CheckCircle, MapPinned, AlertTriangle, ChevronDown, ChevronUp, Package } from 'lucide-react'
 import toast from 'react-hot-toast'
 import GoogleMapPicker from './GoogleMapPicker'
+import { WATER_SKUS } from '../constants/skus'
 
 export default function AddClient({ onDone, client }) {
   // If editing, fill in the blanks. If new, leave empty!
@@ -10,6 +11,16 @@ export default function AddClient({ onDone, client }) {
   const [phone, setPhone] = useState(client ? client.mobile : '')
   const [address, setAddress] = useState(client ? client.address : '')
   const [rate, setRate] = useState(client ? String(client.rate ?? '') : '')
+  const [skuRates, setSkuRates] = useState(() => {
+    const initial = {}
+    WATER_SKUS.forEach((s) => {
+      initial[s.name] = client?.skuRates?.[s.name] !== undefined ? String(client.skuRates[s.name]) : ''
+    })
+    return initial
+  })
+  const [showSkuRates, setShowSkuRates] = useState(() => {
+    return Boolean(client?.skuRates && Object.values(client.skuRates).some((v) => v !== undefined && v !== ''))
+  })
   const [locationAddress, setLocationAddress] = useState(
     client?.location || client?.googleLocation || client?.locationName || '',
   )
@@ -44,11 +55,23 @@ export default function AddClient({ onDone, client }) {
     setStatus('saving')
 
     try {
+      const cleanedSkuRates = {}
+      WATER_SKUS.forEach((s) => {
+        const val = skuRates[s.name]
+        if (val !== '' && !isNaN(Number(val))) {
+          cleanedSkuRates[s.name] = Number(val)
+        }
+      })
+      if (rate !== '' && cleanedSkuRates['Anjani 200ml'] === undefined) {
+        cleanedSkuRates['Anjani 200ml'] = Number(rate)
+      }
+
       const payload = {
         name,
         mobile: phone,
         address,
         rate: rate === '' ? 0 : Number(rate),
+        skuRates: cleanedSkuRates,
         location: locationAddress || mapLink || '',
         mapLink: mapLink || '',
         locationLat: Number.isFinite(Number(locationLat)) ? Number(locationLat) : null,
@@ -72,6 +95,7 @@ export default function AddClient({ onDone, client }) {
       setPhone("");
       setAddress("");
       setRate("");
+      setSkuRates(WATER_SKUS.reduce((acc, s) => ({ ...acc, [s.name]: '' }), {}));
       setLocationAddress('');
       setMapLink('');
       setLocationLat(null);
@@ -162,7 +186,7 @@ export default function AddClient({ onDone, client }) {
                     htmlFor="rate-input"
                     className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide"
                   >
-                    Rate (₹ / Box)
+                    Default Rate (₹ / Unit)
                   </label>
                   <input
                     id="rate-input"
@@ -174,6 +198,50 @@ export default function AddClient({ onDone, client }) {
                     className="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
                     placeholder="e.g. 125"
                   />
+                </div>
+
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowSkuRates(!showSkuRates)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-amz-navy hover:text-amz-orange transition-colors"
+                  >
+                    <Package className="w-3.5 h-3.5 text-amz-orange" />
+                    <span>{showSkuRates ? 'Hide SKU-Specific Rates' : 'Set SKU-Specific Rates (Bailey & Anjani)'}</span>
+                    {showSkuRates ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+
+                  {showSkuRates && (
+                    <div className="mt-2.5 p-3 bg-gray-50 border border-gray-200 rounded-lg space-y-2 text-xs">
+                      <p className="text-[11px] text-gray-500">
+                        Optional: Set specific rates per SKU for this client. If left blank, the default rate above applies.
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {WATER_SKUS.map((s) => (
+                          <div key={s.id} className="bg-white p-2 rounded border border-gray-200">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-semibold text-gray-700">{s.label}</span>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${s.brand === 'Bailey' ? 'bg-cyan-100 text-cyan-800' : 'bg-blue-100 text-blue-800'}`}>
+                                {s.brand}
+                              </span>
+                            </div>
+                            <div className="relative">
+                              <span className="absolute left-2 top-1.5 text-gray-400 font-bold text-xs">₹</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder={s.name === 'Anjani 200ml' ? (rate || '0') : 'Default'}
+                                value={skuRates[s.name] || ''}
+                                onChange={(e) => setSkuRates({ ...skuRates, [s.name]: e.target.value })}
+                                className="w-full pl-6 pr-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-amz-orange focus:border-amz-orange outline-none"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

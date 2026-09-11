@@ -651,6 +651,9 @@ function App() {
     const orderId = order.orderId || order.id || 'NA'
     const issuedAt = new Date().toLocaleString('en-IN')
     const invoiceDateTime = `${order.date || '-'} ${order.time || ''}`.trim()
+    const skuName = order.sku || order.product || 'Anjani 200ml'
+    const itemUnit = skuName.toLowerCase().includes('anjani') ? 'Boxes' : 'Cases'
+    const itemDescription = `${skuName} Supply`
     // Flatten multi-line address into a single line, cap at 80 chars
     const clientAddress = String(order.address || '')
       .replace(/[\r\n]+/g, ', ')
@@ -720,8 +723,8 @@ function App() {
       '0.96 0.96 0.96 rg',
       `40 ${clientAddress ? 574 : 590} 515 30 re f`,
       '0 0 0 rg',
-      textAt(52, clientAddress ? 586 : 602, 10, 'Water Box Supply'),
-      textAt(305, clientAddress ? 586 : 602, 10, `${qty} Boxes`),
+      textAt(52, clientAddress ? 586 : 602, 10, itemDescription),
+      textAt(305, clientAddress ? 586 : 602, 10, `${qty} ${itemUnit}`),
       textAt(385, clientAddress ? 586 : 602, 10, `INR ${rate.toLocaleString('en-IN')}`),
       textAt(475, clientAddress ? 586 : 602, 10, `INR ${total.toLocaleString('en-IN')}`),
 

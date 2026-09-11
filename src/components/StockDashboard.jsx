@@ -12,6 +12,7 @@ import {
   RefreshCw,
   FileText,
 } from 'lucide-react'
+import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 
 export default function StockDashboard({ onOpenReport }) {
   const {
@@ -26,6 +27,8 @@ export default function StockDashboard({ onOpenReport }) {
   const [showAdd, setShowAdd] = useState(false)
   const [qty, setQty] = useState('')
   const [narration, setNarration] = useState('')
+  const [skuFilter, setSkuFilter] = useState('All')
+  const [addSku, setAddSku] = useState(DEFAULT_SKU)
   const [isSyncing, setIsSyncing] = useState(false)
 
   const handleRecalculate = async () => {
@@ -107,6 +110,9 @@ export default function StockDashboard({ onOpenReport }) {
 
   // Filters ONLY the visual transaction log
   const filtered = stockEntries.filter((entry) => {
+    const entrySku = entry.sku || DEFAULT_SKU
+    if (skuFilter !== 'All' && entrySku !== skuFilter) return false
+
     if (!startDate && !endDate) return true
     const entryDate = toDateKey(entry.date || entry.createdAt)
     if (!entryDate) return false
@@ -119,9 +125,10 @@ export default function StockDashboard({ onOpenReport }) {
   const handleAdd = async (e) => {
     e.preventDefault()
     if (!qty) return
-    await addStockManual(qty, narration)
+    await addStockManual(qty, narration, addSku)
     setQty('')
     setNarration('')
+    setAddSku(DEFAULT_SKU)
     setShowAdd(false)
   }
 
@@ -129,6 +136,7 @@ export default function StockDashboard({ onOpenReport }) {
     setShowAdd(false)
     setQty('')
     setNarration('')
+    setAddSku(DEFAULT_SKU)
   }
 
   const handleDelete = async (entry) => {
@@ -211,6 +219,40 @@ export default function StockDashboard({ onOpenReport }) {
         </div>
       </div>
 
+      {/* SKU Filter Bar */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide px-0.5">
+        <span className="text-[9px] font-black uppercase text-gray-400 tracking-wider shrink-0">
+          SKU:
+        </span>
+        <button
+          type="button"
+          onClick={() => setSkuFilter('All')}
+          className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wide shrink-0 border transition-all ${
+            skuFilter === 'All'
+              ? 'bg-[#131921] text-[#ff9900] border-[#131921]'
+              : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          All SKUs
+        </button>
+        {WATER_SKUS.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => setSkuFilter(s.label)}
+            className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wide shrink-0 border transition-all ${
+              skuFilter === s.label
+                ? s.brand === 'Bailey'
+                  ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
+                  : 'bg-blue-700 text-white border-blue-700 shadow-xs'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
       {/* Ledger Entries */}
       <div className="space-y-2.5">
         <div className="flex items-center justify-between pt-2">
@@ -238,10 +280,15 @@ export default function StockDashboard({ onOpenReport }) {
                     {isIncrease ? <ArrowUpRight size={13} /> : <ArrowDownLeft size={13} />}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="truncate font-extrabold text-sm text-gray-900 leading-tight">
                         {entry.narration || entry.note || 'Adjustment'}
                       </p>
+                      <span
+                        className={`shrink-0 text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded border ${getSkuMeta(entry.sku || DEFAULT_SKU).badgeClass}`}
+                      >
+                        {entry.sku || DEFAULT_SKU}
+                      </span>
                       <span className="shrink-0 text-[9px] font-semibold text-gray-500 tracking-wide bg-gray-100 px-1.5 py-0.5 rounded-full uppercase">
                         {entry.type || 'entry'}
                       </span>

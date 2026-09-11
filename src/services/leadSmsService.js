@@ -34,11 +34,11 @@ export const sendBackgroundSms = async ({ macroUrl, phone, message }) => {
 
 export const buildInitialSmsMessage = () => {
   const waLink = BUSINESS_WHATSAPP_NUMBER ? `\nChat/Order: https://wa.me/${BUSINESS_WHATSAPP_NUMBER}` : ''
-  return `Hello! I'm Jignesh Pandya, owner of Anjani Water. We supply 200ml premium water in Vadodara. Zero waste, pure quality & direct bulk rates! Reply 1 for free sample!${waLink}`
+  return `Hello! I'm Jignesh Pandya, Annapurna Foods (Anjani & Bailey Water Distributorship, Vadodara). We supply Anjani 200ml & Bailey (250ml, 500ml, 1L, 2L) pure packaged water at direct bulk rates! Reply 1 for free sample/quote!${waLink}`
 }
 
 export const buildFollowUpSmsMessage = ({ reminderDay }) => {
-  return `Dear Sir/Madam, this is a gentle follow-up from Anjani Water, Vadodara. It's been ${reminderDay} day${reminderDay > 1 ? 's' : ''} since our last message. Can we help with your packaged water bottle requirement?`
+  return `Dear Sir/Madam, gentle follow-up from Annapurna Foods (Anjani & Bailey Water Distributorship, Vadodara). It's been ${reminderDay} day${reminderDay > 1 ? 's' : ''} since our last message. Can we help with packaged water supply (Anjani 200ml / Bailey 250ml, 500ml, 1L, 2L)?`
 }
 
 export const buildInitialSmsUpdate = ({ lead = {}, leadId, now = new Date() } = {}) => {

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage'
 import { app } from '../firebase-config'
+import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 
 function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
   const orders = useClientStore((state) => state.orders)
@@ -30,6 +31,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
   const userRole = useClientStore((state) => state.userRole)
   const [filter, setFilter] = useState('All')
   const [dateFilter, setDateFilter] = useState('All')
+  const [skuFilter, setSkuFilter] = useState('All')
   const [searchQuery, setSearchQuery] = useState('')
   const [uploadingProofOrderId, setUploadingProofOrderId] = useState('')
   const [statusUpdatingOrderId, setStatusUpdatingOrderId] = useState('')
@@ -151,14 +153,17 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
           const mobile = getDisplayMobile(o)
           const matchesStatus = filter === 'All' || o.status === filter
           const matchesDate = doesMatchDateFilter(o)
+          const matchesSku = skuFilter === 'All' || (o.sku || DEFAULT_SKU) === skuFilter
           const searchLower = searchQuery.toLowerCase()
           const qtyText = String(o.qty ?? o.boxes ?? o.quantity ?? '')
+          const skuText = String(o.sku || '').toLowerCase()
           const matchesSearch =
             name.toLowerCase().includes(searchLower) ||
             (o.orderId || '').toLowerCase().includes(searchLower) ||
             mobile.includes(searchLower) ||
-            qtyText.includes(searchLower)
-          return matchesStatus && matchesDate && matchesSearch
+            qtyText.includes(searchLower) ||
+            skuText.includes(searchLower)
+          return matchesStatus && matchesDate && matchesSku && matchesSearch
         })
         .sort((a, b) => {
           const [aPrio, aDate, aTime] = getOrderSortKey(a)
@@ -181,6 +186,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
     [
       orders,
       filter,
+      skuFilter,
       searchQuery,
       getDisplayName,
       getDisplayMobile,
@@ -191,7 +197,8 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
 
   const shareOrder = useCallback(
     (order) => {
-      const msg = `🚚 *NEW DELIVERY ASSIGNMENT*\n\n*ID:* ${order.orderId || 'N/A'}\n*Client:* ${getDisplayName(order)}\n*Mobile:* ${getDisplayMobile(order)}\n*Date:* ${order.date || 'TBD'} at ${order.time || 'TBD'}\n*Qty:* ${order.qty || 0} Boxes (200ml)\n\n*Address:*\n${order.address || 'N/A'}\n\n*Location:* ${order.location || 'N/A'}`
+      const skuLabel = order.sku || DEFAULT_SKU
+      const msg = `🚚 *NEW DELIVERY ASSIGNMENT*\n\n*ID:* ${order.orderId || 'N/A'}\n*Client:* ${getDisplayName(order)}\n*Mobile:* ${getDisplayMobile(order)}\n*Item / SKU:* ${skuLabel}\n*Qty:* ${order.qty || 0} Boxes/Cases\n*Date:* ${order.date || 'TBD'} at ${order.time || 'TBD'}\n\n*Address:*\n${order.address || 'N/A'}\n\n*Location:* ${order.location || 'N/A'}`
       window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
     },
     [getDisplayName, getDisplayMobile],
@@ -201,7 +208,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
     const pending = orders.filter((o) => o.status !== 'Delivered')
     let msg = `📋 *UPCOMING DISPATCH PLAN*\n\n`
     pending.forEach((o, i) => {
-      msg += `${i + 1}. ${getDisplayName(o)} - ${o.qty} Bxs - ${o.date} ${o.time}\n`
+      msg += `${i + 1}. ${getDisplayName(o)} - ${o.qty} Bxs (${o.sku || '200ml'}) - ${o.date} ${o.time}\n`
     })
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
   }, [orders, getDisplayName])
@@ -351,6 +358,40 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
         </button>
       </div>
 
+      {/* SKU Filter Bar */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-hide px-1">
+        <span className="text-[9px] font-black uppercase text-gray-400 tracking-wider shrink-0">
+          SKU:
+        </span>
+        <button
+          type="button"
+          onClick={() => setSkuFilter('All')}
+          className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wide shrink-0 border transition-all ${
+            skuFilter === 'All'
+              ? 'bg-[#131921] text-[#ff9900] border-[#131921]'
+              : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          All SKUs
+        </button>
+        {WATER_SKUS.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => setSkuFilter(s.label)}
+            className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wide shrink-0 border transition-all ${
+              skuFilter === s.label
+                ? s.brand === 'Bailey'
+                  ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
+                  : 'bg-blue-700 text-white border-blue-700 shadow-xs'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
       {filteredOrders.length === 0 ? (
         <div className="bg-white p-12 rounded-3xl text-center border-2 border-dashed border-gray-100 text-gray-400 font-bold italic">
           No orders found.
@@ -363,18 +404,32 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
           >
             <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-3">
               <div>
-                <span
-                  className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${getStatusColor(order.status)}`}
-                >
-                  {order.status || 'LEGACY'}
-                </span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span
+                    className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${getStatusColor(order.status)}`}
+                  >
+                    {order.status || 'LEGACY'}
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border ${
+                      (order.sku || '').includes('Bailey')
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                        : 'border-blue-200 bg-blue-50 text-blue-800'
+                    }`}
+                  >
+                    {order.sku || DEFAULT_SKU}
+                  </span>
+                </div>
                 <h3 className="font-black text-gray-900 text-lg mt-2 leading-none">
                   {getDisplayName(order)}
                 </h3>
               </div>
               <div className="text-right">
                 <p className="text-xl font-black text-[#ff9900]">
-                  {order.qty || 0} <span className="text-[10px] text-gray-400">BXS</span>
+                  {order.qty || 0}{' '}
+                  <span className="text-[10px] text-gray-400 font-bold">
+                    {getSkuMeta(order.sku).shortLabel}
+                  </span>
                 </p>
                 <p className="text-[10px] text-gray-400 font-bold mt-1 tracking-tighter">
                   ₹{((order.qty || 0) * (order.rate || 0)).toLocaleString()}

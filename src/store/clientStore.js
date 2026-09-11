@@ -168,6 +168,7 @@ export const useClientStore = create((set, get) => ({
             ...raw,
             narration: raw.narration || raw.note || '',
             qty: Number(raw.qty || raw.boxes || raw.quantity) || 0,
+            sku: raw.sku || 'Anjani 200ml',
             rate: Number(raw.rate) || 0,
             date: raw.date || raw.createdAt,
             type: raw.type || 'entry',
@@ -239,11 +240,12 @@ export const useClientStore = create((set, get) => ({
     }
   },
 
-  addStockManual: async (qty, narration) => {
+  addStockManual: async (qty, narration, sku = 'Anjani 200ml') => {
     const parsedQty = Number(qty) || 0
     await addDoc(collection(db, 'stock'), {
       qty: parsedQty,
-      narration: narration || 'Manual Addition',
+      sku: sku || 'Anjani 200ml',
+      narration: narration || `Manual Addition (${sku || 'Anjani 200ml'})`,
       type: 'addition',
       date: serverTimestamp(),
       createdAt: serverTimestamp(),
@@ -317,6 +319,7 @@ export const useClientStore = create((set, get) => ({
       mobile: data.phone,
       address: data.address,
       rate: Number(data.rate) || 0,
+      skuRates: data.skuRates || {},
       location: String(data.location || data.mapLink || '').trim(),
       mapLink: String(data.mapLink || '').trim(),
       locationLat: Number.isFinite(Number(data.locationLat)) ? Number(data.locationLat) : null,
@@ -324,6 +327,7 @@ export const useClientStore = create((set, get) => ({
       active: true,
       outstanding: 0,
       isRegular: data.isRegular || false,
+      isDefaulter: data.isDefaulter || false,
       createdAt: serverTimestamp()
     });
     await updateDoc(docRef, {
@@ -456,6 +460,7 @@ export const useClientStore = create((set, get) => ({
         return {
           ...raw,
           qty,
+          sku: raw.sku || raw.product || 'Anjani 200ml',
           rate: Number(raw.rate) || 0,
           date: raw.date || raw.deliveryDate || raw.orderDate || '',
           time: raw.time || raw.deliveryTime || '',
@@ -533,6 +538,7 @@ export const useClientStore = create((set, get) => ({
       // 1. Debit stock
       const stockDocRef = await addDoc(collection(db, 'stock'), {
         qty: stockDelta,
+        sku: existing.sku || 'Anjani 200ml',
         narration: deliveredNarration,
         type: 'dispatch',
         date: serverTimestamp(),
