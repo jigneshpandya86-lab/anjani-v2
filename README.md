@@ -130,6 +130,12 @@ This repo includes `.github/workflows/random-fcm-notification.yml` to send an FC
 
 If you use `FCM_TARGET_TOKEN`, your Android app must fetch and log/send its FCM registration token to your backend/admin so you can store it as a GitHub secret.
 
+## Product SKUs & Distributorship
+Annapurna Foods distributes both **Anjani Water** and **Bailey Water** across Vadodara:
+- **Anjani 200ml** (default)
+- **Bailey 250ml**, **500ml**, **1 Liter**, and **2 Liter**
+Full developer documentation and memory specification are maintained in [`AGENTS.md`](./AGENTS.md).
+
 ---
-_Last deployment verification: July 3, 2026_
+_Last deployment verification: September 11, 2026_
 
