@@ -1891,11 +1891,11 @@ function App() {
       {/* Edit Client Modal */}
       {editClient !== null && (
         <div
-          className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4"
+          className="fixed inset-0 bg-black/50 z-[1000] flex items-center justify-center p-3 sm:p-4"
           onClick={() => setEditClient(null)}
         >
           <div
-            className="bg-white rounded-2xl w-full max-w-lg p-0 overflow-hidden"
+            className="bg-white rounded-2xl w-full max-w-lg max-h-[92dvh] sm:max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <AddClient client={editClient} onDone={() => setEditClient(null)} />
@@ -1906,11 +1906,11 @@ function App() {
       {/* Add Client Modal */}
       {addClientOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4"
+          className="fixed inset-0 bg-black/50 z-[1000] flex items-center justify-center p-3 sm:p-4"
           onClick={() => setAddClientOpen(false)}
         >
           <div
-            className="bg-white rounded-2xl w-full max-w-lg p-0 overflow-hidden"
+            className="bg-white rounded-2xl w-full max-w-lg max-h-[92dvh] sm:max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <AddClient onDone={() => setAddClientOpen(false)} />

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useClientStore } from '../store/clientStore'
-import { UserPlus, CheckCircle, MapPinned, AlertTriangle, ChevronDown, ChevronUp, Package } from 'lucide-react'
+import { UserPlus, CheckCircle, MapPinned, ChevronDown, ChevronUp, Package, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import GoogleMapPicker from './GoogleMapPicker'
 import { WATER_SKUS } from '../constants/skus'
@@ -111,13 +111,30 @@ export default function AddClient({ onDone, client }) {
   }
 
   return (
-    <div className="bg-white rounded-xl w-full">
-      <div className="bg-amz-navy text-white p-4 rounded-t-xl flex items-center gap-2">
-        <UserPlus className="text-amz-orange" />
-        <h2 className="font-bold text-lg">{client ? "Edit Client" : "Add New Client"}</h2>
+    <div className="bg-white rounded-2xl w-full flex flex-col max-h-full overflow-hidden">
+      <div className="bg-amz-navy text-white px-4 py-3.5 sm:px-5 sm:py-4 rounded-t-2xl flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
+            <UserPlus className="text-amz-orange w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="font-bold text-base sm:text-lg leading-tight">{client ? "Edit Client" : "Add New Client"}</h2>
+            <p className="text-[11px] text-gray-300">Enter client details and delivery rates</p>
+          </div>
+        </div>
+        {onDone && (
+          <button
+            type="button"
+            onClick={onDone}
+            className="p-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
+            aria-label="Close client form"
+          >
+            <X size={20} />
+          </button>
+        )}
       </div>
 
-      <div className="p-5">
+      <div className="p-4 sm:p-5 overflow-y-auto overscroll-contain flex-1">
         {status === 'success' ? (
           <div className="bg-green-50 text-green-700 p-4 rounded-lg flex items-center gap-3 border border-green-200 animate-pulse">
             <CheckCircle className="w-6 h-6" />
@@ -125,7 +142,7 @@ export default function AddClient({ onDone, client }) {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
               {/* Left Column */}
               <div className="space-y-4">
                 <div>
@@ -140,7 +157,7 @@ export default function AddClient({ onDone, client }) {
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-base sm:text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
                     placeholder="e.g. Rahul Sharma"
                   />
                 </div>
@@ -158,7 +175,7 @@ export default function AddClient({ onDone, client }) {
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-base sm:text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
                     placeholder="10-digit mobile number"
                   />
                 </div>
@@ -176,7 +193,7 @@ export default function AddClient({ onDone, client }) {
                     rows="2"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
-                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-base sm:text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
                     placeholder="Full delivery address..."
                   />
                 </div>
@@ -195,7 +212,7 @@ export default function AddClient({ onDone, client }) {
                     step="0.01"
                     value={rate}
                     onChange={(e) => setRate(e.target.value)}
-                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-base sm:text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
                     placeholder="e.g. 125"
                   />
                 </div>
@@ -261,7 +278,7 @@ export default function AddClient({ onDone, client }) {
                       type="text"
                       value={locationAddress}
                       onChange={(e) => setLocationAddress(e.target.value)}
-                      className="w-full p-2.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
+                      className="w-full p-2.5 border border-gray-300 rounded-lg text-base sm:text-xs focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
                       placeholder="Location name/address from map"
                     />
                     <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 justify-center">
