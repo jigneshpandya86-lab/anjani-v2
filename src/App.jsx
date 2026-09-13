@@ -50,6 +50,13 @@ import DefaulterReminderSettings from './components/DefaulterReminderSettings'
 import IntelligenceDashboard from './components/IntelligenceDashboard'
 import CelebrationsTab from './components/CelebrationsTab'
 import ExpensesDashboard from './components/ExpensesDashboard'
+import {
+  jpegDataUrlToHex,
+  buildVectorQrStream,
+  buildUpiPayload,
+  DEFAULT_UPI_ID,
+  DEFAULT_PAYEE_NAME,
+} from './utils/qrHelper'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
@@ -85,6 +92,7 @@ function App() {
     fetchOrders,
     fetchStock,
     fetchStockTotal,
+    fetchPaymentSettings,
     orders,
     clients,
     userRole,
@@ -292,6 +300,7 @@ function App() {
 
     const unsubOrders = fetchOrders()
     let unsubClients, unsubStock, unsubStockTotal
+    fetchPaymentSettings()
 
     if (userRole === 'admin') {
       unsubClients = fetchClients()
@@ -305,7 +314,7 @@ function App() {
       if (unsubStock) unsubStock()
       if (unsubStockTotal) unsubStockTotal()
     }
-  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, user, userRole])
+  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, fetchPaymentSettings, user, userRole])
 
   // AUTH: signs out the current user and clears session
   const handleLogout = async () => {
@@ -713,6 +722,35 @@ function App() {
     const totalBoxY = currentY - 45
     const footerStartY = totalBoxY - 20
 
+    const paymentSettings = useClientStore.getState().paymentSettings || {}
+    const qrHex = paymentSettings.qrImageDataUrl
+      ? jpegDataUrlToHex(paymentSettings.qrImageDataUrl)
+      : null
+    const hasImageQr = Boolean(qrHex)
+
+    let qrStreamLines = []
+    if (hasImageQr) {
+      // Draw image XObject inside the card
+      qrStreamLines = [
+        'q',
+        `86 0 0 86 424 ${footerStartY - 114} cm`,
+        '/Img1 Do',
+        'Q',
+      ]
+    } else {
+      // Vector QR fallback with exact invoice amount
+      const upiPayload = buildUpiPayload({
+        upiId: paymentSettings.upiId || DEFAULT_UPI_ID,
+        payeeName: paymentSettings.payeeName || DEFAULT_PAYEE_NAME,
+        amount: grandTotal,
+        orderId: order.orderId || order.id || '',
+      })
+      const vectorQr = buildVectorQrStream(upiPayload, 424, footerStartY - 114, 86)
+      qrStreamLines = [vectorQr]
+    }
+
+    const upiDisplay = paymentSettings.upiId || DEFAULT_UPI_ID
+
     const stream = [
       'q',
 
@@ -794,7 +832,7 @@ function App() {
       // Bank details
       '0.8 0.8 0.8 RG',
       '0.5 w',
-      `40 ${footerStartY - 40} m 555 ${footerStartY - 40} l S`,
+      `40 ${footerStartY - 40} m 365 ${footerStartY - 40} l S`,
       '0.4 0.4 0.4 rg',
       boldAt(40, footerStartY - 53, 9, "Company's Bank Details"),
       '0 0 0 rg',
@@ -806,9 +844,32 @@ function App() {
       // Contact
       '0.8 0.8 0.8 RG',
       '0.5 w',
-      `40 ${footerStartY - 121} m 555 ${footerStartY - 121} l S`,
+      `40 ${footerStartY - 121} m 365 ${footerStartY - 121} l S`,
       '0 0 0 rg',
       textAt(40, footerStartY - 134, 9, 'Contact Number: 9925997750'),
+
+      // ── SCAN & PAY CARD (GPAY / UPI) ───────────────────────────────────
+      // Card background
+      '1 1 1 rg',
+      `380 ${footerStartY - 142} 175 136 re f`,
+      // Card border
+      '0.82 0.82 0.82 RG',
+      '1 w',
+      `380 ${footerStartY - 142} 175 136 re S`,
+      // Card header navy bar
+      '0.06 0.12 0.27 rg',
+      `380 ${footerStartY - 22} 175 16 re f`,
+      '1 1 1 rg',
+      boldAt(410, footerStartY - 18, 8, 'SCAN & PAY (GPAY / UPI)'),
+
+      // QR Code Content (Image or Vector)
+      ...qrStreamLines,
+
+      // Card Subtitles
+      '0.4 0.4 0.4 rg',
+      boldAt(398, footerStartY - 126, 6.5, 'Google Pay • PhonePe • Paytm • BHIM'),
+      '0.1 0.1 0.1 rg',
+      textAt(388, footerStartY - 137, 7, `UPI: ${upiDisplay}`),
 
       'Q',
     ].join('\n')
@@ -817,11 +878,18 @@ function App() {
     objects.push('1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj')
     objects.push('2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj')
     objects.push(
-      '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >> endobj',
+      `3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >>${
+        hasImageQr ? ' /XObject << /Img1 7 0 R >>' : ''
+      } >> >> endobj`,
     )
     objects.push(`4 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream endobj`)
     objects.push('5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj')
     objects.push('6 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> endobj')
+    if (hasImageQr) {
+      objects.push(
+        `7 0 obj << /Type /XObject /Subtype /Image /Width 300 /Height 300 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter [/ASCIIHexDecode /DCTDecode] /Length ${qrHex.length} >> stream\n${qrHex}\nendstream endobj`,
+      )
+    }
 
     let pdf = '%PDF-1.4\n'
     const offsets = [0]

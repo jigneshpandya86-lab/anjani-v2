@@ -127,6 +127,11 @@ export const useClientStore = create((set, get) => ({
   stockTotal: 0,
   leads: [],
   loading: false,
+  paymentSettings: {
+    qrImageDataUrl: null,
+    upiId: '',
+    payeeName: 'Annapurna Foods',
+  },
 
   fetchUserRole: async (uid) => {
     if (!uid) {
@@ -320,6 +325,46 @@ export const useClientStore = create((set, get) => ({
 
     await deleteDoc(stockRef)
     await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(-qtyDelta) }, { merge: true })
+  },
+
+  fetchPaymentSettings: async () => {
+    try {
+      const snap = await getDoc(doc(db, 'config', 'paymentSettings'))
+      if (snap.exists()) {
+        const data = snap.data()
+        set({
+          paymentSettings: {
+            qrImageDataUrl: data.qrImageDataUrl || null,
+            upiId: data.upiId || '',
+            payeeName: data.payeeName || 'Annapurna Foods',
+          },
+        })
+      }
+    } catch (err) {
+      console.error('Failed to fetch payment settings:', err)
+    }
+  },
+
+  savePaymentSettings: async (settings) => {
+    try {
+      await setDoc(
+        doc(db, 'config', 'paymentSettings'),
+        {
+          ...settings,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      )
+      set((state) => ({
+        paymentSettings: {
+          ...state.paymentSettings,
+          ...settings,
+        },
+      }))
+    } catch (err) {
+      console.error('Failed to save payment settings:', err)
+      throw err
+    }
   },
 
   fetchLeads: () => {

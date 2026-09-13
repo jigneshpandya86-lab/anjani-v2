@@ -1,8 +1,27 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from '../firebase-config'
-import { Calendar, Clock, BellRing, Save, Sliders, ToggleLeft, ToggleRight, Sparkles, MapPin, Flame } from 'lucide-react'
+import {
+  Calendar,
+  Clock,
+  BellRing,
+  Save,
+  Sliders,
+  ToggleLeft,
+  ToggleRight,
+  Sparkles,
+  MapPin,
+  Flame,
+  QrCode,
+  Upload,
+  Trash2,
+  CheckCircle2,
+  CreditCard,
+  RefreshCw,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useClientStore } from '../store/clientStore'
+import { processUploadedQrFile, DEFAULT_UPI_ID, DEFAULT_PAYEE_NAME } from '../utils/qrHelper'
 
 const getCurrentSeasonInfo = () => {
   const m = new Date().getMonth() + 1
@@ -139,8 +158,20 @@ function SchedulerCard({
 }
 
 export default function SettingsTab() {
+  const [subTab, setSubTab] = useState('payment') // 'payment' | 'schedulers'
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+
+  // Payment QR Code state
+  const savePaymentSettings = useClientStore((state) => state.savePaymentSettings)
+  const fetchPaymentSettings = useClientStore((state) => state.fetchPaymentSettings)
+
+  const [qrImageDataUrl, setQrImageDataUrl] = useState(null)
+  const [upiId, setUpiId] = useState('')
+  const [payeeName, setPayeeName] = useState(DEFAULT_PAYEE_NAME)
+  const [savingPayment, setSavingPayment] = useState(false)
+  const [processingFile, setProcessingFile] = useState(false)
+  const fileInputRef = useRef(null)
 
   // Defaulter Reminder Schedule State
   const [defaulterEnabled, setDefaulterEnabled] = useState(false)
@@ -248,6 +279,13 @@ export default function SettingsTab() {
           setLeadDiscoveryDays([1])
           setLeadDiscoveryMode('auto')
         }
+        await fetchPaymentSettings()
+        const currentPay = useClientStore.getState().paymentSettings
+        if (currentPay) {
+          setQrImageDataUrl(currentPay.qrImageDataUrl || null)
+          setUpiId(currentPay.upiId || '')
+          setPayeeName(currentPay.payeeName || DEFAULT_PAYEE_NAME)
+        }
       } catch (err) {
         console.error('Failed to load scheduler configs:', err)
         toast.error('Failed to load schedule configurations')
@@ -256,7 +294,68 @@ export default function SettingsTab() {
       }
     }
     loadSettings()
-  }, [])
+  }, [fetchPaymentSettings])
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setProcessingFile(true)
+    try {
+      const result = await processUploadedQrFile(file)
+      setQrImageDataUrl(result.dataUrl)
+      if (result.detectedUpiId) {
+        setUpiId(result.detectedUpiId)
+        toast.success(`Detected UPI ID: ${result.detectedUpiId}`)
+      }
+      if (result.detectedPayee) {
+        setPayeeName(result.detectedPayee)
+      }
+      toast.success('QR Code loaded from gallery!')
+    } catch (err) {
+      toast.error('Failed to process image: ' + err.message)
+    } finally {
+      setProcessingFile(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const handleSavePayment = async (e) => {
+    if (e?.preventDefault) e.preventDefault()
+    setSavingPayment(true)
+    try {
+      await savePaymentSettings({
+        qrImageDataUrl,
+        upiId: upiId.trim(),
+        payeeName: payeeName.trim() || DEFAULT_PAYEE_NAME,
+      })
+      toast.success('Payment QR settings saved successfully!')
+    } catch (err) {
+      toast.error('Failed to save payment settings: ' + err.message)
+    } finally {
+      setSavingPayment(false)
+    }
+  }
+
+  const handleRemoveQr = async () => {
+    const confirmed = window.confirm(
+      'Remove uploaded QR code? PDF invoices will use default vector QR instead.'
+    )
+    if (!confirmed) return
+    setSavingPayment(true)
+    try {
+      setQrImageDataUrl(null)
+      await savePaymentSettings({
+        qrImageDataUrl: null,
+        upiId: upiId.trim(),
+        payeeName: payeeName.trim() || DEFAULT_PAYEE_NAME,
+      })
+      toast.success('QR code removed')
+    } catch (err) {
+      toast.error('Failed to remove: ' + err.message)
+    } finally {
+      setSavingPayment(false)
+    }
+  }
 
   const toggleDefaulterDay = (dayVal) => {
     setDefaulterDays((prev) =>
@@ -391,194 +490,385 @@ export default function SettingsTab() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl p-1.5 md:p-2">
-      <div className="overflow-hidden rounded-lg border border-gray-100 bg-gray-50 shadow-sm">
-        <div className="flex items-center gap-1.5 bg-[#131921] px-3.5 py-2 text-white">
-          <Sliders className="h-4.5 w-4.5 text-orange-400" />
-          <h2 className="text-sm font-bold md:text-base">System Scheduler Settings</h2>
-        </div>
-
-        <form onSubmit={handleSave} className="space-y-2 p-2.5 md:p-3">
-          <SchedulerCard
-            enabled={regularEnabled}
-            hour={regularHour}
-            hourLabel="Delivery Hour"
-            id="regularHourSelect"
-            inactiveText="Regular client reminders are disabled."
-            iconColor="text-orange-500"
-            onHourChange={setRegularHour}
-            onToggle={() => setRegularEnabled((prev) => !prev)}
-            onToggleDay={toggleRegularDay}
-            selectedDays={regularDays}
-            title="Regular Client Order Reminders"
-          />
-
-          <SchedulerCard
-            enabled={defaulterEnabled}
-            hour={defaulterHour}
-            hourLabel="Reminder Hour"
-            id="defaulterHourSelect"
-            inactiveText="Defaulter payment reminders are disabled."
-            iconColor="text-red-500"
-            onHourChange={setDefaulterHour}
-            onToggle={() => setDefaulterEnabled((prev) => !prev)}
-            onToggleDay={toggleDefaulterDay}
-            selectedDays={defaulterDays}
-            title="Payment Defaulter Reminders"
-          />
-
-          <SchedulerCard
-            enabled={stockEnabled}
-            hour={stockHour}
-            hourLabel="Report Hour"
-            id="stockHourSelect"
-            inactiveText="Daily stock summary notifications are disabled."
-            iconColor="text-blue-500"
-            onHourChange={setStockHour}
-            onToggle={() => setStockEnabled((prev) => !prev)}
-            onToggleDay={toggleStockDay}
-            selectedDays={stockDays}
-            title="Daily Stock Summary to Staff"
-          />
-
-          <SchedulerCard
-            enabled={staffAlertEnabled}
-            hour={staffAlertHour}
-            hourLabel="Alert Hour"
-            id="staffAlertHourSelect"
-            inactiveText="Defaulter call alerts to staff are disabled."
-            iconColor="text-indigo-500"
-            onHourChange={setStaffAlertHour}
-            onToggle={() => setStaffAlertEnabled((prev) => !prev)}
-            onToggleDay={toggleStaffAlertDay}
-            selectedDays={staffAlertDays}
-            title="Defaulter Call List to Staff"
-          />
-
-          <SchedulerCard
-            enabled={greetingsEnabled}
-            hour={greetingsHour}
-            hourLabel="Greeting Hour"
-            id="greetingsHourSelect"
-            inactiveText="Daily automatic greetings are disabled."
-            iconColor="text-pink-500"
-            onHourChange={setGreetingsHour}
-            onToggle={() => setGreetingsEnabled((prev) => !prev)}
-            onToggleDay={toggleGreetingsDay}
-            selectedDays={greetingsDays}
-            title="Daily Automatic Greetings"
-          />
-
-          {greetingsEnabled && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-white border border-gray-200 rounded-lg -mt-1 animate-fadeIn">
-              <div>
-                <label htmlFor="birthdayTemplateSelect" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                  Birthday Message Template
-                </label>
-                <textarea
-                  id="birthdayTemplateSelect"
-                  rows={2}
-                  value={greetingsBirthdayTemplate}
-                  onChange={(e) => setGreetingsBirthdayTemplate(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 p-2 text-xs outline-none focus:ring-2 focus:ring-orange-400"
-                  placeholder="Use {name} for dynamic greeting..."
-                />
-              </div>
-              <div>
-                <label htmlFor="anniversaryTemplateSelect" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                  Anniversary Message Template
-                </label>
-                <textarea
-                  id="anniversaryTemplateSelect"
-                  rows={2}
-                  value={greetingsAnniversaryTemplate}
-                  onChange={(e) => setGreetingsAnniversaryTemplate(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 p-2 text-xs outline-none focus:ring-2 focus:ring-orange-400"
-                  placeholder="Use {name} for dynamic greeting..."
-                />
-              </div>
-            </div>
-          )}
-
-          {/* AI Dynamic Lead Discovery Card */}
-          <SchedulerCard
-            enabled={leadDiscoveryEnabled}
-            hour={leadDiscoveryHour}
-            hourLabel="Discovery Hour"
-            id="leadDiscoveryHourSelect"
-            inactiveText="Dynamic AI Lead Discovery is disabled."
-            iconColor="text-purple-600"
-            onHourChange={setLeadDiscoveryHour}
-            onToggle={() => setLeadDiscoveryEnabled((prev) => !prev)}
-            onToggleDay={toggleLeadDiscoveryDay}
-            selectedDays={leadDiscoveryDays}
-            title="AI Dynamic Lead Discovery (Festival & Season Radar)"
-          />
-
-          {leadDiscoveryEnabled && (
-            <div className="space-y-2 p-3 bg-white border border-gray-200 rounded-lg -mt-1 animate-fadeIn">
-              {/* Dynamic Season Status Banner */}
-              {(() => {
-                const season = getCurrentSeasonInfo()
-                return (
-                  <div className={`p-2.5 rounded-md border text-xs flex flex-col md:flex-row md:items-center justify-between gap-1.5 ${season.color}`}>
-                    <div>
-                      <div className="flex items-center gap-1.5 font-bold">
-                        <Sparkles className="h-4 w-4 text-purple-600 shrink-0" />
-                        <span>{season.title}</span>
-                      </div>
-                      <p className="mt-0.5 text-[11px] opacity-90">{season.description}</p>
-                    </div>
-                    <span className="self-start md:self-auto rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide shadow-xs shrink-0">
-                      {season.badge}
-                    </span>
-                  </div>
-                )
-              })()}
-
-              {/* Mode Selection */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">
-                <div>
-                  <label htmlFor="leadDiscoveryModeSelect" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                    Aggressiveness Radar Mode
-                  </label>
-                  <select
-                    id="leadDiscoveryModeSelect"
-                    value={leadDiscoveryMode}
-                    onChange={(e) => setLeadDiscoveryMode(e.target.value)}
-                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-orange-400"
-                  >
-                    <option value="auto">Auto (Dynamic Festival Radar)</option>
-                    <option value="aggressive">Force High (2x/Week, 12+ Leads)</option>
-                    <option value="normal">Normal (1x/Week, 5 Leads)</option>
-                  </select>
-                </div>
-
-                <div className="md:col-span-2">
-                  <span className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                    <MapPin className="h-3 w-3 text-red-500" />
-                    Vadodara High-Conversion Coverage Zones
-                  </span>
-                  <div className="text-[11px] text-gray-600 bg-gray-50 p-1.5 rounded border border-gray-200">
-                    <strong>Zones:</strong> Gotri, Makarpura, Bhayli, Sevasi, Vasna Road, Alkapuri, Akota, Manjalpur, Karelibaug, Sayajigunj, Fatehgunj, Waghodia Road, Atladra, Gorwa, Chhani, Sama, Harni, Nandesari & Por.
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="flex justify-end border-t pt-2">
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex cursor-pointer items-center gap-1.5 rounded-md border border-[#a88734] bg-gradient-to-b from-[#f7dfa5] to-[#f0c14b] px-4 py-2 text-xs font-bold text-gray-900 shadow-sm transition-all hover:bg-gradient-to-b hover:from-[#f5d78e] hover:to-[#eeb933] active:shadow-inner disabled:opacity-50"
-            >
-              <Save className="h-3.5 w-3.5" />
-              {saving ? 'Saving...' : 'Save Scheduler Settings'}
-            </button>
-          </div>
-        </form>
+    <div className="mx-auto max-w-4xl p-1.5 md:p-2 space-y-3">
+      {/* Submenu Navigation */}
+      <div className="flex items-center gap-1.5 p-1 bg-gray-200/80 rounded-2xl shadow-inner border border-gray-200">
+        <button
+          type="button"
+          onClick={() => setSubTab('payment')}
+          className={`flex-1 py-2.5 px-3 rounded-xl text-xs md:text-sm font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            subTab === 'payment'
+              ? 'bg-[#131921] text-[#ff9900] shadow-md'
+              : 'text-gray-700 hover:text-black hover:bg-gray-100/60'
+          }`}
+        >
+          <QrCode size={17} />
+          <span>Invoice GPay / UPI QR</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab('schedulers')}
+          className={`flex-1 py-2.5 px-3 rounded-xl text-xs md:text-sm font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            subTab === 'schedulers'
+              ? 'bg-[#131921] text-[#ff9900] shadow-md'
+              : 'text-gray-700 hover:text-black hover:bg-gray-100/60'
+          }`}
+        >
+          <Sliders size={17} />
+          <span>System Schedulers</span>
+        </button>
       </div>
+
+      {/* SUBTAB 1: INVOICE GPAY / UPI QR CODE */}
+      {subTab === 'payment' && (
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between bg-[#131921] px-4 py-3 text-white">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-[#ff9900] flex items-center justify-center font-bold">
+                <QrCode className="h-4.5 w-4.5" />
+              </div>
+              <div>
+                <h2 className="text-sm md:text-base font-black">Invoice Payment & GPay QR Scanner</h2>
+                <p className="text-[10px] text-gray-400 font-medium">
+                  Upload your GPay / UPI QR image from gallery to print on every order invoice
+                </p>
+              </div>
+            </div>
+            {qrImageDataUrl && (
+              <span className="hidden sm:flex text-[10px] bg-emerald-500/20 text-emerald-300 font-extrabold uppercase px-2.5 py-1 rounded-full border border-emerald-500/30 items-center gap-1">
+                <CheckCircle2 size={12} /> Active on Invoices
+              </span>
+            )}
+          </div>
+
+          <form onSubmit={handleSavePayment} className="p-4 md:p-6 space-y-6">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+
+            {/* QR Upload & Preview Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+              {/* Left Column: Upload / Preview Card */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="block text-xs font-black text-gray-700 uppercase tracking-wider">
+                    Payment QR Code Image
+                  </span>
+                  {qrImageDataUrl && (
+                    <span className="sm:hidden text-[9px] bg-emerald-100 text-emerald-800 font-extrabold uppercase px-2 py-0.5 rounded-md">
+                      Active
+                    </span>
+                  )}
+                </div>
+
+                {qrImageDataUrl ? (
+                  <div className="p-4 border-2 border-orange-200 rounded-2xl bg-orange-50/30 flex flex-col items-center justify-center gap-3.5">
+                    <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-200">
+                      <img
+                        src={qrImageDataUrl}
+                        alt="GPay QR Code"
+                        className="w-48 h-48 sm:w-52 sm:h-52 object-contain rounded-xl"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 w-full max-w-xs">
+                      <button
+                        type="button"
+                        disabled={processingFile || savingPayment}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex-1 py-2.5 px-3 rounded-xl border border-gray-300 bg-white text-gray-800 font-bold text-xs hover:bg-gray-50 flex items-center justify-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Upload size={14} className="text-[#ff9900]" />
+                        <span>Change Image</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={processingFile || savingPayment}
+                        onClick={handleRemoveQr}
+                        className="py-2.5 px-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 font-bold text-xs hover:bg-rose-100 flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Trash2 size={14} />
+                        <span>Remove</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={processingFile}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full p-8 border-2 border-dashed border-orange-300 hover:border-[#ff9900] rounded-2xl bg-orange-50/50 hover:bg-orange-50 flex flex-col items-center justify-center gap-3 transition-all cursor-pointer group"
+                  >
+                    <div className="w-14 h-14 rounded-2xl bg-white shadow-md border border-orange-200 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Upload className="w-7 h-7 text-[#ff9900]" />
+                    </div>
+                    <div className="text-center">
+                      <p className="font-black text-gray-900 text-sm md:text-base">
+                        {processingFile ? 'Processing Image...' : 'Click to Upload QR Code from Gallery'}
+                      </p>
+                      <p className="text-xs text-gray-500 font-medium mt-1">
+                        Select a Google Pay, PhonePe, Paytm, or BHIM QR code screenshot from your phone
+                      </p>
+                      <span className="inline-block mt-3 px-3 py-1 bg-white text-[#ff9900] border border-orange-200 rounded-lg text-[11px] font-extrabold shadow-sm">
+                        Supports JPG, PNG, WebP Photos
+                      </span>
+                    </div>
+                  </button>
+                )}
+              </div>
+
+              {/* Right Column: Details & Information */}
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="upi-id-input" className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1">
+                    UPI ID / VPA (Optional)
+                  </label>
+                  <div className="relative">
+                    <CreditCard className="absolute left-3.5 top-3.5 w-4 h-4 text-gray-400" />
+                    <input
+                      id="upi-id-input"
+                      type="text"
+                      placeholder="e.g. 9925997750@okbizaxis"
+                      value={upiId}
+                      onChange={(e) => setUpiId(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#ff9900] focus:bg-white"
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Printed below the QR code on the invoice so clients can copy or verify your handle.
+                  </p>
+                </div>
+
+                <div>
+                  <label htmlFor="payee-name-input" className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1">
+                    Business / Payee Name
+                  </label>
+                  <input
+                    id="payee-name-input"
+                    type="text"
+                    placeholder="Annapurna Foods"
+                    value={payeeName}
+                    onChange={(e) => setPayeeName(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#ff9900] focus:bg-white"
+                  />
+                </div>
+
+                {/* Info Alert */}
+                <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-xl text-blue-900 text-xs space-y-1">
+                  <p className="font-black flex items-center gap-1.5">
+                    <Sparkles size={14} className="text-blue-600" /> How it works on invoices
+                  </p>
+                  <p className="text-[11px] text-blue-800 leading-relaxed font-medium">
+                    When you share or print any invoice from the <strong>Orders tab</strong>, this GPay QR code will be embedded in the bottom right corner next to your Kotak Mahindra Bank transfer details.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end border-t border-gray-100 pt-4">
+              <button
+                type="submit"
+                disabled={savingPayment || processingFile}
+                className="flex items-center gap-2 rounded-xl border border-[#a88734] bg-gradient-to-b from-[#f7dfa5] to-[#f0c14b] px-6 py-3 text-xs md:text-sm font-black text-gray-900 shadow-md hover:from-[#f5d78e] hover:to-[#eeb933] active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+              >
+                <Save size={16} />
+                <span>{savingPayment ? 'Saving...' : 'Save Payment QR Settings'}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* SUBTAB 2: SYSTEM SCHEDULER SETTINGS */}
+      {subTab === 'schedulers' && (
+        <div className="overflow-hidden rounded-lg border border-gray-100 bg-gray-50 shadow-sm">
+          <div className="flex items-center gap-1.5 bg-[#131921] px-3.5 py-2 text-white">
+            <Sliders className="h-4.5 w-4.5 text-orange-400" />
+            <h2 className="text-sm font-bold md:text-base">System Scheduler Settings</h2>
+          </div>
+
+          <form onSubmit={handleSave} className="space-y-2 p-2.5 md:p-3">
+            <SchedulerCard
+              enabled={regularEnabled}
+              hour={regularHour}
+              hourLabel="Delivery Hour"
+              id="regularHourSelect"
+              inactiveText="Regular client reminders are disabled."
+              iconColor="text-orange-500"
+              onHourChange={setRegularHour}
+              onToggle={() => setRegularEnabled((prev) => !prev)}
+              onToggleDay={toggleRegularDay}
+              selectedDays={regularDays}
+              title="Regular Client Order Reminders"
+            />
+
+            <SchedulerCard
+              enabled={defaulterEnabled}
+              hour={defaulterHour}
+              hourLabel="Reminder Hour"
+              id="defaulterHourSelect"
+              inactiveText="Defaulter payment reminders are disabled."
+              iconColor="text-red-500"
+              onHourChange={setDefaulterHour}
+              onToggle={() => setDefaulterEnabled((prev) => !prev)}
+              onToggleDay={toggleDefaulterDay}
+              selectedDays={defaulterDays}
+              title="Payment Defaulter Reminders"
+            />
+
+            <SchedulerCard
+              enabled={stockEnabled}
+              hour={stockHour}
+              hourLabel="Report Hour"
+              id="stockHourSelect"
+              inactiveText="Daily stock summary notifications are disabled."
+              iconColor="text-blue-500"
+              onHourChange={setStockHour}
+              onToggle={() => setStockEnabled((prev) => !prev)}
+              onToggleDay={toggleStockDay}
+              selectedDays={stockDays}
+              title="Daily Stock Summary Report"
+            />
+
+            <SchedulerCard
+              enabled={staffAlertEnabled}
+              hour={staffAlertHour}
+              hourLabel="Staff Alert Hour"
+              id="staffAlertHourSelect"
+              inactiveText="Defaulter call list notifications to staff are disabled."
+              iconColor="text-purple-500"
+              onHourChange={setStaffAlertHour}
+              onToggle={() => setStaffAlertEnabled((prev) => !prev)}
+              onToggleDay={toggleStaffAlertDay}
+              selectedDays={staffAlertDays}
+              title="Defaulter Call List to Staff"
+            />
+
+            <SchedulerCard
+              enabled={greetingsEnabled}
+              hour={greetingsHour}
+              hourLabel="Greetings Hour"
+              id="greetingsHourSelect"
+              inactiveText="Daily Birthday and Anniversary greetings are disabled."
+              iconColor="text-emerald-500"
+              onHourChange={setGreetingsHour}
+              onToggle={() => setGreetingsEnabled((prev) => !prev)}
+              onToggleDay={toggleGreetingsDay}
+              selectedDays={greetingsDays}
+              title="Daily Birthday & Anniversary Greetings"
+            />
+
+            {greetingsEnabled && (
+              <div className="space-y-2 rounded-lg border border-emerald-100 bg-emerald-50/50 p-2.5 text-xs text-gray-700">
+                <div>
+                  <label htmlFor="bdayTemplate" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                    Birthday SMS Template
+                  </label>
+                  <textarea
+                    id="bdayTemplate"
+                    rows={2}
+                    value={greetingsBirthdayTemplate}
+                    onChange={(e) => setGreetingsBirthdayTemplate(e.target.value)}
+                    className="w-full rounded-md border border-gray-300 bg-white p-1.5 text-xs outline-none focus:ring-2 focus:ring-emerald-400"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="annivTemplate" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                    Anniversary SMS Template
+                  </label>
+                  <textarea
+                    id="annivTemplate"
+                    rows={2}
+                    value={greetingsAnniversaryTemplate}
+                    onChange={(e) => setGreetingsAnniversaryTemplate(e.target.value)}
+                    className="w-full rounded-md border border-gray-300 bg-white p-1.5 text-xs outline-none focus:ring-2 focus:ring-emerald-400"
+                  />
+                </div>
+              </div>
+            )}
+
+            <SchedulerCard
+              enabled={leadDiscoveryEnabled}
+              hour={leadDiscoveryHour}
+              hourLabel="Discovery Hour"
+              id="leadDiscoveryHourSelect"
+              inactiveText="AI dynamic lead discovery radar is disabled."
+              iconColor="text-amber-500"
+              onHourChange={setLeadDiscoveryHour}
+              onToggle={() => setLeadDiscoveryEnabled((prev) => !prev)}
+              onToggleDay={toggleLeadDiscoveryDay}
+              selectedDays={leadDiscoveryDays}
+              title="Dynamic AI Lead Discovery Radar (Permanent Pipeline)"
+            />
+
+            {leadDiscoveryEnabled && (
+              <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/60 p-2.5 text-xs text-gray-700">
+                {(() => {
+                  const season = getCurrentSeasonInfo()
+                  return (
+                    <div className={`p-2 rounded-md border ${season.color} flex flex-col gap-1`}>
+                      <div className="flex items-center justify-between flex-wrap gap-1">
+                        <span className="font-extrabold text-xs flex items-center gap-1">
+                          <Flame className="h-3.5 w-3.5 text-red-500" />
+                          {season.title}
+                        </span>
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-white border border-current shadow-xs">
+                          {season.badge}
+                        </span>
+                      </div>
+                      <p className="text-[11px] font-medium leading-relaxed">
+                        {season.description}
+                      </p>
+                    </div>
+                  )
+                })()}
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">
+                  <div>
+                    <label htmlFor="leadDiscoveryModeSelect" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                      Aggressiveness Radar Mode
+                    </label>
+                    <select
+                      id="leadDiscoveryModeSelect"
+                      value={leadDiscoveryMode}
+                      onChange={(e) => setLeadDiscoveryMode(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-orange-400"
+                    >
+                      <option value="auto">Auto (Dynamic Festival Radar)</option>
+                      <option value="aggressive">Force High (2x/Week, 12+ Leads)</option>
+                      <option value="normal">Normal (1x/Week, 5 Leads)</option>
+                    </select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <span className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                      <MapPin className="h-3 w-3 text-red-500" />
+                      Vadodara High-Conversion Coverage Zones
+                    </span>
+                    <div className="text-[11px] text-gray-600 bg-gray-50 p-1.5 rounded border border-gray-200">
+                      <strong>Zones:</strong> Gotri, Makarpura, Bhayli, Sevasi, Vasna Road, Alkapuri, Akota, Manjalpur, Karelibaug, Sayajigunj, Fatehgunj, Waghodia Road, Atladra, Gorwa, Chhani, Sama, Harni, Nandesari & Por.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end border-t pt-2">
+              <button
+                type="submit"
+                disabled={saving}
+                className="flex cursor-pointer items-center gap-1.5 rounded-md border border-[#a88734] bg-gradient-to-b from-[#f7dfa5] to-[#f0c14b] px-4 py-2 text-xs font-bold text-gray-900 shadow-sm transition-all hover:bg-gradient-to-b hover:from-[#f5d78e] hover:to-[#eeb933] active:shadow-inner disabled:opacity-50"
+              >
+                <Save className="h-3.5 w-3.5" />
+                {saving ? 'Saving...' : 'Save Scheduler Settings'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   )
 }

@@ -67,12 +67,18 @@ All water products are defined centrally in `src/constants/skus.js`:
 
 ---
 
-## PDF Invoices (`src/App.jsx`)
-- PDF invoice generator `buildSimpleInvoicePdfFile()` generates itemized multi-row PDF invoices matching Zoho Books format:
-  - Header with Annapurna Foods business details & GSTIN.
-  - Dynamic table rows for each SKU item with Description, Qty (Boxes/Cases), Rate, and Row Amount.
-  - Subtotal and Grand Total bar.
-  - Kotak Mahindra Bank transfer details and contact information.
+## PDF Invoices & Payment QR Settings (`src/App.jsx`, `src/components/SettingsTab.jsx`, `src/utils/qrHelper.js`)
+- **Settings Submenu ("Invoice GPay / UPI QR"):**
+  - Managed under `SettingsTab.jsx` with dedicated sub-tabs: "Invoice GPay / UPI QR" and "System Schedulers".
+  - Allows uploading custom GPay / PhonePe / Paytm / BHIM QR code image directly from the phone/computer gallery.
+  - Automatically crops/pads the image on a 300x300 clean white canvas via HTML Canvas and converts to JPEG Data URL.
+  - Automatically scans and extracts UPI ID using `jsQR` if readable, and allows editing UPI ID and Payee Name.
+  - Stored in Firestore document `config/paymentSettings` via `savePaymentSettings()` in `src/store/clientStore.js`.
+- **PDF Invoice Scanner Embedding (`buildSimpleInvoicePdfFile` in `src/App.jsx`):**
+  - Generates itemized multi-row PDF invoices matching Zoho Books format.
+  - Includes an authentic "SCAN & PAY (GPAY / UPI)" card in the footer alongside Kotak Mahindra Bank transfer details.
+  - If a gallery image is uploaded, it is embedded as a PDF XObject `/Img1` using `/Filter [/ASCIIHexDecode /DCTDecode]` to ensure 100% 7-bit ASCII compatibility across all PDF viewers and mobile WebViews.
+  - If no custom image is uploaded, it automatically renders a high-precision vector UPI QR code using `buildVectorQrStream()` with dynamic invoice amount and payee details.
 
 ---
 
