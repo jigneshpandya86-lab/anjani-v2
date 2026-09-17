@@ -22,10 +22,29 @@ messaging.onBackgroundMessage((payload) => {
     body: body,
     icon: '/favicon.svg',
     badge: '/favicon.svg',
-    data: payload.data,
-    tag: 'background-notification',
-    renotify: true
+    data: payload.data || {},
+    tag: payload.data?.orderId || payload.data?.tag || 'order-notification',
+    renotify: true,
+    requireInteraction: true,
+    vibrate: [200, 100, 200]
   };
 
   self.registration.showNotification(title, notificationOptions);
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const clickAction = event.notification.data?.click_action || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if ('focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(clickAction);
+      }
+    })
+  );
 });

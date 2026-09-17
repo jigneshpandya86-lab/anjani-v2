@@ -1039,8 +1039,8 @@ async function broadcastNotification(
     const allTokens = []
     devicesSnapshot.forEach((doc) => {
       const data = doc.data()
-      if (data.token) {
-        allTokens.push(data.token)
+      if (data.token && data.status !== 'invalid') {
+        allTokens.push({ token: data.token, ref: doc.ref })
       }
     })
 
@@ -1058,7 +1058,7 @@ async function broadcastNotification(
     for (let i = 0; i < allTokens.length; i += chunkSize) {
       const tokenChunk = allTokens.slice(i, i + chunkSize)
 
-      const messages = tokenChunk.map((token) => ({
+      const messages = tokenChunk.map(({ token }) => ({
         token,
         notification: { title, body: displayBody },
         data: {
@@ -1078,6 +1078,10 @@ async function broadcastNotification(
           },
         },
         webpush: {
+          headers: {
+            Urgency: 'high',
+            TTL: '86400',
+          },
           notification: {
             title,
             body: displayBody,
@@ -1086,7 +1090,7 @@ async function broadcastNotification(
             vibrate: [200, 100, 200],
             requireInteraction: true,
             renotify: true,
-            tag: tag,
+            tag: tag || 'order-alert',
           },
           fcm_options: { link: 'https://anjaniappnew.firebaseapp.com' },
         },
@@ -1099,9 +1103,23 @@ async function broadcastNotification(
       if (response.failureCount > 0) {
         response.responses.forEach((resp, idx) => {
           if (!resp.success) {
+            const errCode = resp.error?.code
+            const failedTokenObj = tokenChunk[idx]
             logger.info(
-              `Broadcast (${tag}): Token ${tokenChunk[idx].substring(0, 10)}... failed with error: ${resp.error?.code}`,
+              `Broadcast (${tag}): Token ${failedTokenObj.token.substring(0, 10)}... failed with error: ${errCode}`,
             )
+            if (
+              errCode === 'messaging/registration-token-not-registered' ||
+              errCode === 'messaging/invalid-registration-token'
+            ) {
+              failedTokenObj.ref
+                .update({
+                  status: 'invalid',
+                  invalidAt: admin.firestore.FieldValue.serverTimestamp(),
+                  lastError: errCode,
+                })
+                .catch((e) => logger.warn('Failed to mark token invalid:', e.message))
+            }
           }
         })
       }
