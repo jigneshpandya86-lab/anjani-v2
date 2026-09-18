@@ -125,6 +125,7 @@ export const useClientStore = create((set, get) => ({
   orders: [],
   stockEntries: [],
   stockTotal: 0,
+  stockSummary: {},
   leads: [],
   loading: false,
   paymentSettings: {
@@ -240,12 +241,14 @@ export const useClientStore = create((set, get) => ({
   fetchStockTotal: () => {
     return onSnapshot(STOCK_SUMMARY_DOC, async (summarySnap) => {
       if (summarySnap.exists()) {
-        const storedTotal = Number(summarySnap.data()?.totalQty) || 0
+        const data = summarySnap.data() || {}
+        const storedTotal = Number(data.totalQty) || 0
+        const bySku = data.bySku || data.skus || {}
         console.log('[Stock] Current summary doc:', {
           totalQty: storedTotal,
-          ...summarySnap.data(),
+          bySku,
         })
-        set({ stockTotal: storedTotal })
+        set({ stockTotal: storedTotal, stockSummary: bySku })
         return
       }
       get().recalculateStockTotal()
@@ -256,24 +259,40 @@ export const useClientStore = create((set, get) => ({
     set({ loading: true })
     try {
       const fullSnap = await getDocs(query(collection(db, 'stock')))
-      const computedTotal = fullSnap.docs.reduce((acc, d) => {
+      const bySku = {
+        'Anjani 200ml': 0,
+        'Bailey 250ml': 0,
+        'Bailey 500ml': 0,
+        'Bailey 1 Liter': 0,
+        'Bailey 2 Liter': 0,
+      }
+      let computedTotal = 0
+
+      fullSnap.docs.forEach((d) => {
         const raw = d.data()
         const hasLegacyProducedDelivered = raw.produced !== undefined || raw.delivered !== undefined
+        let qty = 0
         if (hasLegacyProducedDelivered && raw.qty === undefined) {
-          return acc + ((Number(raw.produced) || 0) - (Number(raw.delivered) || 0))
+          qty = (Number(raw.produced) || 0) - (Number(raw.delivered) || 0)
+        } else {
+          qty = Number(raw.qty || raw.boxes || raw.quantity) || 0
         }
-        return acc + (Number(raw.qty || raw.boxes || raw.quantity) || 0)
-      }, 0)
+        computedTotal += qty
+        const meta = getSkuMeta(raw.sku || raw.product || 'Anjani 200ml')
+        const skuLabel = meta?.label || 'Anjani 200ml'
+        bySku[skuLabel] = (bySku[skuLabel] || 0) + qty
+      })
 
       console.log(
         '[Stock] Backfilled summary from',
         fullSnap.docs.length,
         'entries:',
         computedTotal,
+        bySku,
       )
-      await setDoc(STOCK_SUMMARY_DOC, { totalQty: computedTotal }, { merge: true })
-      set({ stockTotal: computedTotal, loading: false })
-      return computedTotal
+      await setDoc(STOCK_SUMMARY_DOC, { totalQty: computedTotal, bySku }, { merge: true })
+      set({ stockTotal: computedTotal, stockSummary: bySku, loading: false })
+      return { computedTotal, bySku }
     } catch (error) {
       console.error('Failed to recalculate stock:', error)
       set({ loading: false })
@@ -283,38 +302,68 @@ export const useClientStore = create((set, get) => ({
 
   addStockManual: async (qty, narration, sku = 'Anjani 200ml') => {
     const parsedQty = Number(qty) || 0
+    const meta = getSkuMeta(sku || 'Anjani 200ml')
+    const skuLabel = meta?.label || 'Anjani 200ml'
     await addDoc(collection(db, 'stock'), {
       qty: parsedQty,
-      sku: sku || 'Anjani 200ml',
-      narration: narration || `Manual Addition (${sku || 'Anjani 200ml'})`,
+      sku: skuLabel,
+      narration: narration || `Manual Addition (${skuLabel})`,
       type: 'addition',
       date: serverTimestamp(),
       createdAt: serverTimestamp(),
     })
-    await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(parsedQty) }, { merge: true })
+    await setDoc(
+      STOCK_SUMMARY_DOC,
+      {
+        totalQty: increment(parsedQty),
+        [`bySku.${skuLabel}`]: increment(parsedQty),
+      },
+      { merge: true },
+    )
+    set((state) => ({
+      stockTotal: (Number(state.stockTotal) || 0) + parsedQty,
+      stockSummary: {
+        ...state.stockSummary,
+        [skuLabel]: (Number(state.stockSummary?.[skuLabel]) || 0) + parsedQty,
+      },
+    }))
   },
 
   addStockBatch: async (entries, defaultNarration = 'Stock Inward') => {
     let netTotal = 0
+    const skuDeltas = {}
     for (const entry of entries) {
       const parsedQty = Number(entry.qty) || 0
       if (parsedQty === 0) continue
-      const sku = entry.sku || DEFAULT_SKU
+      const meta = getSkuMeta(entry.sku || DEFAULT_SKU)
+      const skuLabel = meta?.label || DEFAULT_SKU
       await addDoc(collection(db, 'stock'), {
         qty: parsedQty,
-        sku,
-        narration: entry.narration || defaultNarration || `Stock Inward (${sku})`,
+        sku: skuLabel,
+        narration: entry.narration || defaultNarration || `Stock Inward (${skuLabel})`,
         type: parsedQty > 0 ? 'addition' : 'dispatch',
         date: serverTimestamp(),
         createdAt: serverTimestamp(),
       })
       netTotal += parsedQty
+      skuDeltas[skuLabel] = (skuDeltas[skuLabel] || 0) + parsedQty
     }
     if (netTotal !== 0) {
-      await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(netTotal) }, { merge: true })
-      set((state) => ({
-        stockTotal: (Number(state.stockTotal) || 0) + netTotal,
-      }))
+      const updatePayload = { totalQty: increment(netTotal) }
+      Object.entries(skuDeltas).forEach(([label, delta]) => {
+        updatePayload[`bySku.${label}`] = increment(delta)
+      })
+      await setDoc(STOCK_SUMMARY_DOC, updatePayload, { merge: true })
+      set((state) => {
+        const nextSummary = { ...state.stockSummary }
+        Object.entries(skuDeltas).forEach(([label, delta]) => {
+          nextSummary[label] = (Number(nextSummary[label]) || 0) + delta
+        })
+        return {
+          stockTotal: (Number(state.stockTotal) || 0) + netTotal,
+          stockSummary: nextSummary,
+        }
+      })
     }
   },
 
@@ -329,9 +378,25 @@ export const useClientStore = create((set, get) => ({
       hasLegacyProducedDelivered && raw.qty === undefined
         ? (Number(raw.produced) || 0) - (Number(raw.delivered) || 0)
         : Number(raw.qty || raw.boxes || raw.quantity) || 0
+    const meta = getSkuMeta(raw.sku || raw.product || 'Anjani 200ml')
+    const skuLabel = meta?.label || 'Anjani 200ml'
 
     await deleteDoc(stockRef)
-    await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(-qtyDelta) }, { merge: true })
+    await setDoc(
+      STOCK_SUMMARY_DOC,
+      {
+        totalQty: increment(-qtyDelta),
+        [`bySku.${skuLabel}`]: increment(-qtyDelta),
+      },
+      { merge: true },
+    )
+    set((state) => ({
+      stockTotal: (Number(state.stockTotal) || 0) - qtyDelta,
+      stockSummary: {
+        ...state.stockSummary,
+        [skuLabel]: (Number(state.stockSummary?.[skuLabel]) || 0) - qtyDelta,
+      },
+    }))
   },
 
   fetchPaymentSettings: async () => {
@@ -800,10 +865,31 @@ export const useClientStore = create((set, get) => ({
       }
 
       if (totalStockDelta !== 0) {
-        await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(totalStockDelta) }, { merge: true })
-        set((state) => ({
-          stockTotal: (Number(state.stockTotal) || 0) + totalStockDelta,
-        }))
+        const updatePayload = { totalQty: increment(totalStockDelta) }
+        items.forEach((it) => {
+          const itQty = Number(it.qty) || 0
+          if (itQty > 0) {
+            const meta = getSkuMeta(it.sku || DEFAULT_SKU)
+            const skuLabel = meta?.label || DEFAULT_SKU
+            updatePayload[`bySku.${skuLabel}`] = increment(-itQty)
+          }
+        })
+        await setDoc(STOCK_SUMMARY_DOC, updatePayload, { merge: true })
+        set((state) => {
+          const nextSummary = { ...state.stockSummary }
+          items.forEach((it) => {
+            const itQty = Number(it.qty) || 0
+            if (itQty > 0) {
+              const meta = getSkuMeta(it.sku || DEFAULT_SKU)
+              const skuLabel = meta?.label || DEFAULT_SKU
+              nextSummary[skuLabel] = (Number(nextSummary[skuLabel]) || 0) - itQty
+            }
+          })
+          return {
+            stockTotal: (Number(state.stockTotal) || 0) + totalStockDelta,
+            stockSummary: nextSummary,
+          }
+        })
       }
 
       // 2. Create invoice transaction in payments
@@ -878,7 +964,31 @@ export const useClientStore = create((set, get) => ({
           }
 
           if (totalReversalQty > 0) {
-            await setDoc(STOCK_SUMMARY_DOC, { totalQty: increment(totalReversalQty) }, { merge: true })
+            const updatePayload = { totalQty: increment(totalReversalQty) }
+            items.forEach((it) => {
+              const itQty = Math.abs(Number(it.qty || 0))
+              if (itQty > 0) {
+                const meta = getSkuMeta(it.sku || DEFAULT_SKU)
+                const skuLabel = meta?.label || DEFAULT_SKU
+                updatePayload[`bySku.${skuLabel}`] = increment(itQty)
+              }
+            })
+            await setDoc(STOCK_SUMMARY_DOC, updatePayload, { merge: true })
+            set((state) => {
+              const nextSummary = { ...state.stockSummary }
+              items.forEach((it) => {
+                const itQty = Math.abs(Number(it.qty || 0))
+                if (itQty > 0) {
+                  const meta = getSkuMeta(it.sku || DEFAULT_SKU)
+                  const skuLabel = meta?.label || DEFAULT_SKU
+                  nextSummary[skuLabel] = (Number(nextSummary[skuLabel]) || 0) + itQty
+                }
+              })
+              return {
+                stockTotal: (Number(state.stockTotal) || 0) + totalReversalQty,
+                stockSummary: nextSummary,
+              }
+            })
           }
 
           const reversalClientId = existing.clientId || existing.customerId || ''

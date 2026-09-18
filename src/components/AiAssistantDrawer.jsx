@@ -37,6 +37,8 @@ export default function AiAssistantDrawer({
   const clients = useClientStore((state) => state.clients)
   const orders = useClientStore((state) => state.orders)
   const stockSummary = useClientStore((state) => state.stockSummary)
+  const stockTotal = useClientStore((state) => state.stockTotal)
+  const stockEntries = useClientStore((state) => state.stockEntries)
   const addStockBatch = useClientStore((state) => state.addStockBatch)
   const updateOrder = useClientStore((state) => state.updateOrder)
   const aiSettings = useClientStore((state) => state.aiSettings)
@@ -115,6 +117,8 @@ export default function AiAssistantDrawer({
     if (!filePayload && query) {
       const localRoute = tryLocalIntentRoute(query, {
         stockSummary,
+        stockTotal,
+        stockEntries,
         orders,
         clients,
       })
@@ -590,7 +594,7 @@ export default function AiAssistantDrawer({
                         <div>
                           <p className="font-bold text-gray-900">{cli.name}</p>
                           <p className="text-[10px] text-red-600 font-bold">
-                            ₹{Number(cli.balance || 0).toLocaleString()} Pending
+                            ₹{Number(cli.outstanding ?? cli.balance ?? 0).toLocaleString()} Pending
                           </p>
                         </div>
                         <button

@@ -33,16 +33,19 @@ describe('aiIntentRouter', () => {
   it('handles outstanding payments intent locally with zero tokens', () => {
     const fakeStore = {
       clients: [
-        { id: 'c1', name: 'Hotel Grand', balance: 5000 },
-        { id: 'c2', name: 'Zero Due', balance: 0 },
+        { id: 'c1', name: 'Hotel Grand', outstanding: 5000 },
+        { id: 'c2', name: 'Zero Due', outstanding: 0, balance: 0 },
+        { id: 'c3', name: 'Legacy Client', balance: 2500 },
       ],
     }
     const result = tryLocalIntentRoute('who has outstanding bill?', fakeStore)
     expect(result).not.toBeNull()
     expect(result.handled).toBe(true)
     expect(result.type).toBe('outstanding_list')
-    expect(result.data.clients.length).toBe(1)
-    expect(result.data.totalPending).toBe(5000)
+    expect(result.data.clients.length).toBe(2)
+    expect(result.data.totalPending).toBe(7500)
+    expect(result.data.clients[0].outstanding).toBe(5000)
+    expect(result.data.clients[1].outstanding).toBe(2500)
   })
 
   it('returns null for unknown freeform query to pass to AI', () => {

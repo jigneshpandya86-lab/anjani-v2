@@ -56,8 +56,19 @@ export const DEFAULT_SKU = 'Anjani 200ml'
 export const SKU_LABELS = WATER_SKUS.map((s) => s.label)
 
 export function getSkuMeta(skuLabel) {
+  const norm = String(skuLabel || '').trim().toLowerCase()
+  if (!norm) return WATER_SKUS[0]
+
   const found = WATER_SKUS.find(
-    (s) => s.label.toLowerCase() === String(skuLabel || '').toLowerCase(),
+    (s) =>
+      s.label.toLowerCase() === norm ||
+      s.id.toLowerCase() === norm ||
+      s.shortLabel.toLowerCase() === norm ||
+      (norm.includes('500') && s.id === 'bailey_500ml') ||
+      (norm.includes('250') && s.id === 'bailey_250ml') ||
+      (norm.includes('200') && s.id === 'anjani_200ml') ||
+      ((norm.includes('2 l') || norm.includes('2l')) && s.id === 'bailey_2l') ||
+      ((norm.includes('1 l') || norm.includes('1l')) && s.id === 'bailey_1l')
   )
   return found || WATER_SKUS[0]
 }

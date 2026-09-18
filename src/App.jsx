@@ -2178,16 +2178,19 @@ function App() {
         onOpenOrderModal={(order) => setEditOrder(order)}
       />
 
-      {/* Floating AI Assistant Trigger Button */}
+      {/* Floating AI Assistant Trigger Button (Compact, Bottom-Right) */}
       <button
         type="button"
         onClick={() => setAiDrawerOpen(true)}
-        className="fixed left-4 bottom-24 z-[998] bg-[#131921] hover:bg-black text-[#ff9900] border-2 border-[#ff9900]/70 h-14 px-3.5 sm:px-4 rounded-full shadow-lg shadow-black/20 flex items-center gap-2 active:scale-95 transition-all group"
+        className={`fixed right-4 z-[998] bg-[#131921] hover:bg-black text-[#ff9900] border border-[#ff9900]/80 h-11 w-11 sm:h-12 sm:w-12 rounded-full shadow-lg shadow-black/30 flex items-center justify-center active:scale-90 transition-all group ${
+          userRole === 'admin' && ['orders', 'clients', 'payments', 'expenses'].includes(activeTab)
+            ? 'bottom-40'
+            : 'bottom-22 sm:bottom-24'
+        }`}
         aria-label="Open AI Assistant"
         title="Anjani AI Assistant (Scan Vendor Bills, Inquire Stock)"
       >
         <Sparkles size={20} className="text-[#ff9900] group-hover:rotate-12 transition-transform" />
-        <span className="text-xs font-bold text-white tracking-wide">AI Assistant</span>
       </button>
     </div>
   )
