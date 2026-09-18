@@ -53,12 +53,13 @@ import IntelligenceDashboard from './components/IntelligenceDashboard'
 import CelebrationsTab from './components/CelebrationsTab'
 import ExpensesDashboard from './components/ExpensesDashboard'
 import {
-  jpegDataUrlToHex,
-  buildVectorQrStream,
-  buildUpiPayload,
-  DEFAULT_UPI_ID,
-  DEFAULT_PAYEE_NAME,
-} from './utils/qrHelper'
+  isMobileOrNative,
+  shareOrDownloadPdf,
+  resolveTimestamp,
+  buildTabularReportPdf,
+  buildSimpleInvoicePdfFile,
+  buildLedgerPdf,
+} from './utils/pdf'
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
@@ -465,453 +466,6 @@ function App() {
     return true
   }
 
-  const escapePdfText = (text) =>
-    String(text || '')
-      .replace(/\\/g, '\\\\')
-      .replace(/\(/g, '\\(')
-      .replace(/\)/g, '\\)')
-
-  // Builds a raw single-page PDF from tabular data — works inside Capacitor WebView
-  const createPdfFile = (pdfText, filename) => {
-    const bytes = new TextEncoder().encode(pdfText)
-    const blob = new Blob([bytes], { type: 'application/pdf' })
-    try {
-      return new File([blob], filename, { type: 'application/pdf' })
-    } catch {
-      // Older WebViews may not support File constructor.
-      blob.name = filename
-      return blob
-    }
-  }
-
-  // Share PDF via native share sheet (WhatsApp, Drive, etc.) or fall back to download
-  const shareOrDownloadPdf = async (file, shareTitle = '', shareText = '') => {
-    try {
-      const canShareWithFile = Boolean(
-        navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] })),
-      )
-      if (canShareWithFile) {
-        await navigator.share({ title: shareTitle, text: shareText, files: [file] })
-        toast.success('PDF ready — select WhatsApp or any app to share.')
-        return
-      }
-    } catch (err) {
-      if (err?.name === 'AbortError') return
-    }
-    const url = URL.createObjectURL(file)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = file?.name || 'invoice.pdf'
-    a.target = '_blank'
-    a.rel = 'noopener'
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    // Android WebView/Chrome can ignore downloads from blob URLs; open in a new tab as fallback.
-    setTimeout(() => {
-      if (!document.hidden) {
-        window.open(url, '_blank', 'noopener')
-      }
-    }, 150)
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-    toast.success('PDF generated.')
-  }
-
-  const isMobileOrNative =
-    Boolean(window?.Capacitor?.isNativePlatform?.()) ||
-    /Android|iPhone|iPad/i.test(navigator.userAgent)
-
-  const buildTabularReportPdf = ({
-    title,
-    columns,
-    rows,
-    metadata = [],
-    filename = 'report.pdf',
-    columnWidths = null, // Optional: array of percentages/fractions
-  }) => {
-    const san = (t) =>
-      String(t ?? '')
-        .replace(/₹/g, 'Rs.')
-        .replace(/[^\x20-\x7E]/g, '')
-        .replace(/\\/g, '\\\\')
-        .replace(/\(/g, '\\(')
-        .replace(/\)/g, '\\)')
-        .slice(0, 60)
-    const txt = (x, y, size, t) => `BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${san(t)}) Tj ET`
-    const pW = 595,
-      pH = 842,
-      mg = 36,
-      usableW = pW - mg * 2
-
-    // If columnWidths is provided, use it; otherwise, default to even distribution.
-    const calculatedWidths =
-      columnWidths && columnWidths.length === columns.length
-        ? columnWidths.map((w) => w * usableW)
-        : columns.map(() => usableW / Math.max(columns.length, 1))
-
-    const getColX = (index) => {
-      let x = mg
-      for (let i = 0; i < index; i++) {
-        x += calculatedWidths[i]
-      }
-      return x
-    }
-
-    const rH = 18
-
-    // Build content stream for a single page
-    const buildPageStream = (pageRows, isFirstPage) => {
-      const lines = []
-      let y = pH - mg - 20
-
-      if (isFirstPage) {
-        lines.push(txt(mg, y, 14, title))
-        y -= 20
-        lines.push('0.5 0.5 0.5 rg')
-        lines.push(
-          txt(
-            mg,
-            y,
-            8,
-            `Generated: ${new Date().toLocaleString('en-IN').replace(/[^\x20-\x7E]/g, '')}`,
-          ),
-        )
-        lines.push('0 0 0 rg')
-        y -= 14
-        for (const m of metadata.filter(Boolean)) {
-          lines.push('0.5 0.5 0.5 rg')
-          lines.push(txt(mg, y, 8, m))
-          lines.push('0 0 0 rg')
-          y -= 12
-        }
-        y -= 6
-      }
-
-      // Column header bar
-      lines.push('0.2 0.2 0.2 rg')
-      lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
-      lines.push('1 1 1 rg')
-      columns.forEach((col, i) => lines.push(txt(getColX(i) + 4, y + 4, 7, col)))
-      lines.push('0 0 0 rg')
-      y -= rH
-
-      pageRows.forEach((row, ri) => {
-        if (ri % 2 === 0) {
-          lines.push('0.95 0.95 0.95 rg')
-          lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
-          lines.push('0 0 0 rg')
-        }
-        row.forEach((cell, i) => lines.push(txt(getColX(i) + 4, y + 4, 7, cell)))
-        y -= rH
-      })
-
-      return lines.join('\n')
-    }
-
-    // Calculate how many rows fit on the first page (title + metadata take space)
-    const metaCount = metadata.filter(Boolean).length
-    const firstPageRowStartY = pH - mg - 20 - 20 - 14 - metaCount * 12 - 6 - rH
-    const rowsOnFirstPage = Math.max(1, Math.floor((firstPageRowStartY - (mg + rH)) / rH))
-
-    const subseqRowStartY = pH - mg - 20 - rH
-    const rowsPerSubsequentPage = Math.max(1, Math.floor((subseqRowStartY - (mg + rH)) / rH))
-
-    const pages = []
-    pages.push(rows.slice(0, rowsOnFirstPage))
-    let offset = rowsOnFirstPage
-    while (offset < rows.length) {
-      pages.push(rows.slice(offset, offset + rowsPerSubsequentPage))
-      offset += rowsPerSubsequentPage
-    }
-
-    const streams = pages.map((pageRows, i) => buildPageStream(pageRows, i === 0))
-
-    const fontObjNum = 3 + pages.length * 2
-    const pageKids = pages.map((_, i) => `${3 + i * 2} 0 R`).join(' ')
-
-    const objs = [
-      '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
-      `2 0 obj << /Type /Pages /Count ${pages.length} /Kids [${pageKids}] >> endobj`,
-    ]
-    pages.forEach((_, i) => {
-      objs.push(
-        `${3 + i * 2} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents ${4 + i * 2} 0 R /Resources << /Font << /F1 ${fontObjNum} 0 R >> >> >> endobj`,
-      )
-      objs.push(
-        `${4 + i * 2} 0 obj << /Length ${streams[i].length} >> stream\n${streams[i]}\nendstream endobj`,
-      )
-    })
-    objs.push(`${fontObjNum} 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj`)
-
-    let pdf = '%PDF-1.4\n'
-    const offsets = [0]
-    objs.forEach((obj) => {
-      offsets.push(pdf.length)
-      pdf += `${obj}\n`
-    })
-    const xrefStart = pdf.length
-    pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`
-    for (let i = 1; i <= objs.length; i += 1) {
-      pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`
-    }
-    pdf += `trailer << /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`
-
-    return createPdfFile(pdf, filename)
-  }
-
-  const buildSimpleInvoicePdfFile = ({ order, clientName, mobile }) => {
-    const rawItems =
-      Array.isArray(order.items) && order.items.length > 0
-        ? order.items
-        : [
-            {
-              sku: order.sku || order.product || 'Anjani 200ml',
-              qty: Number(order.qty) || 0,
-              rate: Number(order.rate) || 0,
-            },
-          ]
-
-    const items = rawItems.map((it) => {
-      const skuName = it.sku || 'Anjani 200ml'
-      const unit = skuName.toLowerCase().includes('anjani') ? 'Boxes' : 'Cases'
-      const qty = Number(it.qty) || 0
-      const rate = Number(it.rate) || 0
-      return {
-        sku: skuName,
-        unit,
-        qty,
-        rate,
-        amount: qty * rate,
-        description: `${skuName} Supply`,
-      }
-    })
-
-    const grandTotal =
-      Number(order.totalAmount) || items.reduce((sum, it) => sum + it.amount, 0)
-    const orderId = order.orderId || order.id || 'NA'
-    const issuedAt = new Date().toLocaleString('en-IN')
-    const invoiceDateTime = `${order.date || '-'} ${order.time || ''}`.trim()
-    // Flatten multi-line address into a single line, cap at 80 chars
-    const clientAddress = String(order.address || '')
-      .replace(/[\r\n]+/g, ', ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 80)
-    const textAt = (x, y, size, text) =>
-      `BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${escapePdfText(text)}) Tj ET`
-    const boldAt = (x, y, size, text) =>
-      `BT /F2 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${escapePdfText(text)}) Tj ET`
-
-    const tableHeaderY = clientAddress ? 606 : 622
-    const rowHeight = 24
-    const itemStreamLines = []
-    let currentY = tableHeaderY
-
-    items.forEach((item, idx) => {
-      const rowY = currentY - rowHeight
-      const bg = idx % 2 === 0 ? '0.96 0.96 0.96 rg' : '1 1 1 rg'
-      itemStreamLines.push(
-        bg,
-        `40 ${rowY} 515 ${rowHeight} re f`,
-        '0.88 0.88 0.88 RG',
-        '0.5 w',
-        `40 ${rowY} 515 ${rowHeight} re S`,
-        '0 0 0 rg',
-        textAt(52, rowY + 7, 9, item.description),
-        textAt(305, rowY + 7, 9, `${item.qty} ${item.unit}`),
-        textAt(385, rowY + 7, 9, `INR ${item.rate.toLocaleString('en-IN')}`),
-        textAt(475, rowY + 7, 9, `INR ${item.amount.toLocaleString('en-IN')}`),
-      )
-      currentY = rowY
-    })
-
-    const totalBoxY = currentY - 45
-    const footerStartY = totalBoxY - 20
-
-    const paymentSettings = useClientStore.getState().paymentSettings || {}
-    const qrHex = paymentSettings.qrImageDataUrl
-      ? jpegDataUrlToHex(paymentSettings.qrImageDataUrl)
-      : null
-    const hasImageQr = Boolean(qrHex)
-
-    let qrStreamLines = []
-    if (hasImageQr) {
-      // Draw image XObject inside the card
-      qrStreamLines = [
-        'q',
-        `86 0 0 86 424 ${footerStartY - 114} cm`,
-        '/Img1 Do',
-        'Q',
-      ]
-    } else {
-      // Vector QR fallback with exact invoice amount
-      const upiPayload = buildUpiPayload({
-        upiId: paymentSettings.upiId || DEFAULT_UPI_ID,
-        payeeName: paymentSettings.payeeName || DEFAULT_PAYEE_NAME,
-        amount: grandTotal,
-        orderId: order.orderId || order.id || '',
-      })
-      const vectorQr = buildVectorQrStream(upiPayload, 424, footerStartY - 114, 86)
-      qrStreamLines = [vectorQr]
-    }
-
-    const upiDisplay = paymentSettings.upiId || DEFAULT_UPI_ID
-
-    const stream = [
-      'q',
-
-      // ── HEADER BAND (dark navy, y=695 to y=842) ──────────────────────
-      '0.06 0.12 0.27 rg',
-      '40 695 515 147 re f',
-
-      // INVOICE title + invoice meta (white)
-      '1 1 1 rg',
-      boldAt(52, 822, 22, 'INVOICE'),
-      '0.8 0.85 0.95 rg',
-      textAt(380, 822, 9, `Invoice #: ${orderId}`),
-      textAt(380, 808, 9, `Issued: ${issuedAt}`),
-
-      // BILL FROM label + company info
-      '0.6 0.65 0.75 rg',
-      textAt(52, 796, 8, 'BILL FROM'),
-      '1 1 1 rg',
-      boldAt(52, 782, 11, 'ANNAPURNA FOODS'),
-      '0.85 0.88 0.93 rg',
-      textAt(52, 768, 9, 'Shop No. 21, VR One Commercial Business Center'),
-      textAt(52, 755, 9, 'Between Ajwa & Waghodia Chokadi'),
-      textAt(52, 742, 9, 'Opp. L&T Knowledge City'),
-      textAt(52, 729, 9, 'Vadodara, Gujarat 390019, India'),
-      '0.7 0.75 0.83 rg',
-      textAt(52, 716, 9, 'GSTIN: 24ABHFA6857D1ZI'),
-
-      // ── BILL TO ───────────────────────────────────────────────────────
-      '0.5 0.5 0.5 rg',
-      textAt(52, 683, 8, 'BILL TO'),
-      '0 0 0 rg',
-      boldAt(52, 669, 11, clientName || 'Unknown Client'),
-      textAt(52, 655, 9, `Mobile: ${mobile || '-'}`),
-      textAt(315, 669, 9, `Delivery: ${invoiceDateTime || '-'}`),
-      textAt(315, 655, 9, `Status: ${order.status || '-'}`),
-      // Client address (from order)
-      ...(clientAddress
-        ? ['0.35 0.35 0.35 rg', textAt(52, 641, 9, `Address: ${clientAddress}`), '0 0 0 rg']
-        : []),
-
-      // separator (shifted down by 13pt when address present)
-      '0.8 0.8 0.8 RG',
-      '0.5 w',
-      `40 ${clientAddress ? 628 : 644} m 555 ${clientAddress ? 628 : 644} l S`,
-
-      // ── ITEM TABLE HEADER ─────────────────────────────────────────────
-      '0.15 0.15 0.15 rg',
-      `40 ${tableHeaderY} 515 20 re f`,
-      '1 1 1 rg',
-      textAt(52, tableHeaderY + 6, 9, 'Description'),
-      textAt(305, tableHeaderY + 6, 9, 'Qty'),
-      textAt(385, tableHeaderY + 6, 9, 'Rate'),
-      textAt(475, tableHeaderY + 6, 9, 'Amount'),
-
-      // ── ITEM ROWS ─────────────────────────────────────────────────────
-      ...itemStreamLines,
-
-      // ── TOTAL ─────────────────────────────────────────────────────────
-      '0.92 0.92 0.92 rg',
-      `350 ${totalBoxY} 205 36 re f`,
-      '0.75 0.75 0.75 RG',
-      '1 w',
-      `350 ${totalBoxY} 205 36 re S`,
-      '0 0 0 rg',
-      textAt(362, totalBoxY + 13, 10, 'Total'),
-      boldAt(440, totalBoxY + 13, 12, `INR ${grandTotal.toLocaleString('en-IN')}`),
-
-      // ── FOOTER ────────────────────────────────────────────────────────
-      '0.7 0.7 0.7 RG',
-      '1 w',
-      `40 ${footerStartY} m 555 ${footerStartY} l S`,
-
-      // Notes
-      '0.4 0.4 0.4 rg',
-      boldAt(40, footerStartY - 13, 9, 'Notes'),
-      '0 0 0 rg',
-      textAt(40, footerStartY - 27, 9, 'Thanks for your business.'),
-
-      // Bank details
-      '0.8 0.8 0.8 RG',
-      '0.5 w',
-      `40 ${footerStartY - 40} m 365 ${footerStartY - 40} l S`,
-      '0.4 0.4 0.4 rg',
-      boldAt(40, footerStartY - 53, 9, "Company's Bank Details"),
-      '0 0 0 rg',
-      textAt(40, footerStartY - 67, 9, 'Bank Name: Kotak Mahindra Bank'),
-      textAt(40, footerStartY - 81, 9, 'Account Holder: Annapurna Foods'),
-      textAt(40, footerStartY - 95, 9, 'IFSC Code: KKBK0002748'),
-      textAt(40, footerStartY - 109, 9, 'Account Number: 1712426768'),
-
-      // Contact
-      '0.8 0.8 0.8 RG',
-      '0.5 w',
-      `40 ${footerStartY - 121} m 365 ${footerStartY - 121} l S`,
-      '0 0 0 rg',
-      textAt(40, footerStartY - 134, 9, 'Contact Number: 9925997750'),
-
-      // ── SCAN & PAY CARD (GPAY / UPI) ───────────────────────────────────
-      // Card background
-      '1 1 1 rg',
-      `380 ${footerStartY - 142} 175 136 re f`,
-      // Card border
-      '0.82 0.82 0.82 RG',
-      '1 w',
-      `380 ${footerStartY - 142} 175 136 re S`,
-      // Card header navy bar
-      '0.06 0.12 0.27 rg',
-      `380 ${footerStartY - 22} 175 16 re f`,
-      '1 1 1 rg',
-      boldAt(410, footerStartY - 18, 8, 'SCAN & PAY (GPAY / UPI)'),
-
-      // QR Code Content (Image or Vector)
-      ...qrStreamLines,
-
-      // Card Subtitles
-      '0.4 0.4 0.4 rg',
-      boldAt(398, footerStartY - 126, 6.5, 'Google Pay • PhonePe • Paytm • BHIM'),
-      '0.1 0.1 0.1 rg',
-      textAt(388, footerStartY - 137, 7, `UPI: ${upiDisplay}`),
-
-      'Q',
-    ].join('\n')
-
-    const objects = []
-    objects.push('1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj')
-    objects.push('2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj')
-    objects.push(
-      `3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >>${
-        hasImageQr ? ' /XObject << /Img1 7 0 R >>' : ''
-      } >> >> endobj`,
-    )
-    objects.push(`4 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream endobj`)
-    objects.push('5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj')
-    objects.push('6 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> endobj')
-    if (hasImageQr) {
-      objects.push(
-        `7 0 obj << /Type /XObject /Subtype /Image /Width 300 /Height 300 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter [/ASCIIHexDecode /DCTDecode] /Length ${qrHex.length} >> stream\n${qrHex}\nendstream endobj`,
-      )
-    }
-
-    let pdf = '%PDF-1.4\n'
-    const offsets = [0]
-    objects.forEach((obj) => {
-      offsets.push(pdf.length)
-      pdf += `${obj}\n`
-    })
-    const xrefStart = pdf.length
-    pdf += `xref\n0 ${objects.length + 1}\n`
-    pdf += '0000000000 65535 f \n'
-    for (let i = 1; i <= objects.length; i += 1) {
-      pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`
-    }
-    pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`
-    return createPdfFile(pdf, `invoice-${orderId}.pdf`)
-  }
 
   const handleRecordPaymentFromOrder = (order) => {
     const client = clients.find((c) => c.id === order.clientId)
@@ -941,7 +495,12 @@ function App() {
     const amountVal =
       Number(order.totalAmount) || (Number(order.qty) || 0) * (Number(order.rate) || 0)
     const amount = amountVal.toLocaleString('en-IN')
-    const pdfFile = buildSimpleInvoicePdfFile({ order, clientName, mobile })
+    const pdfFile = buildSimpleInvoicePdfFile({
+      order,
+      clientName,
+      mobile,
+      paymentSettings: useClientStore.getState()?.paymentSettings,
+    })
     const invoiceTitle = `Invoice ${order.orderId || order.id || ''}`
     const msg = `${invoiceTitle}\nClient: ${clientName}\nAmount: Rs.${amount}`
 
@@ -985,235 +544,6 @@ function App() {
     return { startDate, endDate, label: 'Past 1 Year' }
   }
 
-  // Resolve a Firestore Timestamp OR a plain serialised object (from localStorage cache)
-  // into a JS Date, or null if unparseable.
-  const resolveTimestamp = (ts) => {
-    if (!ts) return null
-    if (typeof ts.toDate === 'function') return ts.toDate() // Firestore Timestamp
-    if (ts.seconds) return new Date(ts.seconds * 1000) // cached plain object
-    if (typeof ts === 'string' || typeof ts === 'number') return new Date(ts)
-    return null
-  }
-
-  // Purpose-built ledger PDF: Dr / Cr / Running Balance with per-column widths.
-  const buildLedgerPdf = ({ clientName, dateRangeLabel, txns, openingBalance }) => {
-    // Safe string: strip non-ASCII, escape PDF string specials, limit length
-    const san = (t, maxLen = 60) =>
-      String(t ?? '')
-        .replace(/₹/g, 'Rs.')
-        .replace(/[^\x20-\x7E]/g, '')
-        .replace(/\\/g, '\\\\')
-        .replace(/\(/g, '\\(')
-        .replace(/\)/g, '\\)')
-        .slice(0, maxLen)
-    const fmt = (n) => Number(n || 0).toLocaleString('en-IN')
-
-    // A4 portrait geometry
-    const pW = 595,
-      pH = 842,
-      mg = 36
-    const usableW = pW - mg * 2 // 523
-
-    // Column widths (must sum to usableW = 523)
-    const cW = [22, 58, 52, 68, 68, 72, 183] // Sr | Date | Type | Dr | Cr | Balance | Narration
-    const cHdr = ['Sr', 'Date', 'Type', 'Debit (Dr)', 'Credit (Cr)', 'Balance', 'Narration']
-    const rH = 18
-
-    const txt = (x, y, size, t, maxLen) =>
-      `BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm (${san(t, maxLen)}) Tj ET`
-
-    const drawRow = (lines, y, cells, bg, textRgb = '0 0 0') => {
-      if (bg) {
-        lines.push(`${bg} rg`)
-        lines.push(`${mg} ${y - 4} ${usableW} ${rH} re f`)
-      }
-      lines.push(`${textRgb} rg`)
-      let xOff = mg
-      const maxLens = [4, 12, 9, 10, 10, 10, 42]
-      cells.forEach((cell, i) => {
-        lines.push(txt(xOff + 3, y + 4, 7, cell, maxLens[i]))
-        xOff += cW[i]
-      })
-      lines.push('0 0 0 rg')
-    }
-
-    // Compute running balance rows
-    let balance = openingBalance
-    const dataRows = txns.map((tx, idx) => {
-      const amount = Number(tx.amount || 0)
-      let dr = '',
-        cr = ''
-      if (tx.type === 'invoice') {
-        balance += Math.abs(amount)
-        dr = fmt(Math.abs(amount))
-      } else if (tx.type === 'payment') {
-        balance -= Math.abs(amount)
-        cr = fmt(Math.abs(amount))
-      } else {
-        // reversal: amount may be negative
-        if (amount < 0) {
-          balance += Math.abs(amount)
-          dr = fmt(Math.abs(amount))
-        } else {
-          balance -= amount
-          cr = fmt(amount)
-        }
-      }
-      const txDate = resolveTimestamp(tx.date) || resolveTimestamp(tx.createdAt)
-      const dateStr = txDate ? txDate.toLocaleDateString('en-IN') : '-'
-      const typeLabel =
-        tx.type === 'invoice' ? 'Invoice' : tx.type === 'payment' ? 'Payment' : 'Reversal'
-      return [
-        String(idx + 1),
-        dateStr,
-        typeLabel,
-        dr,
-        cr,
-        `Rs.${fmt(balance)}`,
-        tx.narration || '-',
-      ]
-    })
-
-    const closingBalance = balance
-    const totalDr = txns.reduce(
-      (s, tx) => (tx.type === 'invoice' ? s + Math.abs(Number(tx.amount || 0)) : s),
-      0,
-    )
-    const totalCr = txns.reduce(
-      (s, tx) => (tx.type === 'payment' ? s + Math.abs(Number(tx.amount || 0)) : s),
-      0,
-    )
-
-    const buildPageStream = (pageRows, isFirstPage) => {
-      const lines = []
-      let y = pH - mg - 20
-
-      if (isFirstPage) {
-        // Title
-        lines.push('0.08 0.08 0.08 rg')
-        lines.push(txt(mg, y, 13, 'Ledger Statement', 40))
-        y -= 18
-        lines.push('0.4 0.4 0.4 rg')
-        lines.push(
-          txt(
-            mg,
-            y,
-            8,
-            `Generated: ${new Date().toLocaleString('en-IN').replace(/[^\x20-\x7E]/g, '')}`,
-            60,
-          ),
-        )
-        y -= 13
-        lines.push(txt(mg, y, 8, `Client: ${clientName}`, 60))
-        y -= 13
-        lines.push(txt(mg, y, 8, `Date Range: ${dateRangeLabel}`, 60))
-        y -= 13
-        lines.push(txt(mg, y, 8, `Opening Balance: Rs.${fmt(openingBalance)}`, 60))
-        lines.push('0 0 0 rg')
-        y -= 10
-
-        // Divider line
-        lines.push('0.7 0.7 0.7 rg')
-        lines.push(`${mg} ${y} ${usableW} 0.5 re f`)
-        lines.push('0 0 0 rg')
-        y -= 8
-      }
-
-      // Column header
-      drawRow(lines, y, cHdr, '0.13 0.13 0.13', '1 1 1')
-      y -= rH
-
-      // Data rows
-      pageRows.forEach((row, ri) => {
-        drawRow(lines, y, row, ri % 2 === 0 ? '0.96 0.96 0.96' : null)
-        y -= rH
-      })
-
-      return lines.join('\n')
-    }
-
-    // Summary page stream (always last)
-    const buildSummaryStream = () => {
-      const lines = []
-      let y = pH - mg - 20
-
-      // Totals row
-      const totalRow = ['', '', 'TOTAL', `Rs.${fmt(totalDr)}`, `Rs.${fmt(totalCr)}`, '', '']
-      drawRow(lines, y, totalRow, '0.13 0.13 0.13', '1 1 1')
-      y -= rH
-
-      // Closing balance row
-      drawRow(
-        lines,
-        y,
-        [
-          '',
-          '',
-          'Closing Bal.',
-          '',
-          '',
-          `Rs.${fmt(closingBalance)}`,
-          closingBalance < 0 ? 'Advance' : 'Outstanding',
-        ],
-        '0.2 0.5 0.2',
-        '1 1 1',
-      )
-
-      return lines.join('\n')
-    }
-
-    // Pagination
-    const firstPageHeaderH = 20 + 18 + 13 + 13 + 13 + 10 + 8 + rH // title+meta+divider+colhdr
-    const rowsOnFirstPage = Math.max(
-      1,
-      Math.floor((pH - mg - firstPageHeaderH - (mg + rH * 2)) / rH),
-    )
-    const subseqRowStartY = pH - mg - 20 - rH
-    const rowsPerSubseqPage = Math.max(1, Math.floor((subseqRowStartY - (mg + rH * 2)) / rH))
-
-    const pages = []
-    pages.push(dataRows.slice(0, rowsOnFirstPage))
-    let off = rowsOnFirstPage
-    while (off < dataRows.length) {
-      pages.push(dataRows.slice(off, off + rowsPerSubseqPage))
-      off += rowsPerSubseqPage
-    }
-    // Summary appended to last page if it fits, else as a separate page
-    const streams = pages.map((pr, i) => buildPageStream(pr, i === 0))
-    streams[streams.length - 1] += '\n' + buildSummaryStream()
-
-    // Build PDF
-    const fontObjNum = 3 + pages.length * 2
-    const pageKids = pages.map((_, i) => `${3 + i * 2} 0 R`).join(' ')
-    const objs = []
-    objs.push(`1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj`)
-    objs.push(`2 0 obj\n<< /Type /Pages /Kids [${pageKids}] /Count ${pages.length} >>\nendobj`)
-    streams.forEach((stream, i) => {
-      const enc = new TextEncoder().encode(stream)
-      objs.push(
-        `${3 + i * 2} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pW} ${pH}] /Contents ${4 + i * 2} 0 R /Resources << /Font << /F1 ${fontObjNum} 0 R >> >> >>\nendobj`,
-      )
-      objs.push(
-        `${4 + i * 2} 0 obj\n<< /Length ${enc.length} >>\nstream\n${stream}\nendstream\nendobj`,
-      )
-    })
-    objs.push(`${fontObjNum} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj`)
-
-    let pdf = '%PDF-1.4\n'
-    const offsets = []
-    objs.forEach((obj) => {
-      offsets.push(pdf.length)
-      pdf += obj + '\n'
-    })
-    const xrefOffset = pdf.length
-    pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`
-    offsets.forEach((o) => {
-      pdf += String(o).padStart(10, '0') + ' 00000 n \n'
-    })
-    pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
-
-    return new File([pdf], 'ledger.pdf', { type: 'application/pdf' })
-  }
 
   const handleLedgerStatementPdf = async () => {
     try {
@@ -1272,14 +602,22 @@ function App() {
         return ta - tb
       })
 
-      // Opening balance: current outstanding minus net movement in the period
-      const periodNet = filtered.reduce((s, tx) => {
-        const amt = Math.abs(Number(tx.amount || 0))
-        if (tx.type === 'invoice') return s + amt
-        if (tx.type === 'payment') return s - amt
-        return s
-      }, 0)
-      const openingBalance = Math.max(0, Number(selectedClient.outstanding || 0) - periodNet)
+      // Opening balance: sum of all prior transactions before startDate (0 extra database reads)
+      let openingBalance = 0
+      if (selectedClient.id !== 'all') {
+        openingBalance = payments.reduce((acc, tx) => {
+          const d = resolveTimestamp(tx.createdAt) || resolveTimestamp(tx.date)
+          if (!d || d >= startDate) return acc
+          const amt = Number(tx.amount || 0)
+          if (tx.type === 'invoice') {
+            return acc + Math.abs(amt)
+          } else if (tx.type === 'payment') {
+            return acc - Math.abs(amt)
+          } else {
+            return amt < 0 ? acc + Math.abs(amt) : acc - amt
+          }
+        }, 0)
+      }
 
       if (isMobileOrNative) {
         const file = buildLedgerPdf({
@@ -1540,7 +878,12 @@ function App() {
     const clientName = client?.name || order.clientName || order.customerName || 'Unknown Client'
     const mobile = client?.mobile || order.mobile || order.phone || '-'
 
-    const pdfFile = buildSimpleInvoicePdfFile({ order, clientName, mobile })
+    const pdfFile = buildSimpleInvoicePdfFile({
+      order,
+      clientName,
+      mobile,
+      paymentSettings: useClientStore.getState()?.paymentSettings,
+    })
     await shareOrDownloadPdf(pdfFile, `Invoice ${order.orderId || order.id || ''}`)
   }
 

@@ -551,28 +551,6 @@ exports.sendEveningOrderReminders = onSchedule(
   },
 )
 
-exports.sendWeeklyPaymentReminders = onSchedule(
-  {
-    schedule: 'every monday 18:00',
-    timeZone: 'Asia/Kolkata',
-  },
-  async (_event) => {
-    logger.info('sendWeeklyPaymentReminders (Monday schedule) deactivated in favor of hourlySmsScheduler. Exiting.')
-  },
-)
-
-// --- WEEKLY REGULAR CLIENT REMINDER SYSTEM ---
-
-exports.sendWeeklyRegularOrderReminder = onSchedule(
-  {
-    schedule: '0 10 * * 3', // Every Wednesday at 10:00 AM India Time
-    timeZone: 'Asia/Kolkata',
-    retryCount: 2,
-  },
-  async (_event) => {
-    logger.info('sendWeeklyRegularOrderReminder (Wednesday schedule) deactivated in favor of hourlySmsScheduler. Exiting.');
-  },
-)
 
 // Constants and Helpers for the Follow-Up Logic
 const MACRO_URL_FOLLOWUP =
@@ -1514,31 +1492,6 @@ Output only the plain SMS text, no quotes or formatting.`
   }
 }
 
-// --- WEEKLY REGULAR CLIENT REMINDER SYSTEM ---
-
-exports.sendWeeklyRegularOrderReminder = onSchedule(
-  {
-    schedule: "0 * * * *", // Run hourly, checks config/regularReminder to see if it should execute
-    region: "asia-south1",
-    retryCount: 2
-  },
-  async (_event) => {
-    logger.info("sendWeeklyRegularOrderReminder (Hourly scheduler) deactivated in favor of hourlySmsScheduler. Exiting.");
-  }
-);
-
-// --- DEFAULTER PAYMENT REMINDER SYSTEM ---
-
-exports.sendWeeklyPaymentReminders = onSchedule(
-  {
-    schedule: "0 * * * *", // Run hourly, checks config/defaulterReminder to see if it should execute
-    region: "asia-south1",
-    retryCount: 2
-  },
-  async (_event) => {
-    logger.info("sendWeeklyPaymentReminders (Hourly scheduler) deactivated in favor of hourlySmsScheduler. Exiting.");
-  }
-);
 
 // --- AI GENERATIVE TEMPLATE HELPERS ---
 
@@ -1672,15 +1625,6 @@ exports.sendOrderDeliveredSmsToClient = onDocumentWritten('orders/{docId}', asyn
   }
 })
 
-exports.sendDailyStockReportToNilesh = onSchedule(
-  {
-    schedule: '0 21 * * *',
-    timeZone: 'Asia/Kolkata',
-  },
-  async (_event) => {
-    logger.info('sendDailyStockReportToNilesh legacy job deactivated in favor of hourlySmsScheduler. Exiting.');
-  },
-)
 
 // --- UNIFIED HOURLY SMS SCHEDULER SYSTEM ---
 
