@@ -1256,15 +1256,38 @@ exports.askAnjaniAi = onCall(async (request) => {
   const aiSettings = await getAiSettings()
   const primaryModelName = aiSettings.activeModel || 'gemini-2.5-flash-lite'
   const fallbackModelName = aiSettings.fallbackModel || 'gemini-2.5-flash'
-  const maxOutputTokens = Math.min(Number(aiSettings.maxOutputTokens) || 800, 1500)
+  const chatMaxTokens = Math.min(Number(aiSettings.maxOutputTokens) || 800, 1500)
+  const jsonMaxTokens = 3500
   const temperature = Number(aiSettings.temperature) || 0.15
+
+  const parseStructuredJson = (rawJson) => {
+    let clean = String(rawJson || '').replace(/^```json\s*|\s*```$/g, '').trim()
+    try {
+      return JSON.parse(clean)
+    } catch (_pe) {
+      // Auto-repair if output was truncated mid-array
+      const lastBrace = clean.lastIndexOf('}')
+      if (lastBrace !== -1) {
+        const candidate = clean.slice(0, lastBrace + 1)
+        const attempts = [candidate + ']}', candidate + ']', candidate + '}']
+        for (const att of attempts) {
+          try {
+            return JSON.parse(att)
+          } catch (_e) {
+            // ignore and try next repair attempt
+          }
+        }
+      }
+      throw _pe
+    }
+  }
 
   const tryGenerate = async (modelName) => {
     if (imageBase64) {
       const model = vertexAI.getGenerativeModel({
         model: modelName,
         generationConfig: {
-          maxOutputTokens,
+          maxOutputTokens: jsonMaxTokens,
           temperature,
           responseMimeType: 'application/json',
         },
@@ -1344,13 +1367,7 @@ Return strict JSON:
       })
 
       const rawJson = res.response.candidates[0].content.parts[0].text.trim()
-      let parsedData
-      try {
-        parsedData = JSON.parse(rawJson)
-      } catch (_pe) {
-        const clean = rawJson.replace(/^```json\s*|\s*```$/g, '').trim()
-        parsedData = JSON.parse(clean)
-      }
+      const parsedData = parseStructuredJson(rawJson)
 
       if (
         parsedData.docType === 'retail_sales' ||
@@ -1373,22 +1390,23 @@ Return strict JSON:
       const rawText = String(text || '').trim()
       const isSalesNotes =
         mode === 'retail_sales' ||
-        (/(?:sales|peti|box|case|bxs|qty|cash|rokda|gpay|upi|udhar|baaki|jama)\b/i.test(rawText) &&
-          /(?:\d+\s*(?:box|case|peti|bxs|pc|bottle|l|ml)|(?:cash|gpay|udhar|rokda))/i.test(rawText))
+        /(?:sales|peti|box|case|bxs|qty|cash|rokda|gpay|upi|udhar|baaki|jama)\b/i.test(rawText) ||
+        /(?:200ml|250ml|500ml|1\s*l|2\s*l|anjani|bailey)/i.test(rawText) ||
+        (rawText.includes('\n') && /\d+/.test(rawText))
 
       if (isSalesNotes) {
         const model = vertexAI.getGenerativeModel({
           model: modelName,
           generationConfig: {
-            maxOutputTokens,
+            maxOutputTokens: jsonMaxTokens,
             temperature,
             responseMimeType: 'application/json',
           },
         })
 
         const textSalesPrompt = `You are an expert sales notepad parser for Annapurna Foods, authorized water distributor in Vadodara, Gujarat (owned by Jignesh Pandya).
-The user pasted daily retail sales notes (from WhatsApp or notepad).
-Parse each customer sale into structured JSON.
+The user pasted daily retail sales notes (from WhatsApp or notepad in English, Gujarati, or Gujlish).
+Parse every customer sale into structured JSON.
 Map all products EXCLUSIVELY to our 5 canonical SKUs:
 1. "Anjani 200ml" (unit: Box)
 2. "Bailey 250ml" (unit: Case / Box)
@@ -1425,20 +1443,14 @@ Return strict JSON:
 }
 
 Sales Notes:
-${rawText.slice(0, 1500)}`
+${rawText.slice(0, 3000)}`
 
         try {
           const res = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: textSalesPrompt }] }],
           })
           const rawJson = res.response.candidates[0].content.parts[0].text.trim()
-          let parsedData
-          try {
-            parsedData = JSON.parse(rawJson)
-          } catch (_pe) {
-            const clean = rawJson.replace(/^```json\s*|\s*```$/g, '').trim()
-            parsedData = JSON.parse(clean)
-          }
+          const parsedData = parseStructuredJson(rawJson)
 
           if (Array.isArray(parsedData.sales) && parsedData.sales.length > 0) {
             return {
@@ -1456,7 +1468,7 @@ ${rawText.slice(0, 1500)}`
       const model = vertexAI.getGenerativeModel({
         model: modelName,
         generationConfig: {
-          maxOutputTokens,
+          maxOutputTokens: chatMaxTokens,
           temperature,
           responseMimeType: 'text/plain',
         },

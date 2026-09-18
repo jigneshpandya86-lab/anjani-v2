@@ -35,6 +35,7 @@ export default function AiAssistantDrawer({
 }) {
   const fileInputRef = useRef(null)
   const messagesEndRef = useRef(null)
+  const inputRef = useRef(null)
 
   const clients = useClientStore((state) => state.clients)
   const orders = useClientStore((state) => state.orders)
@@ -51,6 +52,7 @@ export default function AiAssistantDrawer({
   const [selectedFile, setSelectedFile] = useState(null)
   const [filePreview, setFilePreview] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [isSalesMode, setIsSalesMode] = useState(false)
   const [inwardedBills, setInwardedBills] = useState({})
   const [processedSalesBatches, setProcessedSalesBatches] = useState({})
 
@@ -97,6 +99,7 @@ export default function AiAssistantDrawer({
   const handleSend = async (customPrompt = null) => {
     const query = (customPrompt || inputMessage).trim()
     const filePayload = selectedFile
+    const isSales = isSalesMode
 
     if (!query && !filePayload) return
 
@@ -106,7 +109,13 @@ export default function AiAssistantDrawer({
       {
         id: userMessageId,
         sender: 'user',
-        text: query || (filePayload ? 'Uploaded vendor bill for scanning 📄' : ''),
+        text:
+          query ||
+          (filePayload
+            ? isSales
+              ? 'Uploaded retail sales notepad slip 📝'
+              : 'Uploaded document for scanning 📄'
+            : ''),
         imagePreview: filePayload?.dataUrl || null,
         timestamp: new Date(),
       },
@@ -116,9 +125,10 @@ export default function AiAssistantDrawer({
     setInputMessage('')
     setSelectedFile(null)
     setFilePreview(null)
+    setIsSalesMode(false)
 
-    // 1. Zero-Token Local Intent Check (Only if no file is uploaded)
-    if (!filePayload && query) {
+    // 1. Zero-Token Local Intent Check (Only if no file is uploaded and not in explicit sales mode)
+    if (!filePayload && query && !isSales) {
       const localRoute = tryLocalIntentRoute(query, {
         stockSummary,
         stockTotal,
@@ -151,9 +161,16 @@ export default function AiAssistantDrawer({
       const askAnjaniAi = httpsCallable(functions, 'askAnjaniAi')
 
       const response = await askAnjaniAi({
-        text: query || (filePayload ? 'Scan this vendor bill and extract all water SKUs' : ''),
+        text:
+          query ||
+          (filePayload
+            ? isSales
+              ? 'Parse these daily retail customer sales orders'
+              : 'Scan this document and extract all water SKUs'
+            : ''),
         imageBase64: filePayload?.base64 || null,
         mimeType: filePayload?.mimeType || 'image/jpeg',
+        mode: isSales ? 'retail_sales' : 'auto',
         conversationHistory: messages.slice(-3).map((m) => ({
           sender: m.sender,
           text: m.text,
@@ -485,14 +502,23 @@ export default function AiAssistantDrawer({
           <button
             type="button"
             onClick={() => {
-              setInputMessage(
-                'Jay Ambe 10 box 200ml cash\nRohitbhai 5 box 1L udhar\nShiv Parlour 15 box 500ml gpay'
-              )
+              setIsSalesMode((prev) => {
+                const next = !prev
+                if (next) {
+                  setTimeout(() => inputRef.current?.focus(), 50)
+                }
+                return next
+              })
             }}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-gray-300 rounded-full font-semibold text-gray-700 hover:border-amz-orange hover:text-amz-orange transition-colors shrink-0 shadow-2xs"
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full font-semibold transition-colors shrink-0 shadow-2xs border ${
+              isSalesMode
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                : 'bg-white text-gray-700 border-gray-300 hover:border-emerald-600 hover:text-emerald-600'
+            }`}
+            title="Toggle WhatsApp Sales Mode"
           >
-            <ClipboardList className="w-3.5 h-3.5 text-emerald-600" />
-            <span>WhatsApp Sales</span>
+            <ClipboardList className={`w-3.5 h-3.5 ${isSalesMode ? 'text-white' : 'text-emerald-600'}`} />
+            <span>{isSalesMode ? 'Sales Mode Active' : 'WhatsApp Sales'}</span>
           </button>
           <button
             type="button"
@@ -1001,6 +1027,24 @@ export default function AiAssistantDrawer({
             </div>
           )}
 
+          {/* Sales Mode Active Banner */}
+          {isSalesMode && (
+            <div className="mb-2 flex items-center justify-between px-3 py-1.5 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-900 font-semibold animate-in fade-in shadow-2xs">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <ClipboardList className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="truncate">WhatsApp Sales Mode: Paste sales note text below and tap Send</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSalesMode(false)}
+                className="text-emerald-700 hover:text-red-600 p-0.5 rounded cursor-pointer shrink-0 ml-1"
+                title="Exit sales mode"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           <form
             onSubmit={(e) => {
               e.preventDefault()
@@ -1027,10 +1071,21 @@ export default function AiAssistantDrawer({
 
             <input
               type="text"
+              ref={inputRef}
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              placeholder={filePreview ? 'Add notes or tap send...' : 'Paste WhatsApp sales, ask stock, or upload slip...'}
-              className="flex-1 py-2.5 px-3 border border-gray-300 rounded-xl text-xs sm:text-sm outline-none focus:ring-2 focus:ring-amz-orange focus:border-amz-orange"
+              placeholder={
+                isSalesMode
+                  ? 'Paste WhatsApp sales notes here and tap Send...'
+                  : filePreview
+                    ? 'Add notes or tap send...'
+                    : 'Paste WhatsApp sales, ask stock, or upload slip...'
+              }
+              className={`flex-1 py-2.5 px-3 border rounded-xl text-xs sm:text-sm outline-none transition-all ${
+                isSalesMode
+                  ? 'border-emerald-500 ring-2 ring-emerald-200/60 bg-emerald-50/20'
+                  : 'border-gray-300 focus:ring-2 focus:ring-amz-orange focus:border-amz-orange'
+              }`}
             />
 
             <button
