@@ -1236,7 +1236,13 @@ exports.askAnjaniAi = onCall(async (request) => {
     throw new Error('Authentication required')
   }
 
-  const { text, imageBase64, mimeType = 'image/jpeg', conversationHistory = [] } = request.data || {}
+  const {
+    text,
+    imageBase64,
+    mimeType = 'image/jpeg',
+    mode = 'auto',
+    conversationHistory = [],
+  } = request.data || {}
 
   if (!text && !imageBase64) {
     throw new Error('Either text prompt or image is required')
@@ -1250,45 +1256,78 @@ exports.askAnjaniAi = onCall(async (request) => {
   const aiSettings = await getAiSettings()
   const primaryModelName = aiSettings.activeModel || 'gemini-2.5-flash-lite'
   const fallbackModelName = aiSettings.fallbackModel || 'gemini-2.5-flash'
-  const maxOutputTokens = Math.min(Number(aiSettings.maxOutputTokens) || 600, 800)
+  const maxOutputTokens = Math.min(Number(aiSettings.maxOutputTokens) || 800, 1500)
   const temperature = Number(aiSettings.temperature) || 0.15
 
   const tryGenerate = async (modelName) => {
-    const model = vertexAI.getGenerativeModel({
-      model: modelName,
-      generationConfig: {
-        maxOutputTokens,
-        temperature,
-        responseMimeType: imageBase64 ? 'application/json' : 'text/plain',
-      },
-    })
-
     if (imageBase64) {
-      const billPrompt = `You are an expert bill and challan scanning AI for Annapurna Foods, authorized water distributor in Vadodara, Gujarat.
-Analyze this vendor delivery bill, challan, or invoice image.
-Extract the products and map them EXCLUSIVELY to our 5 water SKUs:
+      const model = vertexAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          maxOutputTokens,
+          temperature,
+          responseMimeType: 'application/json',
+        },
+      })
+
+      const documentOcrPrompt = `You are an expert document and invoice OCR AI for Annapurna Foods, authorized water distributor in Vadodara, Gujarat (owned by Jignesh Pandya).
+Analyze this image. It is either:
+1. "retail_sales": A handwritten retail sales notepad, diary page, dispatch memo, or daily customer delivery note containing customer names, quantities, and payment notes.
+2. "vendor_bill": A vendor delivery challan, factory tax invoice, or supplier stock inward receipt.
+
+Map all water products EXCLUSIVELY to our 5 canonical SKUs:
 1. "Anjani 200ml" (unit: Box)
 2. "Bailey 250ml" (unit: Case / Box)
 3. "Bailey 500ml" (unit: Case / Box)
 4. "Bailey 1 Liter" (unit: Case / Box)
 5. "Bailey 2 Liter" (unit: Case / Box)
 
-Return a strict JSON object matching this schema:
+If it is a retail sales notepad / customer delivery list:
+Return strict JSON:
 {
-  "vendorName": string (e.g. "Bailey Plant", "Anjani Packaged Drinking Water", or "Factory"),
-  "billNumber": string (invoice or challan number, or "N/A"),
-  "billDate": string (YYYY-MM-DD or as written),
+  "docType": "retail_sales",
+  "summary": {
+    "totalOrders": number,
+    "totalQty": number,
+    "date": string (YYYY-MM-DD or as written)
+  },
+  "sales": [
+    {
+      "clientName": string (customer/shop name),
+      "mobile": string (if written, else ""),
+      "items": [
+        {
+          "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",
+          "qty": number (positive integer),
+          "rate": number (unit rate if written, else 0),
+          "unit": "Box" | "Case / Box"
+        }
+      ],
+      "totalAmount": number (total amount if stated, else 0),
+      "paymentMode": "cash" | "online" | "credit" (cash if cash/rokda/paid, online if gpay/upi, credit if udhar/baaki/due/pending or unspecified),
+      "amountCollected": number (if cash/online, else 0),
+      "notes": string
+    }
+  ]
+}
+
+If it is a vendor inward delivery bill / factory challan:
+Return strict JSON:
+{
+  "docType": "vendor_bill",
+  "vendorName": string,
+  "billNumber": string,
+  "billDate": string,
   "items": [
     {
       "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",
-      "qty": number (must be positive integer),
+      "qty": number,
       "unit": "Box" | "Case / Box"
     }
   ],
-  "totalAmount": number (optional, 0 if not stated),
-  "notes": string (optional notes like vehicle number or transport)
-}
-If no relevant water products are visible, set items to an empty array.`
+  "totalAmount": number,
+  "notes": string
+}`
 
       const parts = [
         {
@@ -1297,7 +1336,7 @@ If no relevant water products are visible, set items to an empty array.`
             mimeType: mimeType || 'image/jpeg',
           },
         },
-        { text: billPrompt },
+        { text: documentOcrPrompt },
       ]
 
       const res = await model.generateContent({
@@ -1313,12 +1352,116 @@ If no relevant water products are visible, set items to an empty array.`
         parsedData = JSON.parse(clean)
       }
 
+      if (
+        parsedData.docType === 'retail_sales' ||
+        (Array.isArray(parsedData.sales) && parsedData.sales.length > 0)
+      ) {
+        return {
+          type: 'retail_sales',
+          modelUsed: modelName,
+          data: parsedData,
+        }
+      }
+
       return {
         type: 'vendor_bill',
         modelUsed: modelName,
         data: parsedData,
       }
     } else {
+      // Text mode
+      const rawText = String(text || '').trim()
+      const isSalesNotes =
+        mode === 'retail_sales' ||
+        (/(?:sales|peti|box|case|bxs|qty|cash|rokda|gpay|upi|udhar|baaki|jama)\b/i.test(rawText) &&
+          /(?:\d+\s*(?:box|case|peti|bxs|pc|bottle|l|ml)|(?:cash|gpay|udhar|rokda))/i.test(rawText))
+
+      if (isSalesNotes) {
+        const model = vertexAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            maxOutputTokens,
+            temperature,
+            responseMimeType: 'application/json',
+          },
+        })
+
+        const textSalesPrompt = `You are an expert sales notepad parser for Annapurna Foods, authorized water distributor in Vadodara, Gujarat (owned by Jignesh Pandya).
+The user pasted daily retail sales notes (from WhatsApp or notepad).
+Parse each customer sale into structured JSON.
+Map all products EXCLUSIVELY to our 5 canonical SKUs:
+1. "Anjani 200ml" (unit: Box)
+2. "Bailey 250ml" (unit: Case / Box)
+3. "Bailey 500ml" (unit: Case / Box)
+4. "Bailey 1 Liter" (unit: Case / Box)
+5. "Bailey 2 Liter" (unit: Case / Box)
+
+Return strict JSON:
+{
+  "docType": "retail_sales",
+  "summary": {
+    "totalOrders": number,
+    "totalQty": number,
+    "date": string (YYYY-MM-DD or today)
+  },
+  "sales": [
+    {
+      "clientName": string (customer/shop name),
+      "mobile": string (if provided, else ""),
+      "items": [
+        {
+          "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",
+          "qty": number (positive integer),
+          "rate": number (unit rate if written, else 0),
+          "unit": "Box" | "Case / Box"
+        }
+      ],
+      "totalAmount": number (total amount if stated, else 0),
+      "paymentMode": "cash" | "online" | "credit" (cash if cash/rokda/paid/jama, online if gpay/upi/phonepe, credit if udhar/baaki/due/pending or unspecified),
+      "amountCollected": number (if cash/online, else 0),
+      "notes": string
+    }
+  ]
+}
+
+Sales Notes:
+${rawText.slice(0, 1500)}`
+
+        try {
+          const res = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: textSalesPrompt }] }],
+          })
+          const rawJson = res.response.candidates[0].content.parts[0].text.trim()
+          let parsedData
+          try {
+            parsedData = JSON.parse(rawJson)
+          } catch (_pe) {
+            const clean = rawJson.replace(/^```json\s*|\s*```$/g, '').trim()
+            parsedData = JSON.parse(clean)
+          }
+
+          if (Array.isArray(parsedData.sales) && parsedData.sales.length > 0) {
+            return {
+              type: 'retail_sales',
+              modelUsed: modelName,
+              data: parsedData,
+            }
+          }
+        } catch (parseErr) {
+          logger.warn('Failed to parse sales notes as JSON, falling back to chat:', parseErr.message)
+        }
+      }
+
+      // General conversational chat reply
+      const model = vertexAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          maxOutputTokens,
+          temperature,
+          responseMimeType: 'text/plain',
+        },
+      })
+
       const systemPrompt = `You are the concise and helpful AI Assistant for Annapurna Foods (distributor for Anjani & Bailey Packaged Drinking Water in Vadodara, owned by Jignesh Pandya).
 Help with water orders, stock, clients, and inquiries in English, Gujarati, or Hindi.
 Keep your answer clear, polite, and under 120 words.
@@ -1331,7 +1474,7 @@ Our 5 products are: Anjani 200ml (Boxes), Bailey 250ml (Cases), Bailey 500ml (Ca
           }))
         : []
 
-      const parts = [{ text: `${systemPrompt}\n\nUser: ${text.slice(0, 500)}` }]
+      const parts = [{ text: `${systemPrompt}\n\nUser: ${rawText.slice(0, 500)}` }]
 
       const res = await model.generateContent({
         contents: [...safeHistory, { role: 'user', parts }],

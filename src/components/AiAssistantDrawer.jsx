@@ -15,12 +15,14 @@ import {
   MessageSquare,
   RotateCcw,
   Loader2,
+  ClipboardList,
+  Trash2,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
 import { app } from '../firebase-config'
 import { useClientStore } from '../store/clientStore'
-import { WATER_SKUS } from '../constants/skus'
+import { WATER_SKUS, getSkuMeta } from '../constants/skus'
 import { processAiBillImage } from '../utils/aiImageHelper'
 import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
 
@@ -40,6 +42,7 @@ export default function AiAssistantDrawer({
   const stockTotal = useClientStore((state) => state.stockTotal)
   const stockEntries = useClientStore((state) => state.stockEntries)
   const addStockBatch = useClientStore((state) => state.addStockBatch)
+  const createBatchSales = useClientStore((state) => state.createBatchSales)
   const updateOrder = useClientStore((state) => state.updateOrder)
   const aiSettings = useClientStore((state) => state.aiSettings)
   const aiPrefillPrompt = useClientStore((state) => state.aiPrefillPrompt)
@@ -49,12 +52,13 @@ export default function AiAssistantDrawer({
   const [filePreview, setFilePreview] = useState(null)
   const [loading, setLoading] = useState(false)
   const [inwardedBills, setInwardedBills] = useState({})
+  const [processedSalesBatches, setProcessedSalesBatches] = useState({})
 
   const [messages, setMessages] = useState([
     {
       id: 'welcome',
       sender: 'assistant',
-      text: "👋 Hello Jigneshbhai! I am your **Anjani AI Assistant**.\n\nYou can **upload a photo of your vendor delivery bill/challan** to automatically add received SKUs to stock, or tap any quick action below:",
+      text: "👋 Hello Jigneshbhai! I am your **Anjani AI Assistant**.\n\nYou can **paste WhatsApp sales notes** or **upload a photo of your vendor bill / notepad slip** to automatically record sales or update stock, or tap any quick action below:",
       timestamp: new Date(),
     },
   ])
@@ -187,6 +191,73 @@ export default function AiAssistantDrawer({
             timestamp: new Date(),
           },
         ])
+      } else if (resData.type === 'retail_sales') {
+        const salesData = resData.data || {}
+        const rawSales = Array.isArray(salesData.sales) ? salesData.sales : []
+
+        const enrichedSales = rawSales.map((sale, idx) => {
+          const rawName = (sale.clientName || `Customer ${idx + 1}`).trim()
+          const matched = clients.find(
+            (c) =>
+              c.name?.toLowerCase().trim() === rawName.toLowerCase() ||
+              (c.mobile &&
+                sale.mobile &&
+                String(c.mobile).replace(/\D/g, '') === String(sale.mobile).replace(/\D/g, ''))
+          )
+
+          const items = (sale.items && sale.items.length > 0
+            ? sale.items
+            : [{ sku: 'Anjani 200ml', qty: Number(sale.qty) || 1, rate: Number(sale.rate) || 0 }]
+          ).map((it) => {
+            const meta = getSkuMeta(it.sku || 'Anjani 200ml')
+            let rate = Number(it.rate) || 0
+            if (rate <= 0 && matched) {
+              rate = Number(matched.skuRates?.[meta.label] ?? matched.rate ?? 0)
+            }
+            return {
+              sku: meta.label,
+              qty: Math.max(1, Number(it.qty) || 1),
+              rate: rate > 0 ? rate : 0,
+              unit: meta.unit,
+            }
+          })
+
+          const calcTotal = items.reduce((s, it) => s + it.qty * it.rate, 0)
+          const totalAmount = Number(sale.totalAmount) > 0 ? Number(sale.totalAmount) : calcTotal
+
+          return {
+            id: `sale-${Date.now()}-${idx}`,
+            clientName: rawName,
+            clientId: matched?.id || null,
+            isMatched: !!matched,
+            mobile: sale.mobile || matched?.mobile || '',
+            paymentMode: ['cash', 'online', 'credit'].includes(sale.paymentMode)
+              ? sale.paymentMode
+              : 'credit',
+            items,
+            totalAmount,
+            notes: sale.notes || '',
+          }
+        })
+
+        const batchId = 'batch-' + Date.now()
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `📝 **WhatsApp Retail Sales Detected (${enrichedSales.length} orders)**:\nReview the matched customers, quantities, and payment modes below, then tap **Confirm & Create All Sales**:`,
+            type: 'retail_sales',
+            batchId,
+            data: {
+              batchId,
+              sales: enrichedSales,
+              modelUsed: resData.modelUsed,
+              rawSummary: salesData.summary,
+            },
+            timestamp: new Date(),
+          },
+        ])
       } else {
         setMessages((prev) => [
           ...prev,
@@ -269,6 +340,78 @@ export default function AiAssistantDrawer({
     }
   }
 
+  // Adjust quantity for a sale item in a retail sales batch
+  const handleUpdateRetailSaleQty = (msgId, saleIdx, skuLabel, delta) => {
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id !== msgId || msg.type !== 'retail_sales') return msg
+        const updatedSales = msg.data.sales.map((sale, sIdx) => {
+          if (sIdx !== saleIdx) return sale
+          const updatedItems = sale.items.map((it) => {
+            if (it.sku === skuLabel) {
+              const nextQty = Math.max(0, it.qty + delta)
+              return { ...it, qty: nextQty, amount: nextQty * (it.rate || 0) }
+            }
+            return it
+          })
+          const nextTotal = updatedItems.reduce((s, it) => s + it.qty * (it.rate || 0), 0)
+          return { ...sale, items: updatedItems, totalAmount: nextTotal }
+        })
+        return { ...msg, data: { ...msg.data, sales: updatedSales } }
+      })
+    )
+  }
+
+  // Toggle payment mode (cash, online, credit) for a sale
+  const handleTogglePaymentMode = (msgId, saleIdx, mode) => {
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id !== msgId || msg.type !== 'retail_sales') return msg
+        const updatedSales = msg.data.sales.map((sale, sIdx) => {
+          if (sIdx !== saleIdx) return sale
+          return { ...sale, paymentMode: mode }
+        })
+        return { ...msg, data: { ...msg.data, sales: updatedSales } }
+      })
+    )
+  }
+
+  // Remove a sale entry from a retail sales batch
+  const handleDeleteRetailSale = (msgId, saleIdx) => {
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id !== msgId || msg.type !== 'retail_sales') return msg
+        const updatedSales = msg.data.sales.filter((_, sIdx) => sIdx !== saleIdx)
+        return { ...msg, data: { ...msg.data, sales: updatedSales } }
+      })
+    )
+  }
+
+  // Confirm and create all delivered sales from a retail sales batch
+  const handleConfirmRetailSales = async (msgId, salesBatch) => {
+    const validSales = (salesBatch.sales || []).filter(
+      (s) => (s.items || []).some((it) => Number(it.qty) > 0)
+    )
+    if (validSales.length === 0) {
+      toast.error('No sales with quantity > 0 to create.')
+      return
+    }
+
+    try {
+      setLoading(true)
+      const res = await createBatchSales(validSales)
+      setProcessedSalesBatches((prev) => ({ ...prev, [msgId]: true }))
+      toast.success(
+        `Created ${res.createdOrdersCount} delivered sales & debited ${res.totalStockDeducted} units!`
+      )
+    } catch (e) {
+      console.error('Failed to create batch sales:', e)
+      toast.error('Failed to create sales: ' + e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Quick WhatsApp share for order
   const handleShareOrderWhatsApp = (order) => {
     const phone = order.mobile || order.phone || ''
@@ -337,7 +480,19 @@ export default function AiAssistantDrawer({
             className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-gray-300 rounded-full font-semibold text-gray-700 hover:border-amz-orange hover:text-amz-orange transition-colors shrink-0 shadow-2xs"
           >
             <Camera className="w-3.5 h-3.5 text-amz-orange" />
-            <span>Scan Vendor Bill</span>
+            <span>Scan Bill / Slip</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setInputMessage(
+                'Jay Ambe 10 box 200ml cash\nRohitbhai 5 box 1L udhar\nShiv Parlour 15 box 500ml gpay'
+              )
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-gray-300 rounded-full font-semibold text-gray-700 hover:border-amz-orange hover:text-amz-orange transition-colors shrink-0 shadow-2xs"
+          >
+            <ClipboardList className="w-3.5 h-3.5 text-emerald-600" />
+            <span>WhatsApp Sales</span>
           </button>
           <button
             type="button"
@@ -481,6 +636,188 @@ export default function AiAssistantDrawer({
                         >
                           <Package className="w-4 h-4" />
                           <span>Confirm & Inward to Stock</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 1.5. Interactive Retail Sales Batch Card */}
+                {msg.type === 'retail_sales' && msg.data?.sales && (
+                  <div className="mt-3 bg-gray-50 border border-gray-300 rounded-xl p-3 space-y-3 text-xs text-gray-800">
+                    <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                      <div>
+                        <p className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
+                          <ClipboardList className="w-4 h-4 text-amz-orange" />
+                          <span>Retail Sales Batch</span>
+                        </p>
+                        <p className="text-[11px] text-gray-500">
+                          {msg.data.sales.length} order{msg.data.sales.length !== 1 ? 's' : ''} • Total Qty:{' '}
+                          {msg.data.sales.reduce(
+                            (sum, s) =>
+                              sum +
+                              (s.items || []).reduce((isum, it) => isum + Number(it.qty || 0), 0),
+                            0
+                          )}{' '}
+                          boxes
+                        </p>
+                      </div>
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[10px] font-bold">
+                        WhatsApp Import
+                      </span>
+                    </div>
+
+                    {/* Sales List */}
+                    <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-0.5">
+                      {msg.data.sales.length === 0 ? (
+                        <p className="text-gray-500 italic text-center py-2">No sales entries in this batch.</p>
+                      ) : (
+                        msg.data.sales.map((sale, sIdx) => {
+                          const isBatchDone = !!processedSalesBatches[msg.id]
+                          const saleQtyTotal = (sale.items || []).reduce(
+                            (sum, it) => sum + (Number(it.qty) || 0),
+                            0
+                          )
+
+                          return (
+                            <div
+                              key={sale.id || sIdx}
+                              className="bg-white p-2.5 rounded-lg border border-gray-200 shadow-2xs space-y-2"
+                            >
+                              {/* Customer Header */}
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-bold text-gray-900 text-xs sm:text-sm">
+                                    {sale.clientName}
+                                  </span>
+                                  {sale.isMatched ? (
+                                    <span className="px-1.5 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded text-[9px] font-semibold">
+                                      ✓ Matched
+                                    </span>
+                                  ) : (
+                                    <span className="px-1.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-700 rounded text-[9px] font-semibold">
+                                      + New Client
+                                    </span>
+                                  )}
+                                  {sale.mobile && (
+                                    <span className="text-[10px] text-gray-400">({sale.mobile})</span>
+                                  )}
+                                </div>
+                                {!isBatchDone && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteRetailSale(msg.id, sIdx)}
+                                    className="text-gray-400 hover:text-red-500 p-1 rounded transition-colors cursor-pointer"
+                                    title="Remove this order"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Items in this sale */}
+                              <div className="space-y-1.5 bg-gray-50/70 p-2 rounded border border-gray-100">
+                                {sale.items.map((it) => (
+                                  <div key={it.sku} className="flex items-center justify-between text-xs">
+                                    <div>
+                                      <span className="font-semibold text-gray-800">{it.sku}</span>
+                                      <span className="text-[10px] text-gray-400 ml-1.5">
+                                        {it.rate > 0
+                                          ? `@ ₹${it.rate}/${it.unit || 'box'}`
+                                          : `(${it.unit || 'box'})`}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      {!isBatchDone && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleUpdateRetailSaleQty(msg.id, sIdx, it.sku, -1)
+                                          }
+                                          className="w-5 h-5 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-700 cursor-pointer"
+                                        >
+                                          <Minus className="w-2.5 h-2.5" />
+                                        </button>
+                                      )}
+                                      <span className="font-bold text-xs w-6 text-center">{it.qty}</span>
+                                      {!isBatchDone && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleUpdateRetailSaleQty(msg.id, sIdx, it.sku, 1)
+                                          }
+                                          className="w-5 h-5 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-700 cursor-pointer"
+                                        >
+                                          <Plus className="w-2.5 h-2.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Payment Mode Selector & Total */}
+                              <div className="flex items-center justify-between pt-1 border-t border-gray-100 flex-wrap gap-1">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[10px] text-gray-400 font-medium mr-1">Pay:</span>
+                                  {[
+                                    { id: 'cash', label: 'Cash' },
+                                    { id: 'online', label: 'GPay/UPI' },
+                                    { id: 'credit', label: 'Udhar' },
+                                  ].map((mode) => {
+                                    const isActive = sale.paymentMode === mode.id
+                                    return (
+                                      <button
+                                        key={mode.id}
+                                        type="button"
+                                        disabled={isBatchDone}
+                                        onClick={() => handleTogglePaymentMode(msg.id, sIdx, mode.id)}
+                                        className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all cursor-pointer ${
+                                          isActive
+                                            ? mode.id === 'cash'
+                                              ? 'bg-emerald-600 text-white shadow-2xs'
+                                              : mode.id === 'online'
+                                                ? 'bg-blue-600 text-white shadow-2xs'
+                                                : 'bg-amber-500 text-white shadow-2xs'
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                      >
+                                        {mode.label}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+
+                                <div className="text-right">
+                                  <span className="text-[11px] font-bold text-gray-900">
+                                    {sale.totalAmount > 0
+                                      ? `₹${sale.totalAmount.toLocaleString()}`
+                                      : `${saleQtyTotal} box`}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+
+                    {/* Batch Action Button */}
+                    <div className="pt-2 border-t border-gray-200">
+                      {processedSalesBatches[msg.id] ? (
+                        <div className="w-full bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold py-2 rounded-lg flex items-center justify-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          <span>Sales Recorded & Stock Debited ✅</span>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={loading || msg.data.sales.length === 0}
+                          onClick={() => handleConfirmRetailSales(msg.id, msg.data)}
+                          className="w-full bg-[#131921] hover:bg-black text-[#ff9900] font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          <ClipboardList className="w-4 h-4" />
+                          <span>Confirm & Create All Sales ({msg.data.sales.length} orders)</span>
                         </button>
                       )}
                     </div>
@@ -683,7 +1020,7 @@ export default function AiAssistantDrawer({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="p-2.5 text-gray-500 hover:text-amz-orange hover:bg-orange-50 rounded-xl border border-gray-300 transition-colors"
-              title="Upload Vendor Bill"
+              title="Upload Bill or Notepad Slip"
             >
               <Camera className="w-5 h-5" />
             </button>
@@ -692,7 +1029,7 @@ export default function AiAssistantDrawer({
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              placeholder={filePreview ? 'Add notes or tap send...' : 'Ask stock, orders, or upload bill...'}
+              placeholder={filePreview ? 'Add notes or tap send...' : 'Paste WhatsApp sales, ask stock, or upload slip...'}
               className="flex-1 py-2.5 px-3 border border-gray-300 rounded-xl text-xs sm:text-sm outline-none focus:ring-2 focus:ring-amz-orange focus:border-amz-orange"
             />
 
