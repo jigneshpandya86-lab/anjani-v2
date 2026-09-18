@@ -242,8 +242,12 @@ export const useClientStore = create((set, get) => ({
     return onSnapshot(STOCK_SUMMARY_DOC, async (summarySnap) => {
       if (summarySnap.exists()) {
         const data = summarySnap.data() || {}
-        const storedTotal = Number(data.totalQty) || 0
+        let storedTotal = Number(data.totalQty) || 0
         const bySku = data.bySku || data.skus || {}
+        const sumBySku = Object.values(bySku).reduce((s, v) => s + (Number(v) || 0), 0)
+        if (storedTotal === 0 && sumBySku > 0) {
+          storedTotal = sumBySku
+        }
         console.log('[Stock] Current summary doc:', {
           totalQty: storedTotal,
           bySku,

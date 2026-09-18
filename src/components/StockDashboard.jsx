@@ -10,6 +10,10 @@ import {
   Trash2,
   RefreshCw,
   FileText,
+  Layers,
+  ChevronDown,
+  ChevronUp,
+  LayoutGrid,
 } from 'lucide-react'
 import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 import AddStockModal from './AddStockModal'
@@ -18,8 +22,10 @@ export default function StockDashboard({ onOpenReport }) {
   const {
     stockEntries,
     stockTotal,
+    stockSummary,
     deleteStockEntry,
     fetchStock,
+    fetchStockTotal,
     recalculateStockTotal,
     loading,
   } = useClientStore()
@@ -59,14 +65,36 @@ export default function StockDashboard({ onOpenReport }) {
 
   const [startDate, setStartDate] = useState(() => getDefaultDateRange().start)
   const [endDate, setEndDate] = useState(() => getDefaultDateRange().end)
+  const [showSkuBreakup, setShowSkuBreakup] = useState(() => {
+    try {
+      const saved = localStorage.getItem('anjani_show_sku_breakup')
+      return saved !== null ? saved === 'true' : true
+    } catch {
+      return true
+    }
+  })
   const MIN_VISIBLE_ITEMS = 50
 
+  const toggleSkuBreakup = () => {
+    setShowSkuBreakup((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('anjani_show_sku_breakup', String(next))
+      } catch {
+        // ignore storage errors
+      }
+      return next
+    })
+  }
+
   useEffect(() => {
-    const unsub = fetchStock()
+    const unsubStock = fetchStock()
+    const unsubTotal = fetchStockTotal ? fetchStockTotal() : null
     return () => {
-      if (unsub) unsub()
+      if (unsubStock) unsubStock()
+      if (unsubTotal) unsubTotal()
     }
-  }, [fetchStock])
+  }, [fetchStock, fetchStockTotal])
 
   const toDateKey = (value) => {
     if (!value) return ''
@@ -101,8 +129,27 @@ export default function StockDashboard({ onOpenReport }) {
     return `${y}-${m}-${d}`
   }
 
-  // Total stock now comes from aggregate summary doc, so list queries can stay limited.
-  const totalStock = Number(stockTotal) || 0
+  // Get live stock count for an individual SKU with fallback
+  const getSkuStock = (skuLabel) => {
+    const meta = getSkuMeta(skuLabel)
+    const val = stockSummary?.[meta.label] ?? stockSummary?.[skuLabel]
+    if (val !== undefined && val !== null && !isNaN(Number(val))) {
+      return Number(val)
+    }
+    // Fallback: sum from stockEntries if summary doc didn't have this key yet
+    return stockEntries.reduce((sum, entry) => {
+      const entryMeta = getSkuMeta(entry.sku || DEFAULT_SKU)
+      if (entryMeta.label === meta.label) {
+        return sum + (Number(entry.qty) || 0)
+      }
+      return sum
+    }, 0)
+  }
+
+  // Total stock from aggregate summary doc or sum of all individual SKUs
+  const totalStock =
+    Number(stockTotal) ||
+    Object.values(stockSummary || {}).reduce((s, v) => s + (Number(v) || 0), 0)
 
   // Filters ONLY the visual transaction log
   const filtered = stockEntries.filter((entry) => {
@@ -140,9 +187,21 @@ export default function StockDashboard({ onOpenReport }) {
         <div className="pointer-events-none absolute -left-16 bottom-2 h-28 w-28 rounded-full bg-white/10" />
         
         <div className="relative flex items-center justify-between gap-2">
-          <h2 className="truncate text-[11px] font-extrabold uppercase tracking-[0.16em] text-white/70">
-            Stock Ledger
-          </h2>
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className="truncate text-[11px] font-extrabold uppercase tracking-[0.16em] text-white/70">
+              Total Current Stock
+            </h2>
+            <button
+              type="button"
+              onClick={toggleSkuBreakup}
+              className="flex items-center gap-1 text-[9px] bg-white/15 hover:bg-white/25 text-[#ff9900] px-2 py-0.5 rounded-full font-extrabold uppercase tracking-wider transition-all backdrop-blur-sm cursor-pointer shadow-2xs shrink-0"
+              title="Toggle SKU wise stock breakup"
+            >
+              <Layers size={10} />
+              <span>{showSkuBreakup ? 'Hide Breakup' : 'SKU Breakup'}</span>
+              {showSkuBreakup ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+            </button>
+          </div>
           <div className="shrink-0 flex items-center gap-1.5 text-[10px] bg-white/20 text-white px-2 py-1 rounded-full font-black uppercase shadow-sm backdrop-blur-sm">
             <input
               type="date"
@@ -161,12 +220,17 @@ export default function StockDashboard({ onOpenReport }) {
         </div>
         
         <div className="relative mt-2 flex items-center justify-between gap-2">
-          <p className="truncate text-3xl font-black leading-none">
-            {totalStock.toLocaleString()}{' '}
-            <span className="text-[10px] font-extrabold text-white/75 uppercase tracking-wide">
-              BXS
-            </span>
-          </p>
+          <div>
+            <p className="truncate text-3xl font-black leading-none">
+              {totalStock.toLocaleString()}{' '}
+              <span className="text-[10px] font-extrabold text-white/75 uppercase tracking-wide">
+                BXS
+              </span>
+            </p>
+            <p className="text-[10px] text-white/60 font-medium mt-0.5">
+              Live warehouse inventory across all products
+            </p>
+          </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={handleRecalculate}
@@ -174,14 +238,14 @@ export default function StockDashboard({ onOpenReport }) {
               className={`p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-all ${isSyncing ? 'animate-spin' : ''}`}
               title="Recalculate Total from Ledger"
             >
-              <RefreshCw size={11} className="text-white" />
+              <RefreshCw size={12} className="text-white" />
             </button>
             <button
               onClick={onOpenReport}
               className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-all"
               title="Generate Stock Statement Report"
             >
-              <FileText size={11} className="text-white" />
+              <FileText size={12} className="text-white" />
             </button>
             {(startDate || endDate) && (
               <button
@@ -197,6 +261,107 @@ export default function StockDashboard({ onOpenReport }) {
             )}
           </div>
         </div>
+
+        {/* SKU-Wise Breakup Section */}
+        {showSkuBreakup && (
+          <div className="relative mt-3 pt-3 border-t border-white/15 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-white/75 flex items-center gap-1.5">
+                <LayoutGrid size={11} className="text-[#ff9900]" />
+                SKU-Wise Live Breakdown
+              </span>
+              <span className="text-[9px] text-white/60">Tap card to filter ledger</span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              {WATER_SKUS.map((sku) => {
+                const qty = getSkuStock(sku.label)
+                const isSelected = skuFilter === sku.label
+                const percent =
+                  totalStock > 0 ? Math.round((Math.max(0, qty) / totalStock) * 100) : 0
+
+                return (
+                  <button
+                    key={sku.id}
+                    type="button"
+                    onClick={() => setSkuFilter(isSelected ? 'All' : sku.label)}
+                    className={`relative p-2.5 rounded-2xl text-left transition-all border cursor-pointer ${
+                      isSelected
+                        ? 'bg-white text-gray-900 border-white shadow-lg ring-2 ring-[#ff9900]'
+                        : 'bg-white/10 hover:bg-white/20 text-white border-white/10 backdrop-blur-sm'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span
+                        className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
+                          isSelected
+                            ? sku.brand === 'Bailey'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-blue-100 text-blue-800'
+                            : 'bg-white/20 text-white'
+                        }`}
+                      >
+                        {sku.brand}
+                      </span>
+                      <span
+                        className={`text-[9px] font-bold ${
+                          isSelected ? 'text-gray-500' : 'text-white/60'
+                        }`}
+                      >
+                        {percent}%
+                      </span>
+                    </div>
+
+                    <p
+                      className={`font-extrabold text-xs truncate ${
+                        isSelected ? 'text-gray-900' : 'text-white'
+                      }`}
+                      title={sku.label}
+                    >
+                      {sku.label}
+                    </p>
+
+                    <div className="mt-1 flex items-baseline justify-between">
+                      <span
+                        className={`text-lg font-black leading-none ${
+                          isSelected ? 'text-gray-950' : 'text-white'
+                        }`}
+                      >
+                        {qty.toLocaleString()}
+                      </span>
+                      <span
+                        className={`text-[9px] font-bold uppercase ${
+                          isSelected ? 'text-gray-400' : 'text-white/70'
+                        }`}
+                      >
+                        {sku.unit === 'Box' ? 'Bxs' : 'Cs'}
+                      </span>
+                    </div>
+
+                    {/* Visual proportion bar */}
+                    <div
+                      className={`mt-1.5 h-1 w-full rounded-full overflow-hidden ${
+                        isSelected ? 'bg-gray-200' : 'bg-white/20'
+                      }`}
+                    >
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{
+                          width: `${Math.min(100, Math.max(0, percent))}%`,
+                          backgroundColor: isSelected
+                            ? '#ff9900'
+                            : sku.brand === 'Bailey'
+                              ? '#34d399'
+                              : '#60a5fa',
+                        }}
+                      />
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* SKU Filter Bar */}
