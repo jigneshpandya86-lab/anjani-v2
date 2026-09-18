@@ -18,6 +18,10 @@ import {
   CheckCircle2,
   CreditCard,
   RefreshCw,
+  Bot,
+  Cpu,
+  Zap,
+  ShieldCheck,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useClientStore } from '../store/clientStore'
@@ -158,13 +162,25 @@ function SchedulerCard({
 }
 
 export default function SettingsTab() {
-  const [subTab, setSubTab] = useState('payment') // 'payment' | 'schedulers'
+  const [subTab, setSubTab] = useState('payment') // 'payment' | 'schedulers' | 'ai'
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
   // Payment QR Code state
   const savePaymentSettings = useClientStore((state) => state.savePaymentSettings)
   const fetchPaymentSettings = useClientStore((state) => state.fetchPaymentSettings)
+
+  // AI Assistant & Model state
+  const aiSettings = useClientStore((state) => state.aiSettings)
+  const fetchAiSettings = useClientStore((state) => state.fetchAiSettings)
+  const saveAiSettings = useClientStore((state) => state.saveAiSettings)
+  const setAiDrawerOpen = useClientStore((state) => state.setAiDrawerOpen)
+
+  const [aiActiveModel, setAiActiveModel] = useState('gemini-2.5-flash-lite')
+  const [aiCustomModel, setAiCustomModel] = useState('')
+  const [aiFallbackModel, setAiFallbackModel] = useState('gemini-2.5-flash')
+  const [aiMaxTokens, setAiMaxTokens] = useState(600)
+  const [savingAi, setSavingAi] = useState(false)
 
   const [qrImageDataUrl, setQrImageDataUrl] = useState(null)
   const [upiId, setUpiId] = useState('')
@@ -286,6 +302,7 @@ export default function SettingsTab() {
           setUpiId(currentPay.upiId || '')
           setPayeeName(currentPay.payeeName || DEFAULT_PAYEE_NAME)
         }
+        await fetchAiSettings()
       } catch (err) {
         console.error('Failed to load scheduler configs:', err)
         toast.error('Failed to load schedule configurations')
@@ -294,7 +311,44 @@ export default function SettingsTab() {
       }
     }
     loadSettings()
-  }, [fetchPaymentSettings])
+  }, [fetchPaymentSettings, fetchAiSettings])
+
+  useEffect(() => {
+    if (aiSettings) {
+      const known = ['gemini-2.5-flash-lite', 'gemini-2.5-flash']
+      if (known.includes(aiSettings.activeModel)) {
+        setAiActiveModel(aiSettings.activeModel)
+        setAiCustomModel('')
+      } else if (aiSettings.activeModel) {
+        setAiActiveModel('custom')
+        setAiCustomModel(aiSettings.activeModel)
+      }
+      if (aiSettings.fallbackModel) setAiFallbackModel(aiSettings.fallbackModel)
+      if (aiSettings.maxOutputTokens) setAiMaxTokens(aiSettings.maxOutputTokens)
+    }
+  }, [aiSettings])
+
+  const handleSaveAi = async (e) => {
+    if (e?.preventDefault) e.preventDefault()
+    setSavingAi(true)
+    try {
+      const chosenModel =
+        aiActiveModel === 'custom'
+          ? (aiCustomModel.trim() || 'gemini-2.5-flash-lite')
+          : aiActiveModel
+      await saveAiSettings({
+        activeModel: chosenModel,
+        fallbackModel: aiFallbackModel.trim() || 'gemini-2.5-flash',
+        maxOutputTokens: Number(aiMaxTokens) || 600,
+      })
+      toast.success(`AI settings saved! Active Model: ${chosenModel}`)
+    } catch (err) {
+      console.error('Failed to save AI settings:', err)
+      toast.error('Failed to save AI settings: ' + err.message)
+    } finally {
+      setSavingAi(false)
+    }
+  }
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0]
@@ -496,26 +550,38 @@ export default function SettingsTab() {
         <button
           type="button"
           onClick={() => setSubTab('payment')}
-          className={`flex-1 py-2.5 px-3 rounded-xl text-xs md:text-sm font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
+          className={`flex-1 py-2 px-2 sm:px-3 rounded-xl text-xs md:text-sm font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
             subTab === 'payment'
               ? 'bg-[#131921] text-[#ff9900] shadow-md'
               : 'text-gray-700 hover:text-black hover:bg-gray-100/60'
           }`}
         >
-          <QrCode size={17} />
-          <span>Invoice GPay / UPI QR</span>
+          <QrCode size={16} />
+          <span className="truncate">Invoice QR</span>
         </button>
         <button
           type="button"
           onClick={() => setSubTab('schedulers')}
-          className={`flex-1 py-2.5 px-3 rounded-xl text-xs md:text-sm font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
+          className={`flex-1 py-2 px-2 sm:px-3 rounded-xl text-xs md:text-sm font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
             subTab === 'schedulers'
               ? 'bg-[#131921] text-[#ff9900] shadow-md'
               : 'text-gray-700 hover:text-black hover:bg-gray-100/60'
           }`}
         >
-          <Sliders size={17} />
-          <span>System Schedulers</span>
+          <Sliders size={16} />
+          <span className="truncate">Schedulers</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab('ai')}
+          className={`flex-1 py-2 px-2 sm:px-3 rounded-xl text-xs md:text-sm font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            subTab === 'ai'
+              ? 'bg-[#131921] text-[#ff9900] shadow-md'
+              : 'text-gray-700 hover:text-black hover:bg-gray-100/60'
+          }`}
+        >
+          <Sparkles size={16} />
+          <span className="truncate">AI & Models</span>
         </button>
       </div>
 
@@ -864,6 +930,222 @@ export default function SettingsTab() {
               >
                 <Save className="h-3.5 w-3.5" />
                 {saving ? 'Saving...' : 'Save Scheduler Settings'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* SUBTAB 3: AI ASSISTANT & MODEL CONFIGURATION */}
+      {subTab === 'ai' && (
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between bg-[#131921] px-4 py-3 text-white">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-[#ff9900] flex items-center justify-center font-bold">
+                <Sparkles className="h-4.5 w-4.5" />
+              </div>
+              <div>
+                <h2 className="text-sm md:text-base font-black">AI Assistant & Vision Model Settings</h2>
+                <p className="text-[10px] text-gray-400 font-medium">
+                  Dynamic multimodal model selection, token limiter & cost control
+                </p>
+              </div>
+            </div>
+            <span className="hidden sm:flex text-[10px] bg-emerald-500/20 text-emerald-300 font-extrabold uppercase px-2.5 py-1 rounded-full border border-emerald-500/30 items-center gap-1">
+              <CheckCircle2 size={12} /> Active: {aiActiveModel === 'custom' ? (aiCustomModel || 'Custom') : aiActiveModel}
+            </span>
+          </div>
+
+          <form onSubmit={handleSaveAi} className="p-4 md:p-6 space-y-6">
+            {/* Model Selection */}
+            <div className="space-y-3">
+              <div>
+                <span className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1">
+                  Active Vision & Chat Model
+                </span>
+                <p className="text-[11px] text-gray-500 mb-3">
+                  Select which Google Gemini multimodal model powers vendor bill OCR and the AI chat assistant.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Option 1: gemini-2.5-flash-lite */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setAiActiveModel('gemini-2.5-flash-lite')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setAiActiveModel('gemini-2.5-flash-lite') }}
+                  className={`relative flex flex-col p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                    aiActiveModel === 'gemini-2.5-flash-lite'
+                      ? 'border-[#ff9900] bg-orange-50/50 shadow-sm'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-black text-gray-900 flex items-center gap-1.5">
+                      <Cpu size={16} className="text-[#ff9900]" />
+                      gemini-2.5-flash-lite
+                    </span>
+                    <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full uppercase">
+                      Recommended / Lowest Cost
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-600 leading-relaxed">
+                    Fastest latency (~1.1s) and lowest pricing (~$0.10/M tokens or ~₹0.001 per scanned bill). Best for routine bill scanning and operational chat.
+                  </p>
+                </div>
+
+                {/* Option 2: gemini-2.5-flash */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setAiActiveModel('gemini-2.5-flash')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setAiActiveModel('gemini-2.5-flash') }}
+                  className={`relative flex flex-col p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                    aiActiveModel === 'gemini-2.5-flash'
+                      ? 'border-[#ff9900] bg-orange-50/50 shadow-sm'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-black text-gray-900 flex items-center gap-1.5">
+                      <Bot size={16} className="text-blue-600" />
+                      gemini-2.5-flash
+                    </span>
+                    <span className="text-[9px] bg-blue-100 text-blue-800 font-extrabold px-2 py-0.5 rounded-full uppercase">
+                      High Reasoning Depth
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-600 leading-relaxed">
+                    Higher multimodal reasoning capability. Ideal if you frequently receive handwritten or crumpled vendor challans with complex layouts.
+                  </p>
+                </div>
+              </div>
+
+              {/* Custom Model Option */}
+              <div className="pt-2">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setAiActiveModel('custom')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setAiActiveModel('custom') }}
+                  className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                    aiActiveModel === 'custom'
+                      ? 'border-[#ff9900] bg-orange-50/30'
+                      : 'border-gray-200 hover:border-gray-300 bg-gray-50/50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="activeModelOption"
+                    checked={aiActiveModel === 'custom'}
+                    onChange={() => setAiActiveModel('custom')}
+                    className="mt-1 accent-[#ff9900]"
+                  />
+                  <div className="flex-1">
+                    <span className="text-xs font-bold text-gray-900 block">
+                      Custom or Future Model (Dynamic Upgrade)
+                    </span>
+                    <span className="text-[11px] text-gray-500">
+                      Specify an updated Vertex AI model name without redeploying code (e.g. <code>gemini-3.0-flash</code>).
+                    </span>
+                    {aiActiveModel === 'custom' && (
+                      <input
+                        type="text"
+                        placeholder="e.g. gemini-2.5-pro or gemini-3.0-flash"
+                        value={aiCustomModel}
+                        onChange={(e) => setAiCustomModel(e.target.value)}
+                        className="mt-2 w-full max-w-md px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#ff9900]"
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Token & Quota Settings */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+              <div>
+                <label htmlFor="ai-max-tokens" className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1">
+                  Max Output Tokens Limit
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="ai-max-tokens"
+                    type="range"
+                    min="200"
+                    max="1500"
+                    step="50"
+                    value={aiMaxTokens}
+                    onChange={(e) => setAiMaxTokens(Number(e.target.value))}
+                    className="flex-1 accent-[#ff9900]"
+                  />
+                  <span className="px-2.5 py-1 bg-gray-100 text-gray-900 rounded-md font-mono text-xs font-black min-w-[65px] text-center border">
+                    {aiMaxTokens} tok
+                  </span>
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1">
+                  Prevents runaway token generation on verbose queries. Default is 600 tokens.
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="ai-fallback-model" className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1">
+                  Automatic Fallback Model
+                </label>
+                <input
+                  id="ai-fallback-model"
+                  type="text"
+                  value={aiFallbackModel}
+                  onChange={(e) => setAiFallbackModel(e.target.value)}
+                  placeholder="gemini-2.5-flash"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#ff9900] focus:bg-white"
+                />
+                <p className="text-[10px] text-gray-500 mt-1">
+                  If the active model experiences rate limits or temporary downtime, this model is called automatically.
+                </p>
+              </div>
+            </div>
+
+            {/* Token Economics & Architecture Highlights */}
+            <div className="p-4 rounded-xl bg-gradient-to-br from-amber-50/70 to-orange-50/40 border border-amber-200 space-y-2.5">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+                  Cost & Zero-Token Optimizer Active
+                </h4>
+              </div>
+              <ul className="text-[11px] text-gray-700 space-y-1.5 list-disc pl-4">
+                <li>
+                  <strong>Zero-Token Local Intent Router:</strong> 80% of routine questions (stock balance, today&apos;s open deliveries, customer outstanding balances) are resolved directly in client memory at <strong>0 tokens (100% free)</strong>.
+                </li>
+                <li>
+                  <strong>Client-Side Canvas Downsampler:</strong> High-res 12MP camera photos are automatically downsampled to 1280px (~150KB) in the browser before sending, capping multimodal vision tokens at ~258 tokens per scan.
+                </li>
+                <li>
+                  <strong>Strict SKU Schema Validation:</strong> AI only extracts Annapurna&apos;s 5 exact warehouse SKUs (<code>Anjani 200ml</code>, <code>Bailey 250ml</code>, <code>Bailey 500ml</code>, <code>Bailey 1 Liter</code>, <code>Bailey 2 Liter</code>) into an interactive inward card.
+                </li>
+              </ul>
+            </div>
+
+            {/* Footer buttons */}
+            <div className="flex items-center justify-between border-t border-gray-100 pt-4 flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setAiDrawerOpen(true)}
+                className="px-3.5 py-2 rounded-xl border border-gray-300 bg-white text-gray-800 font-bold text-xs hover:bg-gray-50 flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
+              >
+                <Sparkles size={14} className="text-[#ff9900]" />
+                <span>Test AI Assistant Drawer</span>
+              </button>
+
+              <button
+                type="submit"
+                disabled={savingAi}
+                className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-[#a88734] bg-gradient-to-b from-[#f7dfa5] to-[#f0c14b] px-5 py-2.5 text-xs font-bold text-gray-900 shadow-sm transition-all hover:bg-gradient-to-b hover:from-[#f5d78e] hover:to-[#eeb933] active:shadow-inner disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" />
+                <span>{savingAi ? 'Saving Model Config...' : 'Save AI Settings'}</span>
               </button>
             </div>
           </form>

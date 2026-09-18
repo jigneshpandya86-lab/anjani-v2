@@ -87,7 +87,26 @@ All water products are defined centrally in `src/constants/skus.js`:
   - `importantFields` includes `sku` and `product`.
   - Notification SMS and push alert format includes `SKU: ${resolved.sku || 'Anjani 200ml'}` and `${sQty} ${sSku} for ${sName}`.
 - `sendOrderReminder`: Daily reminder SMS includes SKU.
-- Deploy command: `npx firebase deploy --only functions:sendOrderSmsToStaff` or `npx firebase deploy --only functions`.
+- `askAnjaniAi`: OnCall callable function using Vertex AI (`@google-cloud/vertexai`) in `us-central1`. Supports multimodal vendor bill OCR and context-aware business chat with token optimization and dynamic model fallback.
+- Deploy command: `npx firebase deploy --only functions:askAnjaniAi` or `npx firebase deploy --only functions`.
+
+---
+
+## AI Assistant & Multimodal Vendor Bill Scanning (`src/components/AiAssistantDrawer.jsx`)
+1. **Zero-Token Local Intent Router (`src/utils/aiIntentRouter.js`):**
+   - Intercepts routine queries for stock status, open deliveries, and customer outstanding balances.
+   - Generates interactive cards directly from `clientStore` in milliseconds consuming **0 API tokens (100% free)**.
+2. **Client-Side Image Downsampler (`src/utils/aiImageHelper.js`):**
+   - High-resolution vendor invoice/challan photos are resized via HTML5 Canvas to max 1280px JPEG (~150KB) in the browser before sending.
+   - Keeps multimodal vision token consumption fixed at ~258 tokens (~₹0.001 INR per scan).
+3. **Strict SKU Mapping & 1-Tap Inward:**
+   - Multimodal OCR is constrained to Annapurna's 5 exact warehouse SKUs: `Anjani 200ml`, `Bailey 250ml`, `Bailey 500ml`, `Bailey 1 Liter`, and `Bailey 2 Liter`.
+   - Renders an interactive confirmation card with quantity steppers (`+` / `-`).
+   - "Confirm & Inward to Stock" invokes `addStockBatch()` to record a batch inward transaction in Firestore `collection('stock')` and update `meta/stockSummary`.
+4. **Dynamic Model Upgrades (`SettingsTab.jsx` & Firestore `config/aiSettings`):**
+   - Configurable in `SettingsTab` under the "AI & Models" sub-tab.
+   - Primary model defaults to `gemini-2.5-flash-lite`, with fallback to `gemini-2.5-flash`.
+   - Supports custom model names (e.g. future releases) and token caps (`maxOutputTokens: 600`) without redeploying code.
 
 ---
 

@@ -1216,6 +1216,172 @@ exports.registerDevice = onCall(async (request) => {
 })
 
 /**
+ * Callable Cloud Function: askAnjaniAi
+ * Handles multimodal vendor bill OCR and general assistant queries with strict token caps.
+ * Supports hot-swappable models configured in Firestore `config/aiSettings`.
+ */
+let cachedAiSettings = null
+let cachedAiSettingsTime = 0
+
+async function getAiSettings() {
+  const now = Date.now()
+  if (cachedAiSettings && now - cachedAiSettingsTime < 5 * 60 * 1000) {
+    return cachedAiSettings
+  }
+  try {
+    const doc = await admin.firestore().collection('config').doc('aiSettings').get()
+    if (doc.exists) {
+      cachedAiSettings = doc.data()
+    } else {
+      cachedAiSettings = {
+        activeModel: 'gemini-2.5-flash-lite',
+        fallbackModel: 'gemini-2.5-flash',
+        maxOutputTokens: 600,
+        temperature: 0.15,
+      }
+    }
+  } catch (e) {
+    logger.warn('Failed to read config/aiSettings, using default:', e.message)
+    cachedAiSettings = {
+      activeModel: 'gemini-2.5-flash-lite',
+      fallbackModel: 'gemini-2.5-flash',
+      maxOutputTokens: 600,
+      temperature: 0.15,
+    }
+  }
+  cachedAiSettingsTime = now
+  return cachedAiSettings
+}
+
+exports.askAnjaniAi = onCall(async (request) => {
+  if (!request.auth) {
+    throw new Error('Authentication required')
+  }
+
+  const { text, imageBase64, mimeType = 'image/jpeg', conversationHistory = [] } = request.data || {}
+
+  if (!text && !imageBase64) {
+    throw new Error('Either text prompt or image is required')
+  }
+
+  // Anti-abuse payload guard: reject oversized base64 (> 3MB)
+  if (imageBase64 && imageBase64.length > 3 * 1024 * 1024) {
+    throw new Error('Image too large. Please upload an image under 2MB.')
+  }
+
+  const aiSettings = await getAiSettings()
+  const primaryModelName = aiSettings.activeModel || 'gemini-2.5-flash-lite'
+  const fallbackModelName = aiSettings.fallbackModel || 'gemini-2.5-flash'
+  const maxOutputTokens = Math.min(Number(aiSettings.maxOutputTokens) || 600, 800)
+  const temperature = Number(aiSettings.temperature) || 0.15
+
+  const tryGenerate = async (modelName) => {
+    const model = vertexAI.getGenerativeModel({
+      model: modelName,
+      generationConfig: {
+        maxOutputTokens,
+        temperature,
+        responseMimeType: imageBase64 ? 'application/json' : 'text/plain',
+      },
+    })
+
+    if (imageBase64) {
+      const billPrompt = `You are an expert bill and challan scanning AI for Annapurna Foods, authorized water distributor in Vadodara, Gujarat.
+Analyze this vendor delivery bill, challan, or invoice image.
+Extract the products and map them EXCLUSIVELY to our 5 water SKUs:
+1. "Anjani 200ml" (unit: Box)
+2. "Bailey 250ml" (unit: Case / Box)
+3. "Bailey 500ml" (unit: Case / Box)
+4. "Bailey 1 Liter" (unit: Case / Box)
+5. "Bailey 2 Liter" (unit: Case / Box)
+
+Return a strict JSON object matching this schema:
+{
+  "vendorName": string (e.g. "Bailey Plant", "Anjani Packaged Drinking Water", or "Factory"),
+  "billNumber": string (invoice or challan number, or "N/A"),
+  "billDate": string (YYYY-MM-DD or as written),
+  "items": [
+    {
+      "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",
+      "qty": number (must be positive integer),
+      "unit": "Box" | "Case / Box"
+    }
+  ],
+  "totalAmount": number (optional, 0 if not stated),
+  "notes": string (optional notes like vehicle number or transport)
+}
+If no relevant water products are visible, set items to an empty array.`
+
+      const parts = [
+        {
+          inlineData: {
+            data: imageBase64,
+            mimeType: mimeType || 'image/jpeg',
+          },
+        },
+        { text: billPrompt },
+      ]
+
+      const res = await model.generateContent({
+        contents: [{ role: 'user', parts }],
+      })
+
+      const rawJson = res.response.candidates[0].content.parts[0].text.trim()
+      let parsedData
+      try {
+        parsedData = JSON.parse(rawJson)
+      } catch (_pe) {
+        const clean = rawJson.replace(/^```json\s*|\s*```$/g, '').trim()
+        parsedData = JSON.parse(clean)
+      }
+
+      return {
+        type: 'vendor_bill',
+        modelUsed: modelName,
+        data: parsedData,
+      }
+    } else {
+      const systemPrompt = `You are the concise and helpful AI Assistant for Annapurna Foods (distributor for Anjani & Bailey Packaged Drinking Water in Vadodara, owned by Jignesh Pandya).
+Help with water orders, stock, clients, and inquiries in English, Gujarati, or Hindi.
+Keep your answer clear, polite, and under 120 words.
+Our 5 products are: Anjani 200ml (Boxes), Bailey 250ml (Cases), Bailey 500ml (Cases), Bailey 1 Liter (Cases), Bailey 2 Liter (Cases).`
+
+      const safeHistory = Array.isArray(conversationHistory)
+        ? conversationHistory.slice(-3).map((m) => ({
+            role: m.sender === 'user' ? 'user' : 'model',
+            parts: [{ text: String(m.text || '').slice(0, 300) }],
+          }))
+        : []
+
+      const parts = [{ text: `${systemPrompt}\n\nUser: ${text.slice(0, 500)}` }]
+
+      const res = await model.generateContent({
+        contents: [...safeHistory, { role: 'user', parts }],
+      })
+
+      const replyText = res.response.candidates[0].content.parts[0].text.trim()
+      return {
+        type: 'chat_reply',
+        modelUsed: modelName,
+        text: replyText,
+      }
+    }
+  }
+
+  try {
+    return await tryGenerate(primaryModelName)
+  } catch (primaryError) {
+    logger.warn(`Primary model ${primaryModelName} failed: ${primaryError.message}. Retrying fallback ${fallbackModelName}...`)
+    try {
+      return await tryGenerate(fallbackModelName)
+    } catch (fallbackError) {
+      logger.error('Both AI models failed:', fallbackError)
+      throw new Error(`AI processing failed: ${fallbackError.message}`)
+    }
+  }
+})
+
+/**
  * Helper to check if a delivery time string is within the next 3.5 hours.
  * Uses IST for all comparisons to avoid UTC server issues.
  */

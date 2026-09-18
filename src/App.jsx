@@ -23,6 +23,7 @@ import {
   Brain,
   Gift,
   Receipt,
+  Sparkles,
 } from 'lucide-react'
 import {
   collection,
@@ -43,6 +44,7 @@ import PaymentDashboard from './components/PaymentDashboard'
 import PaymentModal from './components/PaymentModal'
 import LeadsDashboard from './components/LeadsDashboard'
 import StockDashboard from './components/StockDashboard'
+import AiAssistantDrawer from './components/AiAssistantDrawer'
 import Login from './components/Login'
 import TasksPage from './TasksPage'
 import SettingsTab from './components/SettingsTab'
@@ -93,6 +95,9 @@ function App() {
     fetchStock,
     fetchStockTotal,
     fetchPaymentSettings,
+    fetchAiSettings,
+    aiDrawerOpen,
+    setAiDrawerOpen,
     orders,
     clients,
     userRole,
@@ -301,6 +306,7 @@ function App() {
     const unsubOrders = fetchOrders()
     let unsubClients, unsubStock, unsubStockTotal
     fetchPaymentSettings()
+    fetchAiSettings()
 
     if (userRole === 'admin') {
       unsubClients = fetchClients()
@@ -314,7 +320,7 @@ function App() {
       if (unsubStock) unsubStock()
       if (unsubStockTotal) unsubStockTotal()
     }
-  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, fetchPaymentSettings, user, userRole])
+  }, [fetchClients, fetchOrders, fetchStock, fetchStockTotal, fetchPaymentSettings, fetchAiSettings, user, userRole])
 
   // AUTH: signs out the current user and clears session
   const handleLogout = async () => {
@@ -1635,6 +1641,14 @@ function App() {
         {/* AUTH: user email + logout button — do not remove */}
         <div className="flex items-center gap-2 relative" ref={notificationPanelRef}>
           <button
+            onClick={() => setAiDrawerOpen(true)}
+            className="p-2 rounded-xl text-[#ff9900] bg-orange-50 hover:bg-orange-100 transition-colors relative flex items-center justify-center border border-orange-200"
+            aria-label="Anjani AI Assistant"
+            title="Anjani AI Assistant (Scan Vendor Bill / Queries)"
+          >
+            <Sparkles size={19} className="text-[#ff9900]" />
+          </button>
+          <button
             onClick={handleBellClick}
             className="p-2 rounded-xl text-orange-500 hover:bg-orange-50 transition-colors relative"
             aria-label="Notifications"
@@ -2151,6 +2165,30 @@ function App() {
           <Plus size={24} strokeWidth={2.5} />
         </button>
       )}
+
+      {/* AI Assistant Drawer */}
+      <AiAssistantDrawer
+        isOpen={aiDrawerOpen}
+        onClose={() => setAiDrawerOpen(false)}
+        onNavigateTab={(tab) => setActiveTab(tab)}
+        onOpenPaymentModal={(client) => {
+          setPayClient(client)
+          setPaymentPrefill(null)
+        }}
+        onOpenOrderModal={(order) => setEditOrder(order)}
+      />
+
+      {/* Floating AI Assistant Trigger Button */}
+      <button
+        type="button"
+        onClick={() => setAiDrawerOpen(true)}
+        className="fixed left-4 bottom-24 z-[998] bg-[#131921] hover:bg-black text-[#ff9900] border-2 border-[#ff9900]/70 h-14 px-3.5 sm:px-4 rounded-full shadow-lg shadow-black/20 flex items-center gap-2 active:scale-95 transition-all group"
+        aria-label="Open AI Assistant"
+        title="Anjani AI Assistant (Scan Vendor Bills, Inquire Stock)"
+      >
+        <Sparkles size={20} className="text-[#ff9900] group-hover:rotate-12 transition-transform" />
+        <span className="text-xs font-bold text-white tracking-wide">AI Assistant</span>
+      </button>
     </div>
   )
 }

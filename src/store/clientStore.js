@@ -132,6 +132,13 @@ export const useClientStore = create((set, get) => ({
     upiId: '',
     payeeName: 'Annapurna Foods',
   },
+  aiDrawerOpen: false,
+  aiPrefillPrompt: '',
+  aiSettings: {
+    activeModel: 'gemini-2.5-flash-lite',
+    fallbackModel: 'gemini-2.5-flash',
+    maxOutputTokens: 600,
+  },
 
   fetchUserRole: async (uid) => {
     if (!uid) {
@@ -363,6 +370,50 @@ export const useClientStore = create((set, get) => ({
       }))
     } catch (err) {
       console.error('Failed to save payment settings:', err)
+      throw err
+    }
+  },
+
+  setAiDrawerOpen: (open, initialPrompt = '') => {
+    set({ aiDrawerOpen: open, aiPrefillPrompt: initialPrompt })
+  },
+
+  fetchAiSettings: async () => {
+    try {
+      const snap = await getDoc(doc(db, 'config', 'aiSettings'))
+      if (snap.exists()) {
+        const data = snap.data()
+        set({
+          aiSettings: {
+            activeModel: data.activeModel || 'gemini-2.5-flash-lite',
+            fallbackModel: data.fallbackModel || 'gemini-2.5-flash',
+            maxOutputTokens: data.maxOutputTokens || 600,
+          },
+        })
+      }
+    } catch (err) {
+      console.error('Failed to fetch AI settings:', err)
+    }
+  },
+
+  saveAiSettings: async (settings) => {
+    try {
+      await setDoc(
+        doc(db, 'config', 'aiSettings'),
+        {
+          ...settings,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      )
+      set((state) => ({
+        aiSettings: {
+          ...state.aiSettings,
+          ...settings,
+        },
+      }))
+    } catch (err) {
+      console.error('Failed to save AI settings:', err)
       throw err
     }
   },
