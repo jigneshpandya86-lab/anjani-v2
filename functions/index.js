@@ -1316,7 +1316,7 @@ Return strict JSON:
   },
   "sales": [
     {
-      "clientName": string (customer/shop name),
+      "clientName": string (customer or shop name; for unknown, walk-in, or unnamed retail buyers, use "Retail"),
       "mobile": string (if written, else ""),
       "items": [
         {
@@ -1424,7 +1424,7 @@ Return strict JSON:
   },
   "sales": [
     {
-      "clientName": string (customer/shop name),
+      "clientName": string (customer or shop name; for unknown, walk-in, or unnamed retail buyers, use "Retail"),
       "mobile": string (if provided, else ""),
       "items": [
         {

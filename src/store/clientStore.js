@@ -624,45 +624,54 @@ export const useClientStore = create((set, get) => ({
     })
 
     const createdOrders = []
-    let totalStockDeducted = 0
-    const skuDeltas = {}
 
     for (let i = 0; i < salesList.length; i++) {
       const sale = salesList[i]
-      const rawName = String(sale.clientName || 'Walk-in Customer').trim()
+      let rawName = String(sale.clientName || '').trim()
+
+      // Normalize unknown / walk-in clients to "Retail" (never Customer 1, 2, 3...)
+      if (!rawName || /^customer\s*\d*$/i.test(rawName) || /^walk[\s-]*in/i.test(rawName) || /^unknown/i.test(rawName)) {
+        rawName = 'Retail'
+      }
 
       // 1. Find or create client
       let client = currentClients.find(
         (c) =>
-          (c.name && c.name.toLowerCase() === rawName.toLowerCase()) ||
-          (c.name && c.name.toLowerCase().includes(rawName.toLowerCase())) ||
-          (c.name && rawName.toLowerCase().includes(c.name.toLowerCase())),
+          c.name &&
+          (c.name.toLowerCase() === rawName.toLowerCase() ||
+            (c.mobile &&
+              sale.mobile &&
+              String(c.mobile).replace(/\D/g, '') === String(sale.mobile).replace(/\D/g, ''))),
       )
 
       let clientDocId = client?.id
       let clientName = client?.name || rawName
 
-      if (!clientDocId && sale.createClient !== false) {
-        const newDoc = await addDoc(collection(db, 'customers'), {
-          name: rawName,
-          mobile: sale.mobile || '',
-          address: sale.address || '',
-          outstanding: 0,
-          active: true,
-          createdAt: serverTimestamp(),
-        })
-        clientDocId = newDoc.id
-        clientName = rawName
-        const newClientObj = {
-          id: clientDocId,
-          name: rawName,
-          mobile: sale.mobile || '',
-          address: sale.address || '',
-          outstanding: 0,
-          active: true,
+      // For "Retail", if not found, create a single master "Retail" client; avoid unlimited customer docs
+      if (!clientDocId) {
+        const isRetail = rawName.toLowerCase() === 'retail'
+        if (isRetail || sale.createClient !== false) {
+          const newDoc = await addDoc(collection(db, 'customers'), {
+            name: rawName,
+            mobile: sale.mobile || '',
+            address: sale.address || '',
+            outstanding: 0,
+            active: true,
+            createdAt: serverTimestamp(),
+          })
+          clientDocId = newDoc.id
+          clientName = rawName
+          const newClientObj = {
+            id: clientDocId,
+            name: rawName,
+            mobile: sale.mobile || '',
+            address: sale.address || '',
+            outstanding: 0,
+            active: true,
+          }
+          currentClients.push(newClientObj)
+          client = newClientObj
         }
-        currentClients.push(newClientObj)
-        client = newClientObj
       }
 
       // 2. Normalize items
@@ -695,7 +704,7 @@ export const useClientStore = create((set, get) => ({
 
       const orderId = `ORD-${Date.now()}-${i + 1}`
 
-      // 3. Create order document (Delivered)
+      // 3. Create order document in Confirmed state so edits can be made
       await addDoc(collection(db, 'orders'), {
         orderId,
         clientId: clientDocId || '',
@@ -709,91 +718,27 @@ export const useClientStore = create((set, get) => ({
         qty: saleTotalQty,
         rate: saleTotalQty > 0 ? Math.round((saleTotalAmount / saleTotalQty) * 100) / 100 : 0,
         sku: items.length === 1 ? items[0].sku : items.map((it) => it.sku).join(', '),
-        status: 'Delivered',
+        status: 'Confirmed',
         paymentMode: sale.paymentMode || 'credit',
         source: 'whatsapp_sales',
         date: dateStr,
         time: timeStr,
         createdAt: serverTimestamp(),
-        stockPostedAt: serverTimestamp(),
       })
-      createdOrders.push({ orderId, clientName, totalAmount: saleTotalAmount })
-
-      // 4. Create stock entries for each item
-      for (const it of items) {
-        if (it.qty > 0) {
-          totalStockDeducted += it.qty
-          skuDeltas[it.sku] = (skuDeltas[it.sku] || 0) + it.qty
-          await addDoc(collection(db, 'stock'), {
-            qty: -it.qty,
-            sku: it.sku,
-            narration: `Retail Sale: ${clientName} (${it.sku}) [${orderId}]`,
-            type: 'dispatch',
-            date: serverTimestamp(),
-            createdAt: serverTimestamp(),
-          })
-        }
-      }
-
-      // 5. Create invoice record in payments
-      await addDoc(collection(db, 'payments'), {
-        amount: saleTotalAmount,
-        clientId: clientDocId || '',
-        clientName,
+      createdOrders.push({
         orderId,
-        type: 'invoice',
-        createdAt: serverTimestamp(),
-      })
-
-      // 6. Handle Payment Mode & Outstanding
-      const isPaid = sale.paymentMode === 'cash' || sale.paymentMode === 'online'
-      if (isPaid) {
-        await addDoc(collection(db, 'payments'), {
-          amount: saleTotalAmount,
-          clientId: clientDocId || '',
-          clientName,
-          orderId,
-          type: 'payment',
-          paymentMode: sale.paymentMode,
-          narration: `Payment received (${String(sale.paymentMode).toUpperCase()}) for ${orderId}`,
-          createdAt: serverTimestamp(),
-        })
-      } else {
-        if (clientDocId && saleTotalAmount > 0) {
-          await updateDoc(doc(db, 'customers', clientDocId), {
-            outstanding: increment(saleTotalAmount),
-          })
-          if (client) {
-            client.outstanding = (Number(client.outstanding) || 0) + saleTotalAmount
-          }
-        }
-      }
-    }
-
-    // 7. Update STOCK_SUMMARY_DOC
-    if (totalStockDeducted > 0) {
-      const summaryPayload = { totalQty: increment(-totalStockDeducted) }
-      Object.entries(skuDeltas).forEach(([skuLabel, delta]) => {
-        summaryPayload[`bySku.${skuLabel}`] = increment(-delta)
-      })
-      await setDoc(STOCK_SUMMARY_DOC, summaryPayload, { merge: true })
-
-      set((state) => {
-        const nextSummary = { ...state.stockSummary }
-        Object.entries(skuDeltas).forEach(([skuLabel, delta]) => {
-          nextSummary[skuLabel] = (Number(nextSummary[skuLabel]) || 0) - delta
-        })
-        return {
-          stockTotal: (Number(state.stockTotal) || 0) - totalStockDeducted,
-          stockSummary: nextSummary,
-          clients: currentClients,
-        }
+        clientName,
+        totalAmount: saleTotalAmount,
+        totalQty: saleTotalQty,
       })
     }
+
+    set({ clients: currentClients })
 
     return {
+      createdOrdersCount: createdOrders.length,
       orderCount: createdOrders.length,
-      totalStockDeducted,
+      totalStockDeducted: 0,
       orders: createdOrders,
     }
   },

@@ -213,7 +213,10 @@ export default function AiAssistantDrawer({
         const rawSales = Array.isArray(salesData.sales) ? salesData.sales : []
 
         const enrichedSales = rawSales.map((sale, idx) => {
-          const rawName = (sale.clientName || `Customer ${idx + 1}`).trim()
+          let rawName = (sale.clientName || '').trim()
+          if (!rawName || /^customer\s*\d*$/i.test(rawName) || /^walk[\s-]*in/i.test(rawName) || /^unknown/i.test(rawName)) {
+            rawName = 'Retail'
+          }
           const matched = clients.find(
             (c) =>
               c.name?.toLowerCase().trim() === rawName.toLowerCase() ||
@@ -263,7 +266,7 @@ export default function AiAssistantDrawer({
           {
             id: 'asst-' + Date.now(),
             sender: 'assistant',
-            text: `📝 **WhatsApp Retail Sales Detected (${enrichedSales.length} orders)**:\nReview the matched customers, quantities, and payment modes below, then tap **Confirm & Create All Sales**:`,
+            text: `📝 **WhatsApp Retail Sales Detected (${enrichedSales.length} orders)**:\nReview the matched customers, quantities, and payment modes below, then tap **Confirm & Log Orders** (orders will be created in Confirmed state so you can edit if needed):`,
             type: 'retail_sales',
             batchId,
             data: {
@@ -419,7 +422,7 @@ export default function AiAssistantDrawer({
       const res = await createBatchSales(validSales)
       setProcessedSalesBatches((prev) => ({ ...prev, [msgId]: true }))
       toast.success(
-        `Created ${res.createdOrdersCount} delivered sales & debited ${res.totalStockDeducted} units!`
+        `Created ${res.createdOrdersCount} confirmed orders (editable in Orders tab)!`
       )
     } catch (e) {
       console.error('Failed to create batch sales:', e)
@@ -833,7 +836,7 @@ export default function AiAssistantDrawer({
                       {processedSalesBatches[msg.id] ? (
                         <div className="w-full bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold py-2 rounded-lg flex items-center justify-center gap-1.5">
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          <span>Sales Recorded & Stock Debited ✅</span>
+                          <span>Orders Logged as Confirmed ✅ (Editable in Orders tab)</span>
                         </div>
                       ) : (
                         <button
@@ -843,7 +846,7 @@ export default function AiAssistantDrawer({
                           className="w-full bg-[#131921] hover:bg-black text-[#ff9900] font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer disabled:opacity-50"
                         >
                           <ClipboardList className="w-4 h-4" />
-                          <span>Confirm & Create All Sales ({msg.data.sales.length} orders)</span>
+                          <span>Confirm & Log Orders ({msg.data.sales.length} Confirmed)</span>
                         </button>
                       )}
                     </div>

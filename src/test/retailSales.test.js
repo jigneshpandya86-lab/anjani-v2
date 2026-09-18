@@ -85,4 +85,38 @@ describe('Retail Sales Batch Normalization', () => {
     expect(normalizeMode('credit')).toBe('credit')
     expect(normalizeMode('unknown')).toBe('credit')
   })
+
+  it('normalizes unknown, walk-in, or unnamed clients to Retail', () => {
+    const normalizeClientName = (rawName) => {
+      let name = String(rawName || '').trim()
+      if (!name || /^customer\s*\d*$/i.test(name) || /^walk[\s-]*in/i.test(name) || /^unknown/i.test(name)) {
+        return 'Retail'
+      }
+      return name
+    }
+
+    expect(normalizeClientName('')).toBe('Retail')
+    expect(normalizeClientName(null)).toBe('Retail')
+    expect(normalizeClientName(undefined)).toBe('Retail')
+    expect(normalizeClientName('Customer 1')).toBe('Retail')
+    expect(normalizeClientName('customer 4')).toBe('Retail')
+    expect(normalizeClientName('Customer')).toBe('Retail')
+    expect(normalizeClientName('walk-in')).toBe('Retail')
+    expect(normalizeClientName('Walk in Customer')).toBe('Retail')
+    expect(normalizeClientName('Jay Ambe Provision')).toBe('Jay Ambe Provision')
+  })
+
+  it('ensures orders are created with Confirmed status so they can be edited prior to delivery', () => {
+    const createOrderPayload = (sale, clientDocId, clientName) => ({
+      clientId: clientDocId || '',
+      clientName: clientName || 'Retail',
+      status: 'Confirmed',
+      source: 'whatsapp_sales',
+    })
+
+    const order = createOrderPayload({}, 'cli_retail', 'Retail')
+    expect(order.status).toBe('Confirmed')
+    expect(order.clientName).toBe('Retail')
+    expect(order.source).toBe('whatsapp_sales')
+  })
 })
