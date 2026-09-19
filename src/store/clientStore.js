@@ -21,7 +21,7 @@ import {
 import { db } from '../firebase-config'
 import { DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
-import { DEFAULT_ACCOUNTS } from '../constants/accounts'
+import { DEFAULT_ACCOUNTS, getAccountMeta } from '../constants/accounts'
 
 let stockUnsubscribe = null
 let stockSubscriberCount = 0
@@ -927,6 +927,75 @@ export const useClientStore = create((set, get) => ({
       totalStockDeducted: 0,
       orders: createdOrders,
     }
+  },
+
+  createBatchAccountEntries: async (entries = []) => {
+    if (!Array.isArray(entries) || entries.length === 0) {
+      throw new Error('No entries provided')
+    }
+
+    const currentClients = [...(get().clients || [])]
+    let successCount = 0
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i]
+      const amount = Number(entry.amount) || 0
+      if (amount <= 0) continue
+
+      const entryDate = entry.date ? new Date(entry.date) : new Date()
+
+      if (entry.type === 'transfer') {
+        const fromAccountId = entry.fromAccount || 'nilesh'
+        const toAccountId = entry.toAccount || 'counter'
+        if (fromAccountId !== toAccountId) {
+          await get().recordAccountTransfer({
+            fromAccountId,
+            toAccountId,
+            amount,
+            notes: entry.notes || '',
+            date: entryDate,
+          })
+          successCount++
+        }
+      } else if (entry.type === 'collection') {
+        let client = null
+        if (entry.clientName) {
+          const raw = String(entry.clientName).toLowerCase().trim()
+          client =
+            currentClients.find((c) => c.name && c.name.toLowerCase().trim() === raw) ||
+            currentClients.find((c) => c.name && c.name.toLowerCase().includes(raw))
+        }
+
+        await get().addPayment({
+          clientId: client?.id || null,
+          clientName: client?.name || entry.clientName || 'Cash Collection',
+          amount,
+          type: 'payment',
+          method: entry.accountId === 'bank' ? 'upi' : 'cash',
+          accountId: entry.accountId || 'counter',
+          note:
+            entry.notes ||
+            `Collected by ${getAccountMeta(entry.accountId || 'counter').shortLabel}`,
+          date: entryDate,
+        })
+        successCount++
+      } else if (entry.type === 'expense') {
+        const targetAccountId = entry.accountId || 'counter'
+        const payload = {
+          amount,
+          category: entry.category || 'General',
+          accountId: targetAccountId,
+          date: Timestamp.fromDate(entryDate),
+          note: entry.notes || entry.note || '',
+          createdAt: serverTimestamp(),
+        }
+        await addDoc(collection(db, 'expenses'), payload)
+        await get().recordExpenseAccountDebit(targetAccountId, amount)
+        successCount++
+      }
+    }
+
+    return { successCount }
   },
 
   addPayment: async (data) => {

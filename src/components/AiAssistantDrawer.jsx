@@ -19,12 +19,14 @@ import {
   Trash2,
   Zap,
   Check,
+  ArrowRightLeft,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
 import { app } from '../firebase-config'
 import { useClientStore } from '../store/clientStore'
 import { WATER_SKUS } from '../constants/skus'
+import { getAccountMeta } from '../constants/accounts'
 import { processAiBillImage } from '../utils/aiImageHelper'
 import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
@@ -47,6 +49,7 @@ export default function AiAssistantDrawer({
   const stockEntries = useClientStore((state) => state.stockEntries)
   const addStockBatch = useClientStore((state) => state.addStockBatch)
   const createBatchSales = useClientStore((state) => state.createBatchSales)
+  const createBatchAccountEntries = useClientStore((state) => state.createBatchAccountEntries)
   const updateOrder = useClientStore((state) => state.updateOrder)
   const aiSettings = useClientStore((state) => state.aiSettings)
   const aiPrefillPrompt = useClientStore((state) => state.aiPrefillPrompt)
@@ -56,17 +59,11 @@ export default function AiAssistantDrawer({
   const [filePreview, setFilePreview] = useState(null)
   const [loading, setLoading] = useState(false)
   const [isSalesMode, setIsSalesMode] = useState(false)
+  const [isAccountsMode, setIsAccountsMode] = useState(false)
   const [inwardedBills, setInwardedBills] = useState({})
   const [processedSalesBatches, setProcessedSalesBatches] = useState({})
 
-  const [messages, setMessages] = useState([
-    {
-      id: 'welcome',
-      sender: 'assistant',
-      text: "👋 Hello Jigneshbhai! I am your **Anjani AI Assistant**.\n\nYou can **paste WhatsApp sales notes** or **upload a photo of your vendor bill / notepad slip** to automatically record sales or update stock, or tap any quick action below:",
-      timestamp: new Date(),
-    },
-  ])
+  const [messages, setMessages] = useState([])
 
   useEffect(() => {
     if (aiPrefillPrompt) {
@@ -103,6 +100,7 @@ export default function AiAssistantDrawer({
     const query = (customPrompt || inputMessage).trim()
     const filePayload = selectedFile
     const isSales = isSalesMode
+    const isAccounts = isAccountsMode
 
     if (!query && !filePayload) return
 
@@ -117,7 +115,9 @@ export default function AiAssistantDrawer({
           (filePayload
             ? isSales
               ? 'Uploaded retail sales notepad slip 📝'
-              : 'Uploaded document for scanning 📄'
+              : isAccounts
+                ? 'Uploaded staff cash / accounts note 💼'
+                : 'Uploaded document for scanning 📄'
             : ''),
         imagePreview: filePayload?.dataUrl || null,
         timestamp: new Date(),
@@ -129,9 +129,10 @@ export default function AiAssistantDrawer({
     setSelectedFile(null)
     setFilePreview(null)
     setIsSalesMode(false)
+    setIsAccountsMode(false)
 
-    // 1. Zero-Token Local Intent Check (Only if no file is uploaded and not in explicit sales mode)
-    if (!filePayload && query && !isSales) {
+    // 1. Zero-Token Local Intent Check (Only if no file is uploaded and not in explicit sales/accounts mode)
+    if (!filePayload && query && !isSales && !isAccounts) {
       const localRoute = tryLocalIntentRoute(query, {
         stockSummary,
         stockTotal,
@@ -169,11 +170,13 @@ export default function AiAssistantDrawer({
           (filePayload
             ? isSales
               ? 'Parse these daily retail customer sales orders'
-              : 'Scan this document and extract all water SKUs'
+              : isAccounts
+                ? 'Parse these staff cash custody, handover, or route expense entries'
+                : 'Scan this document and extract all water SKUs'
             : ''),
         imageBase64: filePayload?.base64 || null,
         mimeType: filePayload?.mimeType || 'image/jpeg',
-        mode: isSales ? 'retail_sales' : 'auto',
+        mode: isAccounts ? 'accounts_cash' : isSales ? 'retail_sales' : 'auto',
         conversationHistory: messages.slice(-3).map((m) => ({
           sender: m.sender,
           text: m.text,
@@ -236,6 +239,29 @@ export default function AiAssistantDrawer({
               sales: enrichedSales,
               modelUsed: resData.modelUsed,
               rawSummary: salesData.summary,
+            },
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'accounts_cash') {
+        const accountsData = resData.data || {}
+        const rawEntries = Array.isArray(accountsData.entries) ? accountsData.entries : []
+        const totalAmt = rawEntries.reduce((sum, e) => sum + Number(e.amount || 0), 0)
+
+        const batchId = 'acct-' + Date.now()
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `💼 **${rawEntries.length} Account Entr${rawEntries.length > 1 ? 'ies' : 'y'} Ready** (₹${totalAmt.toLocaleString('en-IN')})`,
+            type: 'accounts_cash',
+            batchId,
+            data: {
+              batchId,
+              entries: rawEntries,
+              modelUsed: resData.modelUsed,
+              rawSummary: accountsData.summary,
             },
             timestamp: new Date(),
           },
@@ -394,6 +420,38 @@ export default function AiAssistantDrawer({
     }
   }
 
+  // Confirm and log staff cash & accounts entries batch
+  const handleConfirmAccountEntries = async (msgId, accountsData) => {
+    const entries = (accountsData.entries || []).filter((e) => Number(e.amount) > 0)
+    if (entries.length === 0) {
+      toast.error('No valid account entries to record.')
+      return
+    }
+
+    try {
+      setLoading(true)
+      const res = await createBatchAccountEntries(entries)
+      setProcessedSalesBatches((prev) => ({ ...prev, [msgId]: true }))
+      toast.success(`Recorded ${res.successCount} account & cash entries!`)
+    } catch (e) {
+      console.error('Failed to log accounts entries:', e)
+      toast.error('Failed to record entries: ' + e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Delete a specific account entry from batch
+  const handleDeleteAccountEntry = (msgId, entryIdx) => {
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id !== msgId || msg.type !== 'accounts_cash') return msg
+        const updatedEntries = msg.data.entries.filter((_, eIdx) => eIdx !== entryIdx)
+        return { ...msg, data: { ...msg.data, entries: updatedEntries } }
+      })
+    )
+  }
+
   // Quick WhatsApp share for order
   const handleShareOrderWhatsApp = (order) => {
     const phone = order.mobile || order.phone || ''
@@ -420,18 +478,9 @@ export default function AiAssistantDrawer({
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() =>
-                setMessages([
-                  {
-                    id: 'welcome',
-                    sender: 'assistant',
-                    text: '👋 Chat cleared! How can I help you with your orders or stock today?',
-                    timestamp: new Date(),
-                  },
-                ])
-              }
+              onClick={() => setMessages([])}
               className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-              title="Reset chat"
+              title="Clear chat"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
@@ -446,66 +495,112 @@ export default function AiAssistantDrawer({
           </div>
         </div>
 
-        {/* Quick Action Chips */}
-        <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0 text-xs">
+        {/* Quick Action Icon Buttons (Compact, Icon-Only, No Scroll) */}
+        <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-1 shrink-0">
+          {/* 1. Camera: Scan Bill / Slip */}
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-gray-300 rounded-full font-semibold text-gray-700 hover:border-amz-orange hover:text-amz-orange transition-colors shrink-0 shadow-2xs"
+            className="w-9 h-9 bg-white border border-gray-200 hover:border-amz-orange hover:bg-orange-50/50 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+            title="Scan Bill / Slip (Camera OCR)"
+            aria-label="Scan Bill"
           >
-            <Camera className="w-3.5 h-3.5 text-amz-orange" />
-            <span>Scan Bill / Slip</span>
+            <Camera className="w-4 h-4 text-amz-orange" />
           </button>
+
+          {/* 2. ClipboardList: WhatsApp Sales */}
           <button
             type="button"
             onClick={() => {
               setIsSalesMode((prev) => {
                 const next = !prev
                 if (next) {
+                  setIsAccountsMode(false)
                   setTimeout(() => inputRef.current?.focus(), 50)
                 }
                 return next
               })
             }}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full font-semibold transition-colors shrink-0 shadow-2xs border ${
+            className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer shadow-2xs ${
               isSalesMode
                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                : 'bg-white text-gray-700 border-gray-300 hover:border-emerald-600 hover:text-emerald-600'
+                : 'bg-white text-gray-700 border-gray-200 hover:border-emerald-600 hover:text-emerald-600 hover:bg-emerald-50/50'
             }`}
-            title="Toggle WhatsApp Sales Mode"
+            title="WhatsApp Sales Mode (Daily Sales Notes)"
+            aria-label="WhatsApp Sales"
           >
-            <ClipboardList className={`w-3.5 h-3.5 ${isSalesMode ? 'text-white' : 'text-emerald-600'}`} />
-            <span>{isSalesMode ? 'Sales Mode Active' : 'WhatsApp Sales'}</span>
+            <ClipboardList className={`w-4 h-4 ${isSalesMode ? 'text-white' : 'text-emerald-600'}`} />
           </button>
+
+          {/* 3. ArrowRightLeft: Accounts & Staff Cash (Right after WhatsApp Sales!) */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsAccountsMode((prev) => {
+                const next = !prev
+                if (next) {
+                  setIsSalesMode(false)
+                  setTimeout(() => inputRef.current?.focus(), 50)
+                }
+                return next
+              })
+            }}
+            className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer shadow-2xs ${
+              isAccountsMode
+                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                : 'bg-white text-gray-700 border-gray-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50/50'
+            }`}
+            title="Accounts & Staff Cash (Handovers, Collections, Expenses)"
+            aria-label="Accounts & Staff Cash"
+          >
+            <ArrowRightLeft className={`w-4 h-4 ${isAccountsMode ? 'text-white' : 'text-blue-600'}`} />
+          </button>
+
+          {/* 4. Package: Current Stock */}
           <button
             type="button"
             onClick={() => handleSend('Current stock')}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-gray-300 rounded-full font-semibold text-gray-700 hover:border-amz-orange hover:text-amz-orange transition-colors shrink-0 shadow-2xs"
+            className="w-9 h-9 bg-white border border-gray-200 hover:border-indigo-500 hover:bg-indigo-50/50 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+            title="Check Warehouse Stock"
+            aria-label="Current Stock"
           >
-            <Package className="w-3.5 h-3.5 text-blue-600" />
-            <span>Current Stock</span>
+            <Package className="w-4 h-4 text-indigo-600" />
           </button>
+
+          {/* 5. Truck: Today Deliveries */}
           <button
             type="button"
             onClick={() => handleSend('Pending orders today')}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-gray-300 rounded-full font-semibold text-gray-700 hover:border-amz-orange hover:text-amz-orange transition-colors shrink-0 shadow-2xs"
+            className="w-9 h-9 bg-white border border-gray-200 hover:border-emerald-500 hover:bg-emerald-50/50 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+            title="Today's Pending Deliveries"
+            aria-label="Today Deliveries"
           >
-            <Truck className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Today Deliveries</span>
+            <Truck className="w-4 h-4 text-emerald-600" />
           </button>
+
+          {/* 6. IndianRupee: Outstanding Dues */}
           <button
             type="button"
             onClick={() => handleSend('Outstanding balances')}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-gray-300 rounded-full font-semibold text-gray-700 hover:border-amz-orange hover:text-amz-orange transition-colors shrink-0 shadow-2xs"
+            className="w-9 h-9 bg-white border border-gray-200 hover:border-purple-500 hover:bg-purple-50/50 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+            title="Customer Outstanding Dues"
+            aria-label="Outstanding Balances"
           >
-            <IndianRupee className="w-3.5 h-3.5 text-purple-600" />
-            <span>Outstanding</span>
+            <IndianRupee className="w-4 h-4 text-purple-600" />
           </button>
         </div>
 
         {/* Message Thread */}
         <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50/50">
-          {messages.map((msg) => (
+          {messages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center p-6 text-gray-400 select-none">
+              <Bot className="w-8 h-8 text-gray-300 mb-2" />
+              <p className="text-xs font-semibold text-gray-500">
+                Ready for sales notes, staff cash entries, or queries.
+              </p>
+            </div>
+          ) : (
+            messages.map((msg) => (
             <div
               key={msg.id}
               className={`flex gap-2.5 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -854,6 +949,142 @@ export default function AiAssistantDrawer({
                   )
                 })()}
 
+                {/* 1.5 Interactive Staff Cash & Accounts Entries Card */}
+                {msg.type === 'accounts_cash' && msg.data && (() => {
+                  const entries = msg.data.entries || []
+                  const totalAmt = entries.reduce((s, e) => s + Number(e.amount || 0), 0)
+                  const isBatchDone = processedSalesBatches[msg.id]
+
+                  return (
+                    <div className="mt-2.5 bg-white border border-blue-200 rounded-2xl p-2.5 space-y-2 text-xs shadow-xs">
+                      {/* Top Header with 1-Tap Confirm */}
+                      <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-gray-100">
+                        <div className="flex items-center gap-1.5">
+                          <span className="p-1 rounded-lg bg-blue-50 text-blue-600 font-black">
+                            <ArrowRightLeft className="w-3.5 h-3.5" />
+                          </span>
+                          <div>
+                            <span className="text-[11px] font-black uppercase text-gray-800 tracking-tight">
+                              Accounts & Staff Cash
+                            </span>
+                            <span className="text-[10px] text-gray-500 font-bold ml-1.5">
+                              {entries.length} {entries.length === 1 ? 'entry' : 'entries'} • ₹{totalAmt.toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        </div>
+
+                        {!isBatchDone ? (
+                          <button
+                            type="button"
+                            disabled={loading || entries.length === 0}
+                            onClick={() => handleConfirmAccountEntries(msg.id, msg.data)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-black text-[10px] py-1 px-2.5 rounded-lg flex items-center gap-1 uppercase tracking-wide cursor-pointer transition-all shadow-2xs active:scale-95 disabled:opacity-50"
+                          >
+                            <Zap className="w-3 h-3 text-amber-300 fill-amber-300" />
+                            Confirm Now
+                          </button>
+                        ) : (
+                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <Check className="w-3 h-3 text-emerald-600" /> Logged
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Entries List */}
+                      <div className="space-y-1.5 max-h-60 overflow-y-auto no-scrollbar">
+                        {entries.length === 0 ? (
+                          <p className="text-[11px] text-gray-400 text-center py-2">No entries detected.</p>
+                        ) : (
+                          entries.map((entry, eIdx) => {
+                            const isTransfer = entry.type === 'transfer'
+                            const isCollection = entry.type === 'collection'
+                            const isExpense = entry.type === 'expense'
+
+                            const fromMeta = getAccountMeta(entry.fromAccount || 'nilesh')
+                            const toMeta = getAccountMeta(entry.toAccount || 'counter')
+                            const acctMeta = getAccountMeta(entry.accountId || 'counter')
+
+                            return (
+                              <div
+                                key={eIdx}
+                                className="bg-gray-50/80 border border-gray-200/70 rounded-xl p-2 flex items-center justify-between gap-2"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span
+                                    className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded tracking-wide shrink-0 ${
+                                      isTransfer
+                                        ? 'bg-blue-100 text-blue-800'
+                                        : isCollection
+                                          ? 'bg-emerald-100 text-emerald-800'
+                                          : 'bg-rose-100 text-rose-800'
+                                    }`}
+                                  >
+                                    {isTransfer ? 'Handover' : isCollection ? 'Collection' : 'Expense'}
+                                  </span>
+
+                                  <div className="min-w-0">
+                                    <div className="text-[11px] font-black text-gray-800 truncate">
+                                      {isTransfer && `${fromMeta.shortLabel} ➔ ${toMeta.shortLabel}`}
+                                      {isCollection && `${entry.clientName || 'Customer'} ➔ ${acctMeta.shortLabel}`}
+                                      {isExpense && `${acctMeta.shortLabel} • ${entry.category || 'Expense'}`}
+                                    </div>
+                                    {entry.notes && (
+                                      <p className="text-[10px] text-gray-400 truncate">{entry.notes}</p>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="text-xs font-black text-gray-900">
+                                    ₹{Number(entry.amount || 0).toLocaleString('en-IN')}
+                                  </span>
+                                  {!isBatchDone && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteAccountEntry(msg.id, eIdx)}
+                                      className="text-gray-400 hover:text-rose-600 p-0.5 rounded cursor-pointer transition-colors"
+                                      title="Remove entry"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })
+                        )}
+                      </div>
+
+                      {/* Bottom Action Button */}
+                      <div className="pt-1">
+                        {isBatchDone ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onNavigateTab?.('accounts')
+                              onClose()
+                            }}
+                            className="w-full bg-emerald-50 border border-emerald-300 text-emerald-800 font-black py-2 rounded-xl flex items-center justify-center gap-1.5 text-xs active:scale-98 transition-all cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span>Entries Logged! View in Accounts ➔</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={loading || entries.length === 0}
+                            onClick={() => handleConfirmAccountEntries(msg.id, msg.data)}
+                            className="w-full bg-[#131921] hover:bg-black text-[#ff9900] font-black py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-all text-xs uppercase tracking-wider cursor-pointer disabled:opacity-50"
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                            <span>Confirm & Log Entries (₹{totalAmt.toLocaleString('en-IN')})</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
+
                 {/* 2. Interactive Stock Summary Card */}
                 {msg.type === 'stock_summary' && msg.data && (
                   <div className="mt-3 bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-2 text-xs">
@@ -1050,7 +1281,7 @@ export default function AiAssistantDrawer({
                 </div>
               )}
             </div>
-          ))}
+          )))}
 
           {loading && (
             <div className="flex gap-2.5 items-center text-gray-500 text-xs italic pl-2">
@@ -1100,13 +1331,31 @@ export default function AiAssistantDrawer({
             <div className="mb-2 flex items-center justify-between px-3 py-1.5 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-900 font-semibold animate-in fade-in shadow-2xs">
               <div className="flex items-center gap-1.5 min-w-0">
                 <ClipboardList className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span className="truncate">WhatsApp Sales Mode: Paste sales note text below and tap Send</span>
+                <span className="truncate">WhatsApp Sales Mode: Paste sales notes below and tap Send</span>
               </div>
               <button
                 type="button"
                 onClick={() => setIsSalesMode(false)}
                 className="text-emerald-700 hover:text-red-600 p-0.5 rounded cursor-pointer shrink-0 ml-1"
                 title="Exit sales mode"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Accounts & Staff Cash Mode Active Banner */}
+          {isAccountsMode && (
+            <div className="mb-2 flex items-center justify-between px-3 py-1.5 bg-blue-50 border border-blue-300 rounded-xl text-xs text-blue-900 font-semibold animate-in fade-in shadow-2xs">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <ArrowRightLeft className="w-4 h-4 text-blue-600 shrink-0" />
+                <span className="truncate">Staff Cash & Accounts Mode: Type handovers, collections, or expenses</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAccountsMode(false)}
+                className="text-blue-700 hover:text-red-600 p-0.5 rounded cursor-pointer shrink-0 ml-1"
+                title="Exit accounts mode"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -1145,14 +1394,18 @@ export default function AiAssistantDrawer({
               placeholder={
                 isSalesMode
                   ? 'Paste WhatsApp sales notes here and tap Send...'
-                  : filePreview
-                    ? 'Add notes or tap send...'
-                    : 'Paste WhatsApp sales, ask stock, or upload slip...'
+                  : isAccountsMode
+                    ? 'e.g. Nilesh handover 4000 to counter, collected 3500 Jay Ambe, petrol 200...'
+                    : filePreview
+                      ? 'Add notes or tap send...'
+                      : 'Paste sales, staff cash entries, or ask anything...'
               }
               className={`flex-1 py-2.5 px-3 border rounded-xl text-xs sm:text-sm outline-none transition-all ${
                 isSalesMode
                   ? 'border-emerald-500 ring-2 ring-emerald-200/60 bg-emerald-50/20'
-                  : 'border-gray-300 focus:ring-2 focus:ring-amz-orange focus:border-amz-orange'
+                  : isAccountsMode
+                    ? 'border-blue-500 ring-2 ring-blue-200/60 bg-blue-50/20'
+                    : 'border-gray-300 focus:ring-2 focus:ring-amz-orange focus:border-amz-orange'
               }`}
             />
 

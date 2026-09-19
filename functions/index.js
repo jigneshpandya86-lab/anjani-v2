@@ -1297,6 +1297,7 @@ exports.askAnjaniAi = onCall(async (request) => {
 Analyze this image. It is either:
 1. "retail_sales": A handwritten retail sales notepad, diary page, dispatch memo, or daily customer delivery note containing customer names, quantities, and payment notes.
 2. "vendor_bill": A vendor delivery challan, factory tax invoice, or supplier stock inward receipt.
+3. "accounts_cash": A staff cash settlement slip, daily cash sheet, handover note, customer collection slip, or route expense memo.
 
 Map all water products EXCLUSIVELY to our 5 canonical SKUs:
 1. "Anjani 200ml" (unit: Box)
@@ -1333,6 +1334,31 @@ Return strict JSON:
       "totalAmount": number (total amount if stated, else 0),
       "paymentMode": "cash" | "online" | "credit" (cash if cash/rokda/paid, online if gpay/upi, credit if udhar/baaki/due/pending or unspecified),
       "amountCollected": number (if cash/online, else 0),
+      "notes": string
+    }
+  ]
+}
+
+If it is a staff cash handover / collection / accounts note:
+Available accounts: "nilesh" (delivery staff), "hiteshbhai" (delivery staff), "counter" (drawer / Jigneshbhai), "bank" (Bank / UPI).
+Return strict JSON:
+{
+  "docType": "accounts_cash",
+  "summary": {
+    "totalInward": number,
+    "totalOutward": number,
+    "entryCount": number,
+    "date": string (YYYY-MM-DD or as written)
+  },
+  "entries": [
+    {
+      "type": "transfer" | "collection" | "expense",
+      "fromAccount": "nilesh" | "hiteshbhai" | "counter" | "bank",
+      "toAccount": "counter" | "bank" | "nilesh" | "hiteshbhai",
+      "accountId": "nilesh" | "hiteshbhai" | "counter" | "bank",
+      "clientName": string (customer or shop name if collection, else ""),
+      "category": string (e.g. "Fuel / Petrol", "Vehicle Maintenance", "Tea / Refreshments", "General"),
+      "amount": number,
       "notes": string
     }
   ]
@@ -1384,6 +1410,17 @@ Return strict JSON:
         }
       }
 
+      if (
+        parsedData.docType === 'accounts_cash' ||
+        (Array.isArray(parsedData.entries) && parsedData.entries.length > 0)
+      ) {
+        return {
+          type: 'accounts_cash',
+          modelUsed: modelName,
+          data: parsedData,
+        }
+      }
+
       return {
         type: 'vendor_bill',
         modelUsed: modelName,
@@ -1392,6 +1429,87 @@ Return strict JSON:
     } else {
       // Text mode
       const rawText = String(text || '').trim()
+
+      // Check if this is an accounts & staff cash entry
+      const isExplicitAccounts = mode === 'accounts_cash' || mode === 'accounts'
+      const hasAccountsKeywords =
+        /(?:handover|jama|lidha|aapy[ao]|aapya|transfer|petrol|diesel|kharch|expense|hitesh|nilesh)\b/i.test(rawText) &&
+        /\d+/.test(rawText)
+      const hasSkuKeywords = /(?:200ml|250ml|500ml|1\s*l|2\s*l|peti|box\b|cases?\b)/i.test(rawText)
+      const isAccountsNotes = isExplicitAccounts || (hasAccountsKeywords && !hasSkuKeywords)
+
+      if (isAccountsNotes) {
+        const model = vertexAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            maxOutputTokens: jsonMaxTokens,
+            temperature,
+            responseMimeType: 'application/json',
+          },
+        })
+
+        const accountsCashPrompt = `You are an expert accounts & staff cash custody assistant for Annapurna Foods in Vadodara, Gujarat (owned by Jignesh Pandya).
+The user provided staff cash notes, handovers, customer collections, or route expenses (in English, Gujarati, or Gujlish).
+Available accounts:
+1. "nilesh": Delivery staff Nilesh's cash custody
+2. "hiteshbhai": Delivery staff Hiteshbhai's cash custody
+3. "counter": Counter Cash Drawer / Jigneshbhai
+4. "bank": Bank / UPI / Online
+
+Parse each transaction into structured JSON:
+{
+  "docType": "accounts_cash",
+  "summary": {
+    "totalInward": number,
+    "totalOutward": number,
+    "entryCount": number,
+    "date": string (YYYY-MM-DD or today)
+  },
+  "entries": [
+    {
+      "type": "transfer" | "collection" | "expense",
+      "fromAccount": "nilesh" | "hiteshbhai" | "counter" | "bank",
+      "toAccount": "counter" | "bank" | "nilesh" | "hiteshbhai",
+      "accountId": "nilesh" | "hiteshbhai" | "counter" | "bank",
+      "clientName": string (customer or shop name if collection, else ""),
+      "category": string (e.g. "Fuel / Petrol", "Vehicle Maintenance", "Tea / Refreshments", "General"),
+      "amount": number (positive number),
+      "notes": string
+    }
+  ]
+}
+
+Classification Rules:
+1. "transfer" (Cash Handover / Transfer between accounts):
+   - When delivery staff (Nilesh or Hiteshbhai) hands over cash to Counter / Jignesh / Owner -> type: "transfer", fromAccount: "nilesh" or "hiteshbhai", toAccount: "counter".
+   - When cash is deposited into Bank / UPI from Counter or Staff -> type: "transfer", fromAccount: "counter" (or staff), toAccount: "bank".
+2. "collection" (Money collected from customer / shop):
+   - When cash/payment is collected from a customer / shop (e.g. "Nilesh collected 2000 from Jay Ambe") -> type: "collection", accountId: "nilesh" (or staff name), clientName: "Jay Ambe".
+3. "expense" (Expense or petty cash spent by staff):
+   - Petrol, diesel, tea, repair, or food paid by staff on route -> type: "expense", accountId: staff name (or "counter"), category: appropriate category (e.g. "Fuel / Petrol").
+
+Notes:
+${rawText.slice(0, 3000)}`
+
+        try {
+          const res = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: accountsCashPrompt }] }],
+          })
+          const rawJson = res.response.candidates[0].content.parts[0].text.trim()
+          const parsedData = parseStructuredJson(rawJson)
+
+          if (Array.isArray(parsedData.entries) && parsedData.entries.length > 0) {
+            return {
+              type: 'accounts_cash',
+              modelUsed: modelName,
+              data: parsedData,
+            }
+          }
+        } catch (parseErr) {
+          logger.warn('Failed to parse accounts notes as JSON, falling back to chat:', parseErr.message)
+        }
+      }
+
       const isSalesNotes =
         mode === 'retail_sales' ||
         /(?:sales|peti|box|case|bxs|qty|cash|rokda|gpay|upi|udhar|baaki|jama)\b/i.test(rawText) ||
