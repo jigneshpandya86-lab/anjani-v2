@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { getSkuMeta } from '../constants/skus'
+import { isRetailCustomer, consolidateRetailSales } from '../utils/salesBatchUtils'
 
 describe('Retail Sales Batch Normalization', () => {
   const mockClients = [
@@ -86,24 +87,76 @@ describe('Retail Sales Batch Normalization', () => {
     expect(normalizeMode('unknown')).toBe('credit')
   })
 
-  it('normalizes unknown, walk-in, or unnamed clients to Retail', () => {
-    const normalizeClientName = (rawName) => {
-      let name = String(rawName || '').trim()
-      if (!name || /^customer\s*\d*$/i.test(name) || /^walk[\s-]*in/i.test(name) || /^unknown/i.test(name)) {
-        return 'Retail'
-      }
-      return name
-    }
+  it('normalizes unknown, walk-in, or unnamed clients to Retail using isRetailCustomer', () => {
+    expect(isRetailCustomer('')).toBe(true)
+    expect(isRetailCustomer(null)).toBe(true)
+    expect(isRetailCustomer(undefined)).toBe(true)
+    expect(isRetailCustomer('Customer 1')).toBe(true)
+    expect(isRetailCustomer('customer 4')).toBe(true)
+    expect(isRetailCustomer('Customer')).toBe(true)
+    expect(isRetailCustomer('walk-in')).toBe(true)
+    expect(isRetailCustomer('Walk in Customer')).toBe(true)
+    expect(isRetailCustomer('unknown')).toBe(true)
+    expect(isRetailCustomer('Retail')).toBe(true)
+    expect(isRetailCustomer('retail')).toBe(true)
+    expect(isRetailCustomer('Jay Ambe Provision')).toBe(false)
+  })
 
-    expect(normalizeClientName('')).toBe('Retail')
-    expect(normalizeClientName(null)).toBe('Retail')
-    expect(normalizeClientName(undefined)).toBe('Retail')
-    expect(normalizeClientName('Customer 1')).toBe('Retail')
-    expect(normalizeClientName('customer 4')).toBe('Retail')
-    expect(normalizeClientName('Customer')).toBe('Retail')
-    expect(normalizeClientName('walk-in')).toBe('Retail')
-    expect(normalizeClientName('Walk in Customer')).toBe('Retail')
-    expect(normalizeClientName('Jay Ambe Provision')).toBe('Jay Ambe Provision')
+  it('consolidates multiple retail sales into a SINGLE Retail order with summed quantities', () => {
+    const rawSales = [
+      {
+        clientName: 'Retail',
+        items: [{ sku: 'Anjani 200ml', qty: 10, rate: 105 }],
+        paymentMode: 'cash',
+        totalAmount: 1050,
+      },
+      {
+        clientName: 'Jay Ambe Provision',
+        items: [{ sku: 'Anjani 200ml', qty: 20, rate: 105 }],
+        paymentMode: 'credit',
+        totalAmount: 2100,
+      },
+      {
+        clientName: 'Walk-in',
+        items: [{ sku: 'Anjani 200ml', qty: 5, rate: 105 }],
+        paymentMode: 'cash',
+        totalAmount: 525,
+      },
+      {
+        clientName: 'Customer 3',
+        items: [{ sku: 'Bailey 500ml', qty: 4, rate: 150 }],
+        paymentMode: 'online',
+        totalAmount: 600,
+      },
+    ]
+
+    const consolidated = consolidateRetailSales(rawSales, mockClients)
+
+    // Should contain exactly 2 orders: 1 for Retail, 1 for Jay Ambe Provision
+    expect(consolidated.length).toBe(2)
+
+    const retailOrder = consolidated.find((s) => s.clientName === 'Retail')
+    expect(retailOrder).toBeDefined()
+    expect(retailOrder.isConsolidatedRetail).toBe(true)
+
+    // Check items in Retail order: Anjani 200ml = 10 + 5 = 15; Bailey 500ml = 4
+    const anjaniItem = retailOrder.items.find((it) => it.sku === 'Anjani 200ml')
+    expect(anjaniItem).toBeDefined()
+    expect(anjaniItem.qty).toBe(15)
+
+    const baileyItem = retailOrder.items.find((it) => it.sku === 'Bailey 500ml')
+    expect(baileyItem).toBeDefined()
+    expect(baileyItem.qty).toBe(4)
+
+    // Total amount for retail: 1050 + 525 + 600 = 2175
+    expect(retailOrder.totalAmount).toBe(2175)
+
+    // Check Jay Ambe Provision order: intact and separate
+    const jayAmbeOrder = consolidated.find((s) => s.clientName === 'Jay Ambe Provision')
+    expect(jayAmbeOrder).toBeDefined()
+    expect(jayAmbeOrder.items[0].qty).toBe(20)
+    expect(jayAmbeOrder.totalAmount).toBe(2100)
+    expect(jayAmbeOrder.isMatched).toBe(true)
   })
 
   it('ensures orders are created with Confirmed status so they can be edited prior to delivery', () => {

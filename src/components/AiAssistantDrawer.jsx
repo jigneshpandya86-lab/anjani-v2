@@ -22,9 +22,10 @@ import { getFunctions, httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
 import { app } from '../firebase-config'
 import { useClientStore } from '../store/clientStore'
-import { WATER_SKUS, getSkuMeta } from '../constants/skus'
+import { WATER_SKUS } from '../constants/skus'
 import { processAiBillImage } from '../utils/aiImageHelper'
 import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
+import { consolidateRetailSales } from '../utils/salesBatchUtils'
 
 export default function AiAssistantDrawer({
   isOpen,
@@ -212,53 +213,7 @@ export default function AiAssistantDrawer({
         const salesData = resData.data || {}
         const rawSales = Array.isArray(salesData.sales) ? salesData.sales : []
 
-        const enrichedSales = rawSales.map((sale, idx) => {
-          let rawName = (sale.clientName || '').trim()
-          if (!rawName || /^customer\s*\d*$/i.test(rawName) || /^walk[\s-]*in/i.test(rawName) || /^unknown/i.test(rawName)) {
-            rawName = 'Retail'
-          }
-          const matched = clients.find(
-            (c) =>
-              c.name?.toLowerCase().trim() === rawName.toLowerCase() ||
-              (c.mobile &&
-                sale.mobile &&
-                String(c.mobile).replace(/\D/g, '') === String(sale.mobile).replace(/\D/g, ''))
-          )
-
-          const items = (sale.items && sale.items.length > 0
-            ? sale.items
-            : [{ sku: 'Anjani 200ml', qty: Number(sale.qty) || 1, rate: Number(sale.rate) || 0 }]
-          ).map((it) => {
-            const meta = getSkuMeta(it.sku || 'Anjani 200ml')
-            let rate = Number(it.rate) || 0
-            if (rate <= 0 && matched) {
-              rate = Number(matched.skuRates?.[meta.label] ?? matched.rate ?? 0)
-            }
-            return {
-              sku: meta.label,
-              qty: Math.max(1, Number(it.qty) || 1),
-              rate: rate > 0 ? rate : 0,
-              unit: meta.unit,
-            }
-          })
-
-          const calcTotal = items.reduce((s, it) => s + it.qty * it.rate, 0)
-          const totalAmount = Number(sale.totalAmount) > 0 ? Number(sale.totalAmount) : calcTotal
-
-          return {
-            id: `sale-${Date.now()}-${idx}`,
-            clientName: rawName,
-            clientId: matched?.id || null,
-            isMatched: !!matched,
-            mobile: sale.mobile || matched?.mobile || '',
-            paymentMode: ['cash', 'online', 'credit'].includes(sale.paymentMode)
-              ? sale.paymentMode
-              : 'credit',
-            items,
-            totalAmount,
-            notes: sale.notes || '',
-          }
-        })
+        const enrichedSales = consolidateRetailSales(rawSales, clients)
 
         const batchId = 'batch-' + Date.now()
         setMessages((prev) => [
@@ -719,7 +674,11 @@ export default function AiAssistantDrawer({
                                   <span className="font-bold text-gray-900 text-xs sm:text-sm">
                                     {sale.clientName}
                                   </span>
-                                  {sale.isMatched ? (
+                                  {sale.isConsolidatedRetail ? (
+                                    <span className="px-1.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-700 rounded text-[9px] font-semibold">
+                                      ⚡ Single Consolidated Order
+                                    </span>
+                                  ) : sale.isMatched ? (
                                     <span className="px-1.5 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded text-[9px] font-semibold">
                                       ✓ Matched
                                     </span>

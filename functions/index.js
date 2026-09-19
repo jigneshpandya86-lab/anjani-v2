@@ -1306,6 +1306,9 @@ Map all water products EXCLUSIVELY to our 5 canonical SKUs:
 5. "Bailey 2 Liter" (unit: Case / Box)
 
 If it is a retail sales notepad / customer delivery list:
+IMPORTANT CONSOLIDATION & GROUPING RULE:
+All walk-in, cash counter, unnamed, or retail customer sales MUST BE CONSOLIDATED INTO A SINGLE order with "clientName": "Retail". Sum up the quantities for the same SKUs in that single order. NEVER create multiple separate "Retail" sales entries. Regular named business customers (e.g., specific shop names like "Jay Ambe Provision", "Rohitbhai") each get their own separate order.
+
 Return strict JSON:
 {
   "docType": "retail_sales",
@@ -1414,6 +1417,11 @@ Map all products EXCLUSIVELY to our 5 canonical SKUs:
 4. "Bailey 1 Liter" (unit: Case / Box)
 5. "Bailey 2 Liter" (unit: Case / Box)
 
+CRITICAL RULES & USER INSTRUCTIONS:
+1. RETAIL CONSOLIDATION (MANDATORY): All walk-in, counter, cash, unnamed, or retail sales MUST BE COMBINED / CONSOLIDATED INTO A SINGLE order with "clientName": "Retail". Group and sum up the quantities for the same SKUs under this single "Retail" order. NEVER generate multiple separate "Retail" or "Walk-in" sales entries in the "sales" array.
+2. NAMED CUSTOMERS: Regular business / named customers (e.g., "Jay Ambe Provision", "Rohitbhai") must each get their own individual order in the "sales" array.
+3. USER INSTRUCTIONS: Strictly follow any explicit instructions written by the user in the prompt (such as "raise only single order/invoice for retails", specific pricing, dates, or payment notes).
+
 Return strict JSON:
 {
   "docType": "retail_sales",
@@ -1477,7 +1485,8 @@ ${rawText.slice(0, 3000)}`
       const systemPrompt = `You are the concise and helpful AI Assistant for Annapurna Foods (distributor for Anjani & Bailey Packaged Drinking Water in Vadodara, owned by Jignesh Pandya).
 Help with water orders, stock, clients, and inquiries in English, Gujarati, or Hindi.
 Keep your answer clear, polite, and under 120 words.
-Our 5 products are: Anjani 200ml (Boxes), Bailey 250ml (Cases), Bailey 500ml (Cases), Bailey 1 Liter (Cases), Bailey 2 Liter (Cases).`
+Our 5 products are: Anjani 200ml (Boxes), Bailey 250ml (Cases), Bailey 500ml (Cases), Bailey 1 Liter (Cases), Bailey 2 Liter (Cases).
+NOTE: All walk-in, unnamed, or counter retail sales are always consolidated into a single master order/invoice for "Retail" to keep order logs clean.`
 
       const safeHistory = Array.isArray(conversationHistory)
         ? conversationHistory.slice(-3).map((m) => ({

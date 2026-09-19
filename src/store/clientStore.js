@@ -18,6 +18,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase-config'
 import { DEFAULT_SKU, getSkuMeta } from '../constants/skus'
+import { consolidateRetailSales } from '../utils/salesBatchUtils'
 
 let stockUnsubscribe = null
 let stockSubscriberCount = 0
@@ -612,6 +613,7 @@ export const useClientStore = create((set, get) => ({
     }
 
     const currentClients = [...(get().clients || [])]
+    const normalizedSalesList = consolidateRetailSales(salesList, currentClients)
     const now = new Date()
     const yyyy = now.getFullYear()
     const mm = String(now.getMonth() + 1).padStart(2, '0')
@@ -625,8 +627,8 @@ export const useClientStore = create((set, get) => ({
 
     const createdOrders = []
 
-    for (let i = 0; i < salesList.length; i++) {
-      const sale = salesList[i]
+    for (let i = 0; i < normalizedSalesList.length; i++) {
+      const sale = normalizedSalesList[i]
       let rawName = String(sale.clientName || '').trim()
 
       // Normalize unknown / walk-in clients to "Retail" (never Customer 1, 2, 3...)
