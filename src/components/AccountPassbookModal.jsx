@@ -8,6 +8,8 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase-config'
 import { getAccountMeta } from '../constants/accounts'
+import { useClientStore } from '../store/clientStore'
+import toast from 'react-hot-toast'
 import {
   X,
   IndianRupee,
@@ -18,6 +20,7 @@ import {
   AlertCircle,
   PlusCircle,
   MinusCircle,
+  SlidersHorizontal,
 } from 'lucide-react'
 
 export default function AccountPassbookModal({
@@ -30,8 +33,28 @@ export default function AccountPassbookModal({
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [filterType, setFilterType] = useState('all') // 'all', 'collection', 'expense', 'transfer'
+  const updateAccountBalanceDirect = useClientStore((state) => state.updateAccountBalanceDirect)
 
   const accountMeta = getAccountMeta(accountId)
+
+  const handlePromptAdjustBalance = async () => {
+    const input = window.prompt(
+      `Set opening / reconciled balance for ${accountMeta.name} (current: ₹${currentBalance}):`,
+      String(currentBalance || 0),
+    )
+    if (input === null) return
+    const parsed = parseFloat(input)
+    if (isNaN(parsed)) {
+      toast.error('Invalid number entered')
+      return
+    }
+    try {
+      await updateAccountBalanceDirect(accountId, parsed)
+      toast.success(`Balance for ${accountMeta.shortLabel} set to ₹${parsed.toLocaleString('en-IN')}`)
+    } catch (err) {
+      toast.error('Failed to update balance: ' + err.message)
+    }
+  }
 
   useEffect(() => {
     if (!isOpen || !accountId) return
@@ -235,11 +258,21 @@ export default function AccountPassbookModal({
 
           {/* Balance & Stat Cards */}
           <div className="mt-3 grid grid-cols-2 gap-2">
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-2.5 border border-white/10">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/70 block">
-                Current Balance
-              </span>
-              <p className="text-2xl font-black leading-tight text-emerald-300">
+            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-2.5 border border-white/10 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-white/70 block">
+                  Current Balance
+                </span>
+                <button
+                  type="button"
+                  onClick={handlePromptAdjustBalance}
+                  className="text-[9px] font-extrabold uppercase bg-white/10 hover:bg-white/20 text-white px-1.5 py-0.5 rounded flex items-center gap-1 transition-all"
+                  title="Set or adjust opening/reconciled balance"
+                >
+                  <SlidersHorizontal size={9} /> Set
+                </button>
+              </div>
+              <p className="text-2xl font-black leading-tight text-emerald-300 mt-1">
                 ₹{Number(currentBalance).toLocaleString('en-IN')}
               </p>
             </div>

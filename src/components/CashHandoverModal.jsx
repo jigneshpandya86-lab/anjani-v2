@@ -95,9 +95,9 @@ export default function CashHandoverModal({
                 <ArrowRightLeft size={18} />
               </div>
               <div>
-                <h2 className="text-base font-black leading-tight">Cash Handover / Transfer</h2>
+                <h2 className="text-base font-black leading-tight">Cash Handover / Journal Transfer</h2>
                 <p className="text-[11px] text-white/70 font-semibold">
-                  Partial or full cash settlement to drawer
+                  Transfer or settle cash between staff, drawer & bank
                 </p>
               </div>
             </div>
