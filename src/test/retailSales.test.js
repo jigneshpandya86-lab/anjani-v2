@@ -172,4 +172,34 @@ describe('Retail Sales Batch Normalization', () => {
     expect(order.clientName).toBe('Retail')
     expect(order.source).toBe('whatsapp_sales')
   })
+
+  it('preserves separate line items for the same SKU when different rates are specified', () => {
+    const rawSales = [
+      {
+        clientName: 'Retail',
+        items: [
+          { sku: 'Bailey 1 Liter', qty: 10, rate: 120 },
+          { sku: 'Bailey 1 Liter', qty: 5, rate: 125 },
+        ],
+        paymentMode: 'cash',
+      },
+    ]
+
+    const consolidated = consolidateRetailSales(rawSales, mockClients)
+    expect(consolidated.length).toBe(1)
+    const retailOrder = consolidated[0]
+
+    // Must have 2 distinct line items, NOT merged into one
+    expect(retailOrder.items.length).toBe(2)
+    expect(retailOrder.items[0].sku).toBe('Bailey 1 Liter')
+    expect(retailOrder.items[0].qty).toBe(10)
+    expect(retailOrder.items[0].rate).toBe(120)
+
+    expect(retailOrder.items[1].sku).toBe('Bailey 1 Liter')
+    expect(retailOrder.items[1].qty).toBe(5)
+    expect(retailOrder.items[1].rate).toBe(125)
+
+    // Total amount: (10 * 120) + (5 * 125) = 1200 + 625 = 1825
+    expect(retailOrder.totalAmount).toBe(1825)
+  })
 })

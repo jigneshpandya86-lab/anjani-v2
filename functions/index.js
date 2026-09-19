@@ -1306,8 +1306,9 @@ Map all water products EXCLUSIVELY to our 5 canonical SKUs:
 5. "Bailey 2 Liter" (unit: Case / Box)
 
 If it is a retail sales notepad / customer delivery list:
-IMPORTANT CONSOLIDATION & GROUPING RULE:
-All walk-in, cash counter, unnamed, or retail customer sales MUST BE CONSOLIDATED INTO A SINGLE order with "clientName": "Retail". Sum up the quantities for the same SKUs in that single order. NEVER create multiple separate "Retail" sales entries. Regular named business customers (e.g., specific shop names like "Jay Ambe Provision", "Rohitbhai") each get their own separate order.
+IMPORTANT RULES:
+1. RETAIL CONSOLIDATION: All walk-in, cash counter, unnamed, or retail customer sales MUST BE CONSOLIDATED INTO A SINGLE order with "clientName": "Retail". NEVER create multiple separate "Retail" sales entries. Regular named business customers (e.g., specific shop names like "Jay Ambe Provision", "Rohitbhai") each get their own separate order.
+2. DIFFERENT RATES MUST REMAIN SEPARATE LINE ITEMS: If the same SKU is sold at different rates (for example: "Bailey 1 Liter 10 @ 120" and "Bailey 1 Liter 5 @ 125"), DO NOT merge them! Keep each distinct rate as its own item in the "items" array with its exact qty and rate. Only combine items if BOTH the SKU and the unit rate are identical.
 
 Return strict JSON:
 {
@@ -1418,9 +1419,10 @@ Map all products EXCLUSIVELY to our 5 canonical SKUs:
 5. "Bailey 2 Liter" (unit: Case / Box)
 
 CRITICAL RULES & USER INSTRUCTIONS:
-1. RETAIL CONSOLIDATION (MANDATORY): All walk-in, counter, cash, unnamed, or retail sales MUST BE COMBINED / CONSOLIDATED INTO A SINGLE order with "clientName": "Retail". Group and sum up the quantities for the same SKUs under this single "Retail" order. NEVER generate multiple separate "Retail" or "Walk-in" sales entries in the "sales" array.
-2. NAMED CUSTOMERS: Regular business / named customers (e.g., "Jay Ambe Provision", "Rohitbhai") must each get their own individual order in the "sales" array.
-3. USER INSTRUCTIONS: Strictly follow any explicit instructions written by the user in the prompt (such as "raise only single order/invoice for retails", specific pricing, dates, or payment notes).
+1. RETAIL CONSOLIDATION (MANDATORY): All walk-in, counter, cash, unnamed, or retail sales MUST BE COMBINED / CONSOLIDATED INTO A SINGLE order with "clientName": "Retail". NEVER generate multiple separate "Retail" or "Walk-in" sales entries in the "sales" array.
+2. DIFFERENT RATES MUST REMAIN SEPARATE LINE ITEMS (MANDATORY): If the user writes or pastes the same SKU at different rates (for example: "Bailey 1 Liter 10 @ 120" and "Bailey 1 Liter 5 @ 125", or "10 case 120 bhav, 5 case 125 bhav"), ALWAYS output them as SEPARATE items in the "items" array with their own qty and rate. NEVER combine items that have different rates into one line! Only combine items if BOTH the product SKU AND unit rate are identical.
+3. NAMED CUSTOMERS: Regular business / named customers (e.g., "Jay Ambe Provision", "Rohitbhai") each get their own individual order in the "sales" array.
+4. USER INSTRUCTIONS: Strictly follow any explicit instructions written by the user in the prompt (such as specific pricing, dates, or payment notes).
 
 Return strict JSON:
 {

@@ -118,18 +118,19 @@ export function consolidateRetailSales(rawSales = [], clients = []) {
           rate = Number(matchedRetail.skuRates?.[meta.label] ?? matchedRetail.rate ?? 0)
         }
 
-        if (!mergedItemsMap[meta.label]) {
-          mergedItemsMap[meta.label] = {
+        const effectiveRate = rate > 0 ? rate : 0
+        // Key by both SKU and rate so distinct rates for the same SKU remain as separate lines
+        const itemKey = `${meta.label}__rate__${effectiveRate}`
+
+        if (!mergedItemsMap[itemKey]) {
+          mergedItemsMap[itemKey] = {
             sku: meta.label,
             qty: 0,
-            rate: rate > 0 ? rate : 0,
+            rate: effectiveRate,
             unit: meta.unit,
           }
         }
-        mergedItemsMap[meta.label].qty += qty
-        if (rate > 0 && mergedItemsMap[meta.label].rate === 0) {
-          mergedItemsMap[meta.label].rate = rate
-        }
+        mergedItemsMap[itemKey].qty += qty
       })
     })
 

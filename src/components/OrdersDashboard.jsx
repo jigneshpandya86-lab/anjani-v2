@@ -509,6 +509,9 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
                     >
                       <span>{it.qty} {meta.unit.includes('Box') ? 'bxs' : 'cs'}</span>
                       <span className="font-medium opacity-80">• {it.sku}</span>
+                      {Number(it.rate) > 0 && (
+                        <span className="font-black text-gray-900 opacity-90">@ ₹{it.rate}</span>
+                      )}
                     </span>
                   )
                 })}

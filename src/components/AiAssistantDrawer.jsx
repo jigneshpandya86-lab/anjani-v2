@@ -17,6 +17,8 @@ import {
   Loader2,
   ClipboardList,
   Trash2,
+  Zap,
+  Check,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
@@ -214,6 +216,11 @@ export default function AiAssistantDrawer({
         const rawSales = Array.isArray(salesData.sales) ? salesData.sales : []
 
         const enrichedSales = consolidateRetailSales(rawSales, clients)
+        const totalQty = enrichedSales.reduce(
+          (sum, s) => sum + (s.items || []).reduce((isum, it) => isum + Number(it.qty || 0), 0),
+          0
+        )
+        const totalAmt = enrichedSales.reduce((sum, s) => sum + Number(s.totalAmount || 0), 0)
 
         const batchId = 'batch-' + Date.now()
         setMessages((prev) => [
@@ -221,7 +228,7 @@ export default function AiAssistantDrawer({
           {
             id: 'asst-' + Date.now(),
             sender: 'assistant',
-            text: `📝 **WhatsApp Retail Sales Detected (${enrichedSales.length} orders)**:\nReview the matched customers, quantities, and payment modes below, then tap **Confirm & Log Orders** (orders will be created in Confirmed state so you can edit if needed):`,
+            text: `⚡ **${enrichedSales.length} Order${enrichedSales.length > 1 ? 's' : ''} Ready** (${totalQty} qty · ₹${totalAmt.toLocaleString('en-IN')})`,
             type: 'retail_sales',
             batchId,
             data: {
@@ -315,16 +322,16 @@ export default function AiAssistantDrawer({
     }
   }
 
-  // Adjust quantity for a sale item in a retail sales batch
-  const handleUpdateRetailSaleQty = (msgId, saleIdx, skuLabel, delta) => {
+  // Adjust quantity for a sale item in a retail sales batch by item index
+  const handleUpdateRetailSaleQty = (msgId, saleIdx, itemIdx, delta) => {
     setMessages((prev) =>
       prev.map((msg) => {
         if (msg.id !== msgId || msg.type !== 'retail_sales') return msg
         const updatedSales = msg.data.sales.map((sale, sIdx) => {
           if (sIdx !== saleIdx) return sale
-          const updatedItems = sale.items.map((it) => {
-            if (it.sku === skuLabel) {
-              const nextQty = Math.max(0, it.qty + delta)
+          const updatedItems = sale.items.map((it, iIdx) => {
+            if (iIdx === itemIdx) {
+              const nextQty = Math.max(0, (Number(it.qty) || 0) + delta)
               return { ...it, qty: nextQty, amount: nextQty * (it.rate || 0) }
             }
             return it
@@ -619,190 +626,233 @@ export default function AiAssistantDrawer({
                 )}
 
                 {/* 1.5. Interactive Retail Sales Batch Card */}
-                {msg.type === 'retail_sales' && msg.data?.sales && (
-                  <div className="mt-3 bg-gray-50 border border-gray-300 rounded-xl p-3 space-y-3 text-xs text-gray-800">
-                    <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                      <div>
-                        <p className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
-                          <ClipboardList className="w-4 h-4 text-amz-orange" />
-                          <span>Retail Sales Batch</span>
-                        </p>
-                        <p className="text-[11px] text-gray-500">
-                          {msg.data.sales.length} order{msg.data.sales.length !== 1 ? 's' : ''} • Total Qty:{' '}
-                          {msg.data.sales.reduce(
-                            (sum, s) =>
-                              sum +
-                              (s.items || []).reduce((isum, it) => isum + Number(it.qty || 0), 0),
-                            0
-                          )}{' '}
-                          boxes
-                        </p>
+                {msg.type === 'retail_sales' && msg.data?.sales && (() => {
+                  const isBatchDone = !!processedSalesBatches[msg.id]
+                  const totalBatchQty = msg.data.sales.reduce(
+                    (sum, s) =>
+                      sum + (s.items || []).reduce((isum, it) => isum + Number(it.qty || 0), 0),
+                    0
+                  )
+                  const totalBatchAmt = msg.data.sales.reduce(
+                    (sum, s) => sum + Number(s.totalAmount || 0),
+                    0
+                  )
+
+                  return (
+                    <div className="mt-2.5 bg-gray-50 border border-gray-200 rounded-2xl p-2.5 space-y-2 text-xs text-gray-800 shadow-xs">
+                      {/* Top Header with Instant 1-Tap Confirm Button */}
+                      <div className="flex items-center justify-between gap-2 border-b border-gray-200 pb-2">
+                        <div className="min-w-0">
+                          <p className="font-black text-gray-900 text-xs flex items-center gap-1 truncate">
+                            <Zap className="w-3.5 h-3.5 text-[#ff9900] shrink-0" />
+                            <span>{msg.data.sales.length} Order{msg.data.sales.length !== 1 ? 's' : ''} Ready</span>
+                          </p>
+                          <p className="text-[10px] text-gray-500 font-semibold truncate">
+                            {totalBatchQty} units • ₹{totalBatchAmt.toLocaleString('en-IN')} total
+                          </p>
+                        </div>
+
+                        {!isBatchDone ? (
+                          <button
+                            type="button"
+                            disabled={loading || msg.data.sales.length === 0}
+                            onClick={() => handleConfirmRetailSales(msg.id, msg.data)}
+                            className="px-2.5 py-1 bg-[#131921] hover:bg-black text-[#ff9900] rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-xs active:scale-95 transition-all shrink-0 cursor-pointer disabled:opacity-50"
+                          >
+                            <Check size={12} />
+                            Confirm Now
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onNavigateTab?.('orders')
+                              onClose()
+                            }}
+                            className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shrink-0"
+                          >
+                            View in Orders ➔
+                          </button>
+                        )}
                       </div>
-                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[10px] font-bold">
-                        WhatsApp Import
-                      </span>
-                    </div>
 
-                    {/* Sales List */}
-                    <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-0.5">
-                      {msg.data.sales.length === 0 ? (
-                        <p className="text-gray-500 italic text-center py-2">No sales entries in this batch.</p>
-                      ) : (
-                        msg.data.sales.map((sale, sIdx) => {
-                          const isBatchDone = !!processedSalesBatches[msg.id]
-                          const saleQtyTotal = (sale.items || []).reduce(
-                            (sum, it) => sum + (Number(it.qty) || 0),
-                            0
-                          )
+                      {/* Sales List */}
+                      <div className="space-y-1.5 max-h-[340px] overflow-y-auto pr-0.5">
+                        {msg.data.sales.length === 0 ? (
+                          <p className="text-gray-400 italic text-center py-2 text-xs">No sales entries.</p>
+                        ) : (
+                          msg.data.sales.map((sale, sIdx) => {
+                            const saleQtyTotal = (sale.items || []).reduce(
+                              (sum, it) => sum + (Number(it.qty) || 0),
+                              0
+                            )
 
-                          return (
-                            <div
-                              key={sale.id || sIdx}
-                              className="bg-white p-2.5 rounded-lg border border-gray-200 shadow-2xs space-y-2"
-                            >
-                              {/* Customer Header */}
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="font-bold text-gray-900 text-xs sm:text-sm">
-                                    {sale.clientName}
-                                  </span>
-                                  {sale.isConsolidatedRetail ? (
-                                    <span className="px-1.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-700 rounded text-[9px] font-semibold">
-                                      ⚡ Single Consolidated Order
+                            return (
+                              <div
+                                key={sale.id || sIdx}
+                                className="bg-white p-2 rounded-xl border border-gray-100 shadow-2xs space-y-1.5"
+                              >
+                                {/* Customer Header */}
+                                <div className="flex items-center justify-between gap-1">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="font-extrabold text-gray-900 text-xs truncate">
+                                      {sale.clientName}
                                     </span>
-                                  ) : sale.isMatched ? (
-                                    <span className="px-1.5 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded text-[9px] font-semibold">
-                                      ✓ Matched
-                                    </span>
-                                  ) : (
-                                    <span className="px-1.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-700 rounded text-[9px] font-semibold">
-                                      + New Client
-                                    </span>
-                                  )}
-                                  {sale.mobile && (
-                                    <span className="text-[10px] text-gray-400">({sale.mobile})</span>
+                                    {sale.isConsolidatedRetail ? (
+                                      <span className="px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 text-[8px] font-black uppercase">
+                                        Retail
+                                      </span>
+                                    ) : sale.isMatched ? (
+                                      <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 text-[8px] font-black uppercase">
+                                        Matched
+                                      </span>
+                                    ) : (
+                                      <span className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 text-[8px] font-black uppercase">
+                                        New
+                                      </span>
+                                    )}
+                                    {sale.mobile && (
+                                      <span className="text-[10px] text-gray-400 font-semibold truncate">
+                                        ({sale.mobile})
+                                      </span>
+                                    )}
+                                  </div>
+                                  {!isBatchDone && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteRetailSale(msg.id, sIdx)}
+                                      className="text-gray-400 hover:text-red-500 p-0.5 rounded transition-colors cursor-pointer shrink-0"
+                                      title="Remove"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
                                   )}
                                 </div>
-                                {!isBatchDone && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteRetailSale(msg.id, sIdx)}
-                                    className="text-gray-400 hover:text-red-500 p-1 rounded transition-colors cursor-pointer"
-                                    title="Remove this order"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                              </div>
 
-                              {/* Items in this sale */}
-                              <div className="space-y-1.5 bg-gray-50/70 p-2 rounded border border-gray-100">
-                                {sale.items.map((it) => (
-                                  <div key={it.sku} className="flex items-center justify-between text-xs">
-                                    <div>
-                                      <span className="font-semibold text-gray-800">{it.sku}</span>
-                                      <span className="text-[10px] text-gray-400 ml-1.5">
-                                        {it.rate > 0
-                                          ? `@ ₹${it.rate}/${it.unit || 'box'}`
-                                          : `(${it.unit || 'box'})`}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                      {!isBatchDone && (
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            handleUpdateRetailSaleQty(msg.id, sIdx, it.sku, -1)
-                                          }
-                                          className="w-5 h-5 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-700 cursor-pointer"
-                                        >
-                                          <Minus className="w-2.5 h-2.5" />
-                                        </button>
-                                      )}
-                                      <span className="font-bold text-xs w-6 text-center">{it.qty}</span>
-                                      {!isBatchDone && (
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            handleUpdateRetailSaleQty(msg.id, sIdx, it.sku, 1)
-                                          }
-                                          className="w-5 h-5 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-700 cursor-pointer"
-                                        >
-                                          <Plus className="w-2.5 h-2.5" />
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-
-                              {/* Payment Mode Selector & Total */}
-                              <div className="flex items-center justify-between pt-1 border-t border-gray-100 flex-wrap gap-1">
-                                <div className="flex items-center gap-1">
-                                  <span className="text-[10px] text-gray-400 font-medium mr-1">Pay:</span>
-                                  {[
-                                    { id: 'cash', label: 'Cash' },
-                                    { id: 'online', label: 'GPay/UPI' },
-                                    { id: 'credit', label: 'Udhar' },
-                                  ].map((mode) => {
-                                    const isActive = sale.paymentMode === mode.id
+                                {/* Items in this sale (Distinct lines for different rates) */}
+                                <div className="space-y-1 bg-gray-50/80 p-1.5 rounded-lg border border-gray-100">
+                                  {sale.items.map((it, itIdx) => {
+                                    const lineTotal = (Number(it.qty) || 0) * (Number(it.rate) || 0)
                                     return (
-                                      <button
-                                        key={mode.id}
-                                        type="button"
-                                        disabled={isBatchDone}
-                                        onClick={() => handleTogglePaymentMode(msg.id, sIdx, mode.id)}
-                                        className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all cursor-pointer ${
-                                          isActive
-                                            ? mode.id === 'cash'
-                                              ? 'bg-emerald-600 text-white shadow-2xs'
-                                              : mode.id === 'online'
-                                                ? 'bg-blue-600 text-white shadow-2xs'
-                                                : 'bg-amber-500 text-white shadow-2xs'
-                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                        }`}
+                                      <div
+                                        key={`${it.sku}-${it.rate}-${itIdx}`}
+                                        className="flex items-center justify-between text-xs py-0.5"
                                       >
-                                        {mode.label}
-                                      </button>
+                                        <div className="min-w-0 pr-1">
+                                          <span className="font-bold text-gray-800 truncate block">
+                                            {it.sku}
+                                          </span>
+                                          <span className="text-[10px] text-gray-500 font-semibold">
+                                            {it.qty} {it.unit || 'cs'} {it.rate > 0 ? `@ ₹${it.rate}` : ''}
+                                            {lineTotal > 0 ? ` = ₹${lineTotal.toLocaleString('en-IN')}` : ''}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                          {!isBatchDone && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                handleUpdateRetailSaleQty(msg.id, sIdx, itIdx, -1)
+                                              }
+                                              className="w-4 h-4 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-700 cursor-pointer"
+                                            >
+                                              <Minus className="w-2.5 h-2.5" />
+                                            </button>
+                                          )}
+                                          <span className="font-black text-xs w-5 text-center">
+                                            {it.qty}
+                                          </span>
+                                          {!isBatchDone && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                handleUpdateRetailSaleQty(msg.id, sIdx, itIdx, 1)
+                                              }
+                                              className="w-4 h-4 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-700 cursor-pointer"
+                                            >
+                                              <Plus className="w-2.5 h-2.5" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
                                     )
                                   })}
                                 </div>
 
-                                <div className="text-right">
-                                  <span className="text-[11px] font-bold text-gray-900">
-                                    {sale.totalAmount > 0
-                                      ? `₹${sale.totalAmount.toLocaleString()}`
-                                      : `${saleQtyTotal} box`}
-                                  </span>
+                                {/* Payment Mode & Total */}
+                                <div className="flex items-center justify-between pt-1 border-t border-gray-100">
+                                  <div className="flex items-center gap-1">
+                                    {[
+                                      { id: 'cash', label: 'Cash' },
+                                      { id: 'online', label: 'UPI' },
+                                      { id: 'credit', label: 'Udhar' },
+                                    ].map((mode) => {
+                                      const isActive = sale.paymentMode === mode.id
+                                      return (
+                                        <button
+                                          key={mode.id}
+                                          type="button"
+                                          disabled={isBatchDone}
+                                          onClick={() => handleTogglePaymentMode(msg.id, sIdx, mode.id)}
+                                          className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase transition-all cursor-pointer ${
+                                            isActive
+                                              ? mode.id === 'cash'
+                                                ? 'bg-emerald-600 text-white'
+                                                : mode.id === 'online'
+                                                  ? 'bg-blue-600 text-white'
+                                                  : 'bg-amber-500 text-white'
+                                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                          }`}
+                                        >
+                                          {mode.label}
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+
+                                  <div className="text-right">
+                                    <span className="text-xs font-black text-gray-900">
+                                      {sale.totalAmount > 0
+                                        ? `₹${sale.totalAmount.toLocaleString('en-IN')}`
+                                        : `${saleQtyTotal} box`}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          )
-                        })
-                      )}
-                    </div>
+                            )
+                          })
+                        )}
+                      </div>
 
-                    {/* Batch Action Button */}
-                    <div className="pt-2 border-t border-gray-200">
-                      {processedSalesBatches[msg.id] ? (
-                        <div className="w-full bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold py-2 rounded-lg flex items-center justify-center gap-1.5">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          <span>Orders Logged as Confirmed ✅ (Editable in Orders tab)</span>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={loading || msg.data.sales.length === 0}
-                          onClick={() => handleConfirmRetailSales(msg.id, msg.data)}
-                          className="w-full bg-[#131921] hover:bg-black text-[#ff9900] font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer disabled:opacity-50"
-                        >
-                          <ClipboardList className="w-4 h-4" />
-                          <span>Confirm & Log Orders ({msg.data.sales.length} Confirmed)</span>
-                        </button>
-                      )}
+                      {/* Bottom Action Button */}
+                      <div className="pt-1">
+                        {isBatchDone ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onNavigateTab?.('orders')
+                              onClose()
+                            }}
+                            className="w-full bg-emerald-50 border border-emerald-300 text-emerald-800 font-black py-2 rounded-xl flex items-center justify-center gap-1.5 text-xs active:scale-98 transition-all cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span>Orders Confirmed! View in Orders Tab ➔</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={loading || msg.data.sales.length === 0}
+                            onClick={() => handleConfirmRetailSales(msg.id, msg.data)}
+                            className="w-full bg-[#131921] hover:bg-black text-[#ff9900] font-black py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-all text-xs uppercase tracking-wider cursor-pointer disabled:opacity-50"
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                            <span>Confirm & Log Orders (₹{totalBatchAmt.toLocaleString('en-IN')})</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
 
                 {/* 2. Interactive Stock Summary Card */}
                 {msg.type === 'stock_summary' && msg.data && (
