@@ -98,27 +98,20 @@ function PaymentDashboard({ onNavigateAccounts }) {
         </div>
       </div>
 
-      {/* Quick link to Accounts & Cash Custody (Clean, non-dense) */}
+      {/* Quick link to Accounts (Compact) */}
       {onNavigateAccounts && (
         <button
           type="button"
           onClick={onNavigateAccounts}
-          className="w-full bg-white hover:bg-gray-50 border border-gray-100 rounded-2xl px-4 py-2.5 flex items-center justify-between shadow-xs transition-all text-left"
+          className="w-full bg-white hover:bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 flex items-center justify-between shadow-xs transition-all text-left"
         >
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-orange-50 text-[#ff9900]">
-              <Wallet size={16} />
-            </div>
-            <div>
-              <p className="text-xs font-black text-gray-800 leading-tight">
-                Staff Accounts & Cash Custody
-              </p>
-              <p className="text-[10px] text-gray-500 font-semibold">
-                Nilesh, Hiteshbhai & Drawer balances (Also in Side Menu)
-              </p>
-            </div>
+            <Wallet size={14} className="text-[#ff9900]" />
+            <span className="text-xs font-bold text-gray-700">
+              Accounts & Staff Cash
+            </span>
           </div>
-          <span className="text-xs font-black text-[#ff9900] flex items-center gap-0.5">
+          <span className="text-xs font-black text-[#ff9900]">
             Open ➔
           </span>
         </button>
