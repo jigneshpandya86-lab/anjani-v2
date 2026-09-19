@@ -982,7 +982,7 @@ export default function AiAssistantDrawer({
                       <button
                         type="button"
                         onClick={() => {
-                          onNavigateTab?.('payments')
+                          onNavigateTab?.('accounts')
                           onClose()
                         }}
                         className="flex-1 bg-[#131921] hover:bg-black text-white font-bold py-1.5 px-2.5 rounded-lg text-center transition-colors text-[11px]"

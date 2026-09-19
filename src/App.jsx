@@ -24,6 +24,7 @@ import {
   Gift,
   Receipt,
   Sparkles,
+  Wallet,
 } from 'lucide-react'
 import {
   collection,
@@ -52,6 +53,7 @@ import DefaulterReminderSettings from './components/DefaulterReminderSettings'
 import IntelligenceDashboard from './components/IntelligenceDashboard'
 import CelebrationsTab from './components/CelebrationsTab'
 import ExpensesDashboard from './components/ExpensesDashboard'
+import AccountsDashboard from './components/AccountsDashboard'
 import {
   isMobileOrNative,
   shareOrDownloadPdf,
@@ -375,6 +377,11 @@ function App() {
 
   const drawerNavItems = [
     { id: 'tasks', label: 'Tasks', icon: <CheckSquare size={20} /> },
+    userRole === 'admin' && {
+      id: 'accounts',
+      label: 'Accounts & Staff Cash',
+      icon: <Wallet size={20} />,
+    },
     userRole === 'admin' && {
       id: 'intelligence',
       label: 'Intelligence Hub',
@@ -1123,7 +1130,10 @@ function App() {
             />
           )}
           {activeTab === 'stock' && <StockDashboard onOpenReport={() => setStockModalOpen(true)} />}
-          {activeTab === 'payments' && <PaymentDashboard />}
+          {activeTab === 'payments' && (
+            <PaymentDashboard onNavigateAccounts={() => setActiveTab('accounts')} />
+          )}
+          {activeTab === 'accounts' && userRole === 'admin' && <AccountsDashboard />}
           {activeTab === 'clients' && (
             <div className="space-y-6">
               <ClientList
