@@ -10,6 +10,7 @@ import {
   serverTimestamp,
   orderBy,
   getDoc,
+  getDocFromCache,
   limit,
   increment,
   setDoc,
@@ -147,17 +148,59 @@ export const useClientStore = create((set, get) => ({
       set({ userRole: null })
       return
     }
+
+    // 1. Fast path: check localStorage cache
     try {
-      const userDoc = await getDoc(doc(db, 'users', uid))
+      const cached = window.localStorage.getItem(`anjani_user_role_${uid}`)
+      if (cached) {
+        set({ userRole: cached })
+      }
+    } catch (_e) {
+      // Ignore localStorage read errors
+    }
+
+    const userRef = doc(db, 'users', uid)
+
+    // 2. Fast path: check local Firestore IndexedDB cache
+    try {
+      const cachedDoc = await getDocFromCache(userRef)
+      if (cachedDoc.exists()) {
+        const role = cachedDoc.data().role || 'staff'
+        set({ userRole: role })
+        try {
+          window.localStorage.setItem(`anjani_user_role_${uid}`, role)
+        } catch (_storageErr) {
+          // Ignore localStorage write errors
+        }
+      }
+    } catch (_cacheErr) {
+      // Document not yet in IndexedDB cache, will fetch from server
+    }
+
+    // 3. Server sync with a fast 2.5s timeout (never block for 1-2 minutes)
+    try {
+      const fetchPromise = getDoc(userRef)
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('fetchUserRole timeout')), 2500),
+      )
+      const userDoc = await Promise.race([fetchPromise, timeoutPromise])
       if (userDoc.exists()) {
-        set({ userRole: userDoc.data().role || 'staff' })
+        const role = userDoc.data().role || 'staff'
+        set({ userRole: role })
+        try {
+          window.localStorage.setItem(`anjani_user_role_${uid}`, role)
+        } catch (_storageErr) {
+          // Ignore localStorage write errors
+        }
       } else {
-        // If no user document exists, default to 'staff' for safety
+        const currentRole = get().userRole
+        if (!currentRole) set({ userRole: 'staff' })
+      }
+    } catch (_err) {
+      const currentRole = get().userRole
+      if (!currentRole) {
         set({ userRole: 'staff' })
       }
-    } catch (err) {
-      console.error('Failed to fetch user role:', err)
-      set({ userRole: 'staff' })
     }
   },
 

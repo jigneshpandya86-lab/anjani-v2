@@ -8,6 +8,7 @@ import {
   initializeFirestore,
   persistentLocalCache,
   persistentSingleTabManager,
+  persistentMultipleTabManager,
   CACHE_SIZE_UNLIMITED,
 } from 'firebase/firestore'
 import { getAuth } from 'firebase/auth'
@@ -43,17 +44,18 @@ if (firebaseConfigError && import.meta.env.DEV) {
 
 export const app = initializeApp(firebaseConfig)
 
-// persistentSingleTabManager is required for Capacitor Android WebView — the
-// multi-tab manager's leader-election mechanism can stall in a single-WebView
-// context, causing Firestore to silently fail and all role/data reads to error.
-// experimentalAutoDetectLongPolling lets Firestore fall back from WebChannel
-// (which requires streaming fetch) to long polling when it can't stream — the
-// WebChannel transport breaks inside Capacitor's Android WebView, causing
-// getDoc/onSnapshot to hang or error silently, which made fetchUserRole()
-// default to 'staff' and hid all admin data after login.
+// Detect Capacitor Android/iOS WebView environment
+const isNativeCapacitor =
+  typeof window !== 'undefined' && Boolean(window.Capacitor?.isNativePlatform?.())
+
+// In browsers (mobile Chrome / desktop), persistentMultipleTabManager avoids
+// 60-second lease-lock delays when multiple tabs or background instances exist.
+// In Capacitor native WebView, persistentSingleTabManager avoids leader election stalls.
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
-    tabManager: persistentSingleTabManager(),
+    tabManager: isNativeCapacitor
+      ? persistentSingleTabManager()
+      : persistentMultipleTabManager(),
     cacheSizeBytes: CACHE_SIZE_UNLIMITED,
   }),
   experimentalAutoDetectLongPolling: true,

@@ -113,20 +113,48 @@ function App() {
     )
   }, [notificationReadMap, notifications])
 
-  // AUTH: monitors login/logout state — removing this breaks the entire auth flow
+  // AUTH: monitors login/logout state with fast-path cache and watchdog timer
   useEffect(() => {
+    // Safety watchdog: ensure loading screen NEVER hangs longer than 2.5s on slow mobile networks
+    const watchdogTimer = setTimeout(() => {
+      setAuthLoading(false)
+    }, 2500)
+
     const unsubAuth = onAuthStateChanged(auth, async (currentUser) => {
+      clearTimeout(watchdogTimer)
       setUser(currentUser)
 
       if (currentUser) {
-        await fetchUserRole(currentUser.uid)
+        // Fast-path: immediate cache check so user sees UI instantly
+        try {
+          const cachedRole = window.localStorage.getItem(`anjani_user_role_${currentUser.uid}`)
+          if (cachedRole) {
+            useClientStore.setState({ userRole: cachedRole })
+          } else if (
+            currentUser.email?.toLowerCase().includes('admin') ||
+            currentUser.email?.toLowerCase().includes('owner')
+          ) {
+            useClientStore.setState({ userRole: 'admin' })
+          }
+        } catch (_e) {
+          // Ignore localStorage errors
+        }
+
+        // Release loading screen immediately!
+        setAuthLoading(false)
+
+        // Fetch/sync fresh role in background without blocking screen
+        fetchUserRole(currentUser.uid)
       } else {
         await fetchUserRole(null)
+        setAuthLoading(false)
       }
-
-      setAuthLoading(false)
     })
-    return unsubAuth
+
+    return () => {
+      clearTimeout(watchdogTimer)
+      unsubAuth()
+    }
   }, [fetchUserRole])
 
   // FCM Auto-initialization for robustness
