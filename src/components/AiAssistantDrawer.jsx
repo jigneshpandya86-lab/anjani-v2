@@ -928,6 +928,70 @@ export default function AiAssistantDrawer({
                     ))}
                   </div>
                 )}
+
+                {/* 5. Interactive Accounts / Staff Cash Custody Card */}
+                {msg.type === 'accounts_summary' && msg.data?.balances && (
+                  <div className="mt-3 bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-2.5 text-xs">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-white p-2 rounded-lg border border-blue-100 flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-blue-700">Nilesh</span>
+                          <span className="w-2 h-2 rounded-full bg-blue-600" />
+                        </div>
+                        <span className="text-sm font-black text-blue-800 mt-1">
+                          ₹{Number(msg.data.balances.nilesh || 0).toLocaleString('en-IN')}
+                        </span>
+                        <span className="text-[9px] text-gray-400 font-semibold">Staff Custody</span>
+                      </div>
+
+                      <div className="bg-white p-2 rounded-lg border border-purple-100 flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-purple-700">Hiteshbhai</span>
+                          <span className="w-2 h-2 rounded-full bg-purple-600" />
+                        </div>
+                        <span className="text-sm font-black text-purple-800 mt-1">
+                          ₹{Number(msg.data.balances.hiteshbhai || 0).toLocaleString('en-IN')}
+                        </span>
+                        <span className="text-[9px] text-gray-400 font-semibold">Staff Custody</span>
+                      </div>
+
+                      <div className="bg-white p-2 rounded-lg border border-emerald-100 flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-emerald-700">Counter</span>
+                          <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                        </div>
+                        <span className="text-sm font-black text-emerald-800 mt-1">
+                          ₹{Number(msg.data.balances.counter || 0).toLocaleString('en-IN')}
+                        </span>
+                        <span className="text-[9px] text-gray-400 font-semibold">Drawer Cash</span>
+                      </div>
+
+                      <div className="bg-white p-2 rounded-lg border border-orange-100 flex flex-col justify-between">
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-orange-700">Bank / UPI</span>
+                          <span className="w-2 h-2 rounded-full bg-orange-600" />
+                        </div>
+                        <span className="text-sm font-black text-orange-800 mt-1">
+                          ₹{Number(msg.data.balances.bank || 0).toLocaleString('en-IN')}
+                        </span>
+                        <span className="text-[9px] text-gray-400 font-semibold">Bank Balance</span>
+                      </div>
+                    </div>
+
+                    <div className="pt-1 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onNavigateTab?.('payments')
+                          onClose()
+                        }}
+                        className="flex-1 bg-[#131921] hover:bg-black text-white font-bold py-1.5 px-2.5 rounded-lg text-center transition-colors text-[11px]"
+                      >
+                        Manage Accounts & Handovers ➔
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {msg.sender === 'user' && (

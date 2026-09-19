@@ -48,6 +48,41 @@ describe('aiIntentRouter', () => {
     expect(result.data.clients[1].outstanding).toBe(2500)
   })
 
+  it('handles Nilesh cash custody intent locally with zero tokens', () => {
+    const fakeStore = {
+      accountsSummary: {
+        nilesh: 3500,
+        hiteshbhai: 1200,
+        counter: 8000,
+        bank: 15000,
+      },
+    }
+    const result = tryLocalIntentRoute('How much cash with Nilesh?', fakeStore)
+    expect(result).not.toBeNull()
+    expect(result.handled).toBe(true)
+    expect(result.type).toBe('accounts_summary')
+    expect(result.data.specificAccount).toBe('nilesh')
+    expect(result.data.balances.nilesh).toBe(3500)
+    expect(result.text).toContain('3,500')
+  })
+
+  it('handles general staff cash custody overview intent locally', () => {
+    const fakeStore = {
+      accountsSummary: {
+        nilesh: 2000,
+        hiteshbhai: 3000,
+        counter: 5000,
+        bank: 10000,
+      },
+    }
+    const result = tryLocalIntentRoute('cash in hand summary', fakeStore)
+    expect(result).not.toBeNull()
+    expect(result.handled).toBe(true)
+    expect(result.type).toBe('accounts_summary')
+    expect(result.data.totalStaffCash).toBe(5000)
+    expect(result.data.balances.counter).toBe(5000)
+  })
+
   it('returns null for unknown freeform query to pass to AI', () => {
     const fakeStore = {}
     const result = tryLocalIntentRoute('Can you summarize my expenses for last month?', fakeStore)

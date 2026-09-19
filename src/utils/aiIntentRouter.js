@@ -166,6 +166,70 @@ export function tryLocalIntentRoute(query, store) {
     }
   }
 
+  // 4. Staff Cash Custody & Accounts Overview (Nilesh, Hiteshbhai, Counter, Bank)
+  const cashCustodyPatterns = [
+    /nilesh/i,
+    /hitesh/i,
+    /cash in hand/i,
+    /staff cash/i,
+    /cash custody/i,
+    /counter cash/i,
+    /drawer/i,
+    /kitna cash/i,
+    /ketla cash/i,
+    /ketla rupiya/i,
+    /kitne rupaye/i,
+    /cash balance/i,
+    /handover/i,
+    /^accounts$/i,
+  ]
+
+  if (cashCustodyPatterns.some((pattern) => pattern.test(q))) {
+    const summary = store.accountsSummary || {}
+    const nileshBal = Number(summary.nilesh || 0)
+    const hiteshBal = Number(summary.hiteshbhai || 0)
+    const counterBal = Number(summary.counter || 0)
+    const bankBal = Number(summary.bank || 0)
+    const totalStaffCash = nileshBal + hiteshBal
+
+    if (/nilesh/i.test(q) && !/hitesh/i.test(q)) {
+      return {
+        handled: true,
+        type: 'accounts_summary',
+        text: `💼 **Cash with Nilesh**: **₹${nileshBal.toLocaleString('en-IN')}**\nNilesh currently has ₹${nileshBal.toLocaleString('en-IN')} in delivery cash custody. You can record a partial or full handover in the Payments tab.`,
+        data: {
+          specificAccount: 'nilesh',
+          balances: { nilesh: nileshBal, hiteshbhai: hiteshBal, counter: counterBal, bank: bankBal },
+          totalStaffCash,
+        },
+      }
+    }
+
+    if (/hitesh/i.test(q) && !/nilesh/i.test(q)) {
+      return {
+        handled: true,
+        type: 'accounts_summary',
+        text: `💼 **Cash with Hiteshbhai**: **₹${hiteshBal.toLocaleString('en-IN')}**\nHiteshbhai currently has ₹${hiteshBal.toLocaleString('en-IN')} in delivery cash custody. You can record a partial or full handover in the Payments tab.`,
+        data: {
+          specificAccount: 'hiteshbhai',
+          balances: { nilesh: nileshBal, hiteshbhai: hiteshBal, counter: counterBal, bank: bankBal },
+          totalStaffCash,
+        },
+      }
+    }
+
+    return {
+      handled: true,
+      type: 'accounts_summary',
+      text: `💼 **Staff Cash Custody & Account Balances**:\n• **Nilesh**: ₹${nileshBal.toLocaleString('en-IN')}\n• **Hiteshbhai**: ₹${hiteshBal.toLocaleString('en-IN')}\n• **Total with Delivery Staff**: ₹${totalStaffCash.toLocaleString('en-IN')}\n• **Counter Cash**: ₹${counterBal.toLocaleString('en-IN')}\n• **Bank / UPI**: ₹${bankBal.toLocaleString('en-IN')}`,
+      data: {
+        specificAccount: null,
+        balances: { nilesh: nileshBal, hiteshbhai: hiteshBal, counter: counterBal, bank: bankBal },
+        totalStaffCash,
+      },
+    }
+  }
+
   // Not a predefined local intent; route to AI
   return null
 }

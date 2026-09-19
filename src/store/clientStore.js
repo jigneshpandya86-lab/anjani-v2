@@ -16,16 +16,21 @@ import {
   setDoc,
   getDocs,
   deleteField,
+  Timestamp,
 } from 'firebase/firestore'
 import { db } from '../firebase-config'
 import { DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
+import { DEFAULT_ACCOUNTS } from '../constants/accounts'
 
 let stockUnsubscribe = null
 let stockSubscriberCount = 0
 let leadsUnsubscribe = null
 let leadsSubscriberCount = 0
+let accountsUnsubscribe = null
+let accountsSubscriberCount = 0
 const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary')
+const ACCOUNTS_SUMMARY_DOC = doc(db, 'meta', 'accountsSummary')
 const RECENT_STOCK_ENTRIES_LIMIT = 50
 
 const getOrderClientName = async (order, clients = []) => {
@@ -142,6 +147,14 @@ export const useClientStore = create((set, get) => ({
     fallbackModel: 'gemini-2.5-flash',
     maxOutputTokens: 600,
   },
+  accountsList: DEFAULT_ACCOUNTS,
+  accountsSummary: {
+    nilesh: 0,
+    hiteshbhai: 0,
+    counter: 0,
+    bank: 0,
+  },
+  accountsLoading: false,
 
   fetchUserRole: async (uid) => {
     if (!uid) {
@@ -346,6 +359,134 @@ export const useClientStore = create((set, get) => ({
       set({ loading: false })
       throw error
     }
+  },
+
+  fetchAccountsSummary: () => {
+    accountsSubscriberCount += 1
+    if (!accountsUnsubscribe) {
+      set({ accountsLoading: true })
+      accountsUnsubscribe = onSnapshot(
+        ACCOUNTS_SUMMARY_DOC,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data() || {}
+            const rawBalances = data.balances || data || {}
+            const balances = {
+              nilesh: Number(rawBalances.nilesh) || 0,
+              hiteshbhai: Number(rawBalances.hiteshbhai) || 0,
+              counter: Number(rawBalances.counter) || 0,
+              bank: Number(rawBalances.bank) || 0,
+            }
+            set({ accountsSummary: balances, accountsLoading: false })
+          } else {
+            const initialBalances = { nilesh: 0, hiteshbhai: 0, counter: 0, bank: 0 }
+            setDoc(
+              ACCOUNTS_SUMMARY_DOC,
+              { balances: initialBalances, updatedAt: serverTimestamp() },
+              { merge: true },
+            ).catch((err) => {
+              console.error('Failed to init accounts summary doc:', err)
+            })
+            set({ accountsSummary: initialBalances, accountsLoading: false })
+          }
+        },
+        (error) => {
+          console.error('Error fetching accounts summary:', error)
+          set({ accountsLoading: false })
+        },
+      )
+    }
+
+    return () => {
+      accountsSubscriberCount = Math.max(0, accountsSubscriberCount - 1)
+      if (accountsSubscriberCount === 0 && accountsUnsubscribe) {
+        accountsUnsubscribe()
+        accountsUnsubscribe = null
+      }
+    }
+  },
+
+  recordAccountTransfer: async ({ fromAccountId, toAccountId, amount, notes, date }) => {
+    const numAmount = Number(amount)
+    if (!fromAccountId || !toAccountId) {
+      throw new Error('Both Source and Destination accounts are required')
+    }
+    if (fromAccountId === toAccountId) {
+      throw new Error('Source and destination accounts must be different')
+    }
+    if (!numAmount || numAmount <= 0) {
+      throw new Error('Please enter a valid transfer amount')
+    }
+
+    const transferDate = date ? new Date(date) : new Date()
+
+    const transferPayload = {
+      fromAccountId,
+      toAccountId,
+      amount: numAmount,
+      notes: notes ? notes.trim() : '',
+      date: Timestamp.fromDate(transferDate),
+      createdAt: serverTimestamp(),
+    }
+    await addDoc(collection(db, 'account_transfers'), transferPayload)
+
+    await setDoc(
+      ACCOUNTS_SUMMARY_DOC,
+      {
+        balances: {
+          [fromAccountId]: increment(-numAmount),
+          [toAccountId]: increment(numAmount),
+        },
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    )
+
+    return transferPayload
+  },
+
+  recordExpenseAccountDebit: async (accountId, amount) => {
+    const numAmount = Number(amount)
+    if (!accountId || !numAmount || numAmount <= 0) return
+    await setDoc(
+      ACCOUNTS_SUMMARY_DOC,
+      {
+        balances: {
+          [accountId]: increment(-numAmount),
+        },
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    )
+  },
+
+  recordExpenseAccountCredit: async (accountId, amount) => {
+    const numAmount = Number(amount)
+    if (!accountId || !numAmount || numAmount <= 0) return
+    await setDoc(
+      ACCOUNTS_SUMMARY_DOC,
+      {
+        balances: {
+          [accountId]: increment(numAmount),
+        },
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    )
+  },
+
+  updateAccountBalanceDirect: async (accountId, newBalance) => {
+    const num = Number(newBalance) || 0
+    await setDoc(
+      ACCOUNTS_SUMMARY_DOC,
+      {
+        balances: {
+          [accountId]: num,
+        },
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    )
   },
 
   addStockManual: async (qty, narration, sku = 'Anjani 200ml') => {
@@ -789,17 +930,37 @@ export const useClientStore = create((set, get) => ({
   },
 
   addPayment: async (data) => {
+    const accountId =
+      data.accountId ||
+      (data.method === 'upi' || data.method === 'online' ? 'bank' : 'counter')
+
     await addDoc(collection(db, 'payments'), {
       ...data,
+      accountId,
       createdAt: serverTimestamp(),
     })
 
-    if (data.clientId) {
-      const amount = Number(data.amount) || 0
-      if (amount > 0) {
-        await updateDoc(doc(db, 'customers', data.clientId), {
-          outstanding: increment(-amount),
-        })
+    const amount = Number(data.amount) || 0
+    if (data.clientId && amount > 0) {
+      await updateDoc(doc(db, 'customers', data.clientId), {
+        outstanding: increment(-amount),
+      })
+    }
+
+    if (amount > 0 && accountId && data.type !== 'reversal') {
+      try {
+        await setDoc(
+          ACCOUNTS_SUMMARY_DOC,
+          {
+            balances: {
+              [accountId]: increment(amount),
+            },
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        )
+      } catch (err) {
+        console.error('Failed to update accounts summary on payment:', err)
       }
     }
   },
@@ -823,6 +984,26 @@ export const useClientStore = create((set, get) => ({
       await updateDoc(doc(db, 'customers', payment.clientId), {
         outstanding: increment(-outstandingDelta),
       })
+    }
+
+    const accountId =
+      payment.accountId ||
+      (payment.method === 'upi' || payment.method === 'online' ? 'bank' : 'counter')
+    if (amount > 0 && accountId && payment.type === 'payment') {
+      try {
+        await setDoc(
+          ACCOUNTS_SUMMARY_DOC,
+          {
+            balances: {
+              [accountId]: increment(-amount),
+            },
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        )
+      } catch (err) {
+        console.error('Failed to reverse account balance on delete payment:', err)
+      }
     }
 
     await deleteDoc(paymentRef)

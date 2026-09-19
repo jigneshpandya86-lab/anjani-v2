@@ -1483,10 +1483,11 @@ ${rawText.slice(0, 3000)}`
       })
 
       const systemPrompt = `You are the concise and helpful AI Assistant for Annapurna Foods (distributor for Anjani & Bailey Packaged Drinking Water in Vadodara, owned by Jignesh Pandya).
-Help with water orders, stock, clients, and inquiries in English, Gujarati, or Hindi.
+Help with water orders, stock, clients, accounts, cash custody, and inquiries in English, Gujarati, or Hindi.
 Keep your answer clear, polite, and under 120 words.
 Our 5 products are: Anjani 200ml (Boxes), Bailey 250ml (Cases), Bailey 500ml (Cases), Bailey 1 Liter (Cases), Bailey 2 Liter (Cases).
-NOTE: All walk-in, unnamed, or counter retail sales are always consolidated into a single master order/invoice for "Retail" to keep order logs clean.`
+NOTE: All walk-in, unnamed, or counter retail sales are always consolidated into a single master order/invoice for "Retail" to keep order logs clean.
+ACCOUNTS & CASH CUSTODY: Delivery staff Nilesh and Hiteshbhai collect cash on routes. Cash can be handed over partially or fully to Counter (Jigneshbhai) or Bank. Staff expenses (e.g. diesel, vehicle repairs) are debited from their cash custody.`
 
       const safeHistory = Array.isArray(conversationHistory)
         ? conversationHistory.slice(-3).map((m) => ({

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useClientStore } from '../store/clientStore'
 import { IndianRupee, Save, CreditCard, Banknote } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { DEFAULT_ACCOUNTS } from '../constants/accounts'
 
 const getToday = () => new Date().toISOString().slice(0, 10)
 const getCurrentTime = () =>
@@ -11,7 +12,8 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
   const addPayment = useClientStore((state) => state.addPayment)
   const clients = useClientStore((state) => state.clients)
   const [amount, setAmount] = useState(initialValues.amount ? String(initialValues.amount) : '')
-  const [method, setMethod] = useState('cash')
+  const [method, setMethod] = useState(initialValues.method || 'cash')
+  const [accountId, setAccountId] = useState(initialValues.accountId || 'counter')
   const [note, setNote] = useState(initialValues.note || '')
   const [paymentDate, setPaymentDate] = useState(initialValues.date || getToday())
   const [paymentTime, setPaymentTime] = useState(initialValues.time || getCurrentTime())
@@ -52,6 +54,7 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
         amount: paymentAmount,
         type: 'payment',
         method,
+        accountId,
         note,
         date: new Date(`${paymentDate}T${paymentTime || '00:00'}`),
       })
@@ -172,18 +175,63 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
-              onClick={() => setMethod('cash')}
+              onClick={() => {
+                setMethod('cash')
+                if (accountId === 'bank') setAccountId('counter')
+              }}
               className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border-2 transition-all ${method === 'cash' ? 'border-[#ff9900] bg-orange-50 text-[#ff9900]' : 'border-gray-100 bg-white text-gray-500'}`}
             >
               <Banknote size={18} /> Cash
             </button>
             <button
               type="button"
-              onClick={() => setMethod('upi')}
+              onClick={() => {
+                setMethod('upi')
+                setAccountId('bank')
+              }}
               className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border-2 transition-all ${method === 'upi' ? 'border-[#ff9900] bg-orange-50 text-[#ff9900]' : 'border-gray-100 bg-white text-gray-500'}`}
             >
               <CreditCard size={18} /> UPI / Online
             </button>
+          </div>
+        </div>
+
+        <div>
+          <span className="block text-xs font-bold text-gray-500 uppercase mb-2">
+            Collected By / Received In
+          </span>
+          <div className="grid grid-cols-2 gap-2">
+            {DEFAULT_ACCOUNTS.map((acc) => {
+              const isSelected = accountId === acc.id
+              return (
+                <button
+                  key={acc.id}
+                  type="button"
+                  onClick={() => {
+                    setAccountId(acc.id)
+                    if (acc.id === 'bank') {
+                      setMethod('upi')
+                    } else if (method === 'upi') {
+                      setMethod('cash')
+                    }
+                  }}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    isSelected
+                      ? 'border-[#ff9900] bg-orange-50 ring-2 ring-[#ff9900]/20'
+                      : 'border-gray-200 bg-white hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-gray-900">{acc.name}</span>
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: acc.color }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-gray-500 truncate mt-0.5">{acc.description}</p>
+                </button>
+              )
+            })}
           </div>
         </div>
 

@@ -34,6 +34,8 @@ import {
   Pencil,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useClientStore } from '../store/clientStore'
+import { DEFAULT_ACCOUNTS, getAccountMeta } from '../constants/accounts'
 
 // Default categories if config doesn't exist
 const DEFAULT_CATEGORIES = [
@@ -48,6 +50,9 @@ const DEFAULT_CATEGORIES = [
 ]
 
 export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseAddForm }) {
+  const recordExpenseAccountDebit = useClientStore((state) => state.recordExpenseAccountDebit)
+  const recordExpenseAccountCredit = useClientStore((state) => state.recordExpenseAccountCredit)
+
   const [expenses, setExpenses] = useState([])
   const [orders, setOrders] = useState([])
   const [payments, setPayments] = useState([])
@@ -60,10 +65,12 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
   // Form states
   const [amount, setAmount] = useState('')
   const [category, setCategory] = useState('')
+  const [accountId, setAccountId] = useState('counter')
   const [dateTime, setDateTime] = useState('')
   const [note, setNote] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
+  const [accountFilter, setAccountFilter] = useState('all')
 
   // Recurring Template state
   const [recurringTemplates, setRecurringTemplates] = useState([])
@@ -321,12 +328,16 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
   }, [orders, payments, expenses, period, filterByDateRange, getOrderDate, getPaymentDate, getExpenseDate])
 
   const filteredExpensesList = useMemo(() => {
-    return filterByDateRange(expenses, period, getExpenseDate)
-  }, [expenses, period, filterByDateRange, getExpenseDate])
+    const list = filterByDateRange(expenses, period, getExpenseDate)
+    if (accountFilter === 'all') return list
+    return list.filter((exp) => (exp.accountId || 'counter') === accountFilter)
+  }, [expenses, period, filterByDateRange, getExpenseDate, accountFilter])
 
   const handleCloseModal = () => {
     setEditingExpenseId(null)
     setAmount('')
+    setCategory('')
+    setAccountId('counter')
     setNote('')
     setIsRecurring(false)
     setStartKm('')
@@ -342,6 +353,7 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
     setEditingExpenseId(exp.id)
     setAmount(exp.amount.toString())
     setCategory(exp.category)
+    setAccountId(exp.accountId || 'counter')
     setNote(exp.note || '')
     setIsRecurring(isRec)
 
@@ -404,9 +416,12 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
         }
       } else {
         const expenseDate = dateTime ? new Date(dateTime) : new Date()
+        const parsedAmount = Number(amount)
+        const targetAccountId = accountId || 'counter'
         const payload = {
-          amount: Number(amount),
+          amount: parsedAmount,
           category: category,
+          accountId: targetAccountId,
           date: Timestamp.fromDate(expenseDate),
           note: note.trim(),
         }
@@ -429,6 +444,11 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
         }
 
         if (editingExpenseId) {
+          const prevExp = expenses.find((e) => e.id === editingExpenseId)
+          if (prevExp) {
+            await recordExpenseAccountCredit(prevExp.accountId || 'counter', prevExp.amount || 0)
+          }
+          await recordExpenseAccountDebit(targetAccountId, parsedAmount)
           await updateDoc(doc(db, 'expenses', editingExpenseId), payload)
           toast.success('Expense entry updated successfully')
         } else {
@@ -436,6 +456,7 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
             ...payload,
             createdAt: serverTimestamp(),
           })
+          await recordExpenseAccountDebit(targetAccountId, parsedAmount)
           toast.success('Expense recorded successfully')
         }
       }
@@ -452,7 +473,11 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
   const handleDeleteExpense = async (id, cat, amt) => {
     if (!window.confirm(`Are you sure you want to delete the expense ₹${amt} (${cat})?`)) return
     try {
+      const expToDelete = expenses.find((e) => e.id === id)
       await deleteDoc(doc(db, 'expenses', id))
+      if (expToDelete) {
+        await recordExpenseAccountCredit(expToDelete.accountId || 'counter', expToDelete.amount || amt)
+      }
       toast.success('Expense entry deleted')
     } catch (err) {
       console.error('Failed to delete expense:', err)
@@ -462,6 +487,7 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
   const handleCopyExpense = (exp) => {
     setAmount(exp.amount || '')
     setCategory(exp.category || '')
+    setAccountId(exp.accountId || 'counter')
     setNote(exp.note || '')
 
     // Set date time to now (local string format)
@@ -683,6 +709,39 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
             </div>
           </div>
 
+          {/* Account Filter Pills */}
+          <div className="flex items-center gap-1 overflow-x-auto pb-1">
+            <button
+              type="button"
+              onClick={() => setAccountFilter('all')}
+              className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase whitespace-nowrap transition-all border ${
+                accountFilter === 'all'
+                  ? 'bg-gray-900 text-white border-gray-900 shadow-xs'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              All Accounts
+            </button>
+            {DEFAULT_ACCOUNTS.map((acc) => (
+              <button
+                key={acc.id}
+                type="button"
+                onClick={() => setAccountFilter(acc.id)}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase whitespace-nowrap transition-all border flex items-center gap-1 ${
+                  accountFilter === acc.id
+                    ? 'bg-orange-500 text-white border-orange-500 shadow-xs'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: accountFilter === acc.id ? '#ffffff' : acc.color }}
+                />
+                {acc.shortLabel}
+              </button>
+            ))}
+          </div>
+
           {loadingExpenses ? (
             <div className="flex items-center justify-center py-12 text-gray-400 font-bold italic">
               <Loader2 className="animate-spin text-blue-500 mr-2" size={20} />
@@ -754,6 +813,9 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
                       <p className="truncate text-[10px] text-gray-500 flex items-center gap-1 uppercase tracking-wide font-bold">
                         <Clock size={10} /> {formatDate(exp.date)}
                       </p>
+                      <span className={`shrink-0 text-[9px] font-extrabold px-2 py-0.5 rounded-full border ${getAccountMeta(exp.accountId || 'counter').bgLight}`}>
+                        Paid by: {getAccountMeta(exp.accountId || 'counter').shortLabel}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1000,6 +1062,38 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <span className="block text-xs font-black text-gray-500 uppercase tracking-wider">
+                    Paid From Account
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {DEFAULT_ACCOUNTS.map((acc) => {
+                      const isSelected = accountId === acc.id
+                      return (
+                        <button
+                          key={acc.id}
+                          type="button"
+                          onClick={() => setAccountId(acc.id)}
+                          className={`p-2.5 rounded-xl border text-left transition-all ${
+                            isSelected
+                              ? 'border-[#ff9900] bg-orange-50 ring-2 ring-[#ff9900]/20'
+                              : 'border-gray-200 bg-white hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-gray-900">{acc.name}</span>
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: acc.color }}
+                            />
+                          </div>
+                          <p className="text-[10px] text-gray-500 truncate mt-0.5">{acc.description}</p>
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
 
                 <div className="space-y-1.5">
