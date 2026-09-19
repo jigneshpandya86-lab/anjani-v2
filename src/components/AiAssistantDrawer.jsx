@@ -403,20 +403,12 @@ export default function AiAssistantDrawer({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-[#131921] text-white px-4 py-3.5 flex items-center justify-between border-b border-gray-800 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#ff9900]/20 flex items-center justify-center text-[#ff9900]">
-              <Sparkles className="w-5 h-5" />
+        <div className="bg-[#131921] text-white px-3.5 py-2 flex items-center justify-between border-b border-gray-800 shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-[#ff9900]/20 flex items-center justify-center text-[#ff9900]">
+              <Sparkles className="w-3.5 h-3.5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-bold text-sm sm:text-base text-white">Anjani AI Assistant</h2>
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded font-mono font-medium">
-                  {aiSettings?.activeModel || 'gemini-2.5-flash-lite'}
-                </span>
-              </div>
-              <p className="text-[11px] text-gray-400">Vendor Bill OCR & Inventory Control</p>
-            </div>
+            <h2 className="font-bold text-sm text-white">Anjani AI Assistant</h2>
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -1059,10 +1051,6 @@ export default function AiAssistantDrawer({
               <Send className="w-5 h-5" />
             </button>
           </form>
-
-          <p className="mt-1.5 text-center text-[10px] text-gray-400 font-mono">
-            ⚡ Powered by Gemini 2.5 Flash Lite • Zero-Token Local Caching
-          </p>
         </div>
       </div>
     </div>
