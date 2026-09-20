@@ -125,8 +125,14 @@ exports.sendSmsViaMacrodroid = onDocumentCreated('leads/{docId}', async (event) 
     smsPhone = '91' + smsPhone.slice(-10)
   }
 
-  const message =
-    'Events in Vadodara? Serve Anjani Water 200ml bottles! Perfect size, zero waste. Special rates on bulk buys! Order here: https://wa.me/919925997750'
+  const isBailey =
+    (leadData.target_product && String(leadData.target_product).toLowerCase().includes('bailey')) ||
+    leadData.source === 'Bailey_Water_Radar' ||
+    (leadData.business_type && /restaurant|snack|farsan|dhaba|cafe|food/i.test(leadData.business_type))
+
+  const message = isBailey
+    ? 'Need Bailey Water (250ml, 500ml, 1L, 2L bottles & jars) or Anjani 200ml for your outlet at direct bulk distributor rates? Order: https://wa.me/919925997750'
+    : 'Vadodara events & business: Serve Anjani 200ml & Bailey Water (250ml, 500ml, 1L, 2L) at direct bulk distributor rates! Order: https://wa.me/919925997750'
   const packet = `${smsPhone}@@@${message}`
 
   const baseUrl = 'https://trigger.macrodroid.com/25efcbac-eb13-4461-ae90-3158ba6c5b90/anjani_sms'
@@ -605,8 +611,17 @@ async function sendBackgroundSms({ macroUrl, phone, message }) {
   }
 }
 
-function buildFollowUpSmsMessage({ reminderDay }) {
-  return `Sir/Madam, this is a gentle follow-up from Anjani Water, Vadodara. It's been ${reminderDay} day${reminderDay > 1 ? 's' : ''} since our last message. Can we help with your packaged water bottle requirement?`
+function buildFollowUpSmsMessage({ reminderDay, lead = {} }) {
+  const isBailey =
+    (lead.target_product && String(lead.target_product).toLowerCase().includes('bailey')) ||
+    lead.source === 'Bailey_Water_Radar' ||
+    (lead.business_type && /restaurant|snack|farsan|dhaba|cafe|food/i.test(lead.business_type))
+
+  if (isBailey) {
+    return `Sir/Madam, gentle follow-up from Anjani & Bailey Water, Vadodara. Can we supply Bailey (250ml/500ml/1L/2L) or Anjani 200ml for your outlet? Order: https://wa.me/919925997750`
+  }
+
+  return `Sir/Madam, gentle follow-up from Anjani & Bailey Water Distributorship, Vadodara. It's been ${reminderDay} day${reminderDay > 1 ? 's' : ''} since our last message. Can we help with your water bottle supply? Order: https://wa.me/919925997750`
 }
 
 function getDueReminderContext(lead, now = new Date()) {
@@ -714,6 +729,7 @@ async function processDueFollowUpsInternal() {
         message: buildFollowUpSmsMessage({
           name: lead.name,
           reminderDay: context.reminderDay,
+          lead,
         }),
       })
 
