@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
-import { db } from '../firebase-config'
+import { getFunctions, httpsCallable } from 'firebase/functions'
+import { app, db } from '../firebase-config'
 import {
   Calendar,
   Clock,
@@ -22,42 +23,27 @@ import {
   Cpu,
   Zap,
   ShieldCheck,
+  Target,
+  Loader2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useClientStore } from '../store/clientStore'
 import { processUploadedQrFile, DEFAULT_UPI_ID, DEFAULT_PAYEE_NAME } from '../utils/qrHelper'
 
-const getCurrentSeasonInfo = () => {
-  const m = new Date().getMonth() + 1
-  if (m === 9 || m === 10) {
-    return {
-      title: '🪔 Navratri & Pre-Diwali Festival Surge (Active)',
-      description: 'Dynamic Target: Caterers, Garba Mandals, Party Plots, Banquet Halls & Sweet Vendors.',
-      badge: 'Aggressive 2x/Week (12+ Leads/Run)',
-      color: 'bg-amber-50 text-amber-900 border-amber-300',
-    }
-  } else if (m === 11 || m === 12 || m === 1 || m === 2) {
-    return {
-      title: '💍 Peak Gujarati Wedding Season (Active)',
-      description: 'Dynamic Target: Wedding Caterers, Banquet Venues, Farmhouses, Decorators & Bus Fleets.',
-      badge: 'Aggressive 2x/Week (12+ Leads/Run)',
-      color: 'bg-rose-50 text-rose-900 border-rose-300',
-    }
-  } else if (m >= 3 && m <= 5) {
-    return {
-      title: '☀️ Summer Heatwave Bulk Surge (Active)',
-      description: 'Dynamic Target: Makarpura & Nandesari GIDC Factories, Real Estate Builder Sales Offices.',
-      badge: 'High Push Weekly (10 Leads/Run)',
-      color: 'bg-orange-50 text-orange-900 border-orange-300',
-    }
-  }
-  return {
-    title: '🏢 Routine Business Demand (Active)',
-    description: 'Dynamic Target: Corporate Offices, Car Showrooms, Clinics & Commercial Complexes.',
-    badge: 'Steady Weekly (5-6 Leads/Run)',
-    color: 'bg-blue-50 text-blue-900 border-blue-300',
-  }
-}
+const ALL_BAILEY_CORRIDORS = [
+  'Ajwa Road',
+  'Waghodia Road',
+  'Kapurai',
+  'Parivar Char Rasta',
+  'Mahavir Char Rasta',
+]
+
+const ALL_BAILEY_CATEGORIES = [
+  'Restaurants & Dining',
+  'Snacks & Farsan Outlets',
+  'Cafes & Fast Food',
+  'Dhabas & Food Points',
+]
 
 const DAYS_OF_WEEK = [
   { value: 0, label: 'Sun' },
@@ -221,6 +207,11 @@ export default function SettingsTab() {
   const [leadDiscoveryHour, setLeadDiscoveryHour] = useState(9)
   const [leadDiscoveryDays, setLeadDiscoveryDays] = useState([1])
   const [leadDiscoveryMode, setLeadDiscoveryMode] = useState('auto') // 'auto', 'aggressive', 'normal'
+  const [baileyTargeting, setBaileyTargeting] = useState(true)
+  const [selectedCorridors, setSelectedCorridors] = useState(ALL_BAILEY_CORRIDORS)
+  const [selectedCategories, setSelectedCategories] = useState(ALL_BAILEY_CATEGORIES)
+  const [isSearchingLeads, setIsSearchingLeads] = useState(false)
+  const [leadDiscoveryStats, setLeadDiscoveryStats] = useState(null)
 
   useEffect(() => {
     async function loadSettings() {
@@ -289,11 +280,26 @@ export default function SettingsTab() {
           setLeadDiscoveryHour(data.hour !== undefined ? Number(data.hour) : 9)
           setLeadDiscoveryDays(Array.isArray(data.days) ? data.days : [1])
           setLeadDiscoveryMode(data.mode || 'auto')
+          setBaileyTargeting(data.baileyTargeting !== undefined ? !!data.baileyTargeting : true)
+          if (Array.isArray(data.corridors) && data.corridors.length > 0) {
+            setSelectedCorridors(data.corridors)
+          }
+          if (Array.isArray(data.categories) && data.categories.length > 0) {
+            setSelectedCategories(data.categories)
+          }
+          setLeadDiscoveryStats({
+            lastRunDate: data.lastRunDate,
+            lastRunCount: data.lastRunCount,
+            lastRunSeason: data.lastRunSeason,
+          })
         } else {
           setLeadDiscoveryEnabled(true)
           setLeadDiscoveryHour(9)
           setLeadDiscoveryDays([1])
           setLeadDiscoveryMode('auto')
+          setBaileyTargeting(true)
+          setSelectedCorridors(ALL_BAILEY_CORRIDORS)
+          setSelectedCategories(ALL_BAILEY_CATEGORIES)
         }
         await fetchPaymentSettings()
         const currentPay = useClientStore.getState().paymentSettings
@@ -521,6 +527,10 @@ export default function SettingsTab() {
           hour: Number(leadDiscoveryHour),
           days: leadDiscoveryDays,
           mode: leadDiscoveryMode,
+          baileyTargeting,
+          corridors: selectedCorridors,
+          categories: selectedCategories,
+          targetProduct: 'Bailey Packaged Drinking Water',
           minute: 0,
         },
         { merge: true },
@@ -532,6 +542,56 @@ export default function SettingsTab() {
       toast.error('Failed to save configurations: ' + err.message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const toggleCorridor = (corridor) => {
+    setSelectedCorridors((prev) =>
+      prev.includes(corridor)
+        ? prev.length > 1
+          ? prev.filter((c) => c !== corridor)
+          : prev
+        : [...prev, corridor],
+    )
+  }
+
+  const toggleCategory = (cat) => {
+    setSelectedCategories((prev) =>
+      prev.includes(cat)
+        ? prev.length > 1
+          ? prev.filter((c) => c !== cat)
+          : prev
+        : [...prev, cat],
+    )
+  }
+
+  const handleSearchBaileyLeadsNow = async () => {
+    setIsSearchingLeads(true)
+    try {
+      const functionsInstance = getFunctions(app, 'asia-south1')
+      const triggerFn = httpsCallable(functionsInstance, 'triggerBaileyLeadDiscovery')
+      const res = await triggerFn({
+        baileyTargeting,
+        corridors: selectedCorridors,
+        categories: selectedCategories,
+        mode: leadDiscoveryMode,
+      })
+      const count = res.data?.addedCount || 0
+      if (count > 0) {
+        toast.success(`Success! Added ${count} new Bailey Water leads in ${selectedCorridors.slice(0, 2).join(', ')}!`)
+      } else {
+        toast('Scanned selected corridors. All found candidates already exist in your system.', { icon: 'ℹ️' })
+      }
+      setLeadDiscoveryStats({
+        lastRunDate: new Date().toISOString().slice(0, 10),
+        lastRunCount: count,
+        lastRunSeason: 'Bailey Water Key Corridor Radar',
+      })
+    } catch (err) {
+      console.error('Lead search failed:', err)
+      toast.error('Search failed: ' + (err.message || 'Check network connection'))
+    } finally {
+      setIsSearchingLeads(false)
     }
   }
 
@@ -861,63 +921,140 @@ export default function SettingsTab() {
               hour={leadDiscoveryHour}
               hourLabel="Discovery Hour"
               id="leadDiscoveryHourSelect"
-              inactiveText="AI dynamic lead discovery radar is disabled."
-              iconColor="text-amber-500"
+              inactiveText="Bailey Water key customer radar is disabled."
+              iconColor="text-blue-600"
               onHourChange={setLeadDiscoveryHour}
               onToggle={() => setLeadDiscoveryEnabled((prev) => !prev)}
               onToggleDay={toggleLeadDiscoveryDay}
               selectedDays={leadDiscoveryDays}
-              title="Dynamic AI Lead Discovery Radar (Permanent Pipeline)"
+              title="Bailey Water Key Customer Radar (Corridors & Schedule)"
             />
 
             {leadDiscoveryEnabled && (
-              <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/60 p-2.5 text-xs text-gray-700">
-                {(() => {
-                  const season = getCurrentSeasonInfo()
-                  return (
-                    <div className={`p-2 rounded-md border ${season.color} flex flex-col gap-1`}>
-                      <div className="flex items-center justify-between flex-wrap gap-1">
-                        <span className="font-extrabold text-xs flex items-center gap-1">
-                          <Flame className="h-3.5 w-3.5 text-red-500" />
-                          {season.title}
-                        </span>
-                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-white border border-current shadow-xs">
-                          {season.badge}
-                        </span>
-                      </div>
-                      <p className="text-[11px] font-medium leading-relaxed">
-                        {season.description}
-                      </p>
+              <div className="space-y-3 rounded-2xl border border-blue-200 bg-blue-50/50 p-3 text-xs text-gray-700 shadow-xs">
+                {/* Target Corridors for Bailey Water */}
+                <div className="rounded-xl border border-blue-200 bg-white p-3 space-y-2.5">
+                  <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-gray-100">
+                    <div className="flex items-center gap-1.5">
+                      <Target className="h-4 w-4 text-blue-600" />
+                      <span className="font-black text-xs text-blue-950 uppercase tracking-wide">
+                        Target Corridors (Vadodara)
+                      </span>
                     </div>
-                  )
-                })()}
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">
-                  <div>
-                    <label htmlFor="leadDiscoveryModeSelect" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                      Aggressiveness Radar Mode
-                    </label>
-                    <select
-                      id="leadDiscoveryModeSelect"
-                      value={leadDiscoveryMode}
-                      onChange={(e) => setLeadDiscoveryMode(e.target.value)}
-                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-orange-400"
-                    >
-                      <option value="auto">Auto (Dynamic Festival Radar)</option>
-                      <option value="aggressive">Force High (2x/Week, 12+ Leads)</option>
-                      <option value="normal">Normal (1x/Week, 5 Leads)</option>
-                    </select>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <span className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                      <MapPin className="h-3 w-3 text-red-500" />
-                      Vadodara High-Conversion Coverage Zones
+                    <span className="text-[10px] font-black uppercase text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                      Product: Bailey Packaged Drinking Water
                     </span>
-                    <div className="text-[11px] text-gray-600 bg-gray-50 p-1.5 rounded border border-gray-200">
-                      <strong>Zones:</strong> Gotri, Makarpura, Bhayli, Sevasi, Vasna Road, Alkapuri, Akota, Manjalpur, Karelibaug, Sayajigunj, Fatehgunj, Waghodia Road, Atladra, Gorwa, Chhani, Sama, Harni, Nandesari & Por.
+                  </div>
+
+                  <p className="text-[11px] text-gray-600 font-medium leading-relaxed">
+                    Select the commercial junctions & corridors where the system discovers potential buyers:
+                  </p>
+
+                  {/* Corridors Pill Toggles */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {ALL_BAILEY_CORRIDORS.map((c) => {
+                      const isSelected = selectedCorridors.includes(c)
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => toggleCorridor(c)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition-all flex items-center gap-1 cursor-pointer ${
+                            isSelected
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                          }`}
+                        >
+                          <MapPin size={11} className={isSelected ? 'text-white' : 'text-gray-400'} />
+                          {c}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Target Categories */}
+                  <div className="pt-2 border-t border-gray-100">
+                    <span className="text-[10px] font-black uppercase tracking-wide text-gray-500 block mb-1.5">
+                      Target Customer Segments (HoReCa & Snacks):
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ALL_BAILEY_CATEGORIES.map((cat) => {
+                        const isSelected = selectedCategories.includes(cat)
+                        return (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => toggleCategory(cat)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                            }`}
+                          >
+                            {cat}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
+
+                  <div className="pt-2 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label
+                        htmlFor="leadDiscoveryModeSelect"
+                        className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-500"
+                      >
+                        Radar Aggressiveness
+                      </label>
+                      <select
+                        id="leadDiscoveryModeSelect"
+                        value={leadDiscoveryMode}
+                        onChange={(e) => setLeadDiscoveryMode(e.target.value)}
+                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-bold outline-none focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="auto">Auto (Balanced Scan)</option>
+                        <option value="aggressive">High Volume (12+ Outlets)</option>
+                        <option value="normal">Normal (5 Outlets)</option>
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col justify-end">
+                      <div className="text-[10px] text-gray-500 bg-gray-50 p-2 rounded-lg border border-gray-200">
+                        {leadDiscoveryStats?.lastRunDate ? (
+                          <p>
+                            Last run: <strong>{leadDiscoveryStats.lastRunDate}</strong> ({leadDiscoveryStats.lastRunCount || 0} leads added)
+                          </p>
+                        ) : (
+                          <p className="italic">Scheduled automated weekly scan or run on-demand below.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Instant Action Bar */}
+                <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
+                  <span className="text-[11px] font-semibold text-gray-600">
+                    Need fresh customer contacts right now?
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleSearchBaileyLeadsNow}
+                    disabled={isSearchingLeads}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wide bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white flex items-center gap-1.5 shadow-xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isSearchingLeads ? (
+                      <>
+                        <Loader2 size={13} className="animate-spin" />
+                        Searching Corridors…
+                      </>
+                    ) : (
+                      <>
+                        <Zap size={13} className="text-amber-300" />
+                        Search Potential Customers Now
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
             )}

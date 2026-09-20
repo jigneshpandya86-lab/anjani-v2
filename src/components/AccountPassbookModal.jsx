@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   collection,
   query,
@@ -9,6 +9,7 @@ import {
 import { db } from '../firebase-config'
 import { getAccountMeta } from '../constants/accounts'
 import { useClientStore } from '../store/clientStore'
+import EditAccountEntryModal from './EditAccountEntryModal'
 import toast from 'react-hot-toast'
 import {
   X,
@@ -21,6 +22,8 @@ import {
   PlusCircle,
   MinusCircle,
   SlidersHorizontal,
+  Pencil,
+  Trash2,
 } from 'lucide-react'
 
 export default function AccountPassbookModal({
@@ -33,7 +36,14 @@ export default function AccountPassbookModal({
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [filterType, setFilterType] = useState('all') // 'all', 'collection', 'expense', 'transfer'
-  const updateAccountBalanceDirect = useClientStore((state) => state.updateAccountBalanceDirect)
+  const [editingEntry, setEditingEntry] = useState(null)
+
+  const {
+    updateAccountBalanceDirect,
+    deleteAccountTransfer,
+    deleteAccountExpense,
+    deletePayment,
+  } = useClientStore()
 
   const accountMeta = getAccountMeta(accountId)
 
@@ -56,148 +66,170 @@ export default function AccountPassbookModal({
     }
   }
 
-  useEffect(() => {
+  const fetchLedger = useCallback(async () => {
     if (!isOpen || !accountId) return
-
-    let isMounted = true
     setLoading(true)
 
-    const fetchLedger = async () => {
-      try {
-        // 1. Fetch payments collected by this account
-        const paymentsQ = query(
-          collection(db, 'payments'),
-          where('accountId', '==', accountId),
-          limit(60),
-        )
+    try {
+      // 1. Fetch payments collected by this account
+      const paymentsQ = query(
+        collection(db, 'payments'),
+        where('accountId', '==', accountId),
+        limit(60),
+      )
 
-        // 2. Fetch expenses paid from this account
-        const expensesQ = query(
-          collection(db, 'expenses'),
-          where('accountId', '==', accountId),
-          limit(60),
-        )
+      // 2. Fetch expenses paid from this account
+      const expensesQ = query(
+        collection(db, 'expenses'),
+        where('accountId', '==', accountId),
+        limit(60),
+      )
 
-        // 3. Fetch transfers OUT from this account
-        const transfersOutQ = query(
-          collection(db, 'account_transfers'),
-          where('fromAccountId', '==', accountId),
-          limit(60),
-        )
+      // 3. Fetch transfers OUT from this account
+      const transfersOutQ = query(
+        collection(db, 'account_transfers'),
+        where('fromAccountId', '==', accountId),
+        limit(60),
+      )
 
-        // 4. Fetch transfers IN to this account
-        const transfersInQ = query(
-          collection(db, 'account_transfers'),
-          where('toAccountId', '==', accountId),
-          limit(60),
-        )
+      // 4. Fetch transfers IN to this account
+      const transfersInQ = query(
+        collection(db, 'account_transfers'),
+        where('toAccountId', '==', accountId),
+        limit(60),
+      )
 
-        const [paySnap, expSnap, trOutSnap, trInSnap] = await Promise.all([
-          getDocs(paymentsQ),
-          getDocs(expensesQ),
-          getDocs(transfersOutQ),
-          getDocs(transfersInQ),
-        ])
+      const [paySnap, expSnap, trOutSnap, trInSnap] = await Promise.all([
+        getDocs(paymentsQ),
+        getDocs(expensesQ),
+        getDocs(transfersOutQ),
+        getDocs(transfersInQ),
+      ])
 
-        if (!isMounted) return
+      const combined = []
 
-        const combined = []
-
-        // Parse payments (Collections / Inflow)
-        paySnap.docs.forEach((docSnap) => {
-          const d = docSnap.data()
-          const amt = Number(d.amount) || 0
-          const rawDate = d.date || d.paymentDate || d.createdAt
-          const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
-          combined.push({
-            id: 'pay_' + docSnap.id,
-            type: 'collection',
-            direction: 'in',
-            title: d.clientName || 'Customer Payment',
-            subtitle: d.note ? `Note: ${d.note}` : 'Payment Received',
-            amount: amt,
-            timestamp: timestamp || Date.now(),
-            date: rawDate,
-            raw: d,
-          })
+      // Parse payments (Collections / Inflow)
+      paySnap.docs.forEach((docSnap) => {
+        const d = docSnap.data()
+        const amt = Number(d.amount) || 0
+        const rawDate = d.date || d.paymentDate || d.createdAt
+        const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
+        combined.push({
+          id: 'pay_' + docSnap.id,
+          rawId: docSnap.id,
+          rawDoc: d,
+          type: 'collection',
+          direction: 'in',
+          title: d.clientName || 'Customer Payment',
+          subtitle: d.note ? `Note: ${d.note}` : 'Payment Received',
+          amount: amt,
+          timestamp: timestamp || Date.now(),
+          date: rawDate,
+          raw: d,
         })
+      })
 
-        // Parse expenses (Outflow)
-        expSnap.docs.forEach((docSnap) => {
-          const d = docSnap.data()
-          const amt = Number(d.amount) || 0
-          const rawDate = d.date || d.createdAt
-          const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
-          combined.push({
-            id: 'exp_' + docSnap.id,
-            type: 'expense',
-            direction: 'out',
-            title: d.category || 'Expense',
-            subtitle: d.note ? `Note: ${d.note}` : 'Staff Expense Paid',
-            amount: amt,
-            timestamp: timestamp || Date.now(),
-            date: rawDate,
-            raw: d,
-          })
+      // Parse expenses (Outflow)
+      expSnap.docs.forEach((docSnap) => {
+        const d = docSnap.data()
+        const amt = Number(d.amount) || 0
+        const rawDate = d.date || d.createdAt
+        const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
+        combined.push({
+          id: 'exp_' + docSnap.id,
+          rawId: docSnap.id,
+          rawDoc: d,
+          type: 'expense',
+          direction: 'out',
+          title: d.category || 'Expense',
+          subtitle: d.note ? `Note: ${d.note}` : 'Staff Expense Paid',
+          amount: amt,
+          timestamp: timestamp || Date.now(),
+          date: rawDate,
+          raw: d,
         })
+      })
 
-        // Parse transfers OUT (Cash Handover to Counter/Bank)
-        trOutSnap.docs.forEach((docSnap) => {
-          const d = docSnap.data()
-          const amt = Number(d.amount) || 0
-          const targetMeta = getAccountMeta(d.toAccountId)
-          const rawDate = d.date || d.createdAt
-          const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
-          combined.push({
-            id: 'tr_out_' + docSnap.id,
-            type: 'transfer',
-            direction: 'out',
-            title: `Handover to ${targetMeta.shortLabel}`,
-            subtitle: d.notes ? `Note: ${d.notes}` : 'Cash Handover / Settlement',
-            amount: amt,
-            timestamp: timestamp || Date.now(),
-            date: rawDate,
-            raw: d,
-          })
+      // Parse transfers OUT (Cash Handover to Counter/Bank)
+      trOutSnap.docs.forEach((docSnap) => {
+        const d = docSnap.data()
+        const amt = Number(d.amount) || 0
+        const targetMeta = getAccountMeta(d.toAccountId)
+        const rawDate = d.date || d.createdAt
+        const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
+        combined.push({
+          id: 'tr_out_' + docSnap.id,
+          rawId: docSnap.id,
+          rawDoc: d,
+          type: 'transfer',
+          direction: 'out',
+          title: `Handover to ${targetMeta.shortLabel}`,
+          subtitle: d.notes ? `Note: ${d.notes}` : 'Cash Handover / Settlement',
+          amount: amt,
+          timestamp: timestamp || Date.now(),
+          date: rawDate,
+          raw: d,
         })
+      })
 
-        // Parse transfers IN (Cash received from staff/counter)
-        trInSnap.docs.forEach((docSnap) => {
-          const d = docSnap.data()
-          const amt = Number(d.amount) || 0
-          const sourceMeta = getAccountMeta(d.fromAccountId)
-          const rawDate = d.date || d.createdAt
-          const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
-          combined.push({
-            id: 'tr_in_' + docSnap.id,
-            type: 'transfer',
-            direction: 'in',
-            title: `Received from ${sourceMeta.shortLabel}`,
-            subtitle: d.notes ? `Note: ${d.notes}` : 'Cash Inward Transfer',
-            amount: amt,
-            timestamp: timestamp || Date.now(),
-            date: rawDate,
-            raw: d,
-          })
+      // Parse transfers IN (Cash received from staff/counter)
+      trInSnap.docs.forEach((docSnap) => {
+        const d = docSnap.data()
+        const amt = Number(d.amount) || 0
+        const sourceMeta = getAccountMeta(d.fromAccountId)
+        const rawDate = d.date || d.createdAt
+        const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
+        combined.push({
+          id: 'tr_in_' + docSnap.id,
+          rawId: docSnap.id,
+          rawDoc: d,
+          type: 'transfer',
+          direction: 'in',
+          title: `Received from ${sourceMeta.shortLabel}`,
+          subtitle: d.notes ? `Note: ${d.notes}` : 'Cash Inward Transfer',
+          amount: amt,
+          timestamp: timestamp || Date.now(),
+          date: rawDate,
+          raw: d,
         })
+      })
 
-        // Sort descending by timestamp
-        combined.sort((a, b) => b.timestamp - a.timestamp)
+      // Sort descending by timestamp
+      combined.sort((a, b) => b.timestamp - a.timestamp)
 
-        setEntries(combined)
-      } catch (err) {
-        console.error('Failed to load passbook:', err)
-      } finally {
-        if (isMounted) setLoading(false)
-      }
-    }
-
-    fetchLedger()
-
-    return () => {
-      isMounted = false
+      setEntries(combined)
+    } catch (err) {
+      console.error('Failed to load passbook:', err)
+    } finally {
+      setLoading(false)
     }
   }, [isOpen, accountId])
+
+  useEffect(() => {
+    fetchLedger()
+  }, [fetchLedger])
+
+  const handleDeleteEntry = async (item) => {
+    const isOk = window.confirm(
+      `Are you sure you want to delete this ${item.type} of ₹${item.amount.toLocaleString('en-IN')}?\nBalances will be updated automatically.`
+    )
+    if (!isOk) return
+
+    try {
+      if (item.type === 'transfer') {
+        await deleteAccountTransfer(item.rawId)
+      } else if (item.type === 'expense') {
+        await deleteAccountExpense(item.rawId)
+      } else if (item.type === 'collection') {
+        await deletePayment(item.rawId)
+      }
+      toast.success('Entry deleted and balance adjusted')
+      fetchLedger()
+    } catch (err) {
+      console.error('Delete failed:', err)
+      toast.error('Failed to delete: ' + err.message)
+    }
+  }
 
   const filteredEntries = useMemo(() => {
     if (filterType === 'all') return entries
@@ -377,17 +409,38 @@ export default function AccountPassbookModal({
                     </div>
                   </div>
 
-                  <div className="text-right shrink-0">
-                    <p
-                      className={`font-black text-sm ${
-                        isPositive ? 'text-emerald-600' : 'text-red-500'
-                      }`}
-                    >
-                      {isPositive ? '+' : '-'}₹{item.amount.toLocaleString('en-IN')}
-                    </p>
-                    <span className="text-[8px] font-black uppercase text-gray-400 tracking-wider">
-                      {item.type}
-                    </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-right">
+                      <p
+                        className={`font-black text-sm ${
+                          isPositive ? 'text-emerald-600' : 'text-red-500'
+                        }`}
+                      >
+                        {isPositive ? '+' : '-'}₹{item.amount.toLocaleString('en-IN')}
+                      </p>
+                      <span className="text-[8px] font-black uppercase text-gray-400 tracking-wider">
+                        {item.type}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-0.5 border-l border-gray-100 pl-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setEditingEntry(item)}
+                        className="p-1 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
+                        title="Edit Entry"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteEntry(item)}
+                        className="p-1 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                        title="Delete Entry"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )
@@ -395,6 +448,16 @@ export default function AccountPassbookModal({
           )}
         </div>
       </div>
+
+      {/* Edit Entry Modal */}
+      <EditAccountEntryModal
+        isOpen={Boolean(editingEntry)}
+        onClose={() => setEditingEntry(null)}
+        entry={editingEntry}
+        onSaveSuccess={() => {
+          fetchLedger()
+        }}
+      />
     </div>
   )
 }

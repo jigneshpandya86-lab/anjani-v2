@@ -1,5 +1,6 @@
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
+const { onCall } = require('firebase-functions/v2/https')
 const { setGlobalOptions } = require('firebase-functions/v2')
 const logger = require('firebase-functions/logger')
 const admin = require('firebase-admin')
@@ -937,6 +938,19 @@ exports.discoverLeadsWithAI = onSchedule(
 )
 
 /**
+ * On-demand callable function to trigger Bailey Water potential customer discovery.
+ */
+exports.triggerBaileyLeadDiscovery = onCall(async (request) => {
+  if (!request.auth) {
+    throw new Error('Authentication required')
+  }
+  const db = admin.firestore()
+  const customConfig = request.data || null
+  const result = await processDynamicLeadDiscovery(db, null, null, true, customConfig)
+  return result || { success: true, addedCount: 0 }
+})
+
+/**
  * Helper to send a notification to a specific user's active device tokens.
  */
 async function sendNotificationToUser(
@@ -981,7 +995,6 @@ async function sendNotificationToUser(
 }
 
 // --- NOTIFICATION SYSTEM FUNCTIONS ---
-const { onCall } = require('firebase-functions/v2/https')
 
 /**
  * Helper to broadcast a notification message to all users via FCM
@@ -2672,12 +2685,17 @@ async function processRecurringExpenses(db, currentHour) {
 }
 
 /**
- * Helper to dynamically discover new B2B leads using festival & season radar.
- * Covers maximum areas of Vadodara: Gotri, Makarpura, Bhayli, Sevasi, Vasna Road,
- * Alkapuri, Akota, Manjalpur, Karelibaug, Sayajigunj, Fatehgunj, Waghodia Road,
- * Atladra, Gorwa, Chhani, Harni, Sama, Tandalja, Por, and Nandesari.
+ * Helper to dynamically discover new B2B leads using targeted Bailey Water key customer
+ * corridors (Ajwa Road, Waghodia Road, Kapurai, Parivar Char Rasta, Mahavir Char Rasta -
+ * Restaurants, Dhabas & Snacks outlets).
  */
-async function processDynamicLeadDiscovery(db, currentHour, currentDayOfWeek, bypassScheduleCheck = false) {
+async function processDynamicLeadDiscovery(
+  db,
+  currentHour,
+  currentDayOfWeek,
+  bypassScheduleCheck = false,
+  runtimeConfig = null,
+) {
   try {
     const configRef = db.collection('config').doc('leadDiscoveryConfig');
     const configDoc = await configRef.get();
@@ -2687,14 +2705,32 @@ async function processDynamicLeadDiscovery(db, currentHour, currentDayOfWeek, by
       hour: 9,
       days: [1], // Monday default
       mode: 'auto',
+      baileyTargeting: true,
+      corridors: [
+        'Ajwa Road',
+        'Waghodia Road',
+        'Kapurai',
+        'Parivar Char Rasta',
+        'Mahavir Char Rasta',
+      ],
+      categories: [
+        'Restaurants & Dining',
+        'Snacks & Farsan Outlets',
+        'Cafes & Fast Food',
+        'Dhabas & Food Points',
+      ],
     };
 
     if (configDoc.exists) {
       config = Object.assign(config, configDoc.data());
     }
 
+    if (runtimeConfig && typeof runtimeConfig === 'object') {
+      config = Object.assign(config, runtimeConfig);
+    }
+
     if (!config.enabled && !bypassScheduleCheck) {
-      return;
+      return { skipped: true, reason: 'disabled' };
     }
 
     // Determine current local time in India (Asia/Kolkata)
@@ -2706,132 +2742,88 @@ async function processDynamicLeadDiscovery(db, currentHour, currentDayOfWeek, by
       day: "2-digit",
     });
     const parts = formatter.formatToParts(now);
-    const currentMonth = parseInt(parts.find(p => p.type === 'month').value, 10);
-    const year = parts.find(p => p.type === 'year').value;
+    const currentMonth = parseInt(parts.find((p) => p.type === 'month').value, 10);
+    const year = parts.find((p) => p.type === 'year').value;
     const monthStr = String(currentMonth).padStart(2, '0');
-    const day = parts.find(p => p.type === 'day').value;
+    const day = parts.find((p) => p.type === 'day').value;
     const todayStr = `${year}-${monthStr}-${day}`;
 
     if (!bypassScheduleCheck) {
       // Check hour
       if (currentHour !== Number(config.hour)) {
-        return;
+        return { skipped: true, reason: 'hour_mismatch' };
       }
 
-      // Avoid running multiple times on the same date
+      // Avoid running multiple times on the same date unless bypassed
       if (config.lastRunDate === todayStr) {
         logger.info(`Dynamic Lead Discovery: Already executed today (${todayStr}). Skipping.`);
-        return;
+        return { skipped: true, reason: 'already_run_today' };
       }
     }
 
-    // Determine seasonal aggressiveness, target categories, and active weekdays
-    let targetCount = 6;
-    let seasonName = 'Routine Business Coverage';
-    let categories = [
-      'Car Dealerships and Authorized Service Centers',
-      'Corporate Offices and Co-working Spaces',
-      'Hospitals, Clinics, and Pathology Laboratories',
-      'Industrial Estate Units'
-    ];
     let activeDays = Array.isArray(config.days) ? config.days : [1];
+    if (!bypassScheduleCheck && !activeDays.includes(currentDayOfWeek)) {
+      return { skipped: true, reason: 'day_not_active' };
+    }
 
+    let targetCount = 8;
     if (config.mode === 'aggressive') {
       targetCount = 12;
-      seasonName = 'Forced Aggressive Push';
-      categories = [
-        'Wedding Caterers and Event Management Companies',
-        'Party Plots, Banquet Halls, and Farmhouses',
-        'Real Estate Builder Sales Offices and Sample Flats',
-        'Makarpura, Por, and Nandesari GIDC Manufacturing Units',
-        'Intercity Luxury Bus Fleet Operators'
-      ];
-      if (!activeDays.includes(4)) activeDays = [...activeDays, 4];
     } else if (config.mode === 'normal') {
       targetCount = 5;
-      seasonName = 'Steady Normal Push';
-      categories = ['Corporate Offices', 'Car Showrooms', 'Makarpura GIDC Units'];
-    } else {
-      // AUTO MODE: Dynamic detection based on Gujarat festival and wedding calendar
-      if (currentMonth === 9 || currentMonth === 10) {
-        // Sept - Oct: Navratri & Pre-Diwali Festival Season
-        targetCount = 12;
-        seasonName = 'Navratri & Pre-Diwali Festival Push';
-        categories = [
-          'Wedding and Event Caterers',
-          'Party Plots, Garba Venues, and Banquet Halls',
-          'Sweet and Farsan Manufacturers',
-          'Corporate Gifting and Large Commercial Offices',
-          'Farmhouses and Event Lawns'
-        ];
-        if (!activeDays.includes(4)) activeDays = [...activeDays, 4]; // Run Mon & Thu
-      } else if (currentMonth === 11 || currentMonth === 12 || currentMonth === 1 || currentMonth === 2) {
-        // Nov - Feb: Peak Gujarati Wedding & Banquet Season
-        targetCount = 12;
-        seasonName = 'Peak Wedding & Banquet Season';
-        categories = [
-          'Wedding Caterers and Food Service Contractors',
-          'Banquet Halls, Party Plots, and Marriage Farmhouses',
-          'Event and Wedding Planners',
-          'Luxury Intercity AC Bus Fleet Operators'
-        ];
-        if (!activeDays.includes(4)) activeDays = [...activeDays, 4]; // Run Mon & Thu
-      } else if (currentMonth >= 3 && currentMonth <= 5) {
-        // Mar - May: Summer Heatwave Surge
-        targetCount = 10;
-        seasonName = 'Summer Heatwave Bulk Surge';
-        categories = [
-          'Makarpura, Nandesari, and Por GIDC Manufacturing Units',
-          'GujRERA Real Estate Builder Site Offices and Sample Flat Galleries',
-          'Commercial Office Parks and Corporate Buildings',
-          'Intercity Tour and Bus Operators at Amit Nagar and Pandya Bridge'
-        ];
-        if (!activeDays.includes(4)) activeDays = [...activeDays, 4];
-      } else {
-        // Jun - Aug: Routine Business Demand
-        targetCount = 6;
-        seasonName = 'Routine Business Demand';
-        categories = [
-          'Car Dealerships and Automobile Service Centers',
-          'Diagnostic Centers and Corporate Offices',
-          'GIDC Industrial Estate Units'
-        ];
-      }
     }
 
-    if (!bypassScheduleCheck && !activeDays.includes(currentDayOfWeek)) {
-      return;
-    }
+    const isBaileyRadar = config.baileyTargeting !== false;
+    const corridors =
+      Array.isArray(config.corridors) && config.corridors.length > 0
+        ? config.corridors
+        : ['Ajwa Road', 'Waghodia Road', 'Kapurai', 'Parivar Char Rasta', 'Mahavir Char Rasta'];
+    const categories =
+      Array.isArray(config.categories) && config.categories.length > 0
+        ? config.categories
+        : ['Restaurants & Dining', 'Snacks & Farsan Outlets', 'Cafes & Fast Food', 'Dhabas & Food Points'];
 
-    logger.info(`Dynamic Lead Discovery: Starting job for season "${seasonName}" (Target: ${targetCount} leads)...`);
+    const seasonName = isBaileyRadar ? 'Bailey Water Key Corridor Radar' : 'Routine Business Coverage';
+    const corridorsStr = corridors.join(', ');
+    const categoriesStr = categories.join(', ');
 
-    // Rotate through categories based on day of year
-    const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24));
-    const selectedCategory = categories[dayOfYear % categories.length];
-
-    // Comprehensive list of Vadodara localities including Gotri, Makarpura, etc.
-    const areasList = 'Gotri, Makarpura, Bhayli, Sevasi, Vasna Road, Vasna-Bhayli Canal Road, Alkapuri, Akota, Manjalpur, Karelibaug, Sayajigunj, Fatehgunj, Waghodia Road, Atladra, Gorwa, Chhani, Harni, Sama, Tandalja, Subhanpura, Old Padra Road, Bil, Chapad, Por, Ranoli, and Nandesari in Vadodara, Gujarat, India';
+    logger.info(`Dynamic Lead Discovery: Starting ${seasonName} (Target: ${targetCount} leads in ${corridorsStr})...`);
 
     const prompt = `
-      Search Google for verified active businesses in the category: "${selectedCategory}" located across all major areas of Vadodara, Gujarat, India (especially ${areasList}).
-      Find and extract their verified 10-digit Indian mobile numbers (do NOT include landline numbers starting with 0265 or +91-265).
-      Return ONLY a raw JSON array containing up to ${targetCount} objects with the keys:
-      'name', 'mobile' (extract only the clean 10-digit number as a string), 'business_type' (use '${selectedCategory}'), 'area' (the specific neighborhood or locality in Vadodara), and 'relevance_score' (1-10).
-      Do not include markdown codeblocks like \`\`\`json or backticks. Just the raw JSON array.
-    `;
+Search Google for real, verified businesses in categories: "${categoriesStr}" located strictly in or around these corridors: ${corridorsStr} in Vadodara, Gujarat, India.
+These outlets are key commercial buyers of Bailey Packaged Drinking Water (250ml, 500ml, 1L, 2L bottles and 20L jars).
+Extract their verified 10-digit Indian mobile numbers (do NOT include landline numbers starting with 0265 or +91-265).
+Return ONLY a raw JSON array containing up to ${targetCount} objects with the keys:
+'name': Business or restaurant name,
+'mobile': clean 10-digit mobile number as a string,
+'business_type': category (e.g. 'Restaurant', 'Snacks Outlet', 'Dhaba', 'Cafe'),
+'area': specific corridor or junction (must be one of ${corridorsStr}),
+'notes': brief note mentioning suitability for Bailey Water,
+'relevance_score': number 1-10.
+Do not include markdown codeblocks like \`\`\`json or backticks. Just the raw JSON array.`;
 
-    logger.info(`Dynamic Lead Discovery: Performing Google Search Grounding for "${selectedCategory}" in Vadodara...`);
-
-    const result = await generativeModel.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      tools: [{ googleSearchRetrieval: {} }],
-      generationConfig: {
-        maxOutputTokens: 1200,
-        temperature: 0.1,
-      },
-    });
-
-    const aiResponseText = result.response.candidates[0].content.parts[0].text;
+    let aiResponseText = '';
+    try {
+      const result = await generativeModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        tools: [{ googleSearchRetrieval: {} }],
+        generationConfig: {
+          maxOutputTokens: 2000,
+          temperature: 0.1,
+        },
+      });
+      aiResponseText = result.response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } catch (toolErr) {
+      logger.warn('Google Search Retrieval tool failed, falling back to direct generativeModel:', toolErr);
+      const fallbackResult = await generativeModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          maxOutputTokens: 2000,
+          temperature: 0.2,
+        },
+      });
+      aiResponseText = fallbackResult.response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    }
 
     let leads = [];
     try {
@@ -2842,17 +2834,19 @@ async function processDynamicLeadDiscovery(db, currentHour, currentDayOfWeek, by
       leads = JSON.parse(cleanedText.trim());
     } catch (parseErr) {
       logger.error('Dynamic Lead Discovery: Failed to parse AI response into JSON:', aiResponseText, parseErr);
-      return;
+      return { success: false, error: 'Failed to parse AI response' };
     }
 
     if (!Array.isArray(leads)) {
       logger.warn('Dynamic Lead Discovery: AI response was not an array.', leads);
-      return;
+      return { success: false, error: 'AI response was not an array' };
     }
 
     logger.info(`Dynamic Lead Discovery: AI found ${leads.length} candidates.`);
 
     let addedCount = 0;
+    const addedLeads = [];
+
     for (const lead of leads) {
       if (addedCount >= targetCount) break;
 
@@ -2860,28 +2854,35 @@ async function processDynamicLeadDiscovery(db, currentHour, currentDayOfWeek, by
         const cleanPhone = String(lead.mobile).replace(/\D/g, '');
         const last10 = cleanPhone.slice(-10);
 
-        // Strict deduplication across both leads and clients collections
-        const [l1, l2, c1, c2] = await Promise.all([
+        // Deduplication across leads, clients, and customers
+        const [l1, l2, c1, c2, cust1, cust2] = await Promise.all([
           db.collection('leads').where('mobile', '==', last10).limit(1).get(),
           db.collection('leads').where('mobile', '==', '91' + last10).limit(1).get(),
           db.collection('clients').where('mobile', '==', last10).limit(1).get(),
           db.collection('clients').where('mobile', '==', '91' + last10).limit(1).get(),
+          db.collection('customers').where('mobile', '==', last10).limit(1).get(),
+          db.collection('customers').where('mobile', '==', '91' + last10).limit(1).get(),
         ]);
 
-        if (l1.empty && l2.empty && c1.empty && c2.empty) {
-          await db.collection('leads').add({
-            name: lead.name || 'Unknown',
+        if (l1.empty && l2.empty && c1.empty && c2.empty && cust1.empty && cust2.empty) {
+          const leadDoc = {
+            name: lead.name || 'Unknown Business',
             mobile: last10,
-            business_type: lead.business_type || selectedCategory,
-            area: lead.area || 'Vadodara',
-            source: 'Dynamic_Festival_AI',
+            business_type: lead.business_type || 'Restaurant / Snacks Outlet',
+            area: lead.area || corridors[addedCount % corridors.length],
+            target_product: 'Bailey Packaged Drinking Water',
+            source: 'Bailey_Water_Radar',
             season: seasonName,
+            notes: lead.notes || `Key customer for Bailey Water at ${lead.area || 'Vadodara'}`,
             createdAt: new Date().toISOString(),
-            Tag: null, // Ready for SMS / WhatsApp outreach in the app
+            Tag: null,
             relevance_score: lead.relevance_score || 9,
-          });
+          };
+
+          await db.collection('leads').add(leadDoc);
           addedCount++;
-          logger.info(`Dynamic Lead Discovery: Added lead: ${lead.name} (${last10}) in ${lead.area || 'Vadodara'}`);
+          addedLeads.push(leadDoc);
+          logger.info(`Dynamic Lead Discovery: Added Bailey Water lead: ${lead.name} (${last10}) in ${lead.area}`);
         } else {
           logger.info(`Dynamic Lead Discovery: Duplicate lead/client found for ${last10}. Skipping.`);
         }
@@ -2894,14 +2895,23 @@ async function processDynamicLeadDiscovery(db, currentHour, currentDayOfWeek, by
         lastRunDate: todayStr,
         lastRunCount: addedCount,
         lastRunSeason: seasonName,
-        lastRunCategory: selectedCategory,
+        lastRunCorridors: corridors,
+        lastRunCategories: categories,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
-      { merge: true }
+      { merge: true },
     );
 
-    logger.info(`Dynamic Lead Discovery: Completed. Added ${addedCount} new leads for "${seasonName}".`);
+    logger.info(`Dynamic Lead Discovery: Completed. Added ${addedCount} new leads.`);
+    return {
+      success: true,
+      addedCount,
+      totalCandidates: leads.length,
+      corridors,
+      leads: addedLeads,
+    };
   } catch (error) {
     logger.error('Dynamic Lead Discovery: Error executing job:', error);
+    return { success: false, error: error.message };
   }
 }

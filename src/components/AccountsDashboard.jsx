@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   collection,
   query,
@@ -10,22 +10,33 @@ import { db } from '../firebase-config'
 import { useClientStore } from '../store/clientStore'
 import { DEFAULT_ACCOUNTS, getAccountMeta } from '../constants/accounts'
 import CashHandoverModal from './CashHandoverModal'
+import EditAccountEntryModal from './EditAccountEntryModal'
 import toast from 'react-hot-toast'
 import {
   Wallet,
   ArrowRightLeft,
   SlidersHorizontal,
   Loader2,
+  Pencil,
+  Trash2,
 } from 'lucide-react'
 
 export default function AccountsDashboard() {
-  const { accountsSummary, fetchAccountsSummary, updateAccountBalanceDirect } = useClientStore()
+  const {
+    accountsSummary,
+    fetchAccountsSummary,
+    updateAccountBalanceDirect,
+    deleteAccountTransfer,
+    deleteAccountExpense,
+    deletePayment,
+  } = useClientStore()
   const [selectedAccountId, setSelectedAccountId] = useState('nilesh')
   const [entries, setEntries] = useState([])
   const [loadingEntries, setLoadingEntries] = useState(true)
   const [filterType, setFilterType] = useState('all') // 'all', 'collection', 'expense', 'transfer'
   const [handoverModalOpen, setHandoverModalOpen] = useState(false)
   const [handoverSource, setHandoverSource] = useState('nilesh')
+  const [editingEntry, setEditingEntry] = useState(null)
 
   useEffect(() => {
     const unsub = fetchAccountsSummary()
@@ -38,136 +49,158 @@ export default function AccountsDashboard() {
   const currentBalance = Number(accountsSummary?.[selectedAccountId] || 0)
 
   // Fetch statement entries for selected account
-  useEffect(() => {
-    let isMounted = true
+  const fetchLedger = useCallback(async () => {
     setLoadingEntries(true)
+    try {
+      const paymentsQ = query(
+        collection(db, 'payments'),
+        where('accountId', '==', selectedAccountId),
+        limit(80),
+      )
 
-    const fetchLedger = async () => {
-      try {
-        const paymentsQ = query(
-          collection(db, 'payments'),
-          where('accountId', '==', selectedAccountId),
-          limit(80),
-        )
+      const expensesQ = query(
+        collection(db, 'expenses'),
+        where('accountId', '==', selectedAccountId),
+        limit(80),
+      )
 
-        const expensesQ = query(
-          collection(db, 'expenses'),
-          where('accountId', '==', selectedAccountId),
-          limit(80),
-        )
+      const transfersOutQ = query(
+        collection(db, 'account_transfers'),
+        where('fromAccountId', '==', selectedAccountId),
+        limit(80),
+      )
 
-        const transfersOutQ = query(
-          collection(db, 'account_transfers'),
-          where('fromAccountId', '==', selectedAccountId),
-          limit(80),
-        )
+      const transfersInQ = query(
+        collection(db, 'account_transfers'),
+        where('toAccountId', '==', selectedAccountId),
+        limit(80),
+      )
 
-        const transfersInQ = query(
-          collection(db, 'account_transfers'),
-          where('toAccountId', '==', selectedAccountId),
-          limit(80),
-        )
+      const [paySnap, expSnap, trOutSnap, trInSnap] = await Promise.all([
+        getDocs(paymentsQ),
+        getDocs(expensesQ),
+        getDocs(transfersOutQ),
+        getDocs(transfersInQ),
+      ])
 
-        const [paySnap, expSnap, trOutSnap, trInSnap] = await Promise.all([
-          getDocs(paymentsQ),
-          getDocs(expensesQ),
-          getDocs(transfersOutQ),
-          getDocs(transfersInQ),
-        ])
+      const combined = []
 
-        if (!isMounted) return
-
-        const combined = []
-
-        // Collections
-        paySnap.docs.forEach((docSnap) => {
-          const d = docSnap.data()
-          const amt = Number(d.amount) || 0
-          const rawDate = d.date || d.paymentDate || d.createdAt
-          const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
-          combined.push({
-            id: 'pay_' + docSnap.id,
-            type: 'collection',
-            direction: 'in',
-            title: d.clientName || 'Payment',
-            note: d.note || d.narration || '',
-            amount: amt,
-            timestamp: timestamp || Date.now(),
-            date: rawDate,
-          })
+      // Collections
+      paySnap.docs.forEach((docSnap) => {
+        const d = docSnap.data()
+        const amt = Number(d.amount) || 0
+        const rawDate = d.date || d.paymentDate || d.createdAt
+        const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
+        combined.push({
+          id: 'pay_' + docSnap.id,
+          rawId: docSnap.id,
+          rawDoc: d,
+          type: 'collection',
+          direction: 'in',
+          title: d.clientName || 'Payment',
+          note: d.note || d.narration || '',
+          amount: amt,
+          timestamp: timestamp || Date.now(),
+          date: rawDate,
         })
+      })
 
-        // Expenses
-        expSnap.docs.forEach((docSnap) => {
-          const d = docSnap.data()
-          const amt = Number(d.amount) || 0
-          const rawDate = d.date || d.createdAt
-          const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
-          combined.push({
-            id: 'exp_' + docSnap.id,
-            type: 'expense',
-            direction: 'out',
-            title: d.category || 'Expense',
-            note: d.note || '',
-            amount: amt,
-            timestamp: timestamp || Date.now(),
-            date: rawDate,
-          })
+      // Expenses
+      expSnap.docs.forEach((docSnap) => {
+        const d = docSnap.data()
+        const amt = Number(d.amount) || 0
+        const rawDate = d.date || d.createdAt
+        const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
+        combined.push({
+          id: 'exp_' + docSnap.id,
+          rawId: docSnap.id,
+          rawDoc: d,
+          type: 'expense',
+          direction: 'out',
+          title: d.category || 'Expense',
+          note: d.note || '',
+          amount: amt,
+          timestamp: timestamp || Date.now(),
+          date: rawDate,
         })
+      })
 
-        // Transfers OUT (Handover to Counter/Bank)
-        trOutSnap.docs.forEach((docSnap) => {
-          const d = docSnap.data()
-          const amt = Number(d.amount) || 0
-          const targetMeta = getAccountMeta(d.toAccountId)
-          const rawDate = d.date || d.createdAt
-          const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
-          combined.push({
-            id: 'tr_out_' + docSnap.id,
-            type: 'transfer',
-            direction: 'out',
-            title: `To ${targetMeta.shortLabel}`,
-            note: d.notes || '',
-            amount: amt,
-            timestamp: timestamp || Date.now(),
-            date: rawDate,
-          })
+      // Transfers OUT (Handover to Counter/Bank)
+      trOutSnap.docs.forEach((docSnap) => {
+        const d = docSnap.data()
+        const amt = Number(d.amount) || 0
+        const targetMeta = getAccountMeta(d.toAccountId)
+        const rawDate = d.date || d.createdAt
+        const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
+        combined.push({
+          id: 'tr_out_' + docSnap.id,
+          rawId: docSnap.id,
+          rawDoc: d,
+          type: 'transfer',
+          direction: 'out',
+          title: `To ${targetMeta.shortLabel}`,
+          note: d.notes || '',
+          amount: amt,
+          timestamp: timestamp || Date.now(),
+          date: rawDate,
         })
+      })
 
-        // Transfers IN (Received from other account)
-        trInSnap.docs.forEach((docSnap) => {
-          const d = docSnap.data()
-          const amt = Number(d.amount) || 0
-          const sourceMeta = getAccountMeta(d.fromAccountId)
-          const rawDate = d.date || d.createdAt
-          const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
-          combined.push({
-            id: 'tr_in_' + docSnap.id,
-            type: 'transfer',
-            direction: 'in',
-            title: `From ${sourceMeta.shortLabel}`,
-            note: d.notes || '',
-            amount: amt,
-            timestamp: timestamp || Date.now(),
-            date: rawDate,
-          })
+      // Transfers IN (Received from other account)
+      trInSnap.docs.forEach((docSnap) => {
+        const d = docSnap.data()
+        const amt = Number(d.amount) || 0
+        const sourceMeta = getAccountMeta(d.fromAccountId)
+        const rawDate = d.date || d.createdAt
+        const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
+        combined.push({
+          id: 'tr_in_' + docSnap.id,
+          rawId: docSnap.id,
+          rawDoc: d,
+          type: 'transfer',
+          direction: 'in',
+          title: `From ${sourceMeta.shortLabel}`,
+          note: d.notes || '',
+          amount: amt,
+          timestamp: timestamp || Date.now(),
+          date: rawDate,
         })
+      })
 
-        combined.sort((a, b) => b.timestamp - a.timestamp)
-        setEntries(combined)
-      } catch (err) {
-        console.error('Failed to load ledger:', err)
-      } finally {
-        if (isMounted) setLoadingEntries(false)
-      }
-    }
-
-    fetchLedger()
-
-    return () => {
-      isMounted = false
+      combined.sort((a, b) => b.timestamp - a.timestamp)
+      setEntries(combined)
+    } catch (err) {
+      console.error('Failed to load ledger:', err)
+    } finally {
+      setLoadingEntries(false)
     }
   }, [selectedAccountId])
+
+  useEffect(() => {
+    fetchLedger()
+  }, [fetchLedger])
+
+  const handleDeleteEntry = async (item) => {
+    const isOk = window.confirm(
+      `Are you sure you want to delete this ${item.type} of ₹${item.amount.toLocaleString('en-IN')}?\nBalances will be updated automatically.`
+    )
+    if (!isOk) return
+
+    try {
+      if (item.type === 'transfer') {
+        await deleteAccountTransfer(item.rawId)
+      } else if (item.type === 'expense') {
+        await deleteAccountExpense(item.rawId)
+      } else if (item.type === 'collection') {
+        await deletePayment(item.rawId)
+      }
+      toast.success('Entry deleted and balances adjusted')
+      fetchLedger()
+    } catch (err) {
+      console.error('Delete failed:', err)
+      toast.error('Failed to delete: ' + err.message)
+    }
+  }
 
   const filteredEntries = useMemo(() => {
     if (filterType === 'all') return entries
@@ -416,21 +449,42 @@ export default function AccountsDashboard() {
                     </span>
                   </div>
 
-                  <div className="text-right shrink-0">
-                    <span
-                      className={`font-black text-xs block ${
-                        isPositive ? 'text-emerald-600' : 'text-red-500'
-                      }`}
-                    >
-                      {isPositive ? '+' : '-'}₹{item.amount.toLocaleString('en-IN')}
-                    </span>
-                    <span className="text-[8px] font-black uppercase text-gray-400">
-                      {item.type === 'collection'
-                        ? 'Inward'
-                        : item.type === 'expense'
-                        ? 'Expense'
-                        : 'Transfer'}
-                    </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-right">
+                      <span
+                        className={`font-black text-xs block ${
+                          isPositive ? 'text-emerald-600' : 'text-red-500'
+                        }`}
+                      >
+                        {isPositive ? '+' : '-'}₹{item.amount.toLocaleString('en-IN')}
+                      </span>
+                      <span className="text-[8px] font-black uppercase text-gray-400">
+                        {item.type === 'collection'
+                          ? 'Inward'
+                          : item.type === 'expense'
+                          ? 'Expense'
+                          : 'Transfer'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1 border-l border-gray-100 pl-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setEditingEntry(item)}
+                        className="p-1 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
+                        title="Edit Entry"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteEntry(item)}
+                        className="p-1 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                        title="Delete Entry"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )
@@ -442,9 +496,22 @@ export default function AccountsDashboard() {
       {/* Cash Handover Modal */}
       <CashHandoverModal
         isOpen={handoverModalOpen}
-        onClose={() => setHandoverModalOpen(false)}
+        onClose={() => {
+          setHandoverModalOpen(false)
+          fetchLedger()
+        }}
         initialSource={handoverSource}
         accountsSummary={accountsSummary}
+      />
+
+      {/* Edit Account Entry Modal */}
+      <EditAccountEntryModal
+        isOpen={Boolean(editingEntry)}
+        onClose={() => setEditingEntry(null)}
+        entry={editingEntry}
+        onSaveSuccess={() => {
+          fetchLedger()
+        }}
       />
     </div>
   )

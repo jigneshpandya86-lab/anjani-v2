@@ -489,6 +489,221 @@ export const useClientStore = create((set, get) => ({
     )
   },
 
+  deleteAccountTransfer: async (transferId) => {
+    const ref = doc(db, 'account_transfers', transferId)
+    const snap = await getDoc(ref)
+    if (!snap.exists()) return
+
+    const data = snap.data()
+    const amount = Number(data.amount) || 0
+    const fromAcc = data.fromAccountId
+    const toAcc = data.toAccountId
+
+    if (amount > 0 && fromAcc && toAcc) {
+      await setDoc(
+        ACCOUNTS_SUMMARY_DOC,
+        {
+          balances: {
+            [fromAcc]: increment(amount),
+            [toAcc]: increment(-amount),
+          },
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      )
+    }
+
+    await deleteDoc(ref)
+  },
+
+  updateAccountTransfer: async (
+    transferId,
+    { fromAccountId, toAccountId, amount, notes, date },
+  ) => {
+    const ref = doc(db, 'account_transfers', transferId)
+    const snap = await getDoc(ref)
+    if (!snap.exists()) throw new Error('Transfer record not found')
+
+    const oldData = snap.data()
+    const oldAmount = Number(oldData.amount) || 0
+    const oldFrom = oldData.fromAccountId
+    const oldTo = oldData.toAccountId
+
+    const newAmount = Number(amount)
+    const newFrom = fromAccountId || oldFrom
+    const newTo = toAccountId || oldTo
+
+    if (!newAmount || newAmount <= 0) throw new Error('Invalid transfer amount')
+    if (newFrom === newTo) throw new Error('Source and destination accounts must be different')
+
+    const deltas = {}
+    if (oldFrom) deltas[oldFrom] = (deltas[oldFrom] || 0) + oldAmount
+    if (oldTo) deltas[oldTo] = (deltas[oldTo] || 0) - oldAmount
+    deltas[newFrom] = (deltas[newFrom] || 0) - newAmount
+    deltas[newTo] = (deltas[newTo] || 0) + newAmount
+
+    const firestoreIncrements = {}
+    for (const [acc, delta] of Object.entries(deltas)) {
+      if (delta !== 0) {
+        firestoreIncrements[acc] = increment(delta)
+      }
+    }
+
+    if (Object.keys(firestoreIncrements).length > 0) {
+      await setDoc(
+        ACCOUNTS_SUMMARY_DOC,
+        {
+          balances: firestoreIncrements,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      )
+    }
+
+    const payload = {
+      fromAccountId: newFrom,
+      toAccountId: newTo,
+      amount: newAmount,
+      notes: notes ? notes.trim() : '',
+      updatedAt: serverTimestamp(),
+    }
+    if (date) {
+      payload.date = Timestamp.fromDate(new Date(date))
+    }
+
+    await updateDoc(ref, payload)
+  },
+
+  deleteAccountExpense: async (expenseId) => {
+    const ref = doc(db, 'expenses', expenseId)
+    const snap = await getDoc(ref)
+    if (!snap.exists()) return
+
+    const data = snap.data()
+    const amount = Number(data.amount) || 0
+    const accId = data.accountId || 'counter'
+
+    if (amount > 0 && accId) {
+      await get().recordExpenseAccountCredit(accId, amount)
+    }
+
+    await deleteDoc(ref)
+  },
+
+  updateAccountExpense: async (
+    expenseId,
+    { accountId, amount, category, note, date },
+  ) => {
+    const ref = doc(db, 'expenses', expenseId)
+    const snap = await getDoc(ref)
+    if (!snap.exists()) throw new Error('Expense record not found')
+
+    const oldData = snap.data()
+    const oldAmount = Number(oldData.amount) || 0
+    const oldAcc = oldData.accountId || 'counter'
+
+    const newAmount = Number(amount)
+    const newAcc = accountId || oldAcc
+
+    if (!newAmount || newAmount <= 0) throw new Error('Invalid expense amount')
+
+    const deltas = {}
+    deltas[oldAcc] = (deltas[oldAcc] || 0) + oldAmount
+    deltas[newAcc] = (deltas[newAcc] || 0) - newAmount
+
+    const firestoreIncrements = {}
+    for (const [acc, delta] of Object.entries(deltas)) {
+      if (delta !== 0) {
+        firestoreIncrements[acc] = increment(delta)
+      }
+    }
+
+    if (Object.keys(firestoreIncrements).length > 0) {
+      await setDoc(
+        ACCOUNTS_SUMMARY_DOC,
+        {
+          balances: firestoreIncrements,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      )
+    }
+
+    const payload = {
+      accountId: newAcc,
+      amount: newAmount,
+      category: category || oldData.category || 'General',
+      note: note ? note.trim() : '',
+      updatedAt: serverTimestamp(),
+    }
+    if (date) {
+      payload.date = Timestamp.fromDate(new Date(date))
+    }
+
+    await updateDoc(ref, payload)
+  },
+
+  updatePaymentAccountEntry: async (
+    paymentId,
+    { amount, note, date, accountId },
+  ) => {
+    const ref = doc(db, 'payments', paymentId)
+    const snap = await getDoc(ref)
+    if (!snap.exists()) throw new Error('Payment record not found')
+
+    const oldData = snap.data()
+    const oldAmount = Number(oldData.amount) || 0
+    const oldAcc =
+      oldData.accountId ||
+      (oldData.method === 'upi' || oldData.method === 'online' ? 'bank' : 'counter')
+
+    const newAmount = Number(amount)
+    const newAcc = accountId || oldAcc
+
+    if (!newAmount || newAmount <= 0) throw new Error('Invalid payment amount')
+
+    if (oldData.clientId && oldData.type === 'payment') {
+      const diff = newAmount - oldAmount
+      if (diff !== 0) {
+        await updateDoc(doc(db, 'customers', oldData.clientId), {
+          outstanding: increment(-diff),
+        })
+      }
+    }
+
+    const deltas = {}
+    deltas[oldAcc] = (deltas[oldAcc] || 0) - oldAmount
+    deltas[newAcc] = (deltas[newAcc] || 0) + newAmount
+
+    const firestoreIncrements = {}
+    for (const [acc, delta] of Object.entries(deltas)) {
+      if (delta !== 0) firestoreIncrements[acc] = increment(delta)
+    }
+
+    if (Object.keys(firestoreIncrements).length > 0) {
+      await setDoc(
+        ACCOUNTS_SUMMARY_DOC,
+        {
+          balances: firestoreIncrements,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      )
+    }
+
+    const payload = {
+      amount: newAmount,
+      accountId: newAcc,
+      note: note ? note.trim() : oldData.note || '',
+      updatedAt: serverTimestamp(),
+    }
+    if (date) {
+      payload.date = Timestamp.fromDate(new Date(date))
+    }
+
+    await updateDoc(ref, payload)
+  },
+
   addStockManual: async (qty, narration, sku = 'Anjani 200ml') => {
     const parsedQty = Number(qty) || 0
     const meta = getSkuMeta(sku || 'Anjani 200ml')

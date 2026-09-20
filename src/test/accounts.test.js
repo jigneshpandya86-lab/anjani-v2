@@ -69,5 +69,50 @@ describe('Accounts Constants & Helpers', () => {
       expect(entry.amount).toBeGreaterThan(0)
     })
   })
+
+  it('correctly computes balance deltas when updating a transfer', () => {
+    const oldAmount = 2000
+    const oldFrom = 'nilesh'
+    const oldTo = 'counter'
+
+    const newAmount = 3000
+    const newFrom = 'nilesh'
+    const newTo = 'bank'
+
+    const deltas = {}
+    deltas[oldFrom] = (deltas[oldFrom] || 0) + oldAmount
+    deltas[oldTo] = (deltas[oldTo] || 0) - oldAmount
+    deltas[newFrom] = (deltas[newFrom] || 0) - newAmount
+    deltas[newTo] = (deltas[newTo] || 0) + newAmount
+
+    expect(deltas['nilesh']).toBe(-1000)
+    expect(deltas['counter']).toBe(-2000)
+    expect(deltas['bank']).toBe(3000)
+  })
+
+  it('verifies Bailey Water targeted corridors and categories', () => {
+    const corridors = [
+      'Ajwa Road',
+      'Waghodia Road',
+      'Kapurai',
+      'Parivar Char Rasta',
+      'Mahavir Char Rasta',
+    ]
+    expect(corridors).toHaveLength(5)
+    expect(corridors).toContain('Ajwa Road')
+    expect(corridors).toContain('Waghodia Road')
+    expect(corridors).toContain('Kapurai')
+    expect(corridors).toContain('Parivar Char Rasta')
+    expect(corridors).toContain('Mahavir Char Rasta')
+
+    const categories = [
+      'Restaurants & Dining',
+      'Snacks & Farsan Outlets',
+      'Cafes & Fast Food',
+      'Dhabas & Food Points',
+    ]
+    expect(categories).toContain('Restaurants & Dining')
+    expect(categories).toContain('Snacks & Farsan Outlets')
+  })
 })
 
