@@ -36,7 +36,7 @@ describe('SmartBaileyOrderModal', () => {
   it('renders modal dialog and all 4 Bailey SKUs when isOpen is true', () => {
     render(<SmartBaileyOrderModal isOpen={true} onClose={() => {}} />)
 
-    expect(screen.getByText(/Bailey Water Replenishment Order/i)).toBeInTheDocument()
+    expect(screen.getByText(/Order Bailey Water/i)).toBeInTheDocument()
     expect(screen.getByText('Bailey 250ml')).toBeInTheDocument()
     expect(screen.getByText('Bailey 500ml')).toBeInTheDocument()
     expect(screen.getByText('Bailey 1 Liter')).toBeInTheDocument()
@@ -48,19 +48,19 @@ describe('SmartBaileyOrderModal', () => {
 
     const sevenDaysBtn = screen.getByRole('button', { name: 'Consumption window 7 days' })
     fireEvent.click(sevenDaysBtn)
-    expect(sevenDaysBtn).toHaveClass('bg-[#064e3b]')
+    expect(sevenDaysBtn).toHaveClass('bg-white')
 
     const tenDaysBuffer = screen.getByRole('button', { name: 'Safety buffer 10 days' })
     fireEvent.click(tenDaysBuffer)
-    expect(tenDaysBuffer).toHaveClass('bg-emerald-600')
+    expect(tenDaysBuffer).toHaveClass('bg-[#131921]')
   })
 
   it('renders action buttons for WhatsApp, Inward, Print, and Copy', () => {
     render(<SmartBaileyOrderModal isOpen={true} onClose={() => {}} />)
 
-    expect(screen.getByRole('button', { name: /Print PO/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Print/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Copy/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Record Inward/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Send PO/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Inward Stock/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /WhatsApp PO/i })).toBeInTheDocument()
   })
 })

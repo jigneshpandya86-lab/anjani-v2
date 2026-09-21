@@ -237,10 +237,10 @@ export default function StockDashboard({ onOpenReport, onOpenBaileyOrder }) {
               <button
                 type="button"
                 onClick={onOpenBaileyOrder}
-                className="px-2.5 py-1.5 rounded-xl bg-emerald-500/25 hover:bg-emerald-500/35 border border-emerald-400/40 text-emerald-200 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                className="flex items-center gap-1 text-[9px] bg-white/15 hover:bg-white/25 text-[#ff9900] px-2.5 py-1 rounded-lg font-extrabold uppercase tracking-wider transition-all backdrop-blur-sm cursor-pointer shadow-2xs shrink-0"
                 title="Smart Bailey Water Replenishment Order based on consumption"
               >
-                <Droplets size={12} className="text-cyan-300" />
+                <Droplets size={11} className="text-[#ff9900]" />
                 <span>Order Bailey</span>
               </button>
             )}
@@ -287,10 +287,10 @@ export default function StockDashboard({ onOpenReport, onOpenBaileyOrder }) {
                   <button
                     type="button"
                     onClick={onOpenBaileyOrder}
-                    className="text-[9px] font-black uppercase tracking-wide bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 px-2 py-0.5 rounded-full flex items-center gap-1 transition-all cursor-pointer"
+                    className="text-[9px] font-black uppercase tracking-wide bg-white/15 hover:bg-white/25 text-[#ff9900] px-2 py-0.5 rounded-full flex items-center gap-1 transition-all cursor-pointer backdrop-blur-sm"
                     title="Calculate consumption pattern and create Bailey replenishment order"
                   >
-                    <Droplets size={9} className="text-cyan-300" />
+                    <Droplets size={9} className="text-[#ff9900]" />
                     <span>Order Bailey</span>
                   </button>
                 )}
