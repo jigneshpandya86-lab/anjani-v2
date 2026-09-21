@@ -1,7 +1,7 @@
 import React from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import SmartBaileyOrderModal from '../components/SmartBaileyOrderModal'
+import BaileyOrderPage from '../components/BaileyOrderPage'
 
 // Mock useClientStore
 vi.mock('../store/clientStore', () => ({
@@ -27,16 +27,11 @@ vi.mock('../store/clientStore', () => ({
   }),
 }))
 
-describe('SmartBaileyOrderModal', () => {
-  it('does not render when isOpen is false', () => {
-    const { container } = render(<SmartBaileyOrderModal isOpen={false} onClose={() => {}} />)
-    expect(container.firstChild).toBeNull()
-  })
+describe('BaileyOrderPage', () => {
+  it('renders page header, hero banner and all 4 Bailey SKUs', () => {
+    render(<BaileyOrderPage onBack={() => {}} />)
 
-  it('renders modal dialog and all 4 Bailey SKUs when isOpen is true', () => {
-    render(<SmartBaileyOrderModal isOpen={true} onClose={() => {}} />)
-
-    expect(screen.getByText(/Order Bailey Water/i)).toBeInTheDocument()
+    expect(screen.getByText(/Bailey Replenishment Engine/i)).toBeInTheDocument()
     expect(screen.getByText('Bailey 250ml')).toBeInTheDocument()
     expect(screen.getByText('Bailey 500ml')).toBeInTheDocument()
     expect(screen.getByText('Bailey 1 Liter')).toBeInTheDocument()
@@ -44,23 +39,32 @@ describe('SmartBaileyOrderModal', () => {
   })
 
   it('allows changing buffer days and switches window chips', () => {
-    render(<SmartBaileyOrderModal isOpen={true} onClose={() => {}} />)
+    render(<BaileyOrderPage onBack={() => {}} />)
 
     const sevenDaysBtn = screen.getByRole('button', { name: 'Consumption window 7 days' })
     fireEvent.click(sevenDaysBtn)
-    expect(sevenDaysBtn).toHaveClass('bg-white')
+    expect(sevenDaysBtn).toHaveClass('bg-[#131921]')
 
     const tenDaysBuffer = screen.getByRole('button', { name: 'Safety buffer 10 days' })
     fireEvent.click(tenDaysBuffer)
-    expect(tenDaysBuffer).toHaveClass('bg-[#131921]')
+    expect(tenDaysBuffer).toHaveClass('bg-[#ff9900]')
   })
 
   it('renders action buttons for WhatsApp, Inward, Print, and Copy', () => {
-    render(<SmartBaileyOrderModal isOpen={true} onClose={() => {}} />)
+    render(<BaileyOrderPage onBack={() => {}} />)
 
-    expect(screen.getByRole('button', { name: /Print/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Copy/i })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Print/i })[0]).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Copy/i })[0]).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Inward Stock/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /WhatsApp PO/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Send PO/i })).toBeInTheDocument()
+  })
+
+  it('calls onBack when back button is clicked', () => {
+    const onBackMock = vi.fn()
+    render(<BaileyOrderPage onBack={onBackMock} />)
+
+    const backBtn = screen.getByRole('button', { name: /Back/i })
+    fireEvent.click(backBtn)
+    expect(onBackMock).toHaveBeenCalledTimes(1)
   })
 })
