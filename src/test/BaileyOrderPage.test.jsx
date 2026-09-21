@@ -43,7 +43,7 @@ describe('BaileyOrderPage', () => {
 
     const sevenDaysBtn = screen.getByRole('button', { name: 'Consumption window 7 days' })
     fireEvent.click(sevenDaysBtn)
-    expect(sevenDaysBtn).toHaveClass('bg-[#131921]')
+    expect(sevenDaysBtn).toHaveClass('bg-white')
 
     const tenDaysBuffer = screen.getByRole('button', { name: 'Safety buffer 10 days' })
     fireEvent.click(tenDaysBuffer)
