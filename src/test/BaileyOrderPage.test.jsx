@@ -31,7 +31,7 @@ describe('BaileyOrderPage', () => {
   it('renders page header, hero banner and all 4 Bailey SKUs', () => {
     render(<BaileyOrderPage onBack={() => {}} />)
 
-    expect(screen.getByText(/Bailey Replenishment Engine/i)).toBeInTheDocument()
+    expect(screen.getByText(/Bailey Order/i)).toBeInTheDocument()
     expect(screen.getByText('Bailey 250ml')).toBeInTheDocument()
     expect(screen.getByText('Bailey 500ml')).toBeInTheDocument()
     expect(screen.getByText('Bailey 1 Liter')).toBeInTheDocument()
@@ -45,6 +45,9 @@ describe('BaileyOrderPage', () => {
     fireEvent.click(sevenDaysBtn)
     expect(sevenDaysBtn).toHaveClass('bg-white')
 
+    const settingsBtn = screen.getByRole('button', { name: /Supplier settings/i })
+    fireEvent.click(settingsBtn)
+
     const tenDaysBuffer = screen.getByRole('button', { name: 'Safety buffer 10 days' })
     fireEvent.click(tenDaysBuffer)
     expect(tenDaysBuffer).toHaveClass('bg-[#ff9900]')
@@ -55,7 +58,7 @@ describe('BaileyOrderPage', () => {
 
     expect(screen.getAllByRole('button', { name: /Print/i })[0]).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /Copy/i })[0]).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Inward Stock/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Inward/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Send PO/i })).toBeInTheDocument()
   })
 

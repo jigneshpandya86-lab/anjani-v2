@@ -299,9 +299,6 @@ export default function OrderModal({ orderToEdit, onClose }) {
         <h2 className="text-xl font-black uppercase text-gray-800 tracking-tight">
           {orderToEdit?.id ? 'Edit Order' : 'New Order'}
         </h2>
-        <p className="text-xs text-gray-500 font-semibold mt-0.5">
-          {items.length > 1 ? `${items.length} SKUs in Order` : items[0]?.sku || DEFAULT_SKU}
-        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -333,7 +330,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
         <div className="space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
-              Order Line Items (SKUs)
+              Items
             </span>
             <button
               type="button"
@@ -341,7 +338,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
               className="inline-flex items-center gap-1 text-xs font-bold text-gray-800 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
             >
               <Plus size={13} className="text-amber-600" />
-              <span>Add SKU Item</span>
+              <span>Add Item</span>
             </button>
           </div>
 
@@ -537,7 +534,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
             htmlFor="location-input"
             className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1"
           >
-            Actual Location (Type & Select)
+            Location
           </label>
           <div className="mt-1 mb-2">
             <GoogleMapPicker initialAddress={formData.location} onChange={handleLocationChange} />
@@ -545,7 +542,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
           <input
             id="location-input"
             type="text"
-            placeholder="Resolved location / place"
+            placeholder="Delivery location / landmark"
             maxLength={150}
             className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm"
             value={formData.location}

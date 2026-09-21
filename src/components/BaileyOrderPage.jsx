@@ -268,20 +268,17 @@ export default function BaileyOrderPage({ onBack }) {
             <div className="flex items-center gap-1.5">
               <Droplets size={16} className="text-[#ff9900]" />
               <h1 className="text-sm sm:text-base font-black tracking-tight">
-                Bailey Replenishment Engine
+                Bailey Order
               </h1>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] font-black uppercase tracking-wider bg-white/15 px-2 py-0.5 rounded-md text-white/80">
-              {poNumber.slice(-8)}
-            </span>
             <button
               type="button"
               onClick={() => setShowSettingsModal(true)}
               className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer"
-              title="Supplier & Consignment Settings"
+              title="Supplier & Buffer Settings"
               aria-label="Supplier settings"
             >
               <Settings2 size={14} />
@@ -289,9 +286,9 @@ export default function BaileyOrderPage({ onBack }) {
           </div>
         </div>
 
-        {/* Row 2: Micro KPIs & Selectors */}
+        {/* Row 2: Micro KPIs & Window */}
         <div className="relative mt-2.5 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/15">
-          {/* 3 Metrics */}
+          {/* Metrics */}
           <div className="flex items-center gap-3 text-xs">
             <div>
               <span className="text-[9px] font-bold uppercase text-white/60 block leading-none">Stock</span>
@@ -306,69 +303,30 @@ export default function BaileyOrderPage({ onBack }) {
             </div>
             <div className="h-6 w-px bg-white/15" />
             <div>
-              <span className="text-[9px] font-bold uppercase text-[#ff9900] block leading-none">PO Reorder</span>
+              <span className="text-[9px] font-bold uppercase text-[#ff9900] block leading-none">Order</span>
               <span className="font-black text-[#ff9900] text-sm sm:text-base">{totalOrderCases}</span>
               <span className="text-[9px] text-orange-200 ml-0.5">Cs</span>
             </div>
           </div>
 
-          {/* Micro Toggle Controls */}
-          <div className="flex items-center gap-2">
-            {/* History Window */}
-            <div className="flex items-center bg-white/10 p-0.5 rounded-lg text-[10px] font-bold">
-              {[7, 14, 30].map((days) => (
-                <button
-                  key={days}
-                  type="button"
-                  aria-label={`Consumption window ${days} days`}
-                  onClick={() => setDaysWindow(days)}
-                  className={`px-1.5 py-0.5 rounded transition-all cursor-pointer ${
-                    daysWindow === days ? 'bg-white text-[#131921] font-black' : 'text-white/60 hover:text-white'
-                  }`}
-                >
-                  {days}d
-                </button>
-              ))}
-            </div>
-
-            {/* Target Buffer */}
-            <div className="flex items-center bg-white/10 p-0.5 rounded-lg text-[10px] font-bold">
-              {[7, 10, 14, 21].map((days) => (
-                <button
-                  key={days}
-                  type="button"
-                  aria-label={`Safety buffer ${days} days`}
-                  onClick={() => setTargetBufferDays(days)}
-                  className={`px-1.5 py-0.5 rounded transition-all cursor-pointer ${
-                    targetBufferDays === days ? 'bg-[#ff9900] text-white font-black' : 'text-white/60 hover:text-white'
-                  }`}
-                >
-                  {days}b
-                </button>
-              ))}
-            </div>
+          {/* History Window Toggle */}
+          <div className="flex items-center bg-white/10 p-0.5 rounded-lg text-[10px] font-bold">
+            {[7, 14, 30].map((days) => (
+              <button
+                key={days}
+                type="button"
+                aria-label={`Consumption window ${days} days`}
+                onClick={() => setDaysWindow(days)}
+                className={`px-1.5 py-0.5 rounded transition-all cursor-pointer ${
+                  daysWindow === days ? 'bg-white text-[#131921] font-black' : 'text-white/60 hover:text-white'
+                }`}
+              >
+                {days}d
+              </button>
+            ))}
           </div>
         </div>
       </div>
-
-      {/* ─── Compact Alert Notice (Single Line if any) ─── */}
-      {criticalItems.length > 0 && (
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold shadow-2xs">
-          <AlertTriangle size={13} className="text-rose-600 shrink-0" />
-          <span className="truncate">
-            Critical Stock: {criticalItems.map((c) => c.label).join(', ')}
-          </span>
-        </div>
-      )}
-
-      {criticalItems.length === 0 && lowItems.length > 0 && (
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold shadow-2xs">
-          <TrendingDown size={13} className="text-amber-600 shrink-0" />
-          <span className="truncate">
-            Low Stock (&lt;7d): {lowItems.map((c) => c.label).join(', ')}
-          </span>
-        </div>
-      )}
 
       {/* ─── 4 Small Modern Cards (Fits on 1 Screen) ─── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -391,9 +349,6 @@ export default function BaileyOrderPage({ onBack }) {
                 <div>
                   <p className="font-black text-xs text-gray-900 leading-tight truncate">
                     {item.label}
-                  </p>
-                  <p className="text-[10px] text-gray-400 font-bold">
-                    {item.size}
                   </p>
                 </div>
 
@@ -464,9 +419,6 @@ export default function BaileyOrderPage({ onBack }) {
                 <span title="Daily sales run-rate">
                   ⚡ <strong>{item.dailyRunRate}/d</strong>
                 </span>
-                <span title="Target buffer goal">
-                  🎯 <strong>{item.targetRequiredStock}</strong>
-                </span>
                 {isOverridden && (
                   <button
                     type="button"
@@ -488,10 +440,10 @@ export default function BaileyOrderPage({ onBack }) {
         <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5">
           {/* Total Cases */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total PO:</span>
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total:</span>
             <span className="text-base sm:text-lg font-black text-gray-900 leading-none">
               {totalOrderCases}{' '}
-              <span className="text-xs font-bold text-[#ff9900]">Cases</span>
+              <span className="text-xs font-bold text-[#ff9900]">Cs</span>
             </span>
           </div>
 
@@ -525,7 +477,7 @@ export default function BaileyOrderPage({ onBack }) {
               title="Inward to Stock"
             >
               <Truck size={14} />
-              <span>Inward Stock</span>
+              <span>Inward</span>
             </button>
 
             <button
@@ -590,6 +542,29 @@ export default function BaileyOrderPage({ onBack }) {
                   className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs font-bold outline-none focus:border-[#ff9900]"
                   placeholder="99259XXXXX"
                 />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
+                  Safety Buffer (Days)
+                </label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[7, 10, 14, 21].map((days) => (
+                    <button
+                      key={days}
+                      type="button"
+                      aria-label={`Safety buffer ${days} days`}
+                      onClick={() => setTargetBufferDays(days)}
+                      className={`py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                        targetBufferDays === days
+                          ? 'bg-[#ff9900] text-white border-[#ff9900]'
+                          : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                      }`}
+                    >
+                      {days}d
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div>
