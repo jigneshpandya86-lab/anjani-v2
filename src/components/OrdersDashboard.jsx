@@ -18,12 +18,13 @@ import {
   Phone,
   MapPin,
   Navigation,
+  Droplets,
 } from 'lucide-react'
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage'
 import { app } from '../firebase-config'
 import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 
-function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
+function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOpenBaileyOrder }) {
   const orders = useClientStore((state) => state.orders)
   const clients = useClientStore((state) => state.clients)
   const updateOrder = useClientStore((state) => state.updateOrder)
@@ -414,6 +415,17 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
         >
           <Smartphone size={12} /> Roster
         </button>
+
+        {onOpenBaileyOrder && (
+          <button
+            type="button"
+            onClick={onOpenBaileyOrder}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider whitespace-nowrap flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
+            title="Create Bailey replenishment order based on consumption & stock"
+          >
+            <Droplets size={12} /> Bailey Order
+          </button>
+        )}
       </div>
 
       {/* SKU Filter Bar */}

@@ -14,11 +14,12 @@ import {
   ChevronDown,
   ChevronUp,
   LayoutGrid,
+  Droplets,
 } from 'lucide-react'
 import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 import AddStockModal from './AddStockModal'
 
-export default function StockDashboard({ onOpenReport }) {
+export default function StockDashboard({ onOpenReport, onOpenBaileyOrder }) {
   const {
     stockEntries,
     stockTotal,
@@ -232,6 +233,17 @@ export default function StockDashboard({ onOpenReport }) {
             </p>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
+            {onOpenBaileyOrder && (
+              <button
+                type="button"
+                onClick={onOpenBaileyOrder}
+                className="px-2.5 py-1.5 rounded-xl bg-emerald-500/25 hover:bg-emerald-500/35 border border-emerald-400/40 text-emerald-200 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                title="Smart Bailey Water Replenishment Order based on consumption"
+              >
+                <Droplets size={12} className="text-cyan-300" />
+                <span>Order Bailey</span>
+              </button>
+            )}
             <button
               onClick={handleRecalculate}
               disabled={isSyncing || loading}
@@ -270,7 +282,20 @@ export default function StockDashboard({ onOpenReport }) {
                 <LayoutGrid size={11} className="text-[#ff9900]" />
                 SKU-Wise Live Breakdown
               </span>
-              <span className="text-[9px] text-white/60">Tap card to filter ledger</span>
+              <div className="flex items-center gap-2">
+                {onOpenBaileyOrder && (
+                  <button
+                    type="button"
+                    onClick={onOpenBaileyOrder}
+                    className="text-[9px] font-black uppercase tracking-wide bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 px-2 py-0.5 rounded-full flex items-center gap-1 transition-all cursor-pointer"
+                    title="Calculate consumption pattern and create Bailey replenishment order"
+                  >
+                    <Droplets size={9} className="text-cyan-300" />
+                    <span>Order Bailey</span>
+                  </button>
+                )}
+                <span className="text-[9px] text-white/60">Tap card to filter</span>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">

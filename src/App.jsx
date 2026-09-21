@@ -25,6 +25,7 @@ import {
   Receipt,
   Sparkles,
   Wallet,
+  Droplets,
 } from 'lucide-react'
 import {
   collection,
@@ -54,6 +55,7 @@ import IntelligenceDashboard from './components/IntelligenceDashboard'
 import CelebrationsTab from './components/CelebrationsTab'
 import ExpensesDashboard from './components/ExpensesDashboard'
 import AccountsDashboard from './components/AccountsDashboard'
+import SmartBaileyOrderModal from './components/SmartBaileyOrderModal'
 import {
   isMobileOrNative,
   shareOrDownloadPdf,
@@ -83,6 +85,7 @@ function App() {
   const [notificationReadMap, setNotificationReadMap] = useState({})
   const notificationPanelRef = useRef(null)
   const [stockModalOpen, setStockModalOpen] = useState(false)
+  const [smartBaileyOrderOpen, setSmartBaileyOrderOpen] = useState(false)
   const [stockStatementMonth, setStockStatementMonth] = useState(
     new Date().toISOString().slice(0, 7),
   )
@@ -401,6 +404,15 @@ function App() {
   ].filter(Boolean)
 
   const drawerQuickActions = [
+    {
+      id: 'quick-order-bailey',
+      label: 'Order Bailey Water',
+      icon: <Droplets size={18} />,
+      onClick: () => {
+        setSmartBaileyOrderOpen(true)
+        setDrawerOpen(false)
+      },
+    },
     {
       id: 'quick-new-order',
       label: 'New Order',
@@ -1127,9 +1139,15 @@ function App() {
               }}
               onRecordPayment={handleRecordPaymentFromOrder}
               onShareInvoice={handleOrderInvoiceWhatsApp}
+              onOpenBaileyOrder={() => setSmartBaileyOrderOpen(true)}
             />
           )}
-          {activeTab === 'stock' && <StockDashboard onOpenReport={() => setStockModalOpen(true)} />}
+          {activeTab === 'stock' && (
+            <StockDashboard
+              onOpenReport={() => setStockModalOpen(true)}
+              onOpenBaileyOrder={() => setSmartBaileyOrderOpen(true)}
+            />
+          )}
           {activeTab === 'payments' && (
             <PaymentDashboard onNavigateAccounts={() => setActiveTab('accounts')} />
           )}
@@ -1476,6 +1494,12 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Smart Bailey Replenishment Order Modal */}
+      <SmartBaileyOrderModal
+        isOpen={smartBaileyOrderOpen}
+        onClose={() => setSmartBaileyOrderOpen(false)}
+      />
 
       {/* Bottom Navigation (all screen sizes) */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-1 pb-3 flex justify-around items-center z-[999] shadow-[0_-10px_20px_rgba(0,0,0,0.08)]">
