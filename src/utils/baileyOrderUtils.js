@@ -232,15 +232,24 @@ export function generateBaileyPurchaseOrderWhatsApp({
     (sum, it) => sum + (Number(it.finalOrderQty) || 0),
     0
   )
+  const totalAmount = activeItems.reduce(
+    (sum, it) => sum + ((Number(it.finalOrderQty) || 0) * (Number(it.purchaseRate) || 0)),
+    0
+  )
 
   const itemsLines = activeItems
     .map((it) => {
       const qty = Number(it.finalOrderQty) || 0
       const unit = it.unit || 'Cases'
-      const runRate = it.dailyRunRate !== undefined ? ` (Daily: ${it.dailyRunRate}/d)` : ''
-      return `• *${it.label}*: *${qty} ${unit}*${runRate}`
+      const rate = Number(it.purchaseRate) || 0
+      const rateStr = rate > 0 ? ` @ ₹${rate} = ₹${(qty * rate).toLocaleString('en-IN')}` : ''
+      return `• *${it.label}*: *${qty} ${unit}*${rateStr}`
     })
     .join('\n')
+
+  const totalAmountStr = totalAmount > 0
+    ? `\n💰 *TOTAL ESTIMATE*: *₹${totalAmount.toLocaleString('en-IN')}*`
+    : ''
 
   return `📦 *PURCHASE ORDER: BAILEY WATER*
 ━━━━━━━━━━━━━━━━━━━━━━
@@ -254,7 +263,7 @@ export function generateBaileyPurchaseOrderWhatsApp({
 *SKU Requirements to Dispatch:*
 ${itemsLines || '• No items selected'}
 
-📦 *TOTAL CONSIGNMENT*: *${totalCases} Cases*
+📦 *TOTAL CONSIGNMENT*: *${totalCases} Cases*${totalAmountStr}
 ━━━━━━━━━━━━━━━━━━━━━━
 ${notes ? `📝 *Special Instructions*: ${notes}\n` : ''}✅ *Please confirm loading schedule and truck vehicle number.*`
 }
@@ -277,16 +286,26 @@ export function generateBaileyPurchaseOrderHtml({
     (sum, it) => sum + (Number(it.finalOrderQty) || 0),
     0
   )
+  const hasRates = activeItems.some((it) => (Number(it.purchaseRate) || 0) > 0)
+  const totalAmount = activeItems.reduce(
+    (sum, it) => sum + ((Number(it.finalOrderQty) || 0) * (Number(it.purchaseRate) || 0)),
+    0
+  )
 
   const rowsHtml = activeItems
     .map((it, idx) => {
+      const qty = Number(it.finalOrderQty) || 0
+      const rate = Number(it.purchaseRate) || 0
+      const lineTotal = qty * rate
       return `<tr>
         <td style="text-align: center;">${idx + 1}</td>
-        <td><strong>${it.label}</strong> (${it.size})</td>
+        <td><strong>${it.label}</strong></td>
         <td style="text-align: center;">${it.unit || 'Cases'}</td>
-        <td style="text-align: right;">${it.currentStock ?? '-'}</td>
-        <td style="text-align: right;">${it.dailyRunRate ? `${it.dailyRunRate}/day` : '0/day'}</td>
-        <td style="text-align: right; font-weight: bold; color: #065f46; font-size: 15px;">${it.finalOrderQty}</td>
+        <td style="text-align: right; font-weight: bold; color: #0f172a; font-size: 14px;">${qty}</td>
+        ${hasRates ? `
+        <td style="text-align: right;">${rate > 0 ? `₹${rate.toLocaleString('en-IN')}` : '-'}</td>
+        <td style="text-align: right; font-weight: bold; color: #065f46;">${lineTotal > 0 ? `₹${lineTotal.toLocaleString('en-IN')}` : '-'}</td>
+        ` : ''}
       </tr>`
     })
     .join('')
@@ -309,7 +328,7 @@ export function generateBaileyPurchaseOrderHtml({
     th { background: #0f172a; color: #ffffff; text-align: left; padding: 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
     td { border-bottom: 1px solid #e2e8f0; padding: 10px; }
     .total-row { background: #f1f5f9; font-weight: bold; font-size: 14px; }
-    .total-cell { text-align: right; font-size: 16px; color: #065f46; }
+    .total-cell { text-align: right; font-size: 15px; color: #0f172a; }
     .footer { margin-top: 30px; border-top: 1px dashed #cbd5e1; padding-top: 15px; font-size: 12px; color: #64748b; }
     @media print {
       body { margin: 10mm; }
@@ -348,17 +367,23 @@ export function generateBaileyPurchaseOrderHtml({
       <tr>
         <th style="width: 40px; text-align: center;">#</th>
         <th>Product SKU</th>
-        <th style="width: 80px; text-align: center;">Pack Unit</th>
-        <th style="width: 100px; text-align: right;">Current Stock</th>
-        <th style="width: 100px; text-align: right;">Daily Velocity</th>
-        <th style="width: 120px; text-align: right;">Order Quantity</th>
+        <th style="width: 100px; text-align: center;">Pack Unit</th>
+        <th style="width: 130px; text-align: right;">Order Quantity</th>
+        ${hasRates ? `
+        <th style="width: 110px; text-align: right;">Rate (₹)</th>
+        <th style="width: 130px; text-align: right;">Amount (₹)</th>
+        ` : ''}
       </tr>
     </thead>
     <tbody>
-      ${rowsHtml || '<tr><td colspan="6" style="text-align: center; color: #64748b;">No items ordered</td></tr>'}
+      ${rowsHtml || `<tr><td colspan="${hasRates ? 6 : 4}" style="text-align: center; color: #64748b;">No items ordered</td></tr>`}
       <tr class="total-row">
-        <td colspan="5" style="text-align: right;">TOTAL CONSIGNMENT:</td>
+        <td colspan="3" style="text-align: right;">TOTAL CONSIGNMENT:</td>
         <td class="total-cell">${totalCases} Cases</td>
+        ${hasRates ? `
+        <td></td>
+        <td style="text-align: right; font-size: 16px; color: #065f46; font-weight: 800;">₹${totalAmount.toLocaleString('en-IN')}</td>
+        ` : ''}
       </tr>
     </tbody>
   </table>

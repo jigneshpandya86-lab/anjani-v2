@@ -156,11 +156,12 @@ describe('baileyOrderUtils', () => {
     })
 
     expect(waText).toContain('PO-TEST-123')
-    expect(waText).toContain('Bailey 500ml*: *50 Cases')
-    expect(waText).toContain('Bailey 1 Liter*: *100 Cases')
+    expect(waText).toContain('• *Bailey 500ml*: *50 Cases*')
+    expect(waText).toContain('• *Bailey 1 Liter*: *100 Cases*')
     expect(waText).toContain('TOTAL CONSIGNMENT*: *150 Cases')
     expect(waText).toContain('Load in afternoon dispatch')
     expect(waText).toContain('9925997750')
+    expect(waText).not.toContain('Daily:')
 
     const html = generateBaileyPurchaseOrderHtml({
       poNumber: 'PO-TEST-123',
@@ -170,5 +171,28 @@ describe('baileyOrderUtils', () => {
     expect(html).toContain('PO-TEST-123')
     expect(html).toContain('150 Cases')
     expect(html).toContain('9925997750')
+    expect(html).not.toContain('Daily Velocity')
+    expect(html).not.toContain('Current Stock')
+
+    // Test with purchase rate
+    const itemsWithRates = [
+      { label: 'Bailey 500ml', finalOrderQty: 50, unit: 'Cases', purchaseRate: 120 },
+      { label: 'Bailey 1 Liter', finalOrderQty: 100, unit: 'Cases', purchaseRate: 150 },
+    ]
+    const waWithRates = generateBaileyPurchaseOrderWhatsApp({
+      poNumber: 'PO-TEST-456',
+      items: itemsWithRates,
+    })
+    expect(waWithRates).toContain('• *Bailey 500ml*: *50 Cases* @ ₹120 = ₹6,000')
+    expect(waWithRates).toContain('• *Bailey 1 Liter*: *100 Cases* @ ₹150 = ₹15,000')
+    expect(waWithRates).toContain('TOTAL ESTIMATE*: *₹21,000*')
+
+    const htmlWithRates = generateBaileyPurchaseOrderHtml({
+      poNumber: 'PO-TEST-456',
+      items: itemsWithRates,
+    })
+    expect(htmlWithRates).toContain('Rate (₹)')
+    expect(htmlWithRates).toContain('Amount (₹)')
+    expect(htmlWithRates).toContain('₹21,000')
   })
 })

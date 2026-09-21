@@ -54,6 +54,23 @@ export default function BaileyOrderPage({ onBack }) {
     }
   })
   const [notes, setNotes] = useState('')
+  const [purchaseRates, setPurchaseRates] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('bailey_purchase_rates')) || {
+        'Bailey 250ml': '',
+        'Bailey 500ml': '',
+        'Bailey 1 Liter': '',
+        'Bailey 2 Liter': '',
+      }
+    } catch {
+      return {
+        'Bailey 250ml': '',
+        'Bailey 500ml': '',
+        'Bailey 1 Liter': '',
+        'Bailey 2 Liter': '',
+      }
+    }
+  })
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [isInwarding, setIsInwarding] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -66,6 +83,19 @@ export default function BaileyOrderPage({ onBack }) {
     } catch {
       // ignore storage errors
     }
+  }
+
+  // Save purchase rates
+  const handleSavePurchaseRate = (skuLabel, rateVal) => {
+    setPurchaseRates((prev) => {
+      const updated = { ...prev, [skuLabel]: rateVal }
+      try {
+        localStorage.setItem('bailey_purchase_rates', JSON.stringify(updated))
+      } catch {
+        // ignore storage errors
+      }
+      return updated
+    })
   }
 
   // Calculate consumption stats based on active window
@@ -81,17 +111,25 @@ export default function BaileyOrderPage({ onBack }) {
 
   // Calculate replenishment plan based on target buffer and overrides
   const replenishmentPlan = useMemo(() => {
-    return calculateBaileyReplenishment({
+    const plan = calculateBaileyReplenishment({
       consumptionStats,
       targetBufferDays,
       userOverrides,
     })
-  }, [consumptionStats, targetBufferDays, userOverrides])
+    return plan.map((item) => ({
+      ...item,
+      purchaseRate: Number(purchaseRates[item.label]) || 0,
+    }))
+  }, [consumptionStats, targetBufferDays, userOverrides, purchaseRates])
 
   // Aggregates
   const totalCurrentStock = consumptionStats.reduce((sum, s) => sum + s.currentStock, 0)
   const totalDailyRunRate = Math.round(consumptionStats.reduce((sum, s) => sum + s.dailyRunRate, 0) * 10) / 10
   const totalOrderCases = replenishmentPlan.reduce((sum, s) => sum + s.finalOrderQty, 0)
+  const totalOrderAmount = replenishmentPlan.reduce(
+    (sum, s) => sum + s.finalOrderQty * (s.purchaseRate || 0),
+    0
+  )
   const criticalItems = consumptionStats.filter((s) => s.status.level === 'danger')
   const lowItems = consumptionStats.filter((s) => s.status.level === 'warning')
 
@@ -444,6 +482,11 @@ export default function BaileyOrderPage({ onBack }) {
             <span className="text-base sm:text-lg font-black text-gray-900 leading-none">
               {totalOrderCases}{' '}
               <span className="text-xs font-bold text-[#ff9900]">Cs</span>
+              {totalOrderAmount > 0 && (
+                <span className="text-xs font-black text-emerald-700 ml-1.5">
+                  (₹{totalOrderAmount.toLocaleString('en-IN')})
+                </span>
+              )}
             </span>
           </div>
 
@@ -542,6 +585,36 @@ export default function BaileyOrderPage({ onBack }) {
                   className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs font-bold outline-none focus:border-[#ff9900]"
                   placeholder="99259XXXXX"
                 />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
+                  Purchase Rate / Case (₹)
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {['Bailey 250ml', 'Bailey 500ml', 'Bailey 1 Liter', 'Bailey 2 Liter'].map((label) => (
+                    <div
+                      key={label}
+                      className="flex items-center justify-between gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5"
+                    >
+                      <span className="text-[11px] font-bold text-gray-700 truncate">
+                        {label.replace('Bailey ', '')}
+                      </span>
+                      <div className="flex items-center gap-0.5">
+                        <span className="text-[11px] text-gray-400 font-bold">₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={purchaseRates[label] ?? ''}
+                          onChange={(e) => handleSavePurchaseRate(label, e.target.value)}
+                          placeholder="0"
+                          className="w-14 text-right text-xs font-bold bg-white border border-gray-300 rounded px-1.5 py-0.5 outline-none focus:border-[#ff9900]"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div>

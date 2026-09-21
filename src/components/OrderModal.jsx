@@ -344,18 +344,17 @@ export default function OrderModal({ orderToEdit, onClose }) {
 
           <div className="space-y-2">
             {items.map((item, idx) => {
-              const meta = getSkuMeta(item.sku)
               const lineTotal = (Number(item.qty) || 0) * (Number(item.rate) || 0)
               return (
                 <div
                   key={idx}
                   className="p-3 bg-gray-50 border border-gray-200 rounded-xl space-y-2"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-bold text-gray-600">
-                      Item #{idx + 1}
-                    </span>
-                    {items.length > 1 && (
+                  {items.length > 1 && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-gray-600">
+                        Item #{idx + 1}
+                      </span>
                       <button
                         type="button"
                         onClick={() => removeItemRow(idx)}
@@ -364,8 +363,8 @@ export default function OrderModal({ orderToEdit, onClose }) {
                       >
                         <Trash2 size={14} />
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
                     {/* SKU Selection */}
@@ -374,7 +373,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
                         htmlFor={`sku-select-${idx}`}
                         className="block text-[10px] font-bold text-gray-500 uppercase mb-1"
                       >
-                        Product / SKU
+                        Product
                       </label>
                       <select
                         id={`sku-select-${idx}`}
@@ -384,7 +383,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
                       >
                         {WATER_SKUS.map((s) => (
                           <option key={s.id} value={s.label}>
-                            {s.label} ({s.unit})
+                            {s.label}
                           </option>
                         ))}
                       </select>
@@ -396,7 +395,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
                         htmlFor={`qty-input-${idx}`}
                         className="block text-[10px] font-bold text-gray-500 uppercase mb-1"
                       >
-                        Qty ({meta.unit})
+                        Qty
                       </label>
                       <div className="relative">
                         <Package className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" />
@@ -438,36 +437,23 @@ export default function OrderModal({ orderToEdit, onClose }) {
                     </div>
                   </div>
 
-                  <div className="flex justify-between items-center text-[11px] text-gray-500 pt-0.5 border-t border-gray-200/60">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${meta.brand === 'Bailey' ? 'bg-emerald-50 text-emerald-800' : 'bg-blue-50 text-blue-800'}`}>
-                      {meta.brand} • {meta.size}
-                    </span>
-                    <div>
+                  {lineTotal > 0 && (
+                    <div className="flex justify-end items-center text-[11px] text-gray-500 pt-0.5 border-t border-gray-200/60">
                       <span>Subtotal: </span>
                       <span className="font-extrabold text-gray-900 ml-1">₹{lineTotal.toLocaleString('en-IN')}</span>
                     </div>
-                  </div>
+                  )}
                 </div>
               )
             })}
           </div>
 
           {/* Line Items Summary Box */}
-          <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl flex items-center justify-between text-xs">
-            <div>
-              <span className="text-gray-600 font-medium">Total Quantity: </span>
-              <span className="font-black text-gray-900">{totalQty} Units</span>
-              <span className="mx-2 text-gray-300">|</span>
-              <span className="text-gray-600 font-medium">{items.length} SKU Line{items.length > 1 ? 's' : ''}</span>
-            </div>
-            <div className="text-right">
-              <span className="text-xs font-bold text-orange-800 uppercase tracking-wide mr-1.5">
-                Total Value
-              </span>
-              <span className="text-base font-black text-[#ff9900]">
-                ₹{totalAmount.toLocaleString('en-IN')}
-              </span>
-            </div>
+          <div className="p-2.5 bg-amber-50/80 border border-amber-200 rounded-xl flex items-center justify-between text-xs">
+            <span className="font-bold text-gray-700">Total: <strong className="font-black text-gray-900">{totalQty} Units</strong></span>
+            <span className="text-base font-black text-[#ff9900]">
+              ₹{totalAmount.toLocaleString('en-IN')}
+            </span>
           </div>
         </div>
 
@@ -548,21 +534,19 @@ export default function OrderModal({ orderToEdit, onClose }) {
             value={formData.location}
             onChange={(e) => setFormData({ ...formData, location: e.target.value })}
           />
-          <div className="mt-2 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2">
-            <MapPinned className="h-4 w-4 text-amz-orange shrink-0" />
-            {formData.mapLink ? (
+          {formData.mapLink && (
+            <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5">
+              <MapPinned className="h-4 w-4 text-amz-orange shrink-0" />
               <a
-                className="text-xs text-blue-600 underline truncate"
+                className="text-xs text-blue-600 font-semibold underline truncate"
                 href={formData.mapLink}
                 target="_blank"
                 rel="noreferrer"
               >
-                Open selected map link
+                Open Google Map
               </a>
-            ) : (
-              <span className="text-xs text-gray-500">Pick a point to generate map link</span>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {orderToEdit?.status === 'Delivered' && (
@@ -571,14 +555,14 @@ export default function OrderModal({ orderToEdit, onClose }) {
               htmlFor="proof-input"
               className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1"
             >
-              Delivery Proof (Photo URL/Drive)
+              Delivery Proof
             </label>
             <div className="relative">
               <ImageIcon className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
               <input
                 id="proof-input"
                 type="url"
-                placeholder="Paste image link here"
+                placeholder="Image or drive link"
                 className="w-full pl-9 pr-3 py-3 bg-blue-50 text-blue-800 rounded-xl border border-blue-200 outline-none text-sm"
                 value={formData.proofUrl}
                 onChange={(e) => setFormData({ ...formData, proofUrl: e.target.value })}
