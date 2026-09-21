@@ -149,7 +149,7 @@ export default function BaileyOrderPage({ onBack }) {
       distributorName: 'Annapurna Foods',
       distributorLocation: 'Ajwa Road, Vadodara',
       contactPerson: 'Jignesh Pandya',
-      contactMobile: '9825126388',
+      contactMobile: '9925997750',
       notes,
     })
 
@@ -228,7 +228,7 @@ export default function BaileyOrderPage({ onBack }) {
       supplierName,
       distributorName: 'Annapurna Foods (Authorized Bailey Distributorship)',
       distributorAddress: 'Ajwa Road, Vadodara, Gujarat',
-      distributorPhone: '9825126388',
+      distributorPhone: '9925997750',
       notes,
     })
 
@@ -246,7 +246,7 @@ export default function BaileyOrderPage({ onBack }) {
   }
 
   return (
-    <div className="space-y-2.5 pb-24 animate-in fade-in duration-150 max-w-5xl mx-auto">
+    <div className="space-y-2.5 pb-4 animate-in fade-in duration-150 max-w-5xl mx-auto">
       {/* ─── Compact Top Banner ─── */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0f1f46] via-[#143366] to-[#1e4a88] p-3 sm:p-4 text-white shadow-sm">
         <div className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full bg-white/10" />
@@ -483,6 +483,65 @@ export default function BaileyOrderPage({ onBack }) {
         })}
       </div>
 
+      {/* ─── Sleek Action Bar (Always Visible & Unobscured) ─── */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-3 sm:p-3.5 shadow-sm">
+        <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5">
+          {/* Total Cases */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total PO:</span>
+            <span className="text-base sm:text-lg font-black text-gray-900 leading-none">
+              {totalOrderCases}{' '}
+              <span className="text-xs font-bold text-[#ff9900]">Cases</span>
+            </span>
+          </div>
+
+          {/* Action Buttons (Icons & Modern CTAs) */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              type="button"
+              onClick={handlePrintPo}
+              className="p-2 sm:p-2.5 rounded-xl text-gray-700 bg-gray-100 hover:bg-gray-200 transition-all cursor-pointer shadow-2xs"
+              title="Print PO"
+              aria-label="Print PO"
+            >
+              <Printer size={15} />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCopyMessage}
+              className="p-2 sm:p-2.5 rounded-xl text-gray-700 bg-gray-100 hover:bg-gray-200 transition-all cursor-pointer shadow-2xs"
+              title="Copy WhatsApp PO"
+              aria-label="Copy PO"
+            >
+              {copied ? <CheckCircle2 size={15} className="text-emerald-600" /> : <Copy size={15} />}
+            </button>
+
+            <button
+              type="button"
+              disabled={isInwarding || totalOrderCases <= 0}
+              onClick={handleRecordInward}
+              className="px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl text-xs font-bold text-white bg-[#131921] hover:bg-gray-800 transition-all shadow-xs active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5"
+              title="Inward to Stock"
+            >
+              <Truck size={14} />
+              <span>Inward Stock</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={totalOrderCases <= 0}
+              onClick={handleSendWhatsApp}
+              className="px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-black text-white bg-[#25D366] hover:bg-[#20ba59] transition-all shadow-xs active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5"
+              title="Send PO on WhatsApp"
+            >
+              <Send size={14} />
+              <span>Send PO ({totalOrderCases})</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* ─── Supplier Settings Drawer / Dialog Modal ─── */}
       {showSettingsModal && (
         <div className="fixed inset-0 bg-black/50 z-[1050] flex items-center justify-center p-3">
@@ -529,7 +588,7 @@ export default function BaileyOrderPage({ onBack }) {
                     handleSaveSupplier(supplierName, e.target.value)
                   }}
                   className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs font-bold outline-none focus:border-[#ff9900]"
-                  placeholder="98251XXXXX"
+                  placeholder="99259XXXXX"
                 />
               </div>
 
@@ -558,65 +617,6 @@ export default function BaileyOrderPage({ onBack }) {
           </div>
         </div>
       )}
-
-      {/* ─── Modern Sticky Bottom Action Bar ─── */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200 px-3 py-2 sm:py-2.5 shadow-md">
-        <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
-          {/* Total Cases */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-bold text-gray-400 uppercase">Total:</span>
-            <span className="text-base sm:text-lg font-black text-gray-900 leading-none">
-              {totalOrderCases}{' '}
-              <span className="text-[10px] font-bold text-[#ff9900]">Cs</span>
-            </span>
-          </div>
-
-          {/* Action Buttons (Icons & Modern CTAs) */}
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={handlePrintPo}
-              className="p-2 rounded-xl text-gray-700 bg-gray-100 hover:bg-gray-200 transition-all cursor-pointer shadow-2xs"
-              title="Print PO"
-              aria-label="Print PO"
-            >
-              <Printer size={15} />
-            </button>
-
-            <button
-              type="button"
-              onClick={handleCopyMessage}
-              className="p-2 rounded-xl text-gray-700 bg-gray-100 hover:bg-gray-200 transition-all cursor-pointer shadow-2xs"
-              title="Copy WhatsApp PO"
-              aria-label="Copy PO"
-            >
-              {copied ? <CheckCircle2 size={15} className="text-emerald-600" /> : <Copy size={15} />}
-            </button>
-
-            <button
-              type="button"
-              disabled={isInwarding || totalOrderCases <= 0}
-              onClick={handleRecordInward}
-              className="px-3 py-2 rounded-xl text-xs font-bold text-white bg-[#131921] hover:bg-gray-800 transition-all shadow-xs active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5"
-              title="Inward to Stock"
-            >
-              <Truck size={14} />
-              <span className="hidden xs:inline sm:inline">Inward Stock</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={totalOrderCases <= 0}
-              onClick={handleSendWhatsApp}
-              className="px-3.5 py-2 rounded-xl text-xs font-black text-white bg-[#25D366] hover:bg-[#20ba59] transition-all shadow-xs active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5"
-              title="Send PO on WhatsApp"
-            >
-              <Send size={14} />
-              <span>Send PO ({totalOrderCases})</span>
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

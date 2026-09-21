@@ -160,6 +160,7 @@ describe('baileyOrderUtils', () => {
     expect(waText).toContain('Bailey 1 Liter*: *100 Cases')
     expect(waText).toContain('TOTAL CONSIGNMENT*: *150 Cases')
     expect(waText).toContain('Load in afternoon dispatch')
+    expect(waText).toContain('9925997750')
 
     const html = generateBaileyPurchaseOrderHtml({
       poNumber: 'PO-TEST-123',
@@ -168,5 +169,6 @@ describe('baileyOrderUtils', () => {
     expect(html).toContain('PURCHASE ORDER')
     expect(html).toContain('PO-TEST-123')
     expect(html).toContain('150 Cases')
+    expect(html).toContain('9925997750')
   })
 })

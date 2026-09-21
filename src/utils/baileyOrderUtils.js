@@ -224,7 +224,7 @@ export function generateBaileyPurchaseOrderWhatsApp({
   distributorName = 'Annapurna Foods',
   distributorLocation = 'Ajwa Road, Vadodara',
   contactPerson = 'Jignesh Pandya',
-  contactMobile = '9825126388',
+  contactMobile = '9925997750',
   notes = '',
 }) {
   const activeItems = items.filter((it) => (Number(it.finalOrderQty) || 0) > 0)
@@ -269,7 +269,7 @@ export function generateBaileyPurchaseOrderHtml({
   supplierName = 'Bailey Water Bottling Plant',
   distributorName = 'Annapurna Foods (Authorized Distributor)',
   distributorAddress = 'Ajwa Road, Vadodara, Gujarat',
-  distributorPhone = '9825126388',
+  distributorPhone = '9925997750',
   notes = '',
 }) {
   const activeItems = items.filter((it) => (Number(it.finalOrderQty) || 0) > 0)
