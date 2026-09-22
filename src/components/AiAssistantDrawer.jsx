@@ -22,6 +22,11 @@ import {
   ArrowRightLeft,
   UserPlus,
   CreditCard,
+  Mic,
+  MicOff,
+  Volume2,
+  MapPin,
+  AtSign,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
@@ -77,6 +82,86 @@ export default function AiAssistantDrawer({
 
   const [messages, setMessages] = useState([])
 
+  const [isListening, setIsListening] = useState(false)
+  const [speechLang, setSpeechLang] = useState('gu-IN')
+  const recognitionRef = useRef(null)
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop()
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }, [])
+
+  const toggleMic = () => {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRec) {
+      toast.error('Voice input is not supported in this browser. Please use Chrome/Edge.')
+      return
+    }
+
+    if (isListening) {
+      try {
+        recognitionRef.current?.stop()
+      } catch {
+        // ignore
+      }
+      setIsListening(false)
+      return
+    }
+
+    try {
+      const recognition = new SpeechRec()
+      recognition.continuous = false
+      recognition.interimResults = true
+      recognition.lang = speechLang
+
+      recognition.onstart = () => {
+        setIsListening(true)
+        toast('Listening... Speak now', { icon: '🎙️', id: 'voice-rec', duration: 2500 })
+      }
+
+      recognition.onresult = (event) => {
+        let transcript = ''
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript
+        }
+        if (transcript) {
+          setInputMessage((prev) => {
+            const clean = prev.trim()
+            return clean ? `${clean} ${transcript}` : transcript
+          })
+        }
+      }
+
+      recognition.onerror = (e) => {
+        toast.dismiss('voice-rec')
+        if (e.error !== 'no-speech') {
+          console.warn('Speech error:', e.error)
+        }
+        setIsListening(false)
+      }
+
+      recognition.onend = () => {
+        toast.dismiss('voice-rec')
+        setIsListening(false)
+        inputRef.current?.focus()
+      }
+
+      recognitionRef.current = recognition
+      recognition.start()
+    } catch (err) {
+      toast.dismiss('voice-rec')
+      toast.error('Could not start microphone: ' + err.message)
+      setIsListening(false)
+    }
+  }
+
   useEffect(() => {
     if (aiPrefillPrompt) {
       setInputMessage(aiPrefillPrompt)
@@ -99,20 +184,87 @@ export default function AiAssistantDrawer({
       toast.dismiss('compress-img')
       setSelectedFile(processed)
       setFilePreview(processed.dataUrl)
-      const label = isClientMode
-        ? 'Bill book / Visiting card'
-        : isPaymentMode
-          ? 'Payment slip'
-          : isSalesMode
-            ? 'Sales notepad'
-            : 'Document'
-      toast.success(`${label} image ready (~${processed.sizeKb} KB)`)
+      const label = processed.isAudio
+        ? 'Voice note'
+        : isClientMode
+          ? 'Bill book / Visiting card'
+          : isPaymentMode
+            ? 'Payment slip'
+            : isSalesMode
+              ? 'Sales notepad'
+              : 'Document'
+      toast.success(`${label} ready (~${processed.sizeKb} KB)`)
     } catch (err) {
       toast.dismiss('compress-img')
-      toast.error('Could not process image: ' + err.message)
+      toast.error('Could not process media: ' + err.message)
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
+  }
+
+  // Autocomplete queries for @ (Clients) and / (SKUs)
+  const atMatch = inputMessage.match(/@([a-zA-Z0-9\s]*)$/)
+  const slashMatch = inputMessage.match(/\/([a-zA-Z0-9\s]*)$/)
+
+  const matchingClients = atMatch
+    ? clients
+        .filter((c) => {
+          const q = atMatch[1].trim().toLowerCase()
+          if (!q) return true
+          return (
+            c.name?.toLowerCase().includes(q) ||
+            c.mobile?.includes(q) ||
+            c.location?.toLowerCase().includes(q) ||
+            c.address?.toLowerCase().includes(q)
+          )
+        })
+        .slice(0, 5)
+    : []
+
+  const matchingSkus = slashMatch
+    ? WATER_SKUS.filter((s) => {
+        const q = slashMatch[1].trim().toLowerCase()
+        if (!q) return true
+        return (
+          s.name.toLowerCase().includes(q) ||
+          s.id.toLowerCase().includes(q)
+        )
+      }).slice(0, 5)
+    : []
+
+  const quickClientSuggestions =
+    !atMatch &&
+    !slashMatch &&
+    (isSalesMode || isPaymentMode) &&
+    inputMessage.trim().length >= 2 &&
+    !inputMessage.includes('\n')
+      ? clients
+          .filter((c) =>
+            c.name?.toLowerCase().includes(inputMessage.trim().toLowerCase())
+          )
+          .slice(0, 4)
+      : []
+
+  const handleSelectClient = (client) => {
+    if (atMatch) {
+      setInputMessage(inputMessage.replace(/@[a-zA-Z0-9\s]*$/, client.name + ' '))
+    } else if (isSalesMode) {
+      setInputMessage(client.name + ' ')
+    } else if (isPaymentMode) {
+      setInputMessage(`Received from ${client.name} `)
+    } else {
+      setInputMessage(client.name + ' ')
+    }
+    inputRef.current?.focus()
+  }
+
+  const handleSelectSku = (sku) => {
+    if (slashMatch) {
+      setInputMessage(inputMessage.replace(/\/([a-zA-Z0-9\s]*)$/, sku.name + ' '))
+    } else {
+      setInputMessage((prev) => (prev ? `${prev.trim()} ${sku.name} ` : `${sku.name} `))
+    }
+    inputRef.current?.focus()
   }
 
   const handleSend = async (customPrompt = null) => {
@@ -134,15 +286,17 @@ export default function AiAssistantDrawer({
         text:
           query ||
           (filePayload
-            ? isSales
-              ? 'Uploaded retail sales notepad slip 📝'
-              : isPayment
-                ? 'Uploaded payment slip / UPI screenshot 💰'
-                : isClient
-                  ? 'Uploaded client visiting card / signboard 👤'
-                  : isAccounts
-                    ? 'Uploaded staff cash / accounts note 💼'
-                    : 'Uploaded document for scanning 📄'
+            ? filePayload.isAudio
+              ? 'Uploaded voice note 🎙️'
+              : isSales
+                ? 'Uploaded retail sales notepad slip 📝'
+                : isPayment
+                  ? 'Uploaded payment slip / UPI screenshot 💰'
+                  : isClient
+                    ? 'Uploaded client visiting card / bill book 👤'
+                    : isAccounts
+                      ? 'Uploaded staff cash / accounts note 💼'
+                      : 'Uploaded document for scanning 📄'
             : ''),
         imagePreview: filePayload?.dataUrl || null,
         timestamp: new Date(),
@@ -198,15 +352,17 @@ export default function AiAssistantDrawer({
         text:
           query ||
           (filePayload
-            ? isSales
-              ? 'Parse these daily retail customer sales orders'
-              : isPayment
-                ? 'Extract payment details from this UPI screenshot or receipt'
-                : isClient
-                  ? 'Extract new client name, mobile, and address from this customer bill book, estimate book, or visiting card'
-                  : isAccounts
-                    ? 'Parse these staff cash custody, handover, or route expense entries'
-                    : 'Scan this document and extract all water SKUs'
+            ? filePayload.isAudio
+              ? 'Transcribe and extract orders, payments, or client details from this voice note'
+              : isSales
+                ? 'Parse these daily retail customer sales orders'
+                : isPayment
+                  ? 'Extract payment details from this UPI screenshot or receipt'
+                  : isClient
+                    ? 'Extract new client name, mobile, and address from this customer bill book, estimate book, or visiting card'
+                    : isAccounts
+                      ? 'Parse these staff cash custody, handover, or route expense entries'
+                      : 'Scan this document and extract all water SKUs'
             : ''),
         imageBase64: filePayload?.base64 || null,
         mimeType: filePayload?.mimeType || 'image/jpeg',
@@ -1946,23 +2102,29 @@ export default function AiAssistantDrawer({
         </div>
 
         {/* Input Bar */}
-        <div className="p-3 bg-white border-t border-gray-200 shrink-0">
+        <div className="p-3 bg-white border-t border-gray-200 shrink-0 relative">
           {/* File Preview Pill if selected */}
           {filePreview && (
             <div className="mb-2 p-2 bg-orange-50 border border-orange-200 rounded-lg text-xs space-y-1.5">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <img
-                    src={filePreview}
-                    alt="Selected bill"
-                    className="w-9 h-9 rounded object-cover border border-orange-300 shrink-0"
-                  />
+                <div className="flex items-center gap-2 min-w-0">
+                  {selectedFile?.isAudio ? (
+                    <div className="w-9 h-9 rounded-lg bg-orange-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                      <Volume2 className="w-5 h-5 animate-pulse" />
+                    </div>
+                  ) : (
+                    <img
+                      src={filePreview}
+                      alt="Selected bill"
+                      className="w-9 h-9 rounded object-cover border border-orange-300 shrink-0"
+                    />
+                  )}
                   <div className="min-w-0">
                     <p className="font-semibold text-gray-800 truncate max-w-[200px]">
                       {selectedFile?.fileName}
                     </p>
                     <p className="text-[10px] text-gray-500">
-                      Photo attached ({selectedFile?.sizeKb} KB)
+                      {selectedFile?.isAudio ? 'Audio Note' : 'Photo'} ({selectedFile?.sizeKb} KB)
                     </p>
                   </div>
                 </div>
@@ -1973,7 +2135,7 @@ export default function AiAssistantDrawer({
                     setFilePreview(null)
                   }}
                   className="p-1 text-gray-400 hover:text-red-600 cursor-pointer"
-                  title="Remove image"
+                  title="Remove"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -2106,6 +2268,92 @@ export default function AiAssistantDrawer({
             </div>
           )}
 
+          {/* Autocomplete Dropdown for @Client */}
+          {matchingClients.length > 0 && (
+            <div className="absolute bottom-full mb-1.5 left-3 right-3 z-30 max-h-52 overflow-y-auto bg-white/95 backdrop-blur-md border border-gray-200 rounded-xl shadow-xl divide-y divide-gray-100">
+              <div className="px-2.5 py-1 bg-gray-50 text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wider">
+                <AtSign className="w-3 h-3 text-[#ff9900]" /> Clients
+              </div>
+              {matchingClients.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => handleSelectClient(c)}
+                  className="w-full text-left px-3 py-2 hover:bg-orange-50/70 flex items-center justify-between gap-2 transition-colors cursor-pointer group"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-6 h-6 rounded-full bg-orange-100 text-amz-orange font-bold text-xs flex items-center justify-center shrink-0 group-hover:bg-[#131921] group-hover:text-[#ff9900] transition-colors">
+                      {c.name?.[0]?.toUpperCase() || 'C'}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-gray-900 truncate">{c.name}</p>
+                      {c.area && (
+                        <p className="text-[10px] text-gray-400 flex items-center gap-0.5 truncate">
+                          <MapPin className="w-2.5 h-2.5 shrink-0 text-gray-400" />
+                          {c.area}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {c.defaultRate > 0 && (
+                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
+                      ₹{c.defaultRate}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Autocomplete Dropdown for /SKU */}
+          {matchingSkus.length > 0 && (
+            <div className="absolute bottom-full mb-1.5 left-3 right-3 z-30 max-h-52 overflow-y-auto bg-white/95 backdrop-blur-md border border-gray-200 rounded-xl shadow-xl divide-y divide-gray-100">
+              <div className="px-2.5 py-1 bg-gray-50 text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wider">
+                <Package className="w-3 h-3 text-emerald-600" /> Products
+              </div>
+              {matchingSkus.map((sku) => (
+                <button
+                  key={sku.id}
+                  type="button"
+                  onClick={() => handleSelectSku(sku)}
+                  className="w-full text-left px-3 py-2 hover:bg-emerald-50/70 flex items-center justify-between gap-2 transition-colors cursor-pointer group"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center justify-center shrink-0 group-hover:bg-[#131921] group-hover:text-emerald-400 transition-colors">
+                      <Package className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-gray-900 truncate">{sku.name}</p>
+                      <p className="text-[10px] text-gray-400">{sku.category || 'Water'}</p>
+                    </div>
+                  </div>
+                  {sku.price > 0 && (
+                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
+                      ₹{sku.price}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Quick Client suggestion chips */}
+          {quickClientSuggestions.length > 0 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 mb-1 scrollbar-none">
+              {quickClientSuggestions.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => handleSelectClient(c)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 hover:bg-orange-100 text-gray-700 hover:text-orange-900 rounded-full text-xs font-semibold shrink-0 cursor-pointer border border-gray-200 transition-colors"
+                >
+                  <User className="w-3 h-3 text-[#ff9900]" />
+                  <span>{c.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           <form
             onSubmit={(e) => {
               e.preventDefault()
@@ -2117,17 +2365,30 @@ export default function AiAssistantDrawer({
               type="file"
               ref={fileInputRef}
               onChange={handleFileSelect}
-              accept="image/*"
+              accept="image/*,audio/*,.ogg,.opus,.mp3,.m4a,.wav"
               className="hidden"
             />
 
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="p-2.5 text-gray-500 hover:text-amz-orange hover:bg-orange-50 rounded-xl border border-gray-300 transition-colors"
-              title="Upload Bill, Receipt or Visiting Card"
+              className="p-2.5 text-gray-500 hover:text-amz-orange hover:bg-orange-50 rounded-xl border border-gray-300 transition-colors shrink-0 cursor-pointer"
+              title="Upload Bill, Receipt or WhatsApp Voice Note"
             >
               <Camera className="w-5 h-5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleMic}
+              className={`p-2.5 rounded-xl border transition-colors shrink-0 cursor-pointer ${
+                isListening
+                  ? 'bg-red-500 text-white border-red-600 animate-pulse shadow-md'
+                  : 'text-gray-500 hover:text-amz-orange hover:bg-orange-50 border-gray-300'
+              }`}
+              title={isListening ? 'Listening (Gujarati / Hindi)... Tap to stop' : 'Voice Dictation'}
+            >
+              {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
             </button>
 
             <input
@@ -2136,17 +2397,19 @@ export default function AiAssistantDrawer({
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               placeholder={
-                isPaymentMode
-                  ? 'e.g. Received 2000 from Royal Hotel via GPay / Cash...'
-                  : isClientMode
-                    ? 'e.g. Add client Shiv Dhaba, Manjalpur, 9825098250, 200ml rate 120...'
-                    : isSalesMode
-                      ? 'Paste WhatsApp sales notes here and tap Send...'
-                      : isAccountsMode
-                        ? 'e.g. Nilesh handover 4000 to counter, collected 3500 Jay Ambe...'
-                        : filePreview
-                          ? 'Add notes or tap send...'
-                          : 'Order, payment, new client, bill scan, or ask anything...'
+                isListening
+                  ? 'Listening... Speak in Gujarati or Hindi'
+                  : isPaymentMode
+                    ? 'Payment (e.g. Received 2000 from @Royal...)'
+                    : isClientMode
+                      ? 'New client (e.g. Shiv Dhaba, Manjalpur, 98250...)'
+                      : isSalesMode
+                        ? 'Sales order (e.g. @Client /SKU or voice...)'
+                        : isAccountsMode
+                          ? 'Cash handover / custody entry...'
+                          : filePreview
+                            ? 'Add notes or send...'
+                            : 'Type @client, /sku, voice mic, or query...'
               }
               className={`flex-1 py-2.5 px-3 border rounded-xl text-xs sm:text-sm outline-none transition-all ${
                 isPaymentMode
@@ -2164,7 +2427,7 @@ export default function AiAssistantDrawer({
             <button
               type="submit"
               disabled={loading || (!inputMessage.trim() && !selectedFile)}
-              className="p-2.5 bg-[#131921] hover:bg-black text-[#ff9900] disabled:opacity-40 rounded-xl transition-all font-bold cursor-pointer"
+              className="p-2.5 bg-[#131921] hover:bg-black text-[#ff9900] disabled:opacity-40 rounded-xl transition-all font-bold cursor-pointer shrink-0"
               title="Send message"
             >
               <Send className="w-5 h-5" />

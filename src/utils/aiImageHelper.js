@@ -6,11 +6,32 @@
 export async function processAiBillImage(file, maxDimension = 1280, quality = 0.85) {
   if (!file) throw new Error('No file provided')
 
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
+  // Support audio voice notes (WhatsApp .opus, .ogg, .m4a, .mp3, .wav)
+  if (file.type.startsWith('audio/') || /\.(ogg|opus|mp3|m4a|wav|aac)$/i.test(file.name)) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const dataUrl = event.target.result
+        const base64 = typeof dataUrl === 'string' ? dataUrl.split(',')[1] : ''
+        const sizeKb = Math.round((base64.length * 3) / 4 / 1024)
+        resolve({
+          dataUrl,
+          base64,
+          mimeType: file.type || 'audio/ogg',
+          isAudio: true,
+          sizeKb,
+          fileName: file.name,
+        })
+      }
+      reader.onerror = () => reject(new Error('Failed to read audio file'))
+      reader.readAsDataURL(file)
+    })
+  }
 
-    reader.onload = (event) => {
-      const img = new Image()
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const img = new Image()
 
       img.onload = () => {
         let width = img.width

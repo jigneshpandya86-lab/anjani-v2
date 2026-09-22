@@ -1649,6 +1649,71 @@ Return strict JSON:
 }`
       }
 
+      const isAudio = mimeType && mimeType.startsWith('audio/')
+      if (isAudio) {
+        if (mode === 'create_client') {
+          ocrPrompt = `You are an expert customer onboarding and transcription AI for Annapurna Foods in Vadodara, Gujarat (owned by Jignesh Pandya).
+Listen to this audio voice note or recording spoken in Gujarati, Hindi, English, or mixed language.
+The user is dictating or forwarding customer details for onboarding a new client.
+Extract into strict JSON:
+{
+  "docType": "create_client",
+  "name": string (Shop, business, or customer name in English Title Case),
+  "contactPerson": string (Owner or contact person name in English),
+  "mobile": string (10-digit mobile number, digits 0-9 only),
+  "alternateMobile": string (digits 0-9 only),
+  "address": string (Shop address/area in English),
+  "location": string (Landmark/area in English, e.g. 'Manjalpur', 'Karelibaug'),
+  "rate": number (Default 200ml rate if mentioned, else 0),
+  "notes": string (in English)
+}
+CRITICAL REQUIREMENT: Return all client fields strictly in English (Latin alphabet). Transliterate Gujarati/Hindi names into English Title Case.`
+        } else if (mode === 'receive_payment') {
+          ocrPrompt = `You are an accounts and payment assistant for Annapurna Foods in Vadodara, Gujarat.
+Listen to this audio recording or WhatsApp voice note spoken in Gujarati, Hindi, or English.
+The speaker is reporting a payment received.
+Parse into strict JSON:
+{
+  "docType": "receive_payment",
+  "payerName": string (Customer or shop name who paid),
+  "amount": number (Payment amount in INR),
+  "paymentMode": "online" | "cash" | "cheque",
+  "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
+  "utr": string (UTR, reference number, or cheque no if mentioned, else ""),
+  "date": string (YYYY-MM-DD or today),
+  "notes": string
+}`
+        } else {
+          ocrPrompt = `You are an expert sales and operational voice assistant for Annapurna Foods, authorized water distributor in Vadodara, Gujarat (owned by Jignesh Pandya).
+Listen to this audio recording or WhatsApp voice note spoken in Gujarati, Hindi, or English.
+The speaker is placing water orders, dictating sales, or reporting operational notes.
+Map all water items exclusively to our 5 canonical SKUs: "Anjani 200ml", "Bailey 250ml", "Bailey 500ml", "Bailey 1 Liter", "Bailey 2 Liter".
+Return strict JSON:
+{
+  "docType": "retail_sales",
+  "summary": { "totalOrders": number, "totalQty": number, "date": string },
+  "sales": [
+    {
+      "clientName": string (Shop or customer name in English, or "Retail"),
+      "mobile": string,
+      "items": [
+        {
+          "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",
+          "qty": number,
+          "rate": number,
+          "unit": "Box" | "Case / Box"
+        }
+      ],
+      "totalAmount": number,
+      "paymentMode": "cash" | "online" | "credit",
+      "amountCollected": number,
+      "notes": string
+    }
+  ]
+}`
+        }
+      }
+
       const parts = [
         {
           inlineData: {
