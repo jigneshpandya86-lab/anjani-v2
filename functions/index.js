@@ -1409,6 +1409,33 @@ Return strict JSON:
   ],
   "totalAmount": number,
   "notes": string
+}
+
+If it is a customer payment receipt, UPI payment screenshot (Google Pay, PhonePe, Paytm, BHIM, Bank transfer), or cheque:
+Return strict JSON:
+{
+  "docType": "receive_payment",
+  "payerName": string,
+  "amount": number,
+  "paymentMode": "online" | "cash" | "cheque",
+  "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
+  "utr": string,
+  "date": string,
+  "notes": string
+}
+
+If it is a visiting card, business card, shop signboard, contact card, or retail customer pamphlet:
+Return strict JSON:
+{
+  "docType": "create_client",
+  "name": string,
+  "contactPerson": string,
+  "mobile": string,
+  "alternateMobile": string,
+  "address": string,
+  "location": string,
+  "rate": number,
+  "notes": string
 }`
 
       const parts = [
@@ -1434,6 +1461,28 @@ Return strict JSON:
       ) {
         return {
           type: 'retail_sales',
+          modelUsed: modelName,
+          data: parsedData,
+        }
+      }
+
+      if (
+        parsedData.docType === 'receive_payment' ||
+        (Number(parsedData.amount) > 0 && (parsedData.payerName || parsedData.utr))
+      ) {
+        return {
+          type: 'receive_payment',
+          modelUsed: modelName,
+          data: parsedData,
+        }
+      }
+
+      if (
+        parsedData.docType === 'create_client' ||
+        (parsedData.name && (parsedData.mobile || parsedData.address))
+      ) {
+        return {
+          type: 'create_client',
           modelUsed: modelName,
           data: parsedData,
         }
@@ -1618,6 +1667,105 @@ ${rawText.slice(0, 3000)}`
           }
         } catch (parseErr) {
           logger.warn('Failed to parse sales notes as JSON, falling back to chat:', parseErr.message)
+        }
+      }
+
+      // Check for client creation intent in text
+      const isClientTextIntent =
+        mode === 'create_client' ||
+        /^(?:add|new|create)\s+(?:client|customer|party|shop)\b/i.test(rawText) ||
+        /(?:add\s+new\s+client|create\s+new\s+client)\b/i.test(rawText)
+
+      if (isClientTextIntent) {
+        const model = vertexAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            maxOutputTokens: jsonMaxTokens,
+            temperature,
+            responseMimeType: 'application/json',
+          },
+        })
+
+        const textClientPrompt = `You are a client onboarding assistant for Annapurna Foods in Vadodara, Gujarat.
+Parse the user's client details into strict JSON:
+{
+  "docType": "create_client",
+  "name": string (Shop or customer name),
+  "contactPerson": string,
+  "mobile": string (10-digit mobile number),
+  "alternateMobile": string,
+  "address": string (Shop address/area),
+  "location": string (Landmark/area),
+  "rate": number (Default 200ml rate if mentioned, else 0),
+  "notes": string
+}
+User Text: ${rawText.slice(0, 1000)}`
+
+        try {
+          const res = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: textClientPrompt }] }],
+          })
+          const rawJson = res.response.candidates[0].content.parts[0].text.trim()
+          const parsedData = parseStructuredJson(rawJson)
+          if (parsedData.name) {
+            return {
+              type: 'create_client',
+              modelUsed: modelName,
+              data: parsedData,
+            }
+          }
+        } catch (clientErr) {
+          logger.warn('Failed to parse text client as JSON:', clientErr.message)
+        }
+      }
+
+      // Check for payment received intent in text
+      const isPaymentTextIntent =
+        mode === 'receive_payment' ||
+        (/(?:received|payment\s+received|jama\s+kary[ao]|paid|rupiya\s+malya|rupaye\s+mile)\b/i.test(rawText) &&
+          /\d+/.test(rawText) &&
+          !/(?:stock|order|delivery|invoice)\b/i.test(rawText))
+
+      if (isPaymentTextIntent) {
+        const model = vertexAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            maxOutputTokens: jsonMaxTokens,
+            temperature,
+            responseMimeType: 'application/json',
+          },
+        })
+
+        const textPaymentPrompt = `You are an accounts and payment assistant for Annapurna Foods in Vadodara, Gujarat.
+The user provided a customer payment received record in English, Gujarati, or Hindi.
+Parse into strict JSON:
+{
+  "docType": "receive_payment",
+  "payerName": string (Customer or shop name who paid),
+  "amount": number (Payment amount in INR),
+  "paymentMode": "online" | "cash" | "cheque",
+  "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
+  "utr": string (UTR, reference number, or cheque no if mentioned, else ""),
+  "date": string (YYYY-MM-DD or today),
+  "notes": string
+}
+User Text: ${rawText.slice(0, 1000)}`
+
+        try {
+          const res = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: textPaymentPrompt }] }],
+          })
+          const rawJson = res.response.candidates[0].content.parts[0].text.trim()
+          const parsedData = parseStructuredJson(rawJson)
+          if (Number(parsedData.amount) > 0) {
+            return {
+              type: 'receive_payment',
+              modelUsed: modelName,
+              data: parsedData,
+            }
+          }
+        } catch (payErr) {
+          logger.warn('Failed to parse text payment as JSON:', payErr.message)
         }
       }
 

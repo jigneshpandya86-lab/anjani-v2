@@ -20,6 +20,8 @@ import {
   Zap,
   Check,
   ArrowRightLeft,
+  UserPlus,
+  CreditCard,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
@@ -37,6 +39,7 @@ export default function AiAssistantDrawer({
   onNavigateTab,
   onOpenPaymentModal,
   onOpenOrderModal,
+  onOpenAddClient,
 }) {
   const fileInputRef = useRef(null)
   const messagesEndRef = useRef(null)
@@ -51,6 +54,9 @@ export default function AiAssistantDrawer({
   const createBatchSales = useClientStore((state) => state.createBatchSales)
   const createBatchAccountEntries = useClientStore((state) => state.createBatchAccountEntries)
   const updateOrder = useClientStore((state) => state.updateOrder)
+  const addClient = useClientStore((state) => state.addClient)
+  const addPayment = useClientStore((state) => state.addPayment)
+  const addOrder = useClientStore((state) => state.addOrder)
   const aiSettings = useClientStore((state) => state.aiSettings)
   const aiPrefillPrompt = useClientStore((state) => state.aiPrefillPrompt)
 
@@ -59,9 +65,14 @@ export default function AiAssistantDrawer({
   const [filePreview, setFilePreview] = useState(null)
   const [loading, setLoading] = useState(false)
   const [isSalesMode, setIsSalesMode] = useState(false)
+  const [isPaymentMode, setIsPaymentMode] = useState(false)
+  const [isClientMode, setIsClientMode] = useState(false)
   const [isAccountsMode, setIsAccountsMode] = useState(false)
   const [inwardedBills, setInwardedBills] = useState({})
   const [processedSalesBatches, setProcessedSalesBatches] = useState({})
+  const [createdClients, setCreatedClients] = useState({})
+  const [recordedPayments, setRecordedPayments] = useState({})
+  const [placedOrders, setPlacedOrders] = useState({})
 
   const [messages, setMessages] = useState([])
 
@@ -87,7 +98,14 @@ export default function AiAssistantDrawer({
       toast.dismiss('compress-img')
       setSelectedFile(processed)
       setFilePreview(processed.dataUrl)
-      toast.success(`Bill image ready (~${processed.sizeKb} KB)`)
+      const label = isClientMode
+        ? 'Visiting card'
+        : isPaymentMode
+          ? 'Payment slip'
+          : isSalesMode
+            ? 'Sales notepad'
+            : 'Document'
+      toast.success(`${label} image ready (~${processed.sizeKb} KB)`)
     } catch (err) {
       toast.dismiss('compress-img')
       toast.error('Could not process image: ' + err.message)
@@ -100,6 +118,8 @@ export default function AiAssistantDrawer({
     const query = (customPrompt || inputMessage).trim()
     const filePayload = selectedFile
     const isSales = isSalesMode
+    const isPayment = isPaymentMode
+    const isClient = isClientMode
     const isAccounts = isAccountsMode
 
     if (!query && !filePayload) return
@@ -115,9 +135,13 @@ export default function AiAssistantDrawer({
           (filePayload
             ? isSales
               ? 'Uploaded retail sales notepad slip 📝'
-              : isAccounts
-                ? 'Uploaded staff cash / accounts note 💼'
-                : 'Uploaded document for scanning 📄'
+              : isPayment
+                ? 'Uploaded payment slip / UPI screenshot 💰'
+                : isClient
+                  ? 'Uploaded client visiting card / signboard 👤'
+                  : isAccounts
+                    ? 'Uploaded staff cash / accounts note 💼'
+                    : 'Uploaded document for scanning 📄'
             : ''),
         imagePreview: filePayload?.dataUrl || null,
         timestamp: new Date(),
@@ -129,9 +153,11 @@ export default function AiAssistantDrawer({
     setSelectedFile(null)
     setFilePreview(null)
     setIsSalesMode(false)
+    setIsPaymentMode(false)
+    setIsClientMode(false)
     setIsAccountsMode(false)
 
-    // 1. Zero-Token Local Intent Check (Only if no file is uploaded and not in explicit sales/accounts mode)
+    // 1. Zero-Token Local Intent Check (Only if no file is uploaded and not in explicit multi-line sales mode)
     if (!filePayload && query && !isSales && !isAccounts) {
       const localRoute = tryLocalIntentRoute(query, {
         stockSummary,
@@ -170,13 +196,25 @@ export default function AiAssistantDrawer({
           (filePayload
             ? isSales
               ? 'Parse these daily retail customer sales orders'
-              : isAccounts
-                ? 'Parse these staff cash custody, handover, or route expense entries'
-                : 'Scan this document and extract all water SKUs'
+              : isPayment
+                ? 'Extract payment details from this UPI screenshot or receipt'
+                : isClient
+                  ? 'Extract new client name, mobile, and address from this card'
+                  : isAccounts
+                    ? 'Parse these staff cash custody, handover, or route expense entries'
+                    : 'Scan this document and extract all water SKUs'
             : ''),
         imageBase64: filePayload?.base64 || null,
         mimeType: filePayload?.mimeType || 'image/jpeg',
-        mode: isAccounts ? 'accounts_cash' : isSales ? 'retail_sales' : 'auto',
+        mode: isClient
+          ? 'create_client'
+          : isPayment
+            ? 'receive_payment'
+            : isAccounts
+              ? 'accounts_cash'
+              : isSales
+                ? 'retail_sales'
+                : 'auto',
         conversationHistory: messages.slice(-3).map((m) => ({
           sender: m.sender,
           text: m.text,
@@ -185,7 +223,60 @@ export default function AiAssistantDrawer({
 
       const resData = response.data || {}
 
-      if (resData.type === 'vendor_bill') {
+      if (resData.type === 'create_client') {
+        const clientData = resData.data || {}
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `👤 **New Client Detected: ${clientData.name || 'New Client'}**\nReview details below and tap **Create Client Now** to save to client master:`,
+            type: 'create_client',
+            clientId: 'client-' + Date.now(),
+            data: {
+              name: clientData.name || '',
+              mobile: clientData.mobile || clientData.phone || '',
+              address: clientData.address || '',
+              location: clientData.location || '',
+              rate: Number(clientData.rate) || 0,
+              notes: clientData.notes || '',
+              modelUsed: resData.modelUsed,
+            },
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'receive_payment') {
+        const payData = resData.data || {}
+        const matched = clients.find(
+          (c) =>
+            c.name?.toLowerCase().includes((payData.payerName || '').toLowerCase().trim()) ||
+            (payData.payerName || '').toLowerCase().includes(c.name?.toLowerCase().trim()),
+        )
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `💰 **Payment Receipt Detected: ₹${Number(payData.amount || 0).toLocaleString('en-IN')}**\nReview transaction and tap **Confirm & Record Payment**:`,
+            type: 'receive_payment',
+            paymentId: 'pay-' + Date.now(),
+            data: {
+              payerName: payData.payerName || '',
+              clientId: matched?.id || '',
+              clientName: matched?.name || payData.payerName || 'Select Client',
+              amount: Number(payData.amount) || 0,
+              method: payData.paymentMode === 'cash' ? 'cash' : 'online',
+              accountId: payData.paymentMode === 'cash' ? 'counter' : 'bank',
+              onlineProvider: payData.onlineProvider || 'UPI',
+              utr: payData.utr || '',
+              date: payData.date || new Date().toISOString().slice(0, 10),
+              notes: payData.notes || '',
+              modelUsed: resData.modelUsed,
+            },
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'vendor_bill') {
         const billData = resData.data || {}
         // Ensure every SKU item is valid and editable
         const initialItems = (billData.items || []).map((it) => ({
@@ -495,26 +586,17 @@ export default function AiAssistantDrawer({
           </div>
         </div>
 
-        {/* Quick Action Icon Buttons (Compact, Icon-Only, No Scroll) */}
+        {/* Quick Action Icon Buttons (Compact, Icon-Only, Strict Sequence: Order -> Payment -> Client -> Remaining) */}
         <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-1 shrink-0">
-          {/* 1. Camera: Scan Bill / Slip */}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="w-9 h-9 bg-white border border-gray-200 hover:border-amz-orange hover:bg-orange-50/50 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-2xs"
-            title="Scan Bill / Slip (Camera OCR)"
-            aria-label="Scan Bill"
-          >
-            <Camera className="w-4 h-4 text-amz-orange" />
-          </button>
-
-          {/* 2. ClipboardList: WhatsApp Sales */}
+          {/* 1. Order Creation & Sales */}
           <button
             type="button"
             onClick={() => {
               setIsSalesMode((prev) => {
                 const next = !prev
                 if (next) {
+                  setIsPaymentMode(false)
+                  setIsClientMode(false)
                   setIsAccountsMode(false)
                   setTimeout(() => inputRef.current?.focus(), 50)
                 }
@@ -526,13 +608,76 @@ export default function AiAssistantDrawer({
                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                 : 'bg-white text-gray-700 border-gray-200 hover:border-emerald-600 hover:text-emerald-600 hover:bg-emerald-50/50'
             }`}
-            title="WhatsApp Sales Mode (Daily Sales Notes)"
-            aria-label="WhatsApp Sales"
+            title="1. Order Creation & Daily Sales (Camera / Text)"
+            aria-label="Order Creation"
           >
             <ClipboardList className={`w-4 h-4 ${isSalesMode ? 'text-white' : 'text-emerald-600'}`} />
           </button>
 
-          {/* 3. ArrowRightLeft: Accounts & Staff Cash (Right after WhatsApp Sales!) */}
+          {/* 2. Receive Payment */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsPaymentMode((prev) => {
+                const next = !prev
+                if (next) {
+                  setIsSalesMode(false)
+                  setIsClientMode(false)
+                  setIsAccountsMode(false)
+                  setTimeout(() => inputRef.current?.focus(), 50)
+                }
+                return next
+              })
+            }}
+            className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer shadow-2xs ${
+              isPaymentMode
+                ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
+                : 'bg-white text-gray-700 border-gray-200 hover:border-emerald-700 hover:text-emerald-700 hover:bg-emerald-50/50'
+            }`}
+            title="2. Receive Payment / Scan UPI Slip (Camera / Text)"
+            aria-label="Receive Payment"
+          >
+            <IndianRupee className={`w-4 h-4 ${isPaymentMode ? 'text-white' : 'text-emerald-700'}`} />
+          </button>
+
+          {/* 3. Add Client */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsClientMode((prev) => {
+                const next = !prev
+                if (next) {
+                  setIsSalesMode(false)
+                  setIsPaymentMode(false)
+                  setIsAccountsMode(false)
+                  setTimeout(() => inputRef.current?.focus(), 50)
+                }
+                return next
+              })
+            }}
+            className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer shadow-2xs ${
+              isClientMode
+                ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                : 'bg-white text-gray-700 border-gray-200 hover:border-amz-orange hover:text-amz-orange hover:bg-orange-50/50'
+            }`}
+            title="3. Add New Client / Visiting Card Scan (Camera / Text)"
+            aria-label="Add Client"
+          >
+            <UserPlus className={`w-4 h-4 ${isClientMode ? 'text-white' : 'text-amz-orange'}`} />
+          </button>
+
+          {/* 4. Camera OCR: Scan Photo / Slip */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="w-9 h-9 bg-white border border-gray-200 hover:border-amz-orange hover:bg-orange-50/50 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+            title="Scan Photo (Vendor Bill / UPI Screenshot / Visiting Card / Sales Slip)"
+            aria-label="Scan Photo"
+          >
+            <Camera className="w-4 h-4 text-gray-700" />
+          </button>
+
+          {/* 5. Accounts & Staff Cash */}
           <button
             type="button"
             onClick={() => {
@@ -540,6 +685,8 @@ export default function AiAssistantDrawer({
                 const next = !prev
                 if (next) {
                   setIsSalesMode(false)
+                  setIsPaymentMode(false)
+                  setIsClientMode(false)
                   setTimeout(() => inputRef.current?.focus(), 50)
                 }
                 return next
@@ -556,7 +703,7 @@ export default function AiAssistantDrawer({
             <ArrowRightLeft className={`w-4 h-4 ${isAccountsMode ? 'text-white' : 'text-blue-600'}`} />
           </button>
 
-          {/* 4. Package: Current Stock */}
+          {/* 6. Current Stock */}
           <button
             type="button"
             onClick={() => handleSend('Current stock')}
@@ -567,18 +714,18 @@ export default function AiAssistantDrawer({
             <Package className="w-4 h-4 text-indigo-600" />
           </button>
 
-          {/* 5. Truck: Today Deliveries */}
+          {/* 7. Today Deliveries */}
           <button
             type="button"
             onClick={() => handleSend('Pending orders today')}
-            className="w-9 h-9 bg-white border border-gray-200 hover:border-emerald-500 hover:bg-emerald-50/50 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+            className="w-9 h-9 bg-white border border-gray-200 hover:border-cyan-600 hover:bg-cyan-50/50 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-2xs"
             title="Today's Pending Deliveries"
             aria-label="Today Deliveries"
           >
-            <Truck className="w-4 h-4 text-emerald-600" />
+            <Truck className="w-4 h-4 text-cyan-600" />
           </button>
 
-          {/* 6. IndianRupee: Outstanding Dues */}
+          {/* 8. Outstanding Dues */}
           <button
             type="button"
             onClick={() => handleSend('Outstanding balances')}
@@ -586,18 +733,91 @@ export default function AiAssistantDrawer({
             title="Customer Outstanding Dues"
             aria-label="Outstanding Balances"
           >
-            <IndianRupee className="w-4 h-4 text-purple-600" />
+            <CreditCard className="w-4 h-4 text-purple-600" />
           </button>
         </div>
 
         {/* Message Thread */}
         <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50/50">
           {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center p-6 text-gray-400 select-none">
-              <Bot className="w-8 h-8 text-gray-300 mb-2" />
-              <p className="text-xs font-semibold text-gray-500">
-                Ready for sales notes, staff cash entries, or queries.
-              </p>
+            <div className="h-full flex flex-col items-center justify-center text-center p-4 text-gray-400 select-none space-y-3">
+              <div className="w-10 h-10 rounded-2xl bg-orange-50 border border-orange-200 text-amz-orange flex items-center justify-center shadow-2xs">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-800">Anjani AI Operations Assistant</p>
+                <p className="text-[11px] text-gray-500 max-w-xs mt-0.5">
+                  Natural language & camera OCR for orders, payments, clients & stock.
+                </p>
+              </div>
+
+              {/* Suggestions in sequence: Order creation -> Payments -> Clients -> Remaining */}
+              <div className="w-full max-w-sm flex flex-col gap-1.5 pt-1 text-left">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSalesMode(true)
+                    setInputMessage('Jay Ambe 10 200ml 65, Ramesh 5 1L 120 paid')
+                  }}
+                  className="p-2.5 bg-white border border-gray-200 hover:border-emerald-500 hover:bg-emerald-50/40 rounded-xl text-xs text-gray-700 flex items-center gap-2.5 transition-all shadow-2xs cursor-pointer"
+                >
+                  <span className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 font-bold text-[10px]">1</span>
+                  <div className="min-w-0">
+                    <p className="font-bold text-gray-900 leading-tight">Order Creation / Daily Sales</p>
+                    <p className="text-[11px] text-gray-500 truncate">Paste WhatsApp notes or snap order diary</p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPaymentMode(true)
+                    setInputMessage('Received ₹1500 from Ramesh via GPay')
+                  }}
+                  className="p-2.5 bg-white border border-gray-200 hover:border-emerald-600 hover:bg-emerald-50/40 rounded-xl text-xs text-gray-700 flex items-center gap-2.5 transition-all shadow-2xs cursor-pointer"
+                >
+                  <span className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0 font-bold text-[10px]">2</span>
+                  <div className="min-w-0">
+                    <p className="font-bold text-gray-900 leading-tight">Receive Payment</p>
+                    <p className="text-[11px] text-gray-500 truncate">Type "Received 1500 from ..." or snap UPI screenshot</p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsClientMode(true)
+                    setInputMessage('Add client Maruti Kirana mobile 9876543210 address Karelibaug rate 65')
+                  }}
+                  className="p-2.5 bg-white border border-gray-200 hover:border-orange-500 hover:bg-orange-50/40 rounded-xl text-xs text-gray-700 flex items-center gap-2.5 transition-all shadow-2xs cursor-pointer"
+                >
+                  <span className="w-5 h-5 rounded-md bg-orange-100 text-amz-orange flex items-center justify-center shrink-0 font-bold text-[10px]">3</span>
+                  <div className="min-w-0">
+                    <p className="font-bold text-gray-900 leading-tight">Add New Client</p>
+                    <p className="text-[11px] text-gray-500 truncate">Type "Add client name mobile ..." or snap visiting card</p>
+                  </div>
+                </button>
+
+                <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSend('Current stock')}
+                    className="p-2 bg-white border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50/40 rounded-xl text-xs text-gray-700 flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                  >
+                    <Package className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <span className="font-semibold truncate">Current Stock</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSend('Pending orders today')}
+                    className="p-2 bg-white border border-gray-200 hover:border-cyan-500 hover:bg-cyan-50/40 rounded-xl text-xs text-gray-700 flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                  >
+                    <Truck className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
+                    <span className="font-semibold truncate">Today's Orders</span>
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
             messages.map((msg) => (
@@ -641,7 +861,405 @@ export default function AiAssistantDrawer({
                   </span>
                 )}
 
-                {/* 1. Interactive Vendor Bill Card */}
+                {/* 1. Interactive Order Draft Card */}
+                {msg.type === 'order_draft' && msg.data && (
+                  <div className="mt-3 bg-white border border-gray-300 rounded-xl p-3.5 space-y-3 text-xs text-gray-800 shadow-sm">
+                    <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                          <ClipboardList className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-900 text-sm">Order Draft</p>
+                          <p className="text-[11px] text-gray-500">For {msg.data.clientName || 'Customer'}</p>
+                        </div>
+                      </div>
+                      {placedOrders[msg.id] ? (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-700 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Placed
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {msg.data.items?.map((it, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                          <span className="font-semibold text-gray-900">
+                            {it.qty} {it.unit || 'Box'} × {it.sku}
+                          </span>
+                          <span className="font-bold text-gray-900">
+                            ₹{(it.qty * it.rate).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between font-bold text-gray-900 px-1 pt-1">
+                        <span>Total ({msg.data.totalQty} units):</span>
+                        <span className="text-amz-orange font-black">
+                          ₹{Number(msg.data.totalAmount || 0).toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={placedOrders[msg.id]}
+                        onClick={async () => {
+                          try {
+                            await addOrder({
+                              clientId: msg.data.clientId,
+                              clientName: msg.data.clientName,
+                              mobile: msg.data.mobile,
+                              location: msg.data.location,
+                              items: msg.data.items,
+                              totalQty: msg.data.totalQty,
+                              totalAmount: msg.data.totalAmount,
+                              status: 'Pending',
+                              date: msg.data.date,
+                            })
+                            setPlacedOrders((prev) => ({ ...prev, [msg.id]: true }))
+                            toast.success(`Order confirmed for ${msg.data.clientName}!`)
+                          } catch (err) {
+                            toast.error('Failed to place order: ' + err.message)
+                          }
+                        }}
+                        className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer shadow-xs text-xs"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        {placedOrders[msg.id] ? 'Order Placed ✓' : 'Confirm Order Now'}
+                      </button>
+
+                      {onOpenOrderModal && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenOrderModal(msg.data)}
+                          className="py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold transition-colors text-xs cursor-pointer"
+                        >
+                          Open Form
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Interactive Payment Receipt Card */}
+                {msg.type === 'receive_payment' && msg.data && (
+                  <div className="mt-3 bg-white border border-gray-300 rounded-xl p-3.5 space-y-3 text-xs text-gray-800 shadow-sm">
+                    <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                          <IndianRupee className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-900 text-sm">Payment Receipt</p>
+                          <p className="text-[11px] text-gray-500">{msg.data.onlineProvider || 'UPI / Cash Payment'}</p>
+                        </div>
+                      </div>
+                      {recordedPayments[msg.paymentId || msg.id] ? (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-700 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Recorded
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-gray-500">Customer / Client</label>
+                        <select
+                          value={msg.data.clientId || ''}
+                          disabled={recordedPayments[msg.paymentId || msg.id]}
+                          onChange={(e) => {
+                            const id = e.target.value
+                            const c = clients.find((item) => item.id === id)
+                            setMessages((prev) =>
+                              prev.map((m) =>
+                                m.id === msg.id
+                                  ? {
+                                      ...m,
+                                      data: {
+                                        ...m.data,
+                                        clientId: id,
+                                        clientName: c?.name || m.data.clientName,
+                                      },
+                                    }
+                                  : m,
+                              ),
+                            )
+                          }}
+                          className="w-full mt-0.5 p-2 bg-gray-50 border border-gray-200 rounded-lg font-semibold text-gray-900 focus:bg-white focus:ring-1 focus:ring-emerald-500 outline-none"
+                        >
+                          <option value="">{msg.data.clientName || '-- Select Client --'}</option>
+                          {clients.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name} {c.outstanding ? `(Due: ₹${Number(c.outstanding).toLocaleString('en-IN')})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-gray-500">Amount Received (₹)</label>
+                        <input
+                          type="number"
+                          value={msg.data.amount || ''}
+                          disabled={recordedPayments[msg.paymentId || msg.id]}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0
+                            setMessages((prev) =>
+                              prev.map((m) =>
+                                m.id === msg.id ? { ...m, data: { ...m.data, amount: val } } : m,
+                              ),
+                            )
+                          }}
+                          className="w-full mt-0.5 p-2 bg-gray-50 border border-gray-200 rounded-lg font-bold text-emerald-700 text-sm focus:bg-white focus:ring-1 focus:ring-emerald-500 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-gray-500">Payment Mode</label>
+                        <select
+                          value={msg.data.method || 'online'}
+                          disabled={recordedPayments[msg.paymentId || msg.id]}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setMessages((prev) =>
+                              prev.map((m) =>
+                                m.id === msg.id
+                                  ? {
+                                      ...m,
+                                      data: {
+                                        ...m.data,
+                                        method: val,
+                                        accountId: val === 'cash' ? 'counter' : 'bank',
+                                      },
+                                    }
+                                  : m,
+                              ),
+                            )
+                          }}
+                          className="w-full mt-0.5 p-2 bg-gray-50 border border-gray-200 rounded-lg font-semibold text-gray-800 focus:bg-white outline-none"
+                        >
+                          <option value="online">Online / UPI (Bank)</option>
+                          <option value="cash">Cash (Counter)</option>
+                          <option value="cheque">Cheque</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-gray-500">Reference / UTR</label>
+                        <input
+                          type="text"
+                          value={msg.data.utr ? `UTR: ${msg.data.utr}` : msg.data.date || ''}
+                          disabled={recordedPayments[msg.paymentId || msg.id]}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setMessages((prev) =>
+                              prev.map((m) =>
+                                m.id === msg.id ? { ...m, data: { ...m.data, utr: val } } : m,
+                              ),
+                            )
+                          }}
+                          className="w-full mt-0.5 p-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 focus:bg-white outline-none"
+                          placeholder="UTR / Transaction ID"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={
+                          recordedPayments[msg.paymentId || msg.id] ||
+                          !msg.data.clientId ||
+                          Number(msg.data.amount) <= 0
+                        }
+                        onClick={async () => {
+                          try {
+                            await addPayment({
+                              clientId: msg.data.clientId,
+                              amount: Number(msg.data.amount),
+                              type: 'payment',
+                              method: msg.data.method || 'online',
+                              accountId:
+                                msg.data.accountId ||
+                                (msg.data.method === 'cash' ? 'counter' : 'bank'),
+                              note: msg.data.utr ? `UPI Ref: ${msg.data.utr}` : 'AI recorded payment',
+                              date: new Date(),
+                            })
+                            setRecordedPayments((prev) => ({
+                              ...prev,
+                              [msg.paymentId || msg.id]: true,
+                            }))
+                            toast.success(
+                              `Payment of ₹${Number(msg.data.amount).toLocaleString('en-IN')} recorded successfully!`,
+                            )
+                          } catch (err) {
+                            toast.error('Failed to record payment: ' + err.message)
+                          }
+                        }}
+                        className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer shadow-xs text-xs"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        {recordedPayments[msg.paymentId || msg.id]
+                          ? 'Payment Recorded ✓'
+                          : 'Confirm & Record Payment'}
+                      </button>
+
+                      {onOpenPaymentModal && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenPaymentModal(msg.data)}
+                          className="py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold transition-colors text-xs cursor-pointer"
+                        >
+                          Open Form
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Interactive Client Creation Card */}
+                {msg.type === 'create_client' && msg.data && (
+                  <div className="mt-3 bg-white border border-gray-300 rounded-xl p-3.5 space-y-3 text-xs text-gray-800 shadow-sm">
+                    <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-orange-100 text-amz-orange flex items-center justify-center font-bold">
+                          <UserPlus className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-900 text-sm">New Client Setup</p>
+                          <p className="text-[11px] text-gray-500">From visiting card / text details</p>
+                        </div>
+                      </div>
+                      {createdClients[msg.clientId || msg.id] ? (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-700 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Added
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-gray-500">Client / Store Name</label>
+                        <input
+                          type="text"
+                          value={msg.data.name}
+                          disabled={createdClients[msg.clientId || msg.id]}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setMessages((prev) =>
+                              prev.map((m) =>
+                                m.id === msg.id ? { ...m, data: { ...m.data, name: val } } : m,
+                              ),
+                            )
+                          }}
+                          className="w-full mt-0.5 p-2 bg-gray-50 border border-gray-200 rounded-lg font-semibold text-gray-900 focus:bg-white focus:ring-1 focus:ring-amz-orange outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-gray-500">Mobile Number</label>
+                        <input
+                          type="tel"
+                          maxLength={10}
+                          value={msg.data.mobile}
+                          disabled={createdClients[msg.clientId || msg.id]}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, '')
+                            setMessages((prev) =>
+                              prev.map((m) =>
+                                m.id === msg.id ? { ...m, data: { ...m.data, mobile: val } } : m,
+                              ),
+                            )
+                          }}
+                          className="w-full mt-0.5 p-2 bg-gray-50 border border-gray-200 rounded-lg font-semibold text-gray-900 focus:bg-white focus:ring-1 focus:ring-amz-orange outline-none"
+                          placeholder="10-digit mobile"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-gray-500">Delivery Address</label>
+                        <input
+                          type="text"
+                          value={msg.data.address}
+                          disabled={createdClients[msg.clientId || msg.id]}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setMessages((prev) =>
+                              prev.map((m) =>
+                                m.id === msg.id ? { ...m, data: { ...m.data, address: val } } : m,
+                              ),
+                            )
+                          }}
+                          className="w-full mt-0.5 p-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-800 focus:bg-white focus:ring-1 focus:ring-amz-orange outline-none"
+                          placeholder="Street, area, city"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-gray-500">Rate (₹ / 200ml Box)</label>
+                        <input
+                          type="number"
+                          value={msg.data.rate || ''}
+                          disabled={createdClients[msg.clientId || msg.id]}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setMessages((prev) =>
+                              prev.map((m) =>
+                                m.id === msg.id
+                                  ? { ...m, data: { ...m.data, rate: Number(val) || 0 } }
+                                  : m,
+                              ),
+                            )
+                          }}
+                          className="w-full mt-0.5 p-2 bg-gray-50 border border-gray-200 rounded-lg font-semibold text-gray-900 focus:bg-white focus:ring-1 focus:ring-amz-orange outline-none"
+                          placeholder="e.g. 65"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={createdClients[msg.clientId || msg.id] || !msg.data.name}
+                        onClick={async () => {
+                          try {
+                            await addClient({
+                              name: msg.data.name,
+                              mobile: msg.data.mobile,
+                              address: msg.data.address,
+                              location: msg.data.location || msg.data.address,
+                              rate: Number(msg.data.rate) || 0,
+                            })
+                            setCreatedClients((prev) => ({
+                              ...prev,
+                              [msg.clientId || msg.id]: true,
+                            }))
+                            toast.success(`Client "${msg.data.name}" created successfully!`)
+                          } catch (err) {
+                            toast.error('Failed to create client: ' + err.message)
+                          }
+                        }}
+                        className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer shadow-xs text-xs"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        {createdClients[msg.clientId || msg.id] ? 'Client Created ✓' : 'Create Client Now'}
+                      </button>
+
+                      {onOpenAddClient && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenAddClient(msg.data)}
+                          className="py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold transition-colors text-xs cursor-pointer"
+                        >
+                          Open Form
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Interactive Vendor Bill Card */}
                 {msg.type === 'vendor_bill' && msg.data && (
                   <div className="mt-3 bg-gray-50 border border-gray-300 rounded-xl p-3 space-y-2.5 text-xs text-gray-800">
                     <div className="flex items-center justify-between border-b border-gray-200 pb-2">
@@ -1326,6 +1944,42 @@ export default function AiAssistantDrawer({
             </div>
           )}
 
+          {/* Payment Mode Active Banner */}
+          {isPaymentMode && (
+            <div className="mb-2 flex items-center justify-between px-3 py-1.5 bg-emerald-50 border border-emerald-400 rounded-xl text-xs text-emerald-900 font-semibold animate-in fade-in shadow-2xs">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <IndianRupee className="w-4 h-4 text-emerald-700 shrink-0" />
+                <span className="truncate">Payment Mode: Type payment or upload UPI screenshot / receipt</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPaymentMode(false)}
+                className="text-emerald-800 hover:text-red-600 p-0.5 rounded cursor-pointer shrink-0 ml-1"
+                title="Exit payment mode"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Client Creation Mode Active Banner */}
+          {isClientMode && (
+            <div className="mb-2 flex items-center justify-between px-3 py-1.5 bg-orange-50 border border-orange-400 rounded-xl text-xs text-orange-950 font-semibold animate-in fade-in shadow-2xs">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <UserPlus className="w-4 h-4 text-orange-600 shrink-0" />
+                <span className="truncate">Add Client Mode: Type client details or upload visiting card / signboard</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsClientMode(false)}
+                className="text-orange-800 hover:text-red-600 p-0.5 rounded cursor-pointer shrink-0 ml-1"
+                title="Exit client mode"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Sales Mode Active Banner */}
           {isSalesMode && (
             <div className="mb-2 flex items-center justify-between px-3 py-1.5 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-900 font-semibold animate-in fade-in shadow-2xs">
@@ -1381,7 +2035,7 @@ export default function AiAssistantDrawer({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="p-2.5 text-gray-500 hover:text-amz-orange hover:bg-orange-50 rounded-xl border border-gray-300 transition-colors"
-              title="Upload Bill or Notepad Slip"
+              title="Upload Bill, Receipt or Visiting Card"
             >
               <Camera className="w-5 h-5" />
             </button>
@@ -1392,20 +2046,28 @@ export default function AiAssistantDrawer({
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               placeholder={
-                isSalesMode
-                  ? 'Paste WhatsApp sales notes here and tap Send...'
-                  : isAccountsMode
-                    ? 'e.g. Nilesh handover 4000 to counter, collected 3500 Jay Ambe, petrol 200...'
-                    : filePreview
-                      ? 'Add notes or tap send...'
-                      : 'Paste sales, staff cash entries, or ask anything...'
+                isPaymentMode
+                  ? 'e.g. Received 2000 from Royal Hotel via GPay / Cash...'
+                  : isClientMode
+                    ? 'e.g. Add client Shiv Dhaba, Manjalpur, 9825098250, 200ml rate 120...'
+                    : isSalesMode
+                      ? 'Paste WhatsApp sales notes here and tap Send...'
+                      : isAccountsMode
+                        ? 'e.g. Nilesh handover 4000 to counter, collected 3500 Jay Ambe...'
+                        : filePreview
+                          ? 'Add notes or tap send...'
+                          : 'Order, payment, new client, bill scan, or ask anything...'
               }
               className={`flex-1 py-2.5 px-3 border rounded-xl text-xs sm:text-sm outline-none transition-all ${
-                isSalesMode
-                  ? 'border-emerald-500 ring-2 ring-emerald-200/60 bg-emerald-50/20'
-                  : isAccountsMode
-                    ? 'border-blue-500 ring-2 ring-blue-200/60 bg-blue-50/20'
-                    : 'border-gray-300 focus:ring-2 focus:ring-amz-orange focus:border-amz-orange'
+                isPaymentMode
+                  ? 'border-emerald-600 ring-2 ring-emerald-200/70 bg-emerald-50/20'
+                  : isClientMode
+                    ? 'border-orange-500 ring-2 ring-orange-200/70 bg-orange-50/20'
+                    : isSalesMode
+                      ? 'border-emerald-500 ring-2 ring-emerald-200/60 bg-emerald-50/20'
+                      : isAccountsMode
+                        ? 'border-blue-500 ring-2 ring-blue-200/60 bg-blue-50/20'
+                        : 'border-gray-300 focus:ring-2 focus:ring-amz-orange focus:border-amz-orange'
               }`}
             />
 

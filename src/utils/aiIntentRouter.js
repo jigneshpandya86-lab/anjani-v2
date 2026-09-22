@@ -1,17 +1,215 @@
 /**
  * Zero-Token Local Intent Router.
- * Resolves standard operational queries (Stock, Pending Orders, Outstanding Balances)
- * directly against local clientStore state with ZERO API tokens and instant response time.
- * Complex questions and image bill scans are routed to the cloud AI function.
+ * Resolves standard operational queries:
+ * 1. Order Creation & Sales
+ * 2. Payments / Receiving Money
+ * 3. New Clients Creation
+ * 4. Remaining: Stock, Pending Deliveries, Outstanding Balances, Staff Cash Custody
+ *
+ * All sequence strictly adheres to: Order creation -> Payments -> Clients -> Remaining.
  */
 
-import { WATER_SKUS, getSkuMeta } from '../constants/skus'
+import { WATER_SKUS, getSkuMeta, DEFAULT_SKU } from '../constants/skus'
 
-export function tryLocalIntentRoute(query, store) {
+// Helper: Match SKU from text
+function matchSkuFromText(text) {
+  const norm = String(text || '').toLowerCase()
+  if (norm.includes('200ml') || norm.includes('anjani')) return 'Anjani 200ml'
+  if (norm.includes('250ml')) return 'Bailey 250ml'
+  if (norm.includes('500ml')) return 'Bailey 500ml'
+  if (norm.includes('1l') || norm.includes('1 liter') || norm.includes('1 litre') || norm.includes('1 ltr')) return 'Bailey 1 Liter'
+  if (norm.includes('2l') || norm.includes('2 liter') || norm.includes('2 litre') || norm.includes('2 ltr')) return 'Bailey 2 Liter'
+  return DEFAULT_SKU
+}
+
+// Helper: Match client from text against store.clients
+function matchClientFromText(text, clients = []) {
+  if (!text || !Array.isArray(clients) || clients.length === 0) return null
+  const norm = text.toLowerCase()
+  // Exact or contains match (longest first)
+  const sorted = [...clients].sort((a, b) => (b.name?.length || 0) - (a.name?.length || 0))
+  for (const c of sorted) {
+    if (c.name && norm.includes(c.name.toLowerCase().trim())) {
+      return c
+    }
+  }
+  return null
+}
+
+export function tryLocalIntentRoute(query, store = {}) {
   if (!query || typeof query !== 'string') return null
-  const q = query.trim().toLowerCase()
+  const rawQ = query.trim()
+  const q = rawQ.toLowerCase()
 
-  // 1. Stock / Inventory check
+  // ==========================================
+  // SEQUENCE 1: ORDER CREATION & QUICK SALES
+  // ==========================================
+  const isOrderCreationIntent =
+    /^(?:create\s+order|new\s+order|place\s+order|book\s+order|order\s+\d+|order\s+for)\b/i.test(q) ||
+    /(?:create\s+order|new\s+order)\b/i.test(q)
+
+  if (isOrderCreationIntent) {
+    const clients = store.clients || []
+    const matchedClient = matchClientFromText(rawQ, clients)
+    const sku = matchSkuFromText(rawQ)
+    const skuMeta = getSkuMeta(sku)
+
+    // Extract quantity
+    const qtyMatch = rawQ.match(/\b(\d+)\s*(?:boxes?|cases?|peti|bxs?|units?|bottles?|jar)?\b/i)
+    const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 10
+
+    // Extract rate
+    let rate = 0
+    const rateMatch = rawQ.match(/(?:@|rate|bhav)\s*[:=]?\s*(\d+(?:\.\d+)?)/i)
+    if (rateMatch) {
+      rate = parseFloat(rateMatch[1])
+    } else if (matchedClient) {
+      rate = Number(matchedClient.skuRates?.[sku] ?? matchedClient.rate ?? 0)
+    }
+
+    let clientName = matchedClient ? matchedClient.name : ''
+    if (!clientName) {
+      // Try to extract customer name following "for", "to", "of", "client"
+      const nameMatch = rawQ.match(/(?:for|to|client|customer)\s+([A-Za-z0-9\s]{2,25})(?:$|\s+(?:mobile|phone|address|rate|qty|@|\d))/i)
+      if (nameMatch) {
+        clientName = nameMatch[1].trim()
+      } else {
+        clientName = 'Retail'
+      }
+    }
+
+    const items = [
+      {
+        sku,
+        qty,
+        rate,
+        unit: skuMeta.unit,
+        amount: qty * rate,
+      },
+    ]
+
+    return {
+      handled: true,
+      type: 'order_draft',
+      text: `🛒 **New Order Draft**: Ready to place order for **${clientName}**:\n• **${qty} ${skuMeta.unit}** — *${sku}* @ ₹${rate}/unit = **₹${(qty * rate).toLocaleString('en-IN')}**`,
+      data: {
+        clientId: matchedClient?.id || '',
+        clientName,
+        items,
+        totalQty: qty,
+        totalAmount: qty * rate,
+        mobile: matchedClient?.mobile || '',
+        location: matchedClient?.location || matchedClient?.address || '',
+        date: new Date().toISOString().slice(0, 10),
+      },
+    }
+  }
+
+  // ==========================================
+  // SEQUENCE 2: PAYMENTS (RECEIVING MONEY)
+  // ==========================================
+  const isPaymentIntent =
+    /(?:received|payment\s+received|jama\s+kary[ao]|paid|rupiya\s+malya|rupaye\s+mile|collected)\b/i.test(q) &&
+    /\d+/.test(q) &&
+    !/(?:stock|order|delivery|invoice)\b/i.test(q)
+
+  if (isPaymentIntent) {
+    const clients = store.clients || []
+    const matchedClient = matchClientFromText(rawQ, clients)
+
+    // Extract amount
+    const amtMatch = rawQ.match(/(?:₹|rs\.?|inr)?\s*(\d+(?:,\d+)*(?:\.\d+)?)\s*(?:₹|rs\.?|rupees|rupiya)?/i)
+    const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0
+
+    if (amount > 0) {
+      let clientName = matchedClient ? matchedClient.name : ''
+      if (!clientName) {
+        const fromMatch = rawQ.match(/(?:from|by|client|customer)\s+([A-Za-z0-9\s]{2,25})(?:$|\s+(?:via|through|cash|upi|gpay|online))/i)
+        if (fromMatch) {
+          clientName = fromMatch[1].trim()
+        } else {
+          // If query starts with client name: "Ramesh paid 1500"
+          const leadMatch = rawQ.match(/^([A-Za-z0-9\s]{2,20})\s+(?:paid|jama)/i)
+          if (leadMatch) clientName = leadMatch[1].trim()
+          else clientName = 'Customer'
+        }
+      }
+
+      const isOnline = /(?:gpay|phonepe|paytm|upi|online|bank|transfer|neft|rtgs|cheque)/i.test(rawQ)
+      const isCash = /(?:cash|rokda|counter)/i.test(rawQ)
+      const method = isOnline ? 'online' : (isCash ? 'cash' : 'online')
+      const accountId = isOnline ? 'bank' : 'counter'
+
+      return {
+        handled: true,
+        type: 'receive_payment',
+        text: `💰 **Payment Received**: Ready to record payment of **₹${amount.toLocaleString('en-IN')}** from **${clientName}**:`,
+        data: {
+          clientId: matchedClient?.id || '',
+          clientName,
+          amount,
+          method,
+          accountId,
+          date: new Date().toISOString().slice(0, 10),
+          notes: rawQ,
+        },
+      }
+    }
+  }
+
+  // ==========================================
+  // SEQUENCE 3: CLIENTS (NEW CLIENT CREATION)
+  // ==========================================
+  const isClientCreationIntent =
+    /^(?:add|new|create)\s+(?:client|customer|party|dukaan|shop)\b/i.test(q) ||
+    /(?:add\s+new\s+client|create\s+new\s+client)\b/i.test(q)
+
+  if (isClientCreationIntent) {
+    // 1. Extract 10-digit mobile
+    const mobileMatch = rawQ.match(/\b([6-9]\d{9})\b/)
+    const mobile = mobileMatch ? mobileMatch[1] : ''
+
+    // 2. Extract base rate
+    const rateMatch = rawQ.match(/(?:rate|bhav|@)\s*[:=]?\s*(\d+(?:\.\d+)?)/i)
+    const rate = rateMatch ? parseFloat(rateMatch[1]) : 0
+
+    // 3. Extract address
+    let address = ''
+    const addrMatch = rawQ.match(/(?:address|location|area|at)\s*[:=]?\s*([^,;\n]+?)(?:$|\s+(?:mobile|phone|rate|bhav|@))/i)
+    if (addrMatch) {
+      address = addrMatch[1].trim()
+    }
+
+    // 4. Extract Name: remove command words, mobile, rate, address
+    let cleanedForName = rawQ
+      .replace(/^(?:add|new|create)\s+(?:client|customer|party|dukaan|shop)\s*/i, '')
+      .replace(/\b[6-9]\d{9}\b/g, '')
+      .replace(/(?:rate|bhav|@)\s*[:=]?\s*\d+(?:\.\d+)?/gi, '')
+      .replace(/(?:address|location|area|at)\s*[:=]?\s*[^,;\n]+/gi, '')
+      .replace(/[,;:]+/g, ' ')
+      .trim()
+
+    const name = cleanedForName.length > 1 ? cleanedForName : 'New Client'
+
+    return {
+      handled: true,
+      type: 'create_client',
+      text: `👤 **New Client Detected**: Ready to add **${name}** to your client master:`,
+      data: {
+        name,
+        mobile,
+        address,
+        rate,
+        isRegular: false,
+      },
+    }
+  }
+
+  // ==========================================
+  // SEQUENCE 4: REMAINING (STOCK, DISPATCH, BALANCES, ACCOUNTS)
+  // ==========================================
+
+  // 4A. Stock / Inventory check
   const stockPatterns = [
     /^stock$/i,
     /^check stock/i,
@@ -67,7 +265,7 @@ export function tryLocalIntentRoute(query, store) {
     }
   }
 
-  // 2. Open / Pending Orders for Today
+  // 4B. Open / Pending Orders for Today
   const orderPatterns = [
     /open order/i,
     /pending order/i,
@@ -114,8 +312,8 @@ export function tryLocalIntentRoute(query, store) {
     }
   }
 
-  // 3. Outstanding / Pending Balances & Defaulters
-  const paymentPatterns = [
+  // 4C. Outstanding / Pending Balances & Defaulters
+  const outstandingPatterns = [
     /outstanding/i,
     /pending payment/i,
     /baki rupiya/i,
@@ -129,7 +327,7 @@ export function tryLocalIntentRoute(query, store) {
     /lene ke/i,
   ]
 
-  if (paymentPatterns.some((pattern) => pattern.test(q))) {
+  if (outstandingPatterns.some((pattern) => pattern.test(q))) {
     const clients = store.clients || []
     const getClientDue = (c) =>
       Number(c.outstanding ?? c.balance ?? c.due ?? c.pendingAmount ?? 0)
@@ -166,7 +364,7 @@ export function tryLocalIntentRoute(query, store) {
     }
   }
 
-  // 4. Staff Cash Custody & Accounts Overview (Nilesh, Hiteshbhai, Counter, Bank)
+  // 4D. Staff Cash Custody & Accounts Overview (Nilesh, Hiteshbhai, Counter, Bank)
   const cashCustodyPatterns = [
     /nilesh/i,
     /hitesh/i,

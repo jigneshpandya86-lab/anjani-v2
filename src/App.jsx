@@ -73,6 +73,7 @@ function App() {
   const [editOrder, setEditOrder] = useState(null)
   const [editClient, setEditClient] = useState(null)
   const [addClientOpen, setAddClientOpen] = useState(false)
+  const [clientPrefill, setClientPrefill] = useState(null)
   const [addExpenseOpen, setAddExpenseOpen] = useState(false)
   const [payClient, setPayClient] = useState(null)
   const [paymentPrefill, setPaymentPrefill] = useState(null)
@@ -536,8 +537,8 @@ function App() {
 
   const handleOrderInvoiceWhatsApp = async (order) => {
     const client = clients.find((c) => c.id === order.clientId)
-    const clientName = client?.name || order.clientName || order.customerName || 'Unknown Client'
-    const mobile = client?.mobile || order.mobile || order.phone || ''
+    const clientName = order.clientName || order.customerName || client?.name || 'Unknown Client'
+    const mobile = order.mobile || order.phone || client?.mobile || ''
     const amountVal =
       Number(order.totalAmount) || (Number(order.qty) || 0) * (Number(order.rate) || 0)
     const amount = amountVal.toLocaleString('en-IN')
@@ -1322,19 +1323,28 @@ function App() {
       {addClientOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-[1000] flex items-center justify-center p-3 sm:p-4"
-          onClick={() => setAddClientOpen(false)}
+          onClick={() => {
+            setAddClientOpen(false)
+            setClientPrefill(null)
+          }}
         >
           <div
             className="bg-white rounded-2xl w-full max-w-lg max-h-[92dvh] sm:max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <AddClient onDone={() => setAddClientOpen(false)} />
+            <AddClient
+              initialValues={clientPrefill || {}}
+              onDone={() => {
+                setAddClientOpen(false)
+                setClientPrefill(null)
+              }}
+            />
           </div>
         </div>
       )}
 
       {/* Payment Modal */}
-      {payClient !== null && (
+      {(payClient !== null || paymentPrefill !== null) && (
         <div
           className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4"
           onClick={() => {
@@ -1572,11 +1582,32 @@ function App() {
         isOpen={aiDrawerOpen}
         onClose={() => setAiDrawerOpen(false)}
         onNavigateTab={(tab) => setActiveTab(tab)}
-        onOpenPaymentModal={(client) => {
-          setPayClient(client)
-          setPaymentPrefill(null)
+        onOpenPaymentModal={(prefill) => {
+          if (prefill?.clientId) {
+            const client = clients.find((c) => c.id === prefill.clientId)
+            setPayClient(client || null)
+          } else if (prefill?.clientName) {
+            const client = clients.find(
+              (c) => c.name?.toLowerCase() === prefill.clientName?.toLowerCase(),
+            )
+            setPayClient(client || null)
+          } else if (prefill && typeof prefill === 'object' && prefill.id) {
+            setPayClient(prefill)
+          } else {
+            setPayClient(null)
+          }
+          setPaymentPrefill(prefill || null)
+          setAiDrawerOpen(false)
         }}
-        onOpenOrderModal={(order) => setEditOrder(order)}
+        onOpenAddClient={(prefill) => {
+          setClientPrefill(prefill || null)
+          setAddClientOpen(true)
+          setAiDrawerOpen(false)
+        }}
+        onOpenOrderModal={(order) => {
+          setEditOrder(order)
+          setAiDrawerOpen(false)
+        }}
       />
 
       {/* Floating AI Assistant Trigger Button (Compact, Bottom-Right) */}

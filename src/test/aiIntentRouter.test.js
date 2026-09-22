@@ -2,6 +2,46 @@ import { describe, it, expect } from 'vitest'
 import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
 
 describe('aiIntentRouter', () => {
+  it('handles order creation draft intent locally with zero tokens', () => {
+    const fakeStore = {
+      clients: [{ id: 'c1', name: 'Jay Ambe Provision', mobile: '9825012345', rate: 65 }],
+    }
+    const result = tryLocalIntentRoute('Create order 15 boxes Anjani 200ml for Jay Ambe Provision', fakeStore)
+    expect(result).not.toBeNull()
+    expect(result.handled).toBe(true)
+    expect(result.type).toBe('order_draft')
+    expect(result.data.clientName).toBe('Jay Ambe Provision')
+    expect(result.data.clientId).toBe('c1')
+    expect(result.data.items[0].qty).toBe(15)
+    expect(result.data.items[0].sku).toBe('Anjani 200ml')
+  })
+
+  it('handles payment received intent locally with zero tokens', () => {
+    const fakeStore = {
+      clients: [{ id: 'c1', name: 'Ramesh Store', mobile: '9825000000' }],
+    }
+    const result = tryLocalIntentRoute('Received ₹1500 from Ramesh Store via GPay', fakeStore)
+    expect(result).not.toBeNull()
+    expect(result.handled).toBe(true)
+    expect(result.type).toBe('receive_payment')
+    expect(result.data.amount).toBe(1500)
+    expect(result.data.clientId).toBe('c1')
+    expect(result.data.method).toBe('online')
+    expect(result.data.accountId).toBe('bank')
+  })
+
+  it('handles client creation intent locally with zero tokens', () => {
+    const fakeStore = {}
+    const result = tryLocalIntentRoute('Add client Shreeji Mart mobile 9825012345 address Karelibaug rate 65', fakeStore)
+    expect(result).not.toBeNull()
+    expect(result.handled).toBe(true)
+    expect(result.type).toBe('create_client')
+    expect(result.data.name).toContain('Shreeji Mart')
+    expect(result.data.mobile).toBe('9825012345')
+    expect(result.data.address).toContain('Karelibaug')
+    expect(result.data.rate).toBe(65)
+  })
+
   it('handles stock intent locally with zero tokens', () => {
     const fakeStore = {
       stockSummary: {

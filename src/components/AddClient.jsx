@@ -4,51 +4,53 @@ import { UserPlus, CheckCircle, MapPinned, ChevronDown, ChevronUp, Package, X } 
 import toast from 'react-hot-toast'
 import GoogleMapPicker from './GoogleMapPicker'
 import { WATER_SKUS } from '../constants/skus'
+import { parseGoogleMapsLocation } from '../utils/locationUtils'
 
-export default function AddClient({ onDone, client }) {
-  // If editing, fill in the blanks. If new, leave empty!
-  const [name, setName] = useState(client ? client.name : '')
-  const [phone, setPhone] = useState(client ? client.mobile : '')
-  const [address, setAddress] = useState(client ? client.address : '')
-  const [rate, setRate] = useState(client ? String(client.rate ?? '') : '')
+export default function AddClient({ onDone, client, initialValues = {} }) {
+  const data = client || initialValues || {}
+  // If editing or prefilling, fill in the blanks. If new, leave empty!
+  const [name, setName] = useState(data.name || '')
+  const [phone, setPhone] = useState(data.mobile || data.phone || '')
+  const [address, setAddress] = useState(data.address || '')
+  const [rate, setRate] = useState(data.rate !== undefined && data.rate !== null && data.rate !== '' ? String(data.rate) : '')
   const [skuRates, setSkuRates] = useState(() => {
     const initial = {}
     WATER_SKUS.forEach((s) => {
-      initial[s.name] = client?.skuRates?.[s.name] !== undefined ? String(client.skuRates[s.name]) : ''
+      initial[s.label] = data?.skuRates?.[s.label] !== undefined ? String(data.skuRates[s.label]) : ''
     })
     return initial
   })
   const [showSkuRates, setShowSkuRates] = useState(() => {
-    return Boolean(client?.skuRates && Object.values(client.skuRates).some((v) => v !== undefined && v !== ''))
+    return Boolean(data?.skuRates && Object.values(data.skuRates).some((v) => v !== undefined && v !== ''))
   })
   const [locationAddress, setLocationAddress] = useState(
-    client?.location || client?.googleLocation || client?.locationName || '',
+    data?.location || data?.googleLocation || data?.locationName || '',
   )
-  const [mapLink, setMapLink] = useState(client?.mapLink || client?.googleMap || '')
+  const [mapLink, setMapLink] = useState(data?.mapLink || data?.googleMap || '')
   const [locationLat, setLocationLat] = useState(() => {
-    const parsed = Number(client?.locationLat ?? client?.lat)
+    const parsed = Number(data?.locationLat ?? data?.lat)
     return Number.isFinite(parsed) ? parsed : null
   })
   const [locationLng, setLocationLng] = useState(() => {
-    const parsed = Number(client?.locationLng ?? client?.lng);
-    return Number.isFinite(parsed) ? parsed : null;
-  });
-  const [status, setStatus] = useState("idle");
-  const [isRegular, setIsRegular] = useState(client ? !!client.isRegular : false);
-  const [isDefaulter, setIsDefaulter] = useState(client ? !!client.isDefaulter : false);
+    const parsed = Number(data?.locationLng ?? data?.lng)
+    return Number.isFinite(parsed) ? parsed : null
+  })
+  const [status, setStatus] = useState("idle")
+  const [isRegular, setIsRegular] = useState(!!data.isRegular)
+  const [isDefaulter, setIsDefaulter] = useState(!!data.isDefaulter)
 
-  const addClient = useClientStore((state) => state.addClient);
-  const updateClient = useClientStore((state) => state.updateClient);
+  const addClient = useClientStore((state) => state.addClient)
+  const updateClient = useClientStore((state) => state.updateClient)
 
   const handleLocationChange = useCallback(({ lat, lng, address: resolvedAddress, mapLink: resolvedMapLink }) => {
-    setLocationLat(lat);
-    setLocationLng(lng);
+    if (Number.isFinite(Number(lat))) setLocationLat(Number(lat))
+    if (Number.isFinite(Number(lng))) setLocationLng(Number(lng))
     if (resolvedAddress) {
-      setLocationAddress(resolvedAddress);
-      setAddress((prev) => (prev.trim() ? prev : resolvedAddress));
+      setLocationAddress(resolvedAddress)
+      setAddress((prev) => (prev.trim() ? prev : resolvedAddress))
     }
-    if (resolvedMapLink) setMapLink(resolvedMapLink);
-  }, []);
+    if (resolvedMapLink) setMapLink(resolvedMapLink)
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -57,54 +59,75 @@ export default function AddClient({ onDone, client }) {
     try {
       const cleanedSkuRates = {}
       WATER_SKUS.forEach((s) => {
-        const val = skuRates[s.name]
-        if (val !== '' && !isNaN(Number(val))) {
-          cleanedSkuRates[s.name] = Number(val)
+        const val = skuRates[s.label]
+        if (val !== '' && val !== undefined && !isNaN(Number(val))) {
+          cleanedSkuRates[s.label] = Number(val)
         }
       })
       if (rate !== '' && cleanedSkuRates['Anjani 200ml'] === undefined) {
         cleanedSkuRates['Anjani 200ml'] = Number(rate)
       }
 
+      // Check if locationAddress or mapLink contains coords or URL
+      let finalLocation = String(locationAddress || '').trim()
+      let finalMapLink = String(mapLink || '').trim()
+      let finalLat = Number.isFinite(Number(locationLat)) ? Number(locationLat) : null
+      let finalLng = Number.isFinite(Number(locationLng)) ? Number(locationLng) : null
+
+      const parsedAddr = parseGoogleMapsLocation(finalLocation)
+      if (parsedAddr) {
+        if (!finalMapLink) finalMapLink = parsedAddr.mapLink
+        if (finalLat === null && parsedAddr.lat !== null) finalLat = parsedAddr.lat
+        if (finalLng === null && parsedAddr.lng !== null) finalLng = parsedAddr.lng
+      }
+
+      const parsedLink = parseGoogleMapsLocation(finalMapLink)
+      if (parsedLink) {
+        if (finalLat === null && parsedLink.lat !== null) finalLat = parsedLink.lat
+        if (finalLng === null && parsedLink.lng !== null) finalLng = parsedLink.lng
+      }
+
+      if (!finalMapLink && finalLat !== null && finalLng !== null) {
+        finalMapLink = `https://www.google.com/maps?q=${finalLat},${finalLng}`
+      }
+
       const payload = {
-        name,
-        mobile: phone,
-        address,
+        name: String(name || '').trim(),
+        mobile: String(phone || '').trim(),
+        address: String(address || '').trim(),
         rate: rate === '' ? 0 : Number(rate),
         skuRates: cleanedSkuRates,
-        location: locationAddress || mapLink || '',
-        mapLink: mapLink || '',
-        locationLat: Number.isFinite(Number(locationLat)) ? Number(locationLat) : null,
-        locationLng: Number.isFinite(Number(locationLng)) ? Number(locationLng) : null,
-        isRegular,
-        isDefaulter,
-      };
+        location: finalLocation || finalMapLink || '',
+        mapLink: finalMapLink || '',
+        locationLat: finalLat,
+        locationLng: finalLng,
+        isRegular: Boolean(isRegular),
+        isDefaulter: Boolean(isDefaulter),
+      }
 
-      if (client) {
+      if (client?.id) {
         await updateClient(client.id, payload)
         toast.success('Client updated successfully')
       } else {
-        await addClient({
-          ...payload,
-          phone,
-        })
+        await addClient(payload)
         toast.success('Client created successfully')
       }
 
-      setName("");
-      setPhone("");
-      setAddress("");
-      setRate("");
-      setSkuRates(WATER_SKUS.reduce((acc, s) => ({ ...acc, [s.name]: '' }), {}));
-      setLocationAddress('');
-      setMapLink('');
-      setLocationLat(null);
-      setLocationLng(null);
-      setIsRegular(false);
-      setIsDefaulter(false);
-      setStatus("idle");
-      if (onDone) onDone();
+      setName('')
+      setPhone('')
+      setAddress('')
+      setRate('')
+      setSkuRates(WATER_SKUS.reduce((acc, s) => ({ ...acc, [s.label]: '' }), {}))
+      setLocationAddress('')
+      setMapLink('')
+      setLocationLat(null)
+      setLocationLng(null)
+      setIsRegular(false)
+      setIsDefaulter(false)
+      setStatus('idle')
+      if (onDone) onDone()
     } catch (error) {
+      console.error('Error saving client:', error)
       toast.error('Failed to save client: ' + error.message)
       setStatus('idle')
     }
@@ -269,31 +292,68 @@ export default function AddClient({ onDone, client }) {
                     htmlFor="location-input"
                     className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide"
                   >
-                    Actual Location (Type & Select)
+                    Actual Location / Google Maps
                   </label>
                   <GoogleMapPicker initialAddress={locationAddress} onChange={handleLocationChange} />
-                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="mt-2 space-y-2">
                     <input
                       id="location-input"
                       type="text"
                       value={locationAddress}
-                      onChange={(e) => setLocationAddress(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setLocationAddress(val)
+                        const parsed = parseGoogleMapsLocation(val)
+                        if (parsed) {
+                          if (parsed.mapLink && !mapLink) setMapLink(parsed.mapLink)
+                          if (parsed.lat !== null) setLocationLat(parsed.lat)
+                          if (parsed.lng !== null) setLocationLng(parsed.lng)
+                        }
+                      }}
                       className="w-full p-2.5 border border-gray-300 rounded-lg text-base sm:text-xs focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
-                      placeholder="Location name/address from map"
+                      placeholder="Area / landmark / shop location text"
                     />
-                    <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 justify-center">
-                      <MapPinned className="h-4 w-4 text-amz-orange flex-shrink-0" />
-                      {mapLink ? (
-                        <a
-                          className="text-xs text-blue-600 underline truncate max-w-[120px]"
-                          href={mapLink}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Open selected map link
-                        </a>
-                      ) : (
-                        <span className="text-xs text-gray-500">No map link</span>
+
+                    <div>
+                      <label
+                        htmlFor="map-link-input"
+                        className="block text-[11px] font-semibold text-gray-500 mb-0.5"
+                      >
+                        Google Map Link or Pin URL
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="map-link-input"
+                          type="text"
+                          value={mapLink}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setMapLink(val)
+                            const parsed = parseGoogleMapsLocation(val)
+                            if (parsed) {
+                              if (parsed.lat !== null) setLocationLat(parsed.lat)
+                              if (parsed.lng !== null) setLocationLng(parsed.lng)
+                            }
+                          }}
+                          className="w-full p-2 border border-gray-300 rounded-lg text-base sm:text-xs focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none font-mono"
+                          placeholder="Paste Google Maps URL (maps.app.goo.gl/...)"
+                        />
+                        {mapLink && (
+                          <a
+                            href={mapLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 flex items-center justify-center shrink-0"
+                            title="Open Google Maps link"
+                          >
+                            <MapPinned className="h-4 w-4" />
+                          </a>
+                        )}
+                      </div>
+                      {locationLat !== null && locationLng !== null && (
+                        <p className="mt-1 text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
+                          ✓ Pinned: {locationLat.toFixed(5)}, {locationLng.toFixed(5)}
+                        </p>
                       )}
                     </div>
                   </div>

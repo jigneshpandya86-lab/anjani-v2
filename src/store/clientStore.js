@@ -932,10 +932,10 @@ export const useClientStore = create((set, get) => ({
   },
 
   addClient: async (data) => {
-    const docRef = await addDoc(collection(db, 'customers'), {
-      name: data.name,
-      mobile: data.phone,
-      address: data.address,
+    const cleanPayload = {
+      name: String(data.name || '').trim(),
+      mobile: String(data.mobile || data.phone || '').trim(),
+      address: String(data.address || '').trim(),
       rate: Number(data.rate) || 0,
       skuRates: data.skuRates || {},
       location: String(data.location || data.mapLink || '').trim(),
@@ -943,18 +943,41 @@ export const useClientStore = create((set, get) => ({
       locationLat: Number.isFinite(Number(data.locationLat)) ? Number(data.locationLat) : null,
       locationLng: Number.isFinite(Number(data.locationLng)) ? Number(data.locationLng) : null,
       active: true,
-      outstanding: 0,
-      isRegular: data.isRegular || false,
-      isDefaulter: data.isDefaulter || false,
-      createdAt: serverTimestamp()
-    });
+      outstanding: Number(data.outstanding) || 0,
+      isRegular: Boolean(data.isRegular),
+      isDefaulter: Boolean(data.isDefaulter),
+      createdAt: serverTimestamp(),
+    }
+    // Remove any undefined or invalid keys
+    const sanitized = JSON.parse(JSON.stringify(cleanPayload))
+    sanitized.createdAt = serverTimestamp()
+
+    const docRef = await addDoc(collection(db, 'customers'), sanitized)
     await updateDoc(docRef, {
       shortId: buildClientShortId(docRef.id),
     })
+    return docRef.id
   },
 
   updateClient: async (id, data) => {
-    await updateDoc(doc(db, 'customers', id), data)
+    // Sanitize data to strip undefined values and keys named 'undefined'
+    const sanitized = {}
+    Object.entries(data || {}).forEach(([k, v]) => {
+      if (v !== undefined && k !== 'undefined') {
+        if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date) && typeof v.toMillis !== 'function') {
+          const sub = {}
+          Object.entries(v).forEach(([subK, subV]) => {
+            if (subV !== undefined && subK !== 'undefined') {
+              sub[subK] = subV
+            }
+          })
+          sanitized[k] = sub
+        } else {
+          sanitized[k] = v
+        }
+      }
+    })
+    await updateDoc(doc(db, 'customers', id), sanitized)
   },
 
   addOrder: async (data) => {

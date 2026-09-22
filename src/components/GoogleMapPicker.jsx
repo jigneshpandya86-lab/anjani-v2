@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { LocateFixed } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { parseGoogleMapsLocation } from '../utils/locationUtils'
 
 let mapsScriptPromise = null
 const VADODARA_RESTRICTION = {
@@ -11,9 +14,7 @@ const VADODARA_ORIGIN = { lat: 22.3072, lng: 73.1812 }
 
 const loadGoogleMapsScript = (apiKey) => {
   if (!apiKey) {
-    return Promise.reject(
-      new Error('Google Maps API key is missing. Set VITE_GOOGLE_MAPS_API_KEY in .env.'),
-    )
+    return Promise.resolve(null)
   }
 
   if (window.google?.maps?.places) return Promise.resolve(window.google.maps)
@@ -59,6 +60,7 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
   const [isSearching, setIsSearching] = useState(false)
   const [error, setError] = useState('')
   const [isFocused, setIsFocused] = useState(false)
+  const [gettingGps, setGettingGps] = useState(false)
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -68,18 +70,18 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
     let isActive = true
 
     const initializePlaces = async () => {
+      if (!apiKey) return
       try {
-        await loadGoogleMapsScript(apiKey)
-        if (!isActive) return
+        const maps = await loadGoogleMapsScript(apiKey)
+        if (!isActive || !maps) return
 
         if (!window.google.maps.places.AutocompleteSuggestion) {
-          setError('Places API (New) is not enabled for this key/project.')
           return
         }
         sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken()
       } catch (err) {
         if (!isActive) return
-        setError(err.message || 'Unable to load location search.')
+        console.warn('Google Places suggestion loader notice:', err.message)
       }
     }
 
@@ -118,7 +120,6 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
         setError('')
       } catch (err) {
         setPredictions([])
-        setError(err?.message || 'Location suggestions failed to load.')
       } finally {
         setIsSearching(false)
       }
@@ -163,47 +164,112 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
     }
   }
 
+  const handleUseCurrentGps = () => {
+    if (!navigator.geolocation) {
+      toast.error('Geolocation is not supported by your browser')
+      return
+    }
+    setGettingGps(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGettingGps(false)
+        const lat = Number(pos.coords.latitude.toFixed(6))
+        const lng = Number(pos.coords.longitude.toFixed(6))
+        const mapLink = `https://www.google.com/maps?q=${lat},${lng}`
+        const label = `GPS: ${lat}, ${lng}`
+        suppressNextSearchRef.current = true
+        setSearchTerm(label)
+        setError('')
+        onChangeRef.current?.({ lat, lng, address: label, mapLink })
+        toast.success(`Current GPS pinned: ${lat}, ${lng}`)
+      },
+      (err) => {
+        setGettingGps(false)
+        toast.error(`GPS Error: ${err.message}`)
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    )
+  }
+
+  const handleInputChange = (e) => {
+    const nextValue = e.target.value
+    suppressNextSearchRef.current = false
+    setSearchTerm(nextValue)
+
+    // Check if input is a pasted coordinates or Google Maps URL
+    const parsed = parseGoogleMapsLocation(nextValue)
+    if (parsed) {
+      onChangeRef.current?.({
+        lat: parsed.lat,
+        lng: parsed.lng,
+        address: nextValue,
+        mapLink: parsed.mapLink,
+      })
+    } else {
+      onChangeRef.current?.({
+        lat: null,
+        lng: null,
+        address: nextValue,
+        mapLink: null,
+      })
+    }
+
+    if (!nextValue.trim()) setPredictions([])
+  }
+
   return (
-    <div className="space-y-2">
-      <div className="relative">
-        <input
-          type="text"
-          value={searchTerm}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => {
-            window.setTimeout(() => setIsFocused(false), 120)
-          }}
-          onChange={(e) => {
-            const nextValue = e.target.value
-            suppressNextSearchRef.current = false
-            setSearchTerm(nextValue)
-            if (!nextValue.trim()) setPredictions([])
-          }}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amz-orange focus:border-amz-orange"
-          placeholder="Type and select a place"
-        />
-        {isFocused && (isSearching || predictions.length > 0) && (
-          <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
-            {isSearching && <p className="px-3 py-2 text-xs text-gray-500">Searching...</p>}
-            {!isSearching &&
-              predictions.map((item, index) => (
-                <button
-                  type="button"
-                  key={item?.placePrediction?.placeId || index}
-                  onClick={() => handleSelectPrediction(item)}
-                  className="block w-full border-b border-gray-100 px-3 py-2 text-left text-xs hover:bg-gray-50"
-                >
-                  {item?.placePrediction?.text?.text || 'Unknown location'}
-                </button>
-              ))}
-          </div>
-        )}
+    <div className="space-y-1.5">
+      <div className="relative flex items-center gap-1.5">
+        <div className="relative flex-1">
+          <input
+            type="text"
+            value={searchTerm}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => {
+              window.setTimeout(() => setIsFocused(false), 120)
+            }}
+            onChange={handleInputChange}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amz-orange focus:border-amz-orange"
+            placeholder="Type place name, coords (e.g. 22.3, 73.1), or paste map URL"
+          />
+          {isFocused && (isSearching || predictions.length > 0) && (
+            <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg max-h-48 overflow-y-auto">
+              {isSearching && <p className="px-3 py-2 text-xs text-gray-500">Searching...</p>}
+              {!isSearching &&
+                predictions.map((item, index) => (
+                  <button
+                    type="button"
+                    key={item?.placePrediction?.placeId || index}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      handleSelectPrediction(item)
+                    }}
+                    className="block w-full border-b border-gray-100 px-3 py-2 text-left text-xs hover:bg-gray-50"
+                  >
+                    {item?.placePrediction?.text?.text || 'Unknown location'}
+                  </button>
+                ))}
+            </div>
+          )}
+        </div>
+
+        {/* GPS location button */}
+        <button
+          type="button"
+          onClick={handleUseCurrentGps}
+          disabled={gettingGps}
+          className="px-2.5 py-2 bg-gray-100 hover:bg-orange-50 hover:text-amz-orange border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+          title="Detect and use current device GPS location"
+        >
+          <LocateFixed className={`w-3.5 h-3.5 ${gettingGps ? 'animate-spin text-amz-orange' : 'text-gray-600'}`} />
+          <span className="hidden sm:inline">GPS</span>
+        </button>
       </div>
 
       <p className="text-[11px] text-gray-500">
-        Start typing and select a location (restricted to Vadodara, Gujarat).
+        Type location, paste Google Maps link/coords, or tap GPS.
       </p>
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-amber-600">{error}</p>}
     </div>
   )
 }

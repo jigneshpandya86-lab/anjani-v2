@@ -17,7 +17,7 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
   const [note, setNote] = useState(initialValues.note || '')
   const [paymentDate, setPaymentDate] = useState(initialValues.date || getToday())
   const [paymentTime, setPaymentTime] = useState(initialValues.time || getCurrentTime())
-  const [selectedClientId, setSelectedClientId] = useState(client?.id || '')
+  const [selectedClientId, setSelectedClientId] = useState(client?.id || initialValues?.clientId || '')
   const [loading, setLoading] = useState(false)
   const selectedClient = useMemo(
     () => clients.find((c) => c.id === selectedClientId) || (client?.id ? client : null),

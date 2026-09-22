@@ -61,31 +61,47 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
 
   const getDisplayMobile = useCallback(
     (order) => {
+      // 1. Strictly prioritize order-level mobile first
+      const orderMobile = String(order.mobile || order.phone || '').trim()
+      if (orderMobile) return orderMobile
+
+      // 2. Fall back to client master
       if (order.clientId) {
         const c = clients.find((c) => c.id === order.clientId)
-        if (c) return c.mobile
+        if (c?.mobile) return c.mobile
       }
-      return order.mobile || order.phone || ''
+      return ''
     },
     [clients],
   )
 
   const getDisplayAddress = useCallback(
     (order) => {
-      const direct = String(order.address || order.deliveryAddress || '').trim()
-      if (direct) return direct
+      // 1. Strictly prioritize order-specific address and location fields first
+      const orderAddr = String(
+        order.address ||
+        order.deliveryAddress ||
+        order.location ||
+        order.locationName ||
+        order.googleLocation ||
+        order.area ||
+        ''
+      ).trim()
+      if (orderAddr) return orderAddr
 
+      // 2. Fall back to client master ONLY if the order itself has no address or location
       if (order.clientId) {
         const c = clients.find((client) => client.id === order.clientId)
-        const clientAddr = String(c?.address || c?.deliveryAddress || '').trim()
+        const clientAddr = String(
+          c?.address ||
+          c?.deliveryAddress ||
+          c?.location ||
+          c?.locationName ||
+          c?.googleLocation ||
+          ''
+        ).trim()
         if (clientAddr) return clientAddr
-
-        const clientLoc = String(c?.location || c?.locationName || c?.googleLocation || '').trim()
-        if (clientLoc) return clientLoc
       }
-
-      const fallbackLoc = String(order.location || order.area || '').trim()
-      if (fallbackLoc) return fallbackLoc
 
       return ''
     },
@@ -94,12 +110,27 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
 
   const getMapsUrl = useCallback(
     (order) => {
-      if (order.locationLat && order.locationLng) {
+      // 1. Direct order map link if present
+      const directMapLink = String(order.mapLink || order.googleMap || '').trim()
+      if (directMapLink && (directMapLink.startsWith('http://') || directMapLink.startsWith('https://'))) {
+        return directMapLink
+      }
+      // 2. Direct order coordinates
+      if (Number.isFinite(Number(order.locationLat)) && Number.isFinite(Number(order.locationLng))) {
         return `https://www.google.com/maps/search/?api=1&query=${order.locationLat},${order.locationLng}`
       }
+      // 3. Direct order address/location string
+      const directAddr = String(
+        order.address || order.deliveryAddress || order.location || order.locationName || ''
+      ).trim()
+      if (directAddr) {
+        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(directAddr)}`
+      }
+      // 4. Fall back to client master location
       if (order.clientId) {
         const c = clients.find((c) => c.id === order.clientId)
-        if (c && c.locationLat && c.locationLng) {
+        if (c?.mapLink) return c.mapLink
+        if (Number.isFinite(Number(c?.locationLat)) && Number.isFinite(Number(c?.locationLng))) {
           return `https://www.google.com/maps/search/?api=1&query=${c.locationLat},${c.locationLng}`
         }
       }
@@ -212,8 +243,11 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
     (order) => {
       const address = getDisplayAddress(order)
       const mapsUrl = getMapsUrl(order)
+      const directOrderLocation = String(
+        order.location || order.deliveryAddress || order.address || order.area || order.locationName || '',
+      ).trim()
       const clientObj = order.clientId ? clients.find((c) => c.id === order.clientId) : null
-      const location = String(order.location || clientObj?.location || '').trim()
+      const location = directOrderLocation || String(clientObj?.location || '').trim()
 
       const items =
         order.items && order.items.length > 0
