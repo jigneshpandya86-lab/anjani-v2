@@ -10,7 +10,7 @@
  */
 
 import { WATER_SKUS, getSkuMeta, DEFAULT_SKU } from '../constants/skus'
-import { ensureEnglishText, normalizeDigits, sanitizeClientForEnglish } from './textUtils'
+import { ensureEnglishText, normalizeDigits } from './textUtils'
 
 // Helper: Match SKU from text
 function matchSkuFromText(text) {

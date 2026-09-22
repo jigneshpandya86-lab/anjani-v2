@@ -71,7 +71,7 @@ const VOCABULARY_RULES = [
   [/પ્રોવિજન/gi, 'Provision'],
   [/કિરાણા/gi, 'Kirana'],
   [/સુપર|सुपर/gi, 'Super'],
-  [/સ્ટોર[્સાં]*|સ્ટોર્સ/gi, 'Store'],
+  [/સ્ટોર(?:્સાં|્સા|્સ)?|સ્ટોર્સ/gi, 'Store'],
   [/રેસ્ટોરન્ટ|રેસ્ટોરેન્ટ/gi, 'Restaurant'],
   [/હોટેલ|હોટલ/gi, 'Hotel'],
   [/ડેરી/gi, 'Dairy'],
