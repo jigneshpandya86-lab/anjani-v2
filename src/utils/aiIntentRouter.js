@@ -10,6 +10,7 @@
  */
 
 import { WATER_SKUS, getSkuMeta, DEFAULT_SKU } from '../constants/skus'
+import { ensureEnglishText, normalizeDigits, sanitizeClientForEnglish } from './textUtils'
 
 // Helper: Match SKU from text
 function matchSkuFromText(text) {
@@ -159,46 +160,59 @@ export function tryLocalIntentRoute(query, store = {}) {
 
   // ==========================================
   // SEQUENCE 3: CLIENTS (NEW CLIENT CREATION)
+  // All clients must be created in English only even if source is in any language
   // ==========================================
   const isClientCreationIntent =
     /^(?:add|new|create)\s+(?:client|customer|party|dukaan|shop)\b/i.test(q) ||
-    /(?:add\s+new\s+client|create\s+new\s+client)\b/i.test(q)
+    /(?:add\s+new\s+client|create\s+new\s+client)\b/i.test(q) ||
+    /(?:નવો|નવા|નવી)\s+(?:ગ્રાહક|કસ્ટમર|ક્લાયન્ટ|પાર્ટી|દુકાન)/i.test(rawQ) ||
+    /(?:નવો\s+ગ્રાહક\s+બનાવો|નવા\s+ક્લાયન્ટ\s+ઉમેરો)/i.test(rawQ) ||
+    /(?:नया|नए|नई)\s+(?:ग्राहक|कस्टमर|क्लाइंट|पार्टी|दुकान)/i.test(rawQ) ||
+    /(?:नया\s+ग्राहक\s+बनाओ|नया\s+ग्राहक\s+जोड़ो)/i.test(rawQ)
 
   if (isClientCreationIntent) {
+    const normalizedInput = normalizeDigits(rawQ)
+
     // 1. Extract 10-digit mobile
-    const mobileMatch = rawQ.match(/\b([6-9]\d{9})\b/)
+    const mobileMatch = normalizedInput.match(/\b([6-9]\d{9})\b/)
     const mobile = mobileMatch ? mobileMatch[1] : ''
 
     // 2. Extract base rate
-    const rateMatch = rawQ.match(/(?:rate|bhav|@)\s*[:=]?\s*(\d+(?:\.\d+)?)/i)
+    const rateMatch = normalizedInput.match(/(?:rate|bhav|ભાવ|रेट|@)\s*[:=]?\s*(\d+(?:\.\d+)?)/i)
     const rate = rateMatch ? parseFloat(rateMatch[1]) : 0
 
     // 3. Extract address
     let address = ''
-    const addrMatch = rawQ.match(/(?:address|location|area|at)\s*[:=]?\s*([^,;\n]+?)(?:$|\s+(?:mobile|phone|rate|bhav|@))/i)
+    const addrMatch = normalizedInput.match(
+      /(?:\baddress\b|\blocation\b|\barea\b|\bat\b|સરનામું|એડ્રેસ|પતા)\s*[:=]?\s*([^,;\n]+?)(?:[,;\n]|$|\s+(?:mobile|phone|rate|bhav|ભાવ|रेट|@))/i,
+    )
     if (addrMatch) {
       address = addrMatch[1].trim()
     }
 
     // 4. Extract Name: remove command words, mobile, rate, address
-    let cleanedForName = rawQ
+    let cleanedForName = normalizedInput
       .replace(/^(?:add|new|create)\s+(?:client|customer|party|dukaan|shop)\s*/i, '')
+      .replace(/(?:નવો|નવા|નવી)\s+(?:ગ્રાહક|કસ્ટમર|ક્લાયન્ટ|પાર્ટી|દુકાન)\s*(?:બનાવો|ઉમેરો)?/i, '')
+      .replace(/(?:नया|नए|नई)\s+(?:ग्राहक|कस्टमर|क्लाइंट|पार्टी|दुकान)\s*(?:बनाओ|जोड़ो)?/i, '')
       .replace(/\b[6-9]\d{9}\b/g, '')
-      .replace(/(?:rate|bhav|@)\s*[:=]?\s*\d+(?:\.\d+)?/gi, '')
-      .replace(/(?:address|location|area|at)\s*[:=]?\s*[^,;\n]+/gi, '')
+      .replace(/(?:rate|bhav|ભાવ|रेट|@)\s*[:=]?\s*\d+(?:\.\d+)?/gi, '')
+      .replace(/(?:\baddress\b|\blocation\b|\barea\b|\bat\b|સરનામું|એડ્રેસ|પતા)\s*[:=]?\s*[^,;\n]+/gi, '')
       .replace(/[,;:]+/g, ' ')
       .trim()
 
-    const name = cleanedForName.length > 1 ? cleanedForName : 'New Client'
+    // 5. Enforce English-only output for client name and address
+    const name = ensureEnglishText(cleanedForName.length > 1 ? cleanedForName : 'New Client')
+    const englishAddress = ensureEnglishText(address)
 
     return {
       handled: true,
       type: 'create_client',
-      text: `👤 **New Client Detected**: Ready to add **${name}** to your client master:`,
+      text: `👤 **New Client Detected**: Ready to add **${name}** to your client master (in English):`,
       data: {
         name,
         mobile,
-        address,
+        address: englishAddress,
         rate,
         isRegular: false,
       },

@@ -1311,6 +1311,166 @@ exports.askAnjaniAi = onCall(async (request) => {
     }
   }
 
+  const DIGIT_MAP = {
+    '૦': '0', '૧': '1', '૨': '2', '૩': '3', '૪': '4',
+    '૫': '5', '૬': '6', '૭': '7', '૮': '8', '૯': '9',
+    '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
+    '५': '5', '६': '6', '७': '7', '८': '8', '९': '9',
+  }
+
+  const normalizeDigits = (str) => {
+    if (!str) return ''
+    let out = String(str)
+    for (const [k, v] of Object.entries(DIGIT_MAP)) {
+      out = out.split(k).join(v)
+    }
+    return out
+  }
+
+  const transliterateIndic = (str) => {
+    if (!str) return ''
+    let out = normalizeDigits(str)
+    const vocab = [
+      [/ચાર\s*રસ્તા/gi, 'Char Rasta'],
+      [/ચાર\s*રાસ્તા/gi, 'Char Rasta'],
+      [/શાક\s*માર્કેટ|શાકભાજી\s*માર્કેટ/gi, 'Vegetable Market'],
+      [/સુપર\s*માર્કેટ|સુપરમાર્કેટ/gi, 'Super Market'],
+      [/પ્રોવિઝન\s*સ્ટોર્સ?/gi, 'Provision Store'],
+      [/જનરલ\s*સ્ટોર્સ?/gi, 'General Store'],
+      [/કિરાણા\s*સ્ટોર્સ?/gi, 'Kirana Store'],
+      [/દુકાન\s*નં(?:\.|\s*|બર)/gi, 'Shop No. '],
+      [/આઈસ્ક્રીમ|આઇસ્ક્રીમ/gi, 'Ice Cream'],
+      [/ડેરી\s*ફાર્મ/gi, 'Dairy Farm'],
+      [/શ્રી|श्री/g, 'Shree '],
+      [/જય\s*અંબે|જયઅંબે|जय\s*अम्बे/gi, 'Jay Ambe '],
+      [/અંબે|अम्બે/gi, 'Ambe'],
+      [/મહાદેવ|महादेव/gi, 'Mahadev'],
+      [/ગણેશ|गणेश/gi, 'Ganesh'],
+      [/બાલાજી|बालाजी/gi, 'Balaji'],
+      [/હનુમાન|हनुमान/gi, 'Hanuman'],
+      [/શિવ\s*શક્તિ|शिव\s*शक्ति/gi, 'Shiv Shakti'],
+      [/રાધા\s*કૃષ્ણ|राधा\s*कृष्ण/gi, 'Radha Krishna'],
+      [/પ્રોવિઝન|પ્રોવિજન/gi, 'Provision'],
+      [/કિરાણા/gi, 'Kirana'],
+      [/સુપર|सुपर/gi, 'Super'],
+      [/સ્ટોર[્સાં]*|સ્ટોર્સ/gi, 'Store'],
+      [/રેસ્ટોરન્ટ|રેસ્ટોરેન્ટ/gi, 'Restaurant'],
+      [/હોટેલ|હોટલ/gi, 'Hotel'],
+      [/ડેરી/gi, 'Dairy'],
+      [/પાર્લર/gi, 'Parlour'],
+      [/એન્ટરપ્રાઈઝ|એન્ટરપ્રાઇઝ/gi, 'Enterprise'],
+      [/ટ્રેડર્સ|ટ્રેડિંગ/gi, 'Traders'],
+      [/એજન્સી[સઝ]?/gi, 'Agency'],
+      [/મેડિકલ/gi, 'Medical'],
+      [/સામે/gi, 'Opp.'],
+      [/પાસે|નજીક/gi, 'Near'],
+      [/પાછળ/gi, 'Behind'],
+      [/રોડ|માર્ગ/gi, 'Road'],
+      [/સર્કલ/gi, 'Circle'],
+      [/સોસાયટી/gi, 'Society'],
+      [/નગર/gi, 'Nagar'],
+      [/કોમ્પ્લેક્સ/gi, 'Complex'],
+      [/પ્લાઝા/gi, 'Plaza'],
+      [/સેન્ટર/gi, 'Center'],
+      [/દુકાન/gi, 'Shop'],
+      [/માંજલપુર/gi, 'Manjalpur'],
+      [/વડોદરા/gi, 'Vadodara'],
+      [/મકરપુરા/gi, 'Makarpura'],
+      [/ગોરવા/gi, 'Gorwa'],
+      [/અલકાપુરી/gi, 'Alkapuri'],
+      [/સુભાનપુરા/gi, 'Subhanpura'],
+      [/વાઘોડિયા|વાઘોડીયા/gi, 'Waghodia'],
+      [/ગોત્રી/gi, 'Gotri'],
+      [/વાસણા/gi, 'Vasna'],
+      [/તરસાળી/gi, 'Tarsali'],
+      [/કારેલીબાગ/gi, 'Karelibaug'],
+      [/અને/gi, '&'],
+      [/પટેલ/gi, 'Patel'],
+      [/શાહ/gi, 'Shah'],
+      [/જોષી|જોશી/gi, 'Joshi'],
+      [/પંડ્યા/gi, 'Pandya'],
+      [/ભાઈ|ભાઇ/gi, 'bhai'],
+      [/બેન|બહેન/gi, 'ben'],
+      [/કુમાર/gi, 'kumar'],
+    ]
+    for (const [pattern, repl] of vocab) {
+      out = out.replace(pattern, repl)
+    }
+
+    const charMap = {
+      '\u0A85': 'a', '\u0A86': 'aa', '\u0A87': 'i', '\u0A88': 'ee', '\u0A89': 'u', '\u0A8A': 'oo',
+      '\u0A8B': 'ru', '\u0A8F': 'e', '\u0A90': 'ai', '\u0A93': 'o', '\u0A94': 'au',
+      '\u0A95': 'k', '\u0A96': 'kh', '\u0A97': 'g', '\u0A98': 'gh', '\u0A99': 'ng',
+      '\u0A9A': 'ch', '\u0A9B': 'chh', '\u0A9C': 'j', '\u0A9D': 'z', '\u0A9E': 'ny',
+      '\u0A9F': 't', '\u0AA0': 'th', '\u0AA1': 'd', '\u0AA2': 'dh', '\u0AA3': 'n',
+      '\u0AA4': 't', '\u0AA5': 'th', '\u0AA6': 'd', '\u0AA7': 'dh', '\u0AA8': 'n',
+      '\u0AAA': 'p', '\u0AAB': 'f', '\u0AAC': 'b', '\u0AAD': 'bh', '\u0AAE': 'm',
+      '\u0AAF': 'y', '\u0AB0': 'r', '\u0AB2': 'l', '\u0AB3': 'l', '\u0AB5': 'v',
+      '\u0AB6': 'sh', '\u0AB7': 'sh', '\u0AB8': 's', '\u0AB9': 'h',
+      '\u0ABE': 'a', '\u0ABF': 'i', '\u0AC0': 'i', '\u0AC1': 'u', '\u0AC2': 'u',
+      '\u0AC3': 'ru', '\u0AC4': 'ru', '\u0AC7': 'e', '\u0AC8': 'ai', '\u0ACB': 'o', '\u0ACC': 'au',
+      '\u0A82': 'n', '\u0A81': 'n', '\u0A83': 'h',
+      '\u0905': 'a', '\u0906': 'aa', '\u0907': 'i', '\u0908': 'ee', '\u0909': 'u', '\u090A': 'oo',
+      '\u090B': 'ru', '\u090F': 'e', '\u0910': 'ai', '\u0913': 'o', '\u0914': 'au',
+      '\u0915': 'k', '\u0916': 'kh', '\u0917': 'g', '\u0918': 'gh', '\u0919': 'ng',
+      '\u091A': 'ch', '\u091B': 'chh', '\u091C': 'j', '\u091D': 'jh', '\u091E': 'ny',
+      '\u091F': 't', '\u0920': 'th', '\u0921': 'd', '\u0922': 'dh', '\u0923': 'n',
+      '\u0924': 't', '\u0925': 'th', '\u0926': 'd', '\u0927': 'dh', '\u0928': 'n',
+      '\u092A': 'p', '\u092B': 'f', '\u092C': 'b', '\u092D': 'bh', '\u092E': 'm',
+      '\u092F': 'y', '\u0930': 'r', '\u0932': 'l', '\u0935': 'v',
+      '\u0936': 'sh', '\u0937': 'sh', '\u0938': 's', '\u0939': 'h',
+      '\u093E': 'a', '\u093F': 'i', '\u0940': 'i', '\u0941': 'u', '\u0942': 'u',
+      '\u0943': 'ru', '\u0947': 'e', '\u0948': 'ai', '\u094B': 'o', '\u094C': 'au',
+      '\u0902': 'n', '\u0901': 'n', '\u0903': 'h',
+    }
+
+    const isCons = (c) => (c >= '\u0A95' && c <= '\u0AB9') || (c >= '\u0915' && c <= '\u0939')
+    const isMtr = (c) => (c >= '\u0ABE' && c <= '\u0ACC') || (c >= '\u093E' && c <= '\u094C')
+    const isVir = (c) => c === '\u0ACD' || c === '\u094D'
+
+    let res = ''
+    for (let i = 0; i < out.length; i++) {
+      const ch = out[i]
+      const next = out[i + 1]
+      if (charMap[ch]) {
+        res += charMap[ch]
+        if (isCons(ch) && next && !isVir(next) && !isMtr(next) && !/[\s,.;:!?'"()[\]{}/\\-]/.test(next)) {
+          res += 'a'
+        }
+      } else if (!isVir(ch)) {
+        res += ch
+      }
+    }
+    return res
+      .replace(/[^\x20-\x7E\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\b[a-z]/g, (l) => l.toUpperCase())
+  }
+
+  const toEnglish = (val) => {
+    if (!val) return ''
+    const norm = normalizeDigits(val)
+    if (/[\u0900-\u0DFF]/.test(norm)) {
+      return transliterateIndic(norm)
+    }
+    return String(norm).replace(/\s+/g, ' ').trim()
+  }
+
+  const ensureEnglishClient = (cli) => {
+    if (!cli || typeof cli !== 'object') return cli
+    return {
+      ...cli,
+      name: toEnglish(cli.name),
+      contactPerson: toEnglish(cli.contactPerson),
+      address: toEnglish(cli.address),
+      location: toEnglish(cli.location || cli.address),
+      mobile: normalizeDigits(cli.mobile || cli.phone || '').replace(/\D/g, ''),
+      alternateMobile: normalizeDigits(cli.alternateMobile || '').replace(/\D/g, ''),
+      notes: toEnglish(cli.notes),
+    }
+  }
+
   const tryGenerate = async (modelName) => {
     if (imageBase64) {
       const model = vertexAI.getGenerativeModel({
@@ -1436,7 +1596,8 @@ Return strict JSON:
   "location": string,
   "rate": number,
   "notes": string
-}`
+}
+CRITICAL REQUIREMENT: ALL CLIENT INFORMATION ("name", "contactPerson", "address", "location", "notes") MUST BE IN ENGLISH (Latin alphabet / Roman script) ONLY, even if the card, signboard, or paper is in Gujarati, Hindi, Marathi, or any other language! Translate descriptive words and transliterate shop/person/area names into clean English Title Case. Convert all Indic digits (૦-૯ or ०-९) to standard digits 0-9. NEVER return Gujarati or Devanagari characters in client fields.`
 
       const parts = [
         {
@@ -1484,7 +1645,7 @@ Return strict JSON:
         return {
           type: 'create_client',
           modelUsed: modelName,
-          data: parsedData,
+          data: ensureEnglishClient(parsedData),
         }
       }
 
@@ -1674,7 +1835,11 @@ ${rawText.slice(0, 3000)}`
       const isClientTextIntent =
         mode === 'create_client' ||
         /^(?:add|new|create)\s+(?:client|customer|party|shop)\b/i.test(rawText) ||
-        /(?:add\s+new\s+client|create\s+new\s+client)\b/i.test(rawText)
+        /(?:add\s+new\s+client|create\s+new\s+client)\b/i.test(rawText) ||
+        /(?:નવો|નવા|નવી)\s+(?:ગ્રાહક|કસ્ટમર|ક્લાયન્ટ|પાર્ટી|દુકાન)/i.test(rawText) ||
+        /(?:નવો\s+ગ્રાહક\s+બનાવો|નવા\s+ક્લાયન્ટ\s+ઉમેરો)/i.test(rawText) ||
+        /(?:नया|नए|नई)\s+(?:ग्राहक|कस्टमर|क्लाइंट|पार्टी|दुकान)/i.test(rawText) ||
+        /(?:नया\s+ग्राहक\s+बनाओ|नया\s+ग्राहक\s+जोड़ो)/i.test(rawText)
 
       if (isClientTextIntent) {
         const model = vertexAI.getGenerativeModel({
@@ -1690,15 +1855,20 @@ ${rawText.slice(0, 3000)}`
 Parse the user's client details into strict JSON:
 {
   "docType": "create_client",
-  "name": string (Shop or customer name),
-  "contactPerson": string,
-  "mobile": string (10-digit mobile number),
-  "alternateMobile": string,
-  "address": string (Shop address/area),
-  "location": string (Landmark/area),
+  "name": string (Shop or customer name in English Title Case),
+  "contactPerson": string (Contact person name in English),
+  "mobile": string (10-digit mobile number, digits 0-9 only),
+  "alternateMobile": string (digits 0-9 only),
+  "address": string (Shop address/area in English),
+  "location": string (Landmark/area in English),
   "rate": number (Default 200ml rate if mentioned, else 0),
-  "notes": string
+  "notes": string (in English)
 }
+CRITICAL REQUIREMENT: ALL CLIENT INFORMATION MUST BE RETURNED IN ENGLISH (Latin alphabet / Roman script) ONLY!
+Even if the user writes in Gujarati, Hindi, Marathi, or mixed language:
+- Transliterate and translate all business names, person names, and addresses into clean English in Title Case (e.g. 'શ્રી ગણેશ પ્રોવિઝન સ્ટોર' -> 'Shree Ganesh Provision Store', 'માંજલપુર' -> 'Manjalpur', 'કિશોરભાઈ પટેલ' -> 'Kishorbhai Patel').
+- Convert any Gujarati (૦-૯) or Hindi (०-९) digits into standard English digits (0-9).
+- Under NO circumstance return Gujarati or Devanagari script in client fields.
 User Text: ${rawText.slice(0, 1000)}`
 
         try {
@@ -1711,7 +1881,7 @@ User Text: ${rawText.slice(0, 1000)}`
             return {
               type: 'create_client',
               modelUsed: modelName,
-              data: parsedData,
+              data: ensureEnglishClient(parsedData),
             }
           }
         } catch (clientErr) {

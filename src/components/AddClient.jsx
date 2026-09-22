@@ -5,13 +5,14 @@ import toast from 'react-hot-toast'
 import GoogleMapPicker from './GoogleMapPicker'
 import { WATER_SKUS } from '../constants/skus'
 import { parseGoogleMapsLocation } from '../utils/locationUtils'
+import { ensureEnglishText, normalizeDigits, hasIndicScript } from '../utils/textUtils'
 
 export default function AddClient({ onDone, client, initialValues = {} }) {
   const data = client || initialValues || {}
-  // If editing or prefilling, fill in the blanks. If new, leave empty!
-  const [name, setName] = useState(data.name || '')
-  const [phone, setPhone] = useState(data.mobile || data.phone || '')
-  const [address, setAddress] = useState(data.address || '')
+  // If editing or prefilling, fill in the blanks. All clients are created in English only!
+  const [name, setName] = useState(() => ensureEnglishText(data.name || ''))
+  const [phone, setPhone] = useState(() => normalizeDigits(data.mobile || data.phone || '').replace(/\D/g, ''))
+  const [address, setAddress] = useState(() => ensureEnglishText(data.address || ''))
   const [rate, setRate] = useState(data.rate !== undefined && data.rate !== null && data.rate !== '' ? String(data.rate) : '')
   const [skuRates, setSkuRates] = useState(() => {
     const initial = {}
@@ -23,8 +24,8 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
   const [showSkuRates, setShowSkuRates] = useState(() => {
     return Boolean(data?.skuRates && Object.values(data.skuRates).some((v) => v !== undefined && v !== ''))
   })
-  const [locationAddress, setLocationAddress] = useState(
-    data?.location || data?.googleLocation || data?.locationName || '',
+  const [locationAddress, setLocationAddress] = useState(() =>
+    ensureEnglishText(data?.location || data?.googleLocation || data?.locationName || ''),
   )
   const [mapLink, setMapLink] = useState(data?.mapLink || data?.googleMap || '')
   const [locationLat, setLocationLat] = useState(() => {
@@ -92,12 +93,12 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
       }
 
       const payload = {
-        name: String(name || '').trim(),
-        mobile: String(phone || '').trim(),
-        address: String(address || '').trim(),
+        name: ensureEnglishText(name || '').trim(),
+        mobile: normalizeDigits(phone || '').replace(/\D/g, '').trim(),
+        address: ensureEnglishText(address || '').trim(),
         rate: rate === '' ? 0 : Number(rate),
         skuRates: cleanedSkuRates,
-        location: finalLocation || finalMapLink || '',
+        location: ensureEnglishText(finalLocation || finalMapLink || '').trim(),
         mapLink: finalMapLink || '',
         locationLat: finalLat,
         locationLng: finalLng,
@@ -179,7 +180,11 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
                     id="client-name"
                     required
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setName(hasIndicScript(val) ? ensureEnglishText(val) : val)
+                    }}
+                    onBlur={() => setName((prev) => ensureEnglishText(prev))}
                     className="w-full p-2.5 border border-gray-300 rounded-lg text-base sm:text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
                     placeholder="e.g. Rahul Sharma"
                   />
@@ -197,7 +202,7 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
                     required
                     type="tel"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => setPhone(normalizeDigits(e.target.value).replace(/\D/g, ''))}
                     className="w-full p-2.5 border border-gray-300 rounded-lg text-base sm:text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
                     placeholder="10-digit mobile number"
                   />
@@ -215,7 +220,11 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
                     required
                     rows="2"
                     value={address}
-                    onChange={(e) => setAddress(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setAddress(hasIndicScript(val) ? ensureEnglishText(val) : val)
+                    }}
+                    onBlur={() => setAddress((prev) => ensureEnglishText(prev))}
                     className="w-full p-2.5 border border-gray-300 rounded-lg text-base sm:text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
                     placeholder="Full delivery address..."
                   />
@@ -271,9 +280,9 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
                                 type="number"
                                 min="0"
                                 step="0.01"
-                                placeholder={s.name === 'Anjani 200ml' ? (rate || '0') : 'Default'}
-                                value={skuRates[s.name] || ''}
-                                onChange={(e) => setSkuRates({ ...skuRates, [s.name]: e.target.value })}
+                                placeholder={s.label === 'Anjani 200ml' ? (rate || '0') : 'Default'}
+                                value={skuRates[s.label] || ''}
+                                onChange={(e) => setSkuRates({ ...skuRates, [s.label]: e.target.value })}
                                 className="w-full pl-6 pr-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-amz-orange focus:border-amz-orange outline-none"
                               />
                             </div>
@@ -301,7 +310,10 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
                       type="text"
                       value={locationAddress}
                       onChange={(e) => {
-                        const val = e.target.value
+                        let val = e.target.value
+                        if (hasIndicScript(val)) {
+                          val = ensureEnglishText(val)
+                        }
                         setLocationAddress(val)
                         const parsed = parseGoogleMapsLocation(val)
                         if (parsed) {
@@ -310,6 +322,7 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
                           if (parsed.lng !== null) setLocationLng(parsed.lng)
                         }
                       }}
+                      onBlur={() => setLocationAddress((prev) => ensureEnglishText(prev))}
                       className="w-full p-2.5 border border-gray-300 rounded-lg text-base sm:text-xs focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
                       placeholder="Area / landmark / shop location text"
                     />

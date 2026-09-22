@@ -128,4 +128,20 @@ describe('aiIntentRouter', () => {
     const result = tryLocalIntentRoute('Can you summarize my expenses for last month?', fakeStore)
     expect(result).toBeNull()
   })
+
+  it('extracts client creation in Gujarati or Hindi and creates it strictly in English', () => {
+    const fakeStore = {}
+    const result = tryLocalIntentRoute(
+      'નવો ગ્રાહક બનાવો જય અંબે ડેરી, address: માંજલપુર, mobile: ૯૮૨૫૯૯૭૭૫૦, rate: 65',
+      fakeStore,
+    )
+    expect(result).not.toBeNull()
+    expect(result.handled).toBe(true)
+    expect(result.type).toBe('create_client')
+    expect(result.data.name).toContain('Jay Ambe Dairy')
+    expect(result.data.address).toContain('Manjalpur')
+    expect(result.data.mobile).toBe('9825997750')
+    expect(result.data.rate).toBe(65)
+  })
 })
+

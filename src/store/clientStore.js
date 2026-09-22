@@ -22,6 +22,7 @@ import { db } from '../firebase-config'
 import { DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
 import { DEFAULT_ACCOUNTS, getAccountMeta } from '../constants/accounts'
+import { ensureEnglishText, normalizeDigits } from '../utils/textUtils'
 
 let stockUnsubscribe = null
 let stockSubscriberCount = 0
@@ -933,12 +934,12 @@ export const useClientStore = create((set, get) => ({
 
   addClient: async (data) => {
     const cleanPayload = {
-      name: String(data.name || '').trim(),
-      mobile: String(data.mobile || data.phone || '').trim(),
-      address: String(data.address || '').trim(),
+      name: ensureEnglishText(data.name || '').trim(),
+      mobile: normalizeDigits(data.mobile || data.phone || '').replace(/\D/g, '').trim(),
+      address: ensureEnglishText(data.address || '').trim(),
       rate: Number(data.rate) || 0,
       skuRates: data.skuRates || {},
-      location: String(data.location || data.mapLink || '').trim(),
+      location: ensureEnglishText(data.location || data.mapLink || '').trim(),
       mapLink: String(data.mapLink || '').trim(),
       locationLat: Number.isFinite(Number(data.locationLat)) ? Number(data.locationLat) : null,
       locationLng: Number.isFinite(Number(data.locationLng)) ? Number(data.locationLng) : null,
@@ -964,7 +965,11 @@ export const useClientStore = create((set, get) => ({
     const sanitized = {}
     Object.entries(data || {}).forEach(([k, v]) => {
       if (v !== undefined && k !== 'undefined') {
-        if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date) && typeof v.toMillis !== 'function') {
+        if (k === 'name' || k === 'address' || k === 'location' || k === 'contactPerson' || k === 'notes') {
+          sanitized[k] = ensureEnglishText(v)
+        } else if (k === 'mobile' || k === 'phone') {
+          sanitized[k] = normalizeDigits(v).replace(/\D/g, '')
+        } else if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date) && typeof v.toMillis !== 'function') {
           const sub = {}
           Object.entries(v).forEach(([subK, subV]) => {
             if (subV !== undefined && subK !== 'undefined') {
@@ -1075,21 +1080,25 @@ export const useClientStore = create((set, get) => ({
       if (!clientDocId) {
         const isRetail = rawName.toLowerCase() === 'retail'
         if (isRetail || sale.createClient !== false) {
+          const englishClientName = isRetail ? 'Retail' : ensureEnglishText(rawName)
+          const englishAddress = ensureEnglishText(sale.address || '')
+          const cleanMobile = normalizeDigits(sale.mobile || '').replace(/\D/g, '')
+
           const newDoc = await addDoc(collection(db, 'customers'), {
-            name: rawName,
-            mobile: sale.mobile || '',
-            address: sale.address || '',
+            name: englishClientName,
+            mobile: cleanMobile,
+            address: englishAddress,
             outstanding: 0,
             active: true,
             createdAt: serverTimestamp(),
           })
           clientDocId = newDoc.id
-          clientName = rawName
+          clientName = englishClientName
           const newClientObj = {
             id: clientDocId,
-            name: rawName,
-            mobile: sale.mobile || '',
-            address: sale.address || '',
+            name: englishClientName,
+            mobile: cleanMobile,
+            address: englishAddress,
             outstanding: 0,
             active: true,
           }

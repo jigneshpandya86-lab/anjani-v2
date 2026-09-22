@@ -32,6 +32,7 @@ import { getAccountMeta } from '../constants/accounts'
 import { processAiBillImage } from '../utils/aiImageHelper'
 import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
+import { ensureEnglishText, sanitizeClientForEnglish } from '../utils/textUtils'
 
 export default function AiAssistantDrawer({
   isOpen,
@@ -224,7 +225,7 @@ export default function AiAssistantDrawer({
       const resData = response.data || {}
 
       if (resData.type === 'create_client') {
-        const clientData = resData.data || {}
+        const clientData = sanitizeClientForEnglish(resData.data || {})
         setMessages((prev) => [
           ...prev,
           {
@@ -235,9 +236,9 @@ export default function AiAssistantDrawer({
             clientId: 'client-' + Date.now(),
             data: {
               name: clientData.name || '',
-              mobile: clientData.mobile || clientData.phone || '',
+              mobile: clientData.mobile || '',
               address: clientData.address || '',
-              location: clientData.location || '',
+              location: clientData.location || clientData.address || '',
               rate: Number(clientData.rate) || 0,
               notes: clientData.notes || '',
               modelUsed: resData.modelUsed,
@@ -1147,9 +1148,19 @@ export default function AiAssistantDrawer({
                           disabled={createdClients[msg.clientId || msg.id]}
                           onChange={(e) => {
                             const val = e.target.value
+                            const clean = ensureEnglishText(val)
                             setMessages((prev) =>
                               prev.map((m) =>
-                                m.id === msg.id ? { ...m, data: { ...m.data, name: val } } : m,
+                                m.id === msg.id ? { ...m, data: { ...m.data, name: clean } } : m,
+                              ),
+                            )
+                          }}
+                          onBlur={() => {
+                            setMessages((prev) =>
+                              prev.map((m) =>
+                                m.id === msg.id
+                                  ? { ...m, data: { ...m.data, name: ensureEnglishText(m.data.name) } }
+                                  : m,
                               ),
                             )
                           }}
@@ -1185,9 +1196,19 @@ export default function AiAssistantDrawer({
                           disabled={createdClients[msg.clientId || msg.id]}
                           onChange={(e) => {
                             const val = e.target.value
+                            const clean = ensureEnglishText(val)
                             setMessages((prev) =>
                               prev.map((m) =>
-                                m.id === msg.id ? { ...m, data: { ...m.data, address: val } } : m,
+                                m.id === msg.id ? { ...m, data: { ...m.data, address: clean } } : m,
+                              ),
+                            )
+                          }}
+                          onBlur={() => {
+                            setMessages((prev) =>
+                              prev.map((m) =>
+                                m.id === msg.id
+                                  ? { ...m, data: { ...m.data, address: ensureEnglishText(m.data.address) } }
+                                  : m,
                               ),
                             )
                           }}
@@ -1224,18 +1245,19 @@ export default function AiAssistantDrawer({
                         disabled={createdClients[msg.clientId || msg.id] || !msg.data.name}
                         onClick={async () => {
                           try {
+                            const sanitized = sanitizeClientForEnglish(msg.data)
                             await addClient({
-                              name: msg.data.name,
-                              mobile: msg.data.mobile,
-                              address: msg.data.address,
-                              location: msg.data.location || msg.data.address,
-                              rate: Number(msg.data.rate) || 0,
+                              name: sanitized.name,
+                              mobile: sanitized.mobile,
+                              address: sanitized.address,
+                              location: sanitized.location || sanitized.address,
+                              rate: Number(sanitized.rate) || 0,
                             })
                             setCreatedClients((prev) => ({
                               ...prev,
                               [msg.clientId || msg.id]: true,
                             }))
-                            toast.success(`Client "${msg.data.name}" created successfully!`)
+                            toast.success(`Client "${sanitized.name}" created successfully!`)
                           } catch (err) {
                             toast.error('Failed to create client: ' + err.message)
                           }
@@ -1249,7 +1271,7 @@ export default function AiAssistantDrawer({
                       {onOpenAddClient && (
                         <button
                           type="button"
-                          onClick={() => onOpenAddClient(msg.data)}
+                          onClick={() => onOpenAddClient(sanitizeClientForEnglish(msg.data))}
                           className="py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold transition-colors text-xs cursor-pointer"
                         >
                           Open Form
