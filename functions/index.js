@@ -1484,9 +1484,10 @@ exports.askAnjaniAi = onCall(async (request) => {
 
       const documentOcrPrompt = `You are an expert document and invoice OCR AI for Annapurna Foods, authorized water distributor in Vadodara, Gujarat (owned by Jignesh Pandya).
 Analyze this image. It is either:
-1. "retail_sales": A handwritten retail sales notepad, diary page, dispatch memo, or daily customer delivery note containing customer names, quantities, and payment notes.
+1. "retail_sales": A handwritten retail sales notepad, diary page, dispatch memo, or daily customer delivery note containing multiple customer orders, quantities, and payment notes.
 2. "vendor_bill": A vendor delivery challan, factory tax invoice, or supplier stock inward receipt.
 3. "accounts_cash": A staff cash settlement slip, daily cash sheet, handover note, customer collection slip, or route expense memo.
+4. "create_client": A customer bill book, estimate book, cash memo header, visiting card, business card, shop signboard, contact card, or customer pamphlet.
 
 Map all water products EXCLUSIVELY to our 5 canonical SKUs:
 1. "Anjani 200ml" (unit: Box)
@@ -1584,7 +1585,7 @@ Return strict JSON:
   "notes": string
 }
 
-If it is a visiting card, business card, shop signboard, contact card, or retail customer pamphlet:
+If it is a customer bill book, estimate book, cash memo header, visiting card, business card, shop signboard, contact card, or retail customer pamphlet:
 Return strict JSON:
 {
   "docType": "create_client",
@@ -1599,6 +1600,55 @@ Return strict JSON:
 }
 CRITICAL REQUIREMENT: ALL CLIENT INFORMATION ("name", "contactPerson", "address", "location", "notes") MUST BE IN ENGLISH (Latin alphabet / Roman script) ONLY, even if the card, signboard, or paper is in Gujarati, Hindi, Marathi, or any other language! Translate descriptive words and transliterate shop/person/area names into clean English Title Case. Convert all Indic digits (૦-૯ or ०-९) to standard digits 0-9. NEVER return Gujarati or Devanagari characters in client fields.`
 
+      let ocrPrompt = documentOcrPrompt
+
+      if (mode === 'create_client') {
+        ocrPrompt = `You are an expert customer onboarding and OCR AI for Annapurna Foods, authorized water distributor in Vadodara, Gujarat (owned by Jignesh Pandya).
+The user wants to ONBOARD / CREATE A NEW CLIENT from this photo.
+The photo is a customer document or shop photo:
+- A customer's bill book, estimate book, cash memo, invoice header, or receipt pad (common in Hindi, Gujarati, or English, showing shop/business name, proprietor name, address, GSTIN, phone numbers).
+- A visiting card, business card, trade pamphlet, or leaflet.
+- A shop signboard, banner, flex board, or shop front.
+
+CRITICAL INSTRUCTION:
+Do NOT create an order, sale, or bill! Extract the SHOP/CUSTOMER details to register them as a new client in the client master.
+Look at the top masthead / header / title of the bill book or card to find the shop name, owner name, phone number, and address.
+
+Return strict JSON:
+{
+  "docType": "create_client",
+  "name": string (Shop, store, hotel, or customer business name in English Title Case. Extracted from the bill book masthead or card header),
+  "contactPerson": string (Owner, proprietor, or contact person name in English),
+  "mobile": string (Primary 10-digit mobile number, digits 0-9 only),
+  "alternateMobile": string (Secondary phone number if present, digits 0-9 only),
+  "address": string (Shop address, market, street, or area in English),
+  "location": string (Landmark, city, or area in English, e.g. 'Manjalpur', 'Karelibaug', 'Waghodia Road', 'Vadodara'),
+  "rate": number (Default 200ml rate per unit if written on slip, else 0),
+  "notes": string (in English, include GSTIN or bill book details if found)
+}
+
+CRITICAL REQUIREMENT: ALL CLIENT INFORMATION ("name", "contactPerson", "address", "location", "notes") MUST BE RETURNED IN ENGLISH (Latin alphabet / Roman script) ONLY!
+Even if the bill book, signboard, or card is in Hindi (देवनागरी), Gujarati (ગુજરાતી), or Marathi:
+- Transliterate and translate all business names, person names, and addresses into clean English in Title Case (e.g. 'श्री गणेश किराना स्टोर' -> 'Shree Ganesh Kirana Store', 'अशोक कुमार' -> 'Ashok Kumar', 'माणेक चौक' -> 'Manek Chowk', 'सब्जी मंडी' -> 'Vegetable Market').
+- Convert any Hindi (०-९) or Gujarati (૦-૯) numerals into standard English digits (0-9).
+- NEVER return Devanagari or Gujarati characters in client fields.
+- Do NOT generate orders, sales, or bills. The ONLY goal is onboarding this business as a new client.`
+      } else if (mode === 'receive_payment') {
+        ocrPrompt = `You are an expert payment receipt and UPI OCR AI for Annapurna Foods in Vadodara, Gujarat.
+The user wants to RECORD A PAYMENT from this photo (UPI screenshot from Google Pay, PhonePe, Paytm, BHIM, Bank transfer receipt, cash counter slip, or cheque).
+Return strict JSON:
+{
+  "docType": "receive_payment",
+  "payerName": string (Customer or shop name who made the payment),
+  "amount": number (Total payment amount in INR),
+  "paymentMode": "online" | "cash" | "cheque",
+  "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
+  "utr": string (UPI transaction ID, UTR, reference number, or cheque number),
+  "date": string (YYYY-MM-DD or as shown),
+  "notes": string
+}`
+      }
+
       const parts = [
         {
           inlineData: {
@@ -1606,7 +1656,7 @@ CRITICAL REQUIREMENT: ALL CLIENT INFORMATION ("name", "contactPerson", "address"
             mimeType: mimeType || 'image/jpeg',
           },
         },
-        { text: documentOcrPrompt },
+        { text: ocrPrompt },
       ]
 
       const res = await model.generateContent({
@@ -1620,11 +1670,27 @@ CRITICAL REQUIREMENT: ALL CLIENT INFORMATION ("name", "contactPerson", "address"
         mode === 'create_client' ||
         parsedData.docType === 'create_client'
       ) {
-        if (parsedData.name || parsedData.docType === 'create_client') {
+        let clientData = { ...parsedData }
+        // Fallback recovery if Gemini still returned a sales order format for a bill book:
+        if (!clientData.name && Array.isArray(parsedData.sales) && parsedData.sales.length > 0) {
+          const first = parsedData.sales[0]
+          clientData = {
+            docType: 'create_client',
+            name: first.clientName && first.clientName !== 'Retail' ? first.clientName : 'New Client',
+            contactPerson: '',
+            mobile: first.mobile || '',
+            alternateMobile: '',
+            address: first.notes || '',
+            location: '',
+            rate: first.items?.[0]?.rate || 0,
+            notes: first.notes || 'Extracted from bill book photo',
+          }
+        }
+        if (clientData.name || mode === 'create_client') {
           return {
             type: 'create_client',
             modelUsed: modelName,
-            data: ensureEnglishClient(parsedData),
+            data: ensureEnglishClient(clientData),
           }
         }
       }

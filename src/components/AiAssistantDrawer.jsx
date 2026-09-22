@@ -100,7 +100,7 @@ export default function AiAssistantDrawer({
       setSelectedFile(processed)
       setFilePreview(processed.dataUrl)
       const label = isClientMode
-        ? 'Visiting card'
+        ? 'Bill book / Visiting card'
         : isPaymentMode
           ? 'Payment slip'
           : isSalesMode
@@ -203,7 +203,7 @@ export default function AiAssistantDrawer({
               : isPayment
                 ? 'Extract payment details from this UPI screenshot or receipt'
                 : isClient
-                  ? 'Extract new client name, mobile, and address from this card'
+                  ? 'Extract new client name, mobile, and address from this customer bill book, estimate book, or visiting card'
                   : isAccounts
                     ? 'Parse these staff cash custody, handover, or route expense entries'
                     : 'Scan this document and extract all water SKUs'
@@ -1949,32 +1949,88 @@ export default function AiAssistantDrawer({
         <div className="p-3 bg-white border-t border-gray-200 shrink-0">
           {/* File Preview Pill if selected */}
           {filePreview && (
-            <div className="mb-2 flex items-center justify-between p-2 bg-orange-50 border border-orange-200 rounded-lg text-xs">
-              <div className="flex items-center gap-2">
-                <img
-                  src={filePreview}
-                  alt="Selected bill"
-                  className="w-8 h-8 rounded object-cover border border-orange-300"
-                />
-                <div>
-                  <p className="font-semibold text-gray-800 truncate max-w-[200px]">
-                    {selectedFile?.fileName}
-                  </p>
-                  <p className="text-[10px] text-gray-500">
-                    Compressed: {selectedFile?.sizeKb} KB (~258 tokens)
-                  </p>
+            <div className="mb-2 p-2 bg-orange-50 border border-orange-200 rounded-lg text-xs space-y-1.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <img
+                    src={filePreview}
+                    alt="Selected bill"
+                    className="w-9 h-9 rounded object-cover border border-orange-300 shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-800 truncate max-w-[200px]">
+                      {selectedFile?.fileName}
+                    </p>
+                    <p className="text-[10px] text-gray-500">
+                      Photo attached ({selectedFile?.sizeKb} KB)
+                    </p>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedFile(null)
+                    setFilePreview(null)
+                  }}
+                  className="p-1 text-gray-400 hover:text-red-600 cursor-pointer"
+                  title="Remove image"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedFile(null)
-                  setFilePreview(null)
-                }}
-                className="p-1 text-gray-400 hover:text-red-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
+
+              {/* Quick mode selector for photo */}
+              <div className="flex items-center gap-1.5 pt-1 border-t border-orange-200/70">
+                <span className="text-[10px] font-semibold text-gray-500 shrink-0">Scan photo as:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsClientMode(true)
+                    setIsSalesMode(false)
+                    setIsPaymentMode(false)
+                    setIsAccountsMode(false)
+                  }}
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                    isClientMode
+                      ? 'bg-orange-600 text-white shadow-2xs'
+                      : 'bg-white border border-gray-300 text-gray-700 hover:border-amz-orange'
+                  }`}
+                >
+                  👤 Add Client
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSalesMode(true)
+                    setIsClientMode(false)
+                    setIsPaymentMode(false)
+                    setIsAccountsMode(false)
+                  }}
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                    isSalesMode
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'bg-white border border-gray-300 text-gray-700 hover:border-emerald-600'
+                  }`}
+                >
+                  🛒 Order
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPaymentMode(true)
+                    setIsClientMode(false)
+                    setIsSalesMode(false)
+                    setIsAccountsMode(false)
+                  }}
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                    isPaymentMode
+                      ? 'bg-emerald-700 text-white shadow-2xs'
+                      : 'bg-white border border-gray-300 text-gray-700 hover:border-emerald-700'
+                  }`}
+                >
+                  💰 Payment
+                </button>
+              </div>
             </div>
           )}
 
