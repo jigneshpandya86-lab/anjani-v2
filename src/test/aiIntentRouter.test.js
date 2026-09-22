@@ -143,5 +143,27 @@ describe('aiIntentRouter', () => {
     expect(result.data.mobile).toBe('9825997750')
     expect(result.data.rate).toBe(65)
   })
+
+  it('handles client creation when isClientMode is true without prefix keywords', () => {
+    const fakeStore = { isClientMode: true }
+    const result = tryLocalIntentRoute('Shiv Dhaba, Manjalpur, 9825098250, rate 65', fakeStore)
+    expect(result).not.toBeNull()
+    expect(result.handled).toBe(true)
+    expect(result.type).toBe('create_client')
+    expect(result.data.name).toContain('Shiv Dhaba')
+    expect(result.data.address).toContain('Manjalpur')
+    expect(result.data.mobile).toBe('9825098250')
+    expect(result.data.rate).toBe(65)
+  })
+
+  it('ensures client creation with rate and 200ml does not trigger order draft', () => {
+    const fakeStore = { isClientMode: true }
+    const result = tryLocalIntentRoute('Maruti Kirana, 9825012345, Karelibaug, 200ml rate 65', fakeStore)
+    expect(result).not.toBeNull()
+    expect(result.handled).toBe(true)
+    expect(result.type).toBe('create_client')
+    expect(result.type).not.toBe('order_draft')
+    expect(result.data.mobile).toBe('9825012345')
+  })
 })
 

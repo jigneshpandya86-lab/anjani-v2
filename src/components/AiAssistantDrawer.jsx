@@ -166,6 +166,9 @@ export default function AiAssistantDrawer({
         stockEntries,
         orders,
         clients,
+        isClientMode: isClient,
+        isPaymentMode: isPayment,
+        isSalesMode: isSales,
       })
 
       if (localRoute && localRoute.handled) {
@@ -758,7 +761,10 @@ export default function AiAssistantDrawer({
                   type="button"
                   onClick={() => {
                     setIsSalesMode(true)
-                    setInputMessage('Jay Ambe 10 200ml 65, Ramesh 5 1L 120 paid')
+                    setIsPaymentMode(false)
+                    setIsClientMode(false)
+                    setIsAccountsMode(false)
+                    setTimeout(() => inputRef.current?.focus(), 50)
                   }}
                   className="p-2.5 bg-white border border-gray-200 hover:border-emerald-500 hover:bg-emerald-50/40 rounded-xl text-xs text-gray-700 flex items-center gap-2.5 transition-all shadow-2xs cursor-pointer"
                 >
@@ -773,7 +779,10 @@ export default function AiAssistantDrawer({
                   type="button"
                   onClick={() => {
                     setIsPaymentMode(true)
-                    setInputMessage('Received ₹1500 from Ramesh via GPay')
+                    setIsSalesMode(false)
+                    setIsClientMode(false)
+                    setIsAccountsMode(false)
+                    setTimeout(() => inputRef.current?.focus(), 50)
                   }}
                   className="p-2.5 bg-white border border-gray-200 hover:border-emerald-600 hover:bg-emerald-50/40 rounded-xl text-xs text-gray-700 flex items-center gap-2.5 transition-all shadow-2xs cursor-pointer"
                 >
@@ -788,14 +797,17 @@ export default function AiAssistantDrawer({
                   type="button"
                   onClick={() => {
                     setIsClientMode(true)
-                    setInputMessage('Add client Maruti Kirana mobile 9876543210 address Karelibaug rate 65')
+                    setIsSalesMode(false)
+                    setIsPaymentMode(false)
+                    setIsAccountsMode(false)
+                    setTimeout(() => inputRef.current?.focus(), 50)
                   }}
                   className="p-2.5 bg-white border border-gray-200 hover:border-orange-500 hover:bg-orange-50/40 rounded-xl text-xs text-gray-700 flex items-center gap-2.5 transition-all shadow-2xs cursor-pointer"
                 >
                   <span className="w-5 h-5 rounded-md bg-orange-100 text-amz-orange flex items-center justify-center shrink-0 font-bold text-[10px]">3</span>
                   <div className="min-w-0">
                     <p className="font-bold text-gray-900 leading-tight">Add New Client</p>
-                    <p className="text-[11px] text-gray-500 truncate">Type "Add client name mobile ..." or snap visiting card</p>
+                    <p className="text-[11px] text-gray-500 truncate">Type client name, mobile & address or snap visiting card</p>
                   </div>
                 </button>
 

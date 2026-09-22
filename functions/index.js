@@ -1617,22 +1617,36 @@ CRITICAL REQUIREMENT: ALL CLIENT INFORMATION ("name", "contactPerson", "address"
       const parsedData = parseStructuredJson(rawJson)
 
       if (
-        parsedData.docType === 'retail_sales' ||
-        (Array.isArray(parsedData.sales) && parsedData.sales.length > 0)
+        mode === 'create_client' ||
+        parsedData.docType === 'create_client'
+      ) {
+        if (parsedData.name || parsedData.docType === 'create_client') {
+          return {
+            type: 'create_client',
+            modelUsed: modelName,
+            data: ensureEnglishClient(parsedData),
+          }
+        }
+      }
+
+      if (
+        mode === 'receive_payment' ||
+        parsedData.docType === 'receive_payment' ||
+        (Number(parsedData.amount) > 0 && (parsedData.payerName || parsedData.utr) && !Array.isArray(parsedData.sales))
       ) {
         return {
-          type: 'retail_sales',
+          type: 'receive_payment',
           modelUsed: modelName,
           data: parsedData,
         }
       }
 
       if (
-        parsedData.docType === 'receive_payment' ||
-        (Number(parsedData.amount) > 0 && (parsedData.payerName || parsedData.utr))
+        parsedData.docType === 'retail_sales' ||
+        (Array.isArray(parsedData.sales) && parsedData.sales.length > 0)
       ) {
         return {
-          type: 'receive_payment',
+          type: 'retail_sales',
           modelUsed: modelName,
           data: parsedData,
         }
@@ -1749,11 +1763,123 @@ ${rawText.slice(0, 3000)}`
         }
       }
 
+      // 1. Check for client creation intent in text (Priority 1 when in client mode or client keywords detected)
+      const isClientTextIntent =
+        mode === 'create_client' ||
+        /^(?:add|new|create)\s+(?:client|customer|party|shop)\b/i.test(rawText) ||
+        /(?:add\s+new\s+client|create\s+new\s+client)\b/i.test(rawText) ||
+        /(?:નવો|નવા|નવી)\s+(?:ગ્રાહક|કસ્ટમર|ક્લાયન્ટ|પાર્ટી|દુકાન)/i.test(rawText) ||
+        /(?:નવો\s+ગ્રાહક\s+બનાવો|નવા\s+ક્લાયન્ટ\s+ઉમેરો)/i.test(rawText) ||
+        /(?:नया|नए|नई)\s+(?:ग्राहक|कस्टमर|क्लाइंट|पार्टी|दुकान)/i.test(rawText) ||
+        /(?:नया\s+ग्राहक\s+बनाओ|नया\s+ग्राहक\s+जोड़ो)/i.test(rawText)
+
+      if (isClientTextIntent) {
+        const model = vertexAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            maxOutputTokens: jsonMaxTokens,
+            temperature,
+            responseMimeType: 'application/json',
+          },
+        })
+
+        const textClientPrompt = `You are a client onboarding assistant for Annapurna Foods in Vadodara, Gujarat.
+Parse the user's client details into strict JSON:
+{
+  "docType": "create_client",
+  "name": string (Shop or customer name in English Title Case),
+  "contactPerson": string (Contact person name in English),
+  "mobile": string (10-digit mobile number, digits 0-9 only),
+  "alternateMobile": string (digits 0-9 only),
+  "address": string (Shop address/area in English),
+  "location": string (Landmark/area in English),
+  "rate": number (Default 200ml rate if mentioned, else 0),
+  "notes": string (in English)
+}
+CRITICAL REQUIREMENT: ALL CLIENT INFORMATION MUST BE RETURNED IN ENGLISH (Latin alphabet / Roman script) ONLY!
+Even if the user writes in Gujarati, Hindi, Marathi, or mixed language:
+- Transliterate and translate all business names, person names, and addresses into clean English in Title Case (e.g. 'શ્રી ગણેશ પ્રોવિઝન સ્ટોર' -> 'Shree Ganesh Provision Store', 'માંજલપુર' -> 'Manjalpur', 'કિશોરભાઈ પટેલ' -> 'Kishorbhai Patel').
+- Convert any Gujarati (૦-૯) or Hindi (०-९) digits into standard English digits (0-9).
+- Under NO circumstance return Gujarati or Devanagari script in client fields.
+User Text: ${rawText.slice(0, 1000)}`
+
+        try {
+          const res = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: textClientPrompt }] }],
+          })
+          const rawJson = res.response.candidates[0].content.parts[0].text.trim()
+          const parsedData = parseStructuredJson(rawJson)
+          if (parsedData.name) {
+            return {
+              type: 'create_client',
+              modelUsed: modelName,
+              data: ensureEnglishClient(parsedData),
+            }
+          }
+        } catch (clientErr) {
+          logger.warn('Failed to parse text client as JSON:', clientErr.message)
+        }
+      }
+
+      // 2. Check for payment received intent in text
+      const isPaymentTextIntent =
+        mode === 'receive_payment' ||
+        (/(?:received|payment\s+received|jama\s+kary[ao]|paid|rupiya\s+malya|rupaye\s+mile)\b/i.test(rawText) &&
+          /\d+/.test(rawText) &&
+          !/(?:stock|order|delivery|invoice)\b/i.test(rawText))
+
+      if (isPaymentTextIntent) {
+        const model = vertexAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            maxOutputTokens: jsonMaxTokens,
+            temperature,
+            responseMimeType: 'application/json',
+          },
+        })
+
+        const textPaymentPrompt = `You are an accounts and payment assistant for Annapurna Foods in Vadodara, Gujarat.
+The user provided a customer payment received record in English, Gujarati, or Hindi.
+Parse into strict JSON:
+{
+  "docType": "receive_payment",
+  "payerName": string (Customer or shop name who paid),
+  "amount": number (Payment amount in INR),
+  "paymentMode": "online" | "cash" | "cheque",
+  "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
+  "utr": string (UTR, reference number, or cheque no if mentioned, else ""),
+  "date": string (YYYY-MM-DD or today),
+  "notes": string
+}
+User Text: ${rawText.slice(0, 1000)}`
+
+        try {
+          const res = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: textPaymentPrompt }] }],
+          })
+          const rawJson = res.response.candidates[0].content.parts[0].text.trim()
+          const parsedData = parseStructuredJson(rawJson)
+          if (Number(parsedData.amount) > 0) {
+            return {
+              type: 'receive_payment',
+              modelUsed: modelName,
+              data: parsedData,
+            }
+          }
+        } catch (payErr) {
+          logger.warn('Failed to parse text payment as JSON:', payErr.message)
+        }
+      }
+
+      // 3. Check for sales notes / customer orders (Only if NOT in client creation or payment mode)
       const isSalesNotes =
-        mode === 'retail_sales' ||
-        /(?:sales|peti|box|case|bxs|qty|cash|rokda|gpay|upi|udhar|baaki|jama)\b/i.test(rawText) ||
-        /(?:200ml|250ml|500ml|1\s*l|2\s*l|anjani|bailey)/i.test(rawText) ||
-        (rawText.includes('\n') && /\d+/.test(rawText))
+        mode !== 'create_client' &&
+        mode !== 'receive_payment' &&
+        !isClientTextIntent &&
+        (mode === 'retail_sales' ||
+          /(?:sales|peti|box|case|bxs|qty|cash|rokda|gpay|upi|udhar|baaki|jama)\b/i.test(rawText) ||
+          /(?:200ml|250ml|500ml|1\s*l|2\s*l|anjani|bailey)/i.test(rawText) ||
+          (rawText.includes('\n') && /\d+/.test(rawText)))
 
       if (isSalesNotes) {
         const model = vertexAI.getGenerativeModel({
@@ -1831,113 +1957,6 @@ ${rawText.slice(0, 3000)}`
         }
       }
 
-      // Check for client creation intent in text
-      const isClientTextIntent =
-        mode === 'create_client' ||
-        /^(?:add|new|create)\s+(?:client|customer|party|shop)\b/i.test(rawText) ||
-        /(?:add\s+new\s+client|create\s+new\s+client)\b/i.test(rawText) ||
-        /(?:નવો|નવા|નવી)\s+(?:ગ્રાહક|કસ્ટમર|ક્લાયન્ટ|પાર્ટી|દુકાન)/i.test(rawText) ||
-        /(?:નવો\s+ગ્રાહક\s+બનાવો|નવા\s+ક્લાયન્ટ\s+ઉમેરો)/i.test(rawText) ||
-        /(?:नया|नए|नई)\s+(?:ग्राहक|कस्टमर|क्लाइंट|पार्टी|दुकान)/i.test(rawText) ||
-        /(?:नया\s+ग्राहक\s+बनाओ|नया\s+ग्राहक\s+जोड़ो)/i.test(rawText)
-
-      if (isClientTextIntent) {
-        const model = vertexAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: {
-            maxOutputTokens: jsonMaxTokens,
-            temperature,
-            responseMimeType: 'application/json',
-          },
-        })
-
-        const textClientPrompt = `You are a client onboarding assistant for Annapurna Foods in Vadodara, Gujarat.
-Parse the user's client details into strict JSON:
-{
-  "docType": "create_client",
-  "name": string (Shop or customer name in English Title Case),
-  "contactPerson": string (Contact person name in English),
-  "mobile": string (10-digit mobile number, digits 0-9 only),
-  "alternateMobile": string (digits 0-9 only),
-  "address": string (Shop address/area in English),
-  "location": string (Landmark/area in English),
-  "rate": number (Default 200ml rate if mentioned, else 0),
-  "notes": string (in English)
-}
-CRITICAL REQUIREMENT: ALL CLIENT INFORMATION MUST BE RETURNED IN ENGLISH (Latin alphabet / Roman script) ONLY!
-Even if the user writes in Gujarati, Hindi, Marathi, or mixed language:
-- Transliterate and translate all business names, person names, and addresses into clean English in Title Case (e.g. 'શ્રી ગણેશ પ્રોવિઝન સ્ટોર' -> 'Shree Ganesh Provision Store', 'માંજલપુર' -> 'Manjalpur', 'કિશોરભાઈ પટેલ' -> 'Kishorbhai Patel').
-- Convert any Gujarati (૦-૯) or Hindi (०-९) digits into standard English digits (0-9).
-- Under NO circumstance return Gujarati or Devanagari script in client fields.
-User Text: ${rawText.slice(0, 1000)}`
-
-        try {
-          const res = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: textClientPrompt }] }],
-          })
-          const rawJson = res.response.candidates[0].content.parts[0].text.trim()
-          const parsedData = parseStructuredJson(rawJson)
-          if (parsedData.name) {
-            return {
-              type: 'create_client',
-              modelUsed: modelName,
-              data: ensureEnglishClient(parsedData),
-            }
-          }
-        } catch (clientErr) {
-          logger.warn('Failed to parse text client as JSON:', clientErr.message)
-        }
-      }
-
-      // Check for payment received intent in text
-      const isPaymentTextIntent =
-        mode === 'receive_payment' ||
-        (/(?:received|payment\s+received|jama\s+kary[ao]|paid|rupiya\s+malya|rupaye\s+mile)\b/i.test(rawText) &&
-          /\d+/.test(rawText) &&
-          !/(?:stock|order|delivery|invoice)\b/i.test(rawText))
-
-      if (isPaymentTextIntent) {
-        const model = vertexAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: {
-            maxOutputTokens: jsonMaxTokens,
-            temperature,
-            responseMimeType: 'application/json',
-          },
-        })
-
-        const textPaymentPrompt = `You are an accounts and payment assistant for Annapurna Foods in Vadodara, Gujarat.
-The user provided a customer payment received record in English, Gujarati, or Hindi.
-Parse into strict JSON:
-{
-  "docType": "receive_payment",
-  "payerName": string (Customer or shop name who paid),
-  "amount": number (Payment amount in INR),
-  "paymentMode": "online" | "cash" | "cheque",
-  "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
-  "utr": string (UTR, reference number, or cheque no if mentioned, else ""),
-  "date": string (YYYY-MM-DD or today),
-  "notes": string
-}
-User Text: ${rawText.slice(0, 1000)}`
-
-        try {
-          const res = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: textPaymentPrompt }] }],
-          })
-          const rawJson = res.response.candidates[0].content.parts[0].text.trim()
-          const parsedData = parseStructuredJson(rawJson)
-          if (Number(parsedData.amount) > 0) {
-            return {
-              type: 'receive_payment',
-              modelUsed: modelName,
-              data: parsedData,
-            }
-          }
-        } catch (payErr) {
-          logger.warn('Failed to parse text payment as JSON:', payErr.message)
-        }
-      }
 
       // General conversational chat reply
       const model = vertexAI.getGenerativeModel({

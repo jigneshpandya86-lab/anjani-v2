@@ -46,8 +46,10 @@ export function tryLocalIntentRoute(query, store = {}) {
   // SEQUENCE 1: ORDER CREATION & QUICK SALES
   // ==========================================
   const isOrderCreationIntent =
-    /^(?:create\s+order|new\s+order|place\s+order|book\s+order|order\s+\d+|order\s+for)\b/i.test(q) ||
-    /(?:create\s+order|new\s+order)\b/i.test(q)
+    !store.isClientMode &&
+    !store.isPaymentMode &&
+    (/^(?:create\s+order|new\s+order|place\s+order|book\s+order|order\s+\d+|order\s+for)\b/i.test(q) ||
+      /(?:create\s+order|new\s+order)\b/i.test(q))
 
   if (isOrderCreationIntent) {
     const clients = store.clients || []
@@ -163,8 +165,11 @@ export function tryLocalIntentRoute(query, store = {}) {
   // All clients must be created in English only even if source is in any language
   // ==========================================
   const isClientCreationIntent =
+    Boolean(store.isClientMode) ||
     /^(?:add|new|create)\s+(?:client|customer|party|dukaan|shop)\b/i.test(q) ||
     /(?:add\s+new\s+client|create\s+new\s+client)\b/i.test(q) ||
+    /\b(?:new|add|create|register)\s+(?:client|customer|party|shop|account|dukaan)\b/i.test(q) ||
+    /\b(?:client|customer|party)\s*[:=]\s*[A-Za-z]/i.test(q) ||
     /(?:નવો|નવા|નવી)\s+(?:ગ્રાહક|કસ્ટમર|ક્લાયન્ટ|પાર્ટી|દુકાન)/i.test(rawQ) ||
     /(?:નવો\s+ગ્રાહક\s+બનાવો|નવા\s+ક્લાયન્ટ\s+ઉમેરો)/i.test(rawQ) ||
     /(?:नया|नए|नई)\s+(?:ग्राहक|कस्टमर|क्लाइंट|पार्टी|दुकान)/i.test(rawQ) ||
@@ -188,18 +193,37 @@ export function tryLocalIntentRoute(query, store = {}) {
     )
     if (addrMatch) {
       address = addrMatch[1].trim()
+    } else if (normalizedInput.includes(',')) {
+      const segments = normalizedInput.split(',').map((s) => s.trim()).filter(Boolean)
+      if (segments.length >= 2) {
+        for (let i = 1; i < segments.length; i++) {
+          const seg = segments[i]
+          if (
+            !/\b[6-9]\d{9}\b/.test(seg) &&
+            !/(?:rate|bhav|ભાવ|रेट|@)\s*[:=]?\s*\d+/i.test(seg)
+          ) {
+            address = seg
+            break
+          }
+        }
+      }
     }
 
     // 4. Extract Name: remove command words, mobile, rate, address
     let cleanedForName = normalizedInput
       .replace(/^(?:add|new|create)\s+(?:client|customer|party|dukaan|shop)\s*/i, '')
+      .replace(/\b(?:new|add|create|register)\s+(?:client|customer|party|shop|account|dukaan)\s*/i, '')
       .replace(/(?:નવો|નવા|નવી)\s+(?:ગ્રાહક|કસ્ટમર|ક્લાયન્ટ|પાર્ટી|દુકાન)\s*(?:બનાવો|ઉમેરો)?/i, '')
       .replace(/(?:नया|नए|नई)\s+(?:ग्राहक|कस्टमर|क्लाइंट|पार्टी|दुकान)\s*(?:बनाओ|जोड़ो)?/i, '')
       .replace(/\b[6-9]\d{9}\b/g, '')
       .replace(/(?:rate|bhav|ભાવ|रेट|@)\s*[:=]?\s*\d+(?:\.\d+)?/gi, '')
       .replace(/(?:\baddress\b|\blocation\b|\barea\b|\bat\b|સરનામું|એડ્રેસ|પતા)\s*[:=]?\s*[^,;\n]+/gi, '')
-      .replace(/[,;:]+/g, ' ')
-      .trim()
+
+    if (address) {
+      cleanedForName = cleanedForName.replace(address, '')
+    }
+
+    cleanedForName = cleanedForName.replace(/[,;:]+/g, ' ').trim()
 
     // 5. Enforce English-only output for client name and address
     const name = ensureEnglishText(cleanedForName.length > 1 ? cleanedForName : 'New Client')
