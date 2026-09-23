@@ -19,6 +19,12 @@ import {
   MapPin,
   Navigation,
   Droplets,
+  Calendar,
+  History,
+  ArrowDownCircle,
+  CheckCircle2,
+  ChevronDown,
+  X,
 } from 'lucide-react'
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage'
 import { app } from '../firebase-config'
@@ -26,6 +32,10 @@ import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 
 function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOpenBaileyOrder }) {
   const orders = useClientStore((state) => state.orders)
+  const hasMoreOrders = useClientStore((state) => state.hasMoreOrders)
+  const loadingOlderOrders = useClientStore((state) => state.loadingOlderOrders)
+  const loadOlderOrders = useClientStore((state) => state.loadOlderOrders)
+  const loadAllPastOrders = useClientStore((state) => state.loadAllPastOrders)
   const clients = useClientStore((state) => state.clients)
   const updateOrder = useClientStore((state) => state.updateOrder)
   const deleteOrder = useClientStore((state) => state.deleteOrder)
@@ -34,16 +44,57 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
   const [dateFilter, setDateFilter] = useState('All')
   const [skuFilter, setSkuFilter] = useState('All')
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState('')
+  const [showPeriodPicker, setShowPeriodPicker] = useState(false)
   const [uploadingProofOrderId, setUploadingProofOrderId] = useState('')
   const [statusUpdatingOrderId, setStatusUpdatingOrderId] = useState('')
   const proofInputRefs = useRef({})
   const storage = getStorage(app)
 
+  const handleLoadOlder = useCallback(async () => {
+    try {
+      await loadOlderOrders(50)
+      toast.success('Loaded 50 older orders')
+    } catch {
+      toast.error('Failed to load older orders')
+    }
+  }, [loadOlderOrders])
+
+  const handleLoadAllHistory = useCallback(async () => {
+    try {
+      await loadAllPastOrders()
+      toast.success('All historical orders loaded')
+    } catch {
+      toast.error('Failed to load history')
+    }
+  }, [loadAllPastOrders])
+
   const getOrderDate = useCallback((order) => {
-    if (!order?.date) return null
-    const parsedDate = new Date(order.date)
-    if (Number.isNaN(parsedDate.getTime())) return null
-    return new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate())
+    const rawDate = order?.date || order?.orderDate || order?.deliveryDate
+    if (rawDate) {
+      const parsedDate = new Date(rawDate)
+      if (!Number.isNaN(parsedDate.getTime())) {
+        return new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate())
+      }
+    }
+    if (order?.createdAt) {
+      const ts = order.createdAt
+      if (ts?.toDate) {
+        const d = ts.toDate()
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+      }
+      if (ts?.seconds) {
+        const d = new Date(ts.seconds * 1000)
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+      }
+      if (typeof ts === 'string') {
+        const d = new Date(ts)
+        if (!Number.isNaN(d.getTime())) {
+          return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+        }
+      }
+    }
+    return null
   }, [])
 
   const getDisplayName = useCallback(
@@ -178,9 +229,32 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
         weekEnd.setDate(weekEnd.getDate() + 6)
         return orderDate >= today && orderDate <= weekEnd
       }
+      if (dateFilter === 'ThisMonth') {
+        return (
+          orderDate.getFullYear() === now.getFullYear() &&
+          orderDate.getMonth() === now.getMonth()
+        )
+      }
+      if (dateFilter === 'LastMonth') {
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        return (
+          orderDate.getFullYear() === lastMonth.getFullYear() &&
+          orderDate.getMonth() === lastMonth.getMonth()
+        )
+      }
+      if (dateFilter === 'Last3Months') {
+        const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1)
+        return orderDate >= threeMonthsAgo && orderDate <= now
+      }
+      if (dateFilter === 'Month' && selectedMonth) {
+        const [yearStr, monthStr] = selectedMonth.split('-')
+        const y = parseInt(yearStr, 10)
+        const m = parseInt(monthStr, 10) - 1
+        return orderDate.getFullYear() === y && orderDate.getMonth() === m
+      }
       return true
     },
-    [dateFilter, getOrderDate],
+    [dateFilter, getOrderDate, selectedMonth],
   )
 
   const filteredOrders = useMemo(
@@ -444,6 +518,38 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
         )}
 
         <button
+          key="Month"
+          type="button"
+          onClick={() => {
+            if (dateFilter === 'Month' || dateFilter === 'ThisMonth' || dateFilter === 'LastMonth' || dateFilter === 'Last3Months') {
+              setShowPeriodPicker(!showPeriodPicker)
+            } else {
+              setDateFilter('Month')
+              setShowPeriodPicker(true)
+            }
+          }}
+          className={`px-2 py-1.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wide whitespace-nowrap border transition-all inline-flex items-center gap-1 ${
+            dateFilter === 'Month' || dateFilter === 'ThisMonth' || dateFilter === 'LastMonth' || dateFilter === 'Last3Months'
+              ? 'bg-[#ff9900]/15 text-[#cc7a00] border-[#ff9900]/30'
+              : 'bg-white text-gray-400 border-gray-200'
+          }`}
+        >
+          <Calendar size={12} />
+          <span>
+            {dateFilter === 'Month' && selectedMonth
+              ? new Date(selectedMonth + '-01').toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })
+              : dateFilter === 'ThisMonth'
+                ? 'This M'
+                : dateFilter === 'LastMonth'
+                  ? 'Last M'
+                  : dateFilter === 'Last3Months'
+                    ? '3M'
+                    : 'Month'}
+          </span>
+          <ChevronDown size={10} className={`transition-transform duration-200 ${showPeriodPicker ? 'rotate-180' : ''}`} />
+        </button>
+
+        <button
           onClick={shareDispatchPlan}
           className="bg-[#25D366] text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider whitespace-nowrap flex items-center gap-1 shadow-sm active:scale-95"
         >
@@ -461,6 +567,108 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
           </button>
         )}
       </div>
+
+      {/* ─── Expandable Month / Custom Range Selector ─── */}
+      {showPeriodPicker && (
+        <div className="bg-[#131921] border border-gray-800 rounded-2xl p-2.5 text-white space-y-2 shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400 flex items-center gap-1">
+              <Calendar size={12} className="text-[#ff9900]" /> Filter By Month or Range
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowPeriodPicker(false)}
+              className="text-gray-400 hover:text-white p-0.5"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          {/* Quick Month Presets */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+            {[
+              {
+                label: 'This Month',
+                active: dateFilter === 'ThisMonth',
+                action: () => {
+                  setDateFilter('ThisMonth')
+                  setSelectedMonth('')
+                },
+              },
+              {
+                label: 'Last Month',
+                active: dateFilter === 'LastMonth',
+                action: () => {
+                  setDateFilter('LastMonth')
+                  setSelectedMonth('')
+                },
+              },
+              {
+                label: 'Last 3M',
+                active: dateFilter === 'Last3Months',
+                action: () => {
+                  setDateFilter('Last3Months')
+                  setSelectedMonth('')
+                },
+              },
+              {
+                label: 'All History',
+                active: dateFilter === 'All',
+                action: () => {
+                  setDateFilter('All')
+                  setSelectedMonth('')
+                  if (hasMoreOrders) {
+                    handleLoadAllHistory()
+                  }
+                },
+              },
+            ].map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={preset.action}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap active:scale-95 transition-all ${
+                  preset.active
+                    ? 'bg-[#ff9900] text-gray-900 font-black'
+                    : 'bg-white/10 hover:bg-white/20 text-white'
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Native Month Picker and DB Load Button */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-gray-800 text-xs">
+            <div className="flex items-center gap-1.5 bg-black/40 px-2.5 py-1 rounded-xl border border-gray-700/60">
+              <span className="text-[10px] text-gray-400 font-bold uppercase">Month:</span>
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => {
+                  setSelectedMonth(e.target.value)
+                  if (e.target.value) {
+                    setDateFilter('Month')
+                  }
+                }}
+                className="bg-transparent text-white text-xs font-bold outline-none cursor-pointer"
+              />
+            </div>
+
+            {hasMoreOrders && (
+              <button
+                type="button"
+                onClick={handleLoadAllHistory}
+                disabled={loadingOlderOrders}
+                className="px-2.5 py-1 bg-[#ff9900] hover:bg-[#e68a00] text-gray-900 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-50 cursor-pointer shadow-xs"
+              >
+                {loadingOlderOrders ? <Loader2 size={11} className="animate-spin" /> : <History size={11} />}
+                Load DB History
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* SKU Filter Bar */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-hide px-1">
@@ -497,8 +705,19 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
       </div>
 
       {filteredOrders.length === 0 ? (
-        <div className="bg-white p-12 rounded-3xl text-center border-2 border-dashed border-gray-100 text-gray-400 font-bold italic">
-          No orders found.
+        <div className="bg-white p-10 rounded-3xl text-center border-2 border-dashed border-gray-100 text-gray-400 font-bold italic space-y-3">
+          <p>No orders found for current filter.</p>
+          {hasMoreOrders && (
+            <button
+              type="button"
+              onClick={handleLoadAllHistory}
+              disabled={loadingOlderOrders}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#131921] hover:bg-[#1f2833] text-[#ff9900] text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 cursor-pointer shadow-xs not-italic"
+            >
+              {loadingOlderOrders ? <Loader2 size={13} className="animate-spin" /> : <History size={13} />}
+              Search Full Past History in DB
+            </button>
+          )}
         </div>
       ) : (
         filteredOrders.map((order) => (
@@ -739,6 +958,59 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
           </div>
         ))
       )}
+
+      {/* ─── Bottom History & Pagination Strip ─── */}
+      <div className="mt-4 p-3 bg-white rounded-2xl border border-gray-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-2.5">
+        <div className="flex items-center gap-2 text-xs font-bold text-gray-500">
+          <History size={15} className="text-[#ff9900]" />
+          <span>
+            Loaded <strong className="text-gray-800">{orders.length}</strong> orders
+            {filteredOrders.length !== orders.length && (
+              <span className="text-gray-400 font-normal"> ({filteredOrders.length} shown)</span>
+            )}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {hasMoreOrders ? (
+            <>
+              <button
+                type="button"
+                onClick={handleLoadOlder}
+                disabled={loadingOlderOrders}
+                className="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
+                title="Load 50 older historical orders"
+              >
+                {loadingOlderOrders ? (
+                  <Loader2 size={13} className="animate-spin text-[#ff9900]" />
+                ) : (
+                  <ArrowDownCircle size={13} className="text-[#ff9900]" />
+                )}
+                <span>+50 Older</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLoadAllHistory}
+                disabled={loadingOlderOrders}
+                className="px-3 py-1.5 rounded-xl bg-[#131921] hover:bg-[#1f2833] text-[#ff9900] text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer shadow-xs"
+                title="Load all historical orders from database"
+              >
+                {loadingOlderOrders ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <History size={13} />
+                )}
+                <span>Load All History</span>
+              </button>
+            </>
+          ) : (
+            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full flex items-center gap-1">
+              <CheckCircle2 size={13} /> All DB Orders Loaded
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

@@ -17,6 +17,7 @@ import {
   getDocs,
   deleteField,
   Timestamp,
+  startAfter,
 } from 'firebase/firestore'
 import { db } from '../firebase-config'
 import { DEFAULT_SKU, getSkuMeta } from '../constants/skus'
@@ -127,10 +128,104 @@ const getLegacyLocationCleanupPatch = () => ({
   locationName: deleteField(),
 })
 
+export const normalizeOrderDoc = (raw) => {
+  const hasLegacyProducedDelivered = raw.produced !== undefined || raw.delivered !== undefined
+  const hasDirectQty =
+    raw.qty !== undefined || raw.boxes !== undefined || raw.quantity !== undefined
+  let baseQty = Number(raw.qty || raw.boxes || raw.quantity) || 0
+
+  if (hasLegacyProducedDelivered && !hasDirectQty) {
+    baseQty = (Number(raw.produced) || 0) - (Number(raw.delivered) || 0)
+  }
+
+  const rawItems = Array.isArray(raw.items) && raw.items.length > 0 ? raw.items : null
+  let items = []
+  if (rawItems) {
+    items = rawItems.map((it) => {
+      const itQty = Number(it.qty) || 0
+      const itRate = Number(it.rate) || 0
+      const itSku = it.sku || DEFAULT_SKU
+      const itMeta = getSkuMeta(itSku)
+      return {
+        sku: itSku,
+        qty: itQty,
+        rate: itRate,
+        amount: itQty * itRate,
+        unit: it.unit || itMeta.unit,
+      }
+    })
+  } else {
+    const primarySku = raw.sku || raw.product || DEFAULT_SKU
+    const itMeta = getSkuMeta(primarySku)
+    const itRate = Number(raw.rate) || 0
+    items = [
+      {
+        sku: primarySku,
+        qty: baseQty,
+        rate: itRate,
+        amount: baseQty * itRate,
+        unit: itMeta.unit,
+      },
+    ]
+  }
+
+  const totalQty = items.reduce((sum, it) => sum + it.qty, 0)
+  const totalAmount =
+    raw.totalAmount !== undefined
+      ? Number(raw.totalAmount)
+      : items.reduce((sum, it) => sum + it.amount, 0)
+
+  const skuSummary =
+    items.length === 1
+      ? items[0].sku
+      : items.map((it) => `${it.qty}× ${it.sku}`).join(', ')
+
+  return {
+    ...raw,
+    items,
+    totalQty,
+    totalAmount,
+    qty: totalQty,
+    sku: raw.sku || skuSummary,
+    rate:
+      Number(raw.rate) ||
+      (totalQty > 0 ? Math.round((totalAmount / totalQty) * 100) / 100 : 0),
+    date: raw.date || raw.deliveryDate || raw.orderDate || '',
+    time: raw.time || raw.deliveryTime || '',
+    clientId: raw.clientId || raw.customerId || '',
+    address: raw.address || raw.deliveryAddress || raw.location || '',
+    location:
+      raw.location ||
+      raw.googleLocation ||
+      raw.locationName ||
+      raw.mapLink ||
+      raw.googleMap ||
+      '',
+    mapLink: raw.mapLink || raw.googleMap || '',
+    locationLat: Number.isFinite(Number(raw.locationLat ?? raw.lat))
+      ? Number(raw.locationLat ?? raw.lat)
+      : null,
+    locationLng: Number.isFinite(Number(raw.locationLng ?? raw.lng))
+      ? Number(raw.locationLng ?? raw.lng)
+      : null,
+  }
+}
+
+export const getOrderSortTime = (o) => {
+  const ts = o.createdAt
+  if (ts?.toMillis) return ts.toMillis()
+  if (ts?.seconds) return ts.seconds * 1000
+  const d = o.date || o.orderDate || o.deliveryDate || ''
+  return d ? new Date(d).getTime() : 0
+}
+
 export const useClientStore = create((set, get) => ({
   userRole: null,
   clients: [],
   orders: [],
+  hasMoreOrders: true,
+  loadingOlderOrders: false,
+  _lastOrderDoc: null,
   stockEntries: [],
   stockTotal: 0,
   stockSummary: {},
@@ -1374,106 +1469,138 @@ export const useClientStore = create((set, get) => ({
     return updates.length
   },
 
-  fetchOrders: () => {
-    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(50))
+  fetchOrders: (initialLimit = 100) => {
+    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(initialLimit))
     return onSnapshot(q, (snapshot) => {
-      const normalize = (raw) => {
-        const hasLegacyProducedDelivered = raw.produced !== undefined || raw.delivered !== undefined
-        const hasDirectQty =
-          raw.qty !== undefined || raw.boxes !== undefined || raw.quantity !== undefined
-        let baseQty = Number(raw.qty || raw.boxes || raw.quantity) || 0
+      const docs = snapshot.docs
+        .map((doc) => normalizeOrderDoc({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => getOrderSortTime(b) - getOrderSortTime(a))
 
-        if (hasLegacyProducedDelivered && !hasDirectQty) {
-          baseQty = (Number(raw.produced) || 0) - (Number(raw.delivered) || 0)
-        }
+      const lastDoc = snapshot.docs[snapshot.docs.length - 1] || null
 
-        const rawItems = Array.isArray(raw.items) && raw.items.length > 0 ? raw.items : null
-        let items = []
-        if (rawItems) {
-          items = rawItems.map((it) => {
-            const itQty = Number(it.qty) || 0
-            const itRate = Number(it.rate) || 0
-            const itSku = it.sku || DEFAULT_SKU
-            const itMeta = getSkuMeta(itSku)
-            return {
-              sku: itSku,
-              qty: itQty,
-              rate: itRate,
-              amount: itQty * itRate,
-              unit: it.unit || itMeta.unit,
-            }
-          })
-        } else {
-          const primarySku = raw.sku || raw.product || DEFAULT_SKU
-          const itMeta = getSkuMeta(primarySku)
-          const itRate = Number(raw.rate) || 0
-          items = [
-            {
-              sku: primarySku,
-              qty: baseQty,
-              rate: itRate,
-              amount: baseQty * itRate,
-              unit: itMeta.unit,
-            },
-          ]
-        }
-
-        const totalQty = items.reduce((sum, it) => sum + it.qty, 0)
-        const totalAmount =
-          raw.totalAmount !== undefined
-            ? Number(raw.totalAmount)
-            : items.reduce((sum, it) => sum + it.amount, 0)
-
-        const skuSummary =
-          items.length === 1
-            ? items[0].sku
-            : items.map((it) => `${it.qty}× ${it.sku}`).join(', ')
+      set((state) => {
+        const liveIds = new Set(docs.map((d) => d.id))
+        const retainedOlder = (state.orders || []).filter((o) => !liveIds.has(o.id))
+        const merged = [...docs, ...retainedOlder].sort((a, b) => getOrderSortTime(b) - getOrderSortTime(a))
 
         return {
-          ...raw,
-          items,
-          totalQty,
-          totalAmount,
-          qty: totalQty,
-          sku: raw.sku || skuSummary,
-          rate:
-            Number(raw.rate) ||
-            (totalQty > 0 ? Math.round((totalAmount / totalQty) * 100) / 100 : 0),
-          date: raw.date || raw.deliveryDate || raw.orderDate || '',
-          time: raw.time || raw.deliveryTime || '',
-          clientId: raw.clientId || raw.customerId || '',
-          address: raw.address || raw.deliveryAddress || raw.location || '',
-          location:
-            raw.location ||
-            raw.googleLocation ||
-            raw.locationName ||
-            raw.mapLink ||
-            raw.googleMap ||
-            '',
-          mapLink: raw.mapLink || raw.googleMap || '',
-          locationLat: Number.isFinite(Number(raw.locationLat ?? raw.lat))
-            ? Number(raw.locationLat ?? raw.lat)
-            : null,
-          locationLng: Number.isFinite(Number(raw.locationLng ?? raw.lng))
-            ? Number(raw.locationLng ?? raw.lng)
-            : null,
+          orders: merged,
+          hasMoreOrders: snapshot.docs.length === initialLimit,
+          _lastOrderDoc: lastDoc,
+        }
+      })
+    })
+  },
+
+  loadOlderOrders: async (batchSize = 50) => {
+    const { _lastOrderDoc, orders, loadingOlderOrders, hasMoreOrders } = get()
+    if (loadingOlderOrders || !hasMoreOrders) return
+
+    set({ loadingOlderOrders: true })
+    try {
+      let q
+      if (_lastOrderDoc) {
+        q = query(
+          collection(db, 'orders'),
+          orderBy('createdAt', 'desc'),
+          startAfter(_lastOrderDoc),
+          limit(batchSize),
+        )
+      } else {
+        const oldest = orders[orders.length - 1]
+        if (!oldest?.createdAt) {
+          set({ loadingOlderOrders: false, hasMoreOrders: false })
+          return
+        }
+        q = query(
+          collection(db, 'orders'),
+          orderBy('createdAt', 'desc'),
+          startAfter(oldest.createdAt),
+          limit(batchSize),
+        )
+      }
+
+      const snapshot = await getDocs(q)
+      if (snapshot.empty) {
+        set({ hasMoreOrders: false, loadingOlderOrders: false })
+        return
+      }
+
+      const newDocs = snapshot.docs.map((d) => normalizeOrderDoc({ id: d.id, ...d.data() }))
+      const lastDoc = snapshot.docs[snapshot.docs.length - 1]
+
+      set((state) => {
+        const existingIds = new Set(state.orders.map((o) => o.id))
+        const freshOlder = newDocs.filter((o) => !existingIds.has(o.id))
+        const combined = [...state.orders, ...freshOlder].sort(
+          (a, b) => getOrderSortTime(b) - getOrderSortTime(a),
+        )
+
+        return {
+          orders: combined,
+          hasMoreOrders: snapshot.docs.length === batchSize,
+          _lastOrderDoc: lastDoc,
+          loadingOlderOrders: false,
+        }
+      })
+    } catch (err) {
+      console.error('Failed to load older orders:', err)
+      set({ loadingOlderOrders: false })
+      throw err
+    }
+  },
+
+  loadAllPastOrders: async () => {
+    const { loadingOlderOrders, hasMoreOrders } = get()
+    if (loadingOlderOrders || !hasMoreOrders) return
+
+    set({ loadingOlderOrders: true })
+    try {
+      let keepGoing = true
+      let rounds = 0
+      while (keepGoing && rounds < 25) {
+        rounds++
+        const { _lastOrderDoc } = get()
+        if (!_lastOrderDoc) break
+
+        const q = query(
+          collection(db, 'orders'),
+          orderBy('createdAt', 'desc'),
+          startAfter(_lastOrderDoc),
+          limit(100),
+        )
+        const snapshot = await getDocs(q)
+        if (snapshot.empty) {
+          set({ hasMoreOrders: false })
+          break
+        }
+
+        const newDocs = snapshot.docs.map((d) => normalizeOrderDoc({ id: d.id, ...d.data() }))
+        const lastDoc = snapshot.docs[snapshot.docs.length - 1]
+
+        set((state) => {
+          const existingIds = new Set(state.orders.map((o) => o.id))
+          const freshOlder = newDocs.filter((o) => !existingIds.has(o.id))
+          return {
+            orders: [...state.orders, ...freshOlder].sort(
+              (a, b) => getOrderSortTime(b) - getOrderSortTime(a),
+            ),
+            hasMoreOrders: snapshot.docs.length === 100,
+            _lastOrderDoc: lastDoc,
+          }
+        })
+
+        if (snapshot.docs.length < 100) {
+          keepGoing = false
+          set({ hasMoreOrders: false })
         }
       }
-
-      const getTime = (o) => {
-        const ts = o.createdAt
-        if (ts?.toMillis) return ts.toMillis()
-        if (ts?.seconds) return ts.seconds * 1000
-        const d = o.date || o.orderDate || o.deliveryDate || ''
-        return d ? new Date(d).getTime() : 0
-      }
-
-      const docs = snapshot.docs
-        .map((doc) => normalize({ id: doc.id, ...doc.data() }))
-        .sort((a, b) => getTime(b) - getTime(a))
-
-      set({ orders: docs })
-    })
+    } catch (err) {
+      console.error('Failed to load all past orders:', err)
+      throw err
+    } finally {
+      set({ loadingOlderOrders: false })
+    }
   },
 
   updateOrder: async (id, data) => {
