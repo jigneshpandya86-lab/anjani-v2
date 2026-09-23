@@ -26,6 +26,8 @@ import {
   Sparkles,
   Wallet,
   Droplets,
+  IndianRupee,
+  ArrowRightLeft,
 } from 'lucide-react'
 import {
   collection,
@@ -109,6 +111,33 @@ function App() {
     userRole,
     fetchUserRole,
   } = useClientStore()
+  const [aiInitialMode, setAiInitialMode] = useState(null)
+
+  const openAiWithMode = (mode = 'auto') => {
+    setAiInitialMode(mode)
+    setAiDrawerOpen(true)
+    if (typeof window !== 'undefined' && window.history?.pushState) {
+      window.history.pushState({ modal: 'ai-drawer' }, '')
+    }
+  }
+
+  const handleCloseAiDrawer = () => {
+    setAiDrawerOpen(false)
+    if (typeof window !== 'undefined' && window.history.state?.modal === 'ai-drawer') {
+      window.history.back()
+    }
+  }
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (aiDrawerOpen) {
+        setAiDrawerOpen(false)
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [aiDrawerOpen, setAiDrawerOpen])
+
   const readStorageKey = user?.uid ? `${NOTIFICATION_READ_STORAGE_PREFIX}-${user.uid}` : null
 
   const unreadNotificationCount = useMemo(() => {
@@ -1031,7 +1060,7 @@ function App() {
         {/* AUTH: user email + logout button — do not remove */}
         <div className="flex items-center gap-2 relative" ref={notificationPanelRef}>
           <button
-            onClick={() => setAiDrawerOpen(true)}
+            onClick={() => openAiWithMode('auto')}
             className="p-2 rounded-xl text-[#ff9900] bg-orange-50 hover:bg-orange-100 transition-colors relative flex items-center justify-center border border-orange-200"
             aria-label="Anjani AI Assistant"
             title="Anjani AI Assistant (Scan Vendor Bill / Queries)"
@@ -1580,7 +1609,8 @@ function App() {
       {/* AI Assistant Drawer */}
       <AiAssistantDrawer
         isOpen={aiDrawerOpen}
-        onClose={() => setAiDrawerOpen(false)}
+        onClose={handleCloseAiDrawer}
+        initialMode={aiInitialMode}
         onNavigateTab={(tab) => setActiveTab(tab)}
         onOpenPaymentModal={(prefill) => {
           if (prefill?.clientId) {
@@ -1610,19 +1640,43 @@ function App() {
         }}
       />
 
-      {/* Floating AI Assistant Trigger Button (Compact, Bottom-Right) */}
+      {/* Floating Contextual AI Assistant Trigger Button (Uniform across all pages at bottom-40) */}
       <button
         type="button"
-        onClick={() => setAiDrawerOpen(true)}
-        className={`fixed right-4 z-[998] bg-[#131921] hover:bg-black text-[#ff9900] border border-[#ff9900]/80 h-11 w-11 sm:h-12 sm:w-12 rounded-full shadow-lg shadow-black/30 flex items-center justify-center active:scale-90 transition-all group ${
-          userRole === 'admin' && ['orders', 'clients', 'payments', 'expenses'].includes(activeTab)
-            ? 'bottom-40'
-            : 'bottom-22 sm:bottom-24'
-        }`}
-        aria-label="Open AI Assistant"
-        title="Anjani AI Assistant (Scan Vendor Bills, Inquire Stock)"
+        onClick={() => {
+          const modeMap = {
+            orders: 'retail_sales',
+            clients: 'create_client',
+            payments: 'receive_payment',
+            accounts: 'accounts_cash',
+          }
+          openAiWithMode(modeMap[activeTab] || 'auto')
+        }}
+        className="fixed right-4 bottom-40 z-[998] bg-[#131921] hover:bg-black text-[#ff9900] border border-[#ff9900]/80 h-11 w-11 sm:h-12 sm:w-12 rounded-full shadow-lg shadow-black/30 flex items-center justify-center active:scale-90 transition-all cursor-pointer group"
+        aria-label="Open Contextual AI Assistant"
+        title={
+          activeTab === 'orders'
+            ? 'AI Voice & Sales Order'
+            : activeTab === 'clients'
+              ? 'AI Add Client / Scan Card'
+              : activeTab === 'payments'
+                ? 'AI Payment Entry / UPI Receipt'
+                : activeTab === 'accounts'
+                  ? 'AI Staff Custody & Handover'
+                  : 'AI Assistant'
+        }
       >
-        <Sparkles size={20} className="text-[#ff9900] group-hover:rotate-12 transition-transform" />
+        {activeTab === 'orders' ? (
+          <ShoppingCart size={20} className="text-[#ff9900] group-hover:rotate-6 transition-transform" />
+        ) : activeTab === 'clients' ? (
+          <UserPlus size={20} className="text-[#ff9900] group-hover:rotate-6 transition-transform" />
+        ) : activeTab === 'payments' ? (
+          <IndianRupee size={20} className="text-[#ff9900] group-hover:rotate-6 transition-transform" />
+        ) : activeTab === 'accounts' ? (
+          <ArrowRightLeft size={20} className="text-[#ff9900] group-hover:rotate-6 transition-transform" />
+        ) : (
+          <Sparkles size={20} className="text-[#ff9900] group-hover:rotate-12 transition-transform" />
+        )}
       </button>
     </div>
   )

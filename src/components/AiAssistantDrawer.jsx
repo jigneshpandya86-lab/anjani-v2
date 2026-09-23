@@ -27,6 +27,7 @@ import {
   Volume2,
   MapPin,
   AtSign,
+  ArrowLeft,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
@@ -46,6 +47,7 @@ export default function AiAssistantDrawer({
   onOpenPaymentModal,
   onOpenOrderModal,
   onOpenAddClient,
+  initialMode,
 }) {
   const fileInputRef = useRef(null)
   const messagesEndRef = useRef(null)
@@ -97,6 +99,22 @@ export default function AiAssistantDrawer({
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (isOpen && initialMode) {
+      setIsSalesMode(initialMode === 'retail_sales')
+      setIsPaymentMode(initialMode === 'receive_payment')
+      setIsClientMode(initialMode === 'create_client')
+      setIsAccountsMode(initialMode === 'accounts_cash')
+    }
+  }, [isOpen, initialMode])
+
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto'
+      inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 140)}px`
+    }
+  }, [inputMessage])
 
   const toggleMic = () => {
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -719,8 +737,17 @@ export default function AiAssistantDrawer({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-[#131921] text-white px-3.5 py-2 flex items-center justify-between border-b border-gray-800 shrink-0">
-          <div className="flex items-center gap-2">
+        <div className="bg-[#131921] text-white px-3 py-2 flex items-center justify-between border-b border-gray-800 shrink-0">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              aria-label="Back to parent page"
+              title="Back"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-300 hover:text-white" />
+            </button>
             <div className="w-6 h-6 rounded-md bg-[#ff9900]/20 flex items-center justify-center text-[#ff9900]">
               <Sparkles className="w-3.5 h-3.5" />
             </div>
@@ -2359,7 +2386,7 @@ export default function AiAssistantDrawer({
               e.preventDefault()
               handleSend()
             }}
-            className="flex items-center gap-2"
+            className="flex items-end gap-2"
           >
             <input
               type="file"
@@ -2372,7 +2399,7 @@ export default function AiAssistantDrawer({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="p-2.5 text-gray-500 hover:text-amz-orange hover:bg-orange-50 rounded-xl border border-gray-300 transition-colors shrink-0 cursor-pointer"
+              className="p-2.5 text-gray-500 hover:text-amz-orange hover:bg-orange-50 rounded-xl border border-gray-300 transition-colors shrink-0 cursor-pointer mb-0.5"
               title="Upload Bill, Receipt or WhatsApp Voice Note"
             >
               <Camera className="w-5 h-5" />
@@ -2381,7 +2408,7 @@ export default function AiAssistantDrawer({
             <button
               type="button"
               onClick={toggleMic}
-              className={`p-2.5 rounded-xl border transition-colors shrink-0 cursor-pointer ${
+              className={`p-2.5 rounded-xl border transition-colors shrink-0 cursor-pointer mb-0.5 ${
                 isListening
                   ? 'bg-red-500 text-white border-red-600 animate-pulse shadow-md'
                   : 'text-gray-500 hover:text-amz-orange hover:bg-orange-50 border-gray-300'
@@ -2391,11 +2418,19 @@ export default function AiAssistantDrawer({
               {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
             </button>
 
-            <input
-              type="text"
+            <textarea
               ref={inputRef}
+              rows={1}
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !window.matchMedia('(pointer: coarse)').matches) {
+                  e.preventDefault()
+                  if (!loading && (inputMessage.trim() || selectedFile)) {
+                    handleSend()
+                  }
+                }
+              }}
               placeholder={
                 isListening
                   ? 'Listening... Speak in Gujarati or Hindi'
@@ -2411,7 +2446,8 @@ export default function AiAssistantDrawer({
                             ? 'Add notes or send...'
                             : 'Type @client, /sku, voice mic, or query...'
               }
-              className={`flex-1 py-2.5 px-3 border rounded-xl text-xs sm:text-sm outline-none transition-all ${
+              style={{ minHeight: '42px', height: 'auto' }}
+              className={`flex-1 py-2.5 px-3 border rounded-xl text-xs sm:text-sm outline-none transition-all resize-none max-h-36 overflow-y-auto leading-relaxed ${
                 isPaymentMode
                   ? 'border-emerald-600 ring-2 ring-emerald-200/70 bg-emerald-50/20'
                   : isClientMode
@@ -2427,7 +2463,7 @@ export default function AiAssistantDrawer({
             <button
               type="submit"
               disabled={loading || (!inputMessage.trim() && !selectedFile)}
-              className="p-2.5 bg-[#131921] hover:bg-black text-[#ff9900] disabled:opacity-40 rounded-xl transition-all font-bold cursor-pointer shrink-0"
+              className="p-2.5 bg-[#131921] hover:bg-black text-[#ff9900] disabled:opacity-40 rounded-xl transition-all font-bold cursor-pointer shrink-0 mb-0.5"
               title="Send message"
             >
               <Send className="w-5 h-5" />
