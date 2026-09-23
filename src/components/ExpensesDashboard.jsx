@@ -32,6 +32,7 @@ import {
   CalendarCheck,
   Car,
   Pencil,
+  ChevronDown,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useClientStore } from '../store/clientStore'
@@ -92,6 +93,27 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
 
   // Period filter state: 'this-month', 'last-30', 'this-fy', 'all-time'
   const [period, setPeriod] = useState('this-month')
+
+  // Collapsible P&L Analytics (Default: false / collapsed)
+  const [showPnlAnalytics, setShowPnlAnalytics] = useState(() => {
+    try {
+      return localStorage.getItem('anjani_show_pnl_analytics') === 'true'
+    } catch {
+      return false
+    }
+  })
+
+  const togglePnlAnalytics = () => {
+    setShowPnlAnalytics((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('anjani_show_pnl_analytics', String(next))
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }
 
   // Default DateTime to now (Indian timezone compatible local string format)
   useEffect(() => {
@@ -574,140 +596,178 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
 
   return (
     <div className="space-y-2 pb-20">
-      {/* ─── Header Card: Running Profit (Zoho Books Style) ─── */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0f1f46] via-[#143366] to-[#1e4a88] p-3.5 text-white shadow-[0_16px_30px_rgba(15,31,70,0.25)]">
-        <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/10 blur-[2px]" />
-        <div className="pointer-events-none absolute -left-16 bottom-2 h-28 w-28 rounded-full bg-white/10" />
-
-        <div className="relative flex items-center justify-between gap-2">
-          <h2 className="truncate text-[11px] font-extrabold uppercase tracking-[0.16em] text-white/70">
-            Profit & Loss Dashboard
-          </h2>
-          <div className="shrink-0 flex items-center gap-1 text-[10px] bg-white/20 text-white px-2 py-1 rounded-full font-black uppercase shadow-sm backdrop-blur-sm">
-            <PiggyBank size={11} /> Realtime
-          </div>
-        </div>
-
-        {/* Period Selector Tabs */}
-        <div className="relative mt-2 flex items-center justify-between gap-2 border-t border-white/10 pt-2">
-          <span className="text-[10px] text-white/70 font-extrabold uppercase tracking-wide">Period</span>
-          <div className="flex items-center gap-0.5 bg-white/10 rounded-xl p-0.5 border border-white/5">
-            {[
-              { id: 'this-month', label: 'This Month' },
-              { id: 'last-30', label: 'Last 30 Days' },
-              { id: 'this-fy', label: 'This FY' },
-              { id: 'all-time', label: 'All Time' },
-            ].map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => setPeriod(p.id)}
-                className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${
-                  period === p.id
-                    ? 'bg-white text-[#0f1f46] shadow-sm'
-                    : 'text-white/60 hover:text-white hover:bg-white/5'
+      {/* ─── Compact P&L Summary Strip (Collapsible on Click) ─── */}
+      <div className="bg-white border border-gray-200 rounded-xl p-2 shadow-2xs">
+        <button
+          type="button"
+          onClick={togglePnlAnalytics}
+          className="w-full flex items-center justify-between gap-2 text-left cursor-pointer group"
+          title="Click to view Profit & Loss details"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="p-1 rounded-lg bg-emerald-50 text-emerald-600 shrink-0">
+              <PiggyBank size={15} />
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-black uppercase text-gray-500 tracking-wider">
+                P&L
+              </span>
+              <span
+                className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                  isProfitAccrual
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-red-50 text-red-700 border border-red-200'
                 }`}
               >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {loadingFinance ? (
-          <div className="flex items-center gap-2 py-4 text-white/60">
-            <Loader2 className="animate-spin" size={16} />
-            <span className="text-xs font-bold">Calculating running profit...</span>
-          </div>
-        ) : (
-          <div className="relative mt-2 grid grid-cols-2 gap-3 border-t border-white/10 pt-2">
-            <div>
-              <p className="text-[11px] text-white/70 font-extrabold uppercase tracking-wide">Accrual Profit</p>
-              <h3 className={`text-2xl font-black mt-1 leading-none ${isProfitAccrual ? 'text-emerald-400' : 'text-red-400'}`}>
                 {formatCurrency(totals.accrualProfit)}
-              </h3>
-              <p className="text-[9px] text-white/45 font-bold mt-0.5">Sales - Expenses</p>
+              </span>
+              <span className="text-[10px] text-gray-400 font-semibold hidden sm:inline">
+                ({period === 'this-month' ? 'This Month' : period === 'last-30' ? 'Last 30 Days' : period === 'this-fy' ? 'This FY' : 'All Time'})
+              </span>
             </div>
-            <div>
-              <p className="text-[11px] text-white/70 font-extrabold uppercase tracking-wide">Cash Flow Profit</p>
-              <h3 className={`text-2xl font-black mt-1 leading-none ${isProfitCash ? 'text-emerald-400' : 'text-red-400'}`}>
-                {formatCurrency(totals.cashProfit)}
-              </h3>
-              <p className="text-[9px] text-white/45 font-bold mt-0.5">Cash - Expenses</p>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0 text-gray-400 group-hover:text-gray-600 transition-colors">
+            <span className="text-[10px] font-bold text-gray-400">
+              {showPnlAnalytics ? 'Hide' : 'Details'}
+            </span>
+            <ChevronDown
+              size={15}
+              className={`transition-transform duration-200 ${showPnlAnalytics ? 'rotate-180' : ''}`}
+            />
+          </div>
+        </button>
+
+        {/* Expanded P&L and 4 Financial Summaries Grid */}
+        {showPnlAnalytics && (
+          <div className="mt-2 pt-2 border-t border-gray-100 space-y-2 animate-in fade-in slide-in-from-top-2">
+            {/* Header Card: Running Profit (Zoho Books Style) */}
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0f1f46] via-[#143366] to-[#1e4a88] p-3 text-white shadow-xs">
+              <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/10 blur-[2px]" />
+              <div className="pointer-events-none absolute -left-16 bottom-2 h-28 w-28 rounded-full bg-white/10" />
+
+              <div className="relative flex items-center justify-between gap-2">
+                <h2 className="truncate text-[11px] font-extrabold uppercase tracking-[0.16em] text-white/70">
+                  Profit & Loss Breakdown
+                </h2>
+                <div className="shrink-0 flex items-center gap-1 text-[10px] bg-white/20 text-white px-2 py-0.5 rounded-full font-black uppercase shadow-xs backdrop-blur-sm">
+                  <PiggyBank size={11} /> Realtime
+                </div>
+              </div>
+
+              {/* Period Selector Tabs */}
+              <div className="relative mt-2 flex items-center justify-between gap-2 border-t border-white/10 pt-2">
+                <span className="text-[10px] text-white/70 font-extrabold uppercase tracking-wide">Period</span>
+                <div className="flex items-center gap-0.5 bg-white/10 rounded-xl p-0.5 border border-white/5">
+                  {[
+                    { id: 'this-month', label: 'This Month' },
+                    { id: 'last-30', label: 'Last 30 Days' },
+                    { id: 'this-fy', label: 'This FY' },
+                    { id: 'all-time', label: 'All Time' },
+                  ].map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setPeriod(p.id)}
+                      className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase transition-all cursor-pointer ${
+                        period === p.id
+                          ? 'bg-white text-[#0f1f46] shadow-xs'
+                          : 'text-white/60 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {loadingFinance ? (
+                <div className="flex items-center gap-2 py-3 text-white/60">
+                  <Loader2 className="animate-spin" size={16} />
+                  <span className="text-xs font-bold">Calculating running profit...</span>
+                </div>
+              ) : (
+                <div className="relative mt-2 grid grid-cols-2 gap-3 border-t border-white/10 pt-2">
+                  <div>
+                    <p className="text-[10px] text-white/70 font-extrabold uppercase tracking-wide">Accrual Profit</p>
+                    <h3 className={`text-xl font-black mt-0.5 leading-none ${isProfitAccrual ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {formatCurrency(totals.accrualProfit)}
+                    </h3>
+                    <p className="text-[9px] text-white/45 font-bold mt-0.5">Sales - Expenses</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-white/70 font-extrabold uppercase tracking-wide">Cash Flow Profit</p>
+                    <h3 className={`text-xl font-black mt-0.5 leading-none ${isProfitCash ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {formatCurrency(totals.cashProfit)}
+                    </h3>
+                    <p className="text-[9px] text-white/45 font-bold mt-0.5">Cash - Expenses</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 4 Financial Summaries Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-2 shadow-2xs">
+                <p className="text-gray-500 text-[8px] font-black uppercase tracking-wider">Total Sales</p>
+                <p className="text-xs font-black text-emerald-700 mt-0.5">{formatCurrency(totals.totalRevenue)}</p>
+              </div>
+              <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-2 shadow-2xs">
+                <p className="text-gray-500 text-[8px] font-black uppercase tracking-wider">Cash Recd</p>
+                <p className="text-xs font-black text-blue-700 mt-0.5">{formatCurrency(totals.totalCashCollected)}</p>
+              </div>
+              <div className="bg-red-50/50 border border-red-100 rounded-xl p-2 shadow-2xs">
+                <p className="text-gray-500 text-[8px] font-black uppercase tracking-wider">Total Exp</p>
+                <p className="text-xs font-black text-red-700 mt-0.5">{formatCurrency(totals.totalExpenses)}</p>
+              </div>
+              <div className="bg-amber-50/50 border border-amber-100 rounded-xl p-2 shadow-2xs">
+                <p className="text-gray-500 text-[8px] font-black uppercase tracking-wider">Vehicle Run</p>
+                <p className="text-xs font-black text-amber-700 mt-0.5 flex items-center gap-1">
+                  <Car size={11} className="text-amber-500" />
+                  {totals.totalVehicleKm.toLocaleString()} KM
+                </p>
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* ─── Financial Summaries Grid ─── */}
-      <div className="grid grid-cols-2 gap-2">
-        <div className="bg-white border border-emerald-100 rounded-xl p-2.5 shadow-sm">
-          <p className="text-gray-400 text-[8px] font-black uppercase tracking-wider">Total Sales</p>
-          <p className="text-xs font-black text-emerald-700 mt-0.5">
-            {formatCurrency(totals.totalRevenue)}
-          </p>
+      {/* ─── Main Content Header: View Switcher (Logs / Recurring) ─── */}
+      <div className="flex items-center justify-between pt-1">
+        <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-xl border border-gray-200/60">
+          <button
+            type="button"
+            onClick={() => setSubTab('logs')}
+            className={`px-2.5 py-1 text-[10px] font-black uppercase rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+              subTab === 'logs'
+                ? 'bg-white text-gray-900 shadow-2xs'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Receipt size={12} className={subTab === 'logs' ? 'text-amz-orange' : 'text-gray-400'} />
+            <span>Logs</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSubTab('recurring')}
+            className={`px-2.5 py-1 text-[10px] font-black uppercase rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+              subTab === 'recurring'
+                ? 'bg-white text-gray-900 shadow-2xs'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Clock size={12} className={subTab === 'recurring' ? 'text-amz-orange' : 'text-gray-400'} />
+            <span>Recurring</span>
+          </button>
         </div>
-        <div className="bg-white border border-blue-100 rounded-xl p-2.5 shadow-sm">
-          <p className="text-gray-400 text-[8px] font-black uppercase tracking-wider">Cash Recd</p>
-          <p className="text-xs font-black text-blue-700 mt-0.5">
-            {formatCurrency(totals.totalCashCollected)}
-          </p>
-        </div>
-        <div className="bg-white border border-red-100 rounded-xl p-2.5 shadow-sm">
-          <p className="text-gray-400 text-[8px] font-black uppercase tracking-wider">Total Exp</p>
-          <p className="text-xs font-black text-red-700 mt-0.5">
-            {formatCurrency(totals.totalExpenses)}
-          </p>
-        </div>
-        <div className="bg-white border border-amber-100 rounded-xl p-2.5 shadow-sm">
-          <p className="text-gray-400 text-[8px] font-black uppercase tracking-wider">Vehicle Run</p>
-          <p className="text-xs font-black text-amber-700 mt-0.5 flex items-center gap-1">
-            <Car size={12} className="text-amber-500" />
-            {totals.totalVehicleKm.toLocaleString()} KM
-          </p>
-        </div>
-      </div>
 
-      {/* Tab Switcher: Expenses Log vs Recurring Templates */}
-      <div className="flex bg-gray-150/70 rounded-xl p-1 mt-1 border border-gray-200/50">
-        <button
-          type="button"
-          onClick={() => setSubTab('logs')}
-          className={`flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-            subTab === 'logs'
-              ? 'bg-white text-gray-900 shadow-xs'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <Receipt size={12} />
-          Expenses Log
-        </button>
-        <button
-          type="button"
-          onClick={() => setSubTab('recurring')}
-          className={`flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-            subTab === 'recurring'
-              ? 'bg-white text-gray-900 shadow-xs'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <Clock size={12} />
-          Recurring Templates
-        </button>
+        <div className="text-[10px] text-gray-400 font-extrabold uppercase">
+          {subTab === 'logs' ? `${filteredExpensesList.length} Entries` : `${recurringTemplates.length} Templates`}
+        </div>
       </div>
 
       {/* ─── Main Content Sections ─── */}
       {subTab === 'logs' ? (
-        <div className="space-y-2.5">
-          <div className="flex items-center justify-between pt-2">
-            <h3 className="text-xs font-black uppercase tracking-wide text-gray-800 flex items-center gap-1.5">
-              <FileText size={14} className="text-blue-500" />
-              Recent Expenses
-            </h3>
-            <div className="text-[10px] text-gray-400 font-extrabold uppercase">
-              {filteredExpensesList.length} Entries
-            </div>
-          </div>
+        <div className="space-y-2">
 
           {/* Account Filter Pills */}
           <div className="flex items-center gap-1 overflow-x-auto pb-1">
@@ -824,16 +884,7 @@ export default function ExpensesDashboard({ showAddForm, onOpenAddForm, onCloseA
           )}
         </div>
       ) : (
-        <div className="space-y-2.5">
-          <div className="flex items-center justify-between pt-2">
-            <h3 className="text-xs font-black uppercase tracking-wide text-gray-800 flex items-center gap-1.5">
-              <Clock size={14} className="text-blue-500" />
-              Active Templates
-            </h3>
-            <div className="text-[10px] text-gray-400 font-extrabold uppercase">
-              {recurringTemplates.length} Templates
-            </div>
-          </div>
+        <div className="space-y-2">
 
           {loadingTemplates ? (
             <div className="flex items-center justify-center py-12 text-gray-400 font-bold italic">

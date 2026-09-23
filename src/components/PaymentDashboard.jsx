@@ -1,4 +1,4 @@
-import { memo, useEffect } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { useClientStore } from '../store/clientStore'
 import { useAnalyticsStore } from '../store/analyticsStore'
 import toast from 'react-hot-toast'
@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Trash2,
   Wallet,
+  ChevronDown,
 } from 'lucide-react'
 import { getAccountMeta } from '../constants/accounts'
 
@@ -17,6 +18,7 @@ const TRANSACTION_FEED_LIMIT = 15
 
 function PaymentDashboard({ onNavigateAccounts }) {
   const { clients, deletePayment } = useClientStore()
+  const [showLedgerDetails, setShowLedgerDetails] = useState(false)
 
   const {
     recentPayments: history,
@@ -74,28 +76,61 @@ function PaymentDashboard({ onNavigateAccounts }) {
 
   return (
     <div className="space-y-2 pb-20">
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0f1f46] via-[#143366] to-[#1e4a88] p-3.5 text-white shadow-[0_16px_30px_rgba(15,31,70,0.25)]">
-        <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/10 blur-[2px]" />
-        <div className="pointer-events-none absolute -left-16 bottom-2 h-28 w-28 rounded-full bg-white/10" />
+      {/* Compact Collapsible Ledger Summary */}
+      <div className="bg-[#131921] border border-gray-800 rounded-2xl p-2.5 shadow-sm text-white transition-all">
+        <div
+          onClick={() => setShowLedgerDetails(!showLedgerDetails)}
+          className="flex items-center justify-between cursor-pointer select-none"
+        >
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-[#ff9900]/20 text-[#ff9900]">
+              <IndianRupee size={16} />
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Total Billed</div>
+              <div className="text-base font-black leading-tight text-white">
+                ₹{totalBilled.toLocaleString('en-IN')}
+              </div>
+            </div>
+          </div>
 
-        <div className="relative flex items-center justify-between gap-2">
-          <h2 className="truncate text-[11px] font-extrabold uppercase tracking-[0.16em] text-white/70">
-            Payment Ledger
-          </h2>
-          <div className="shrink-0 flex items-center gap-1 text-[10px] bg-white/20 text-white px-2 py-1 rounded-full font-black uppercase shadow-sm backdrop-blur-sm">
-            <Clock size={11} /> {TRANSACTION_FEED_LIMIT} Recent
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] bg-white/10 text-white/80 px-2 py-0.5 rounded-full font-bold">
+              {history.length} txns
+            </span>
+            <ChevronDown
+              size={16}
+              className={`text-gray-400 transition-transform duration-200 ${showLedgerDetails ? 'rotate-180' : ''}`}
+            />
           </div>
         </div>
 
-        <div className="relative mt-2 flex items-center justify-between gap-2">
-          <p className="truncate text-3xl font-black leading-none">
-            ₹{totalBilled.toLocaleString('en-IN')}
-          </p>
-          <p className="truncate text-[11px] text-white/75 font-semibold tracking-wide text-right">
-            {history.length} txns ·{' '}
-            {new Date().toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
-          </p>
-        </div>
+        {/* Expandable full ledger card */}
+        {showLedgerDetails && (
+          <div className="mt-3 pt-3 border-t border-gray-800/80 relative overflow-hidden rounded-xl bg-gradient-to-br from-[#0f1f46] via-[#143366] to-[#1e4a88] p-3 text-white">
+            <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/10 blur-[2px]" />
+            <div className="pointer-events-none absolute -left-16 bottom-2 h-28 w-28 rounded-full bg-white/10" />
+
+            <div className="relative flex items-center justify-between gap-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/70">
+                Payment Ledger
+              </span>
+              <span className="flex items-center gap-1 text-[10px] bg-white/20 text-white px-2 py-0.5 rounded-full font-black uppercase shadow-sm backdrop-blur-sm">
+                <Clock size={10} /> {TRANSACTION_FEED_LIMIT} Recent
+              </span>
+            </div>
+
+            <div className="relative mt-2 flex items-center justify-between gap-2">
+              <p className="truncate text-2xl font-black leading-none">
+                ₹{totalBilled.toLocaleString('en-IN')}
+              </p>
+              <p className="truncate text-[11px] text-white/75 font-semibold tracking-wide text-right">
+                {history.length} txns ·{' '}
+                {new Date().toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Quick link to Accounts (Compact) */}

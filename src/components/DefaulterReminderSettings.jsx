@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from '../firebase-config'
-import { Bell, Clock, Save, AlertTriangle, CheckCircle } from 'lucide-react'
+import { Bell, Clock, Save, AlertTriangle, CheckCircle, ChevronDown } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const CONFIG_DOC = doc(db, 'config', 'defaulterReminder')
 
 export default function DefaulterReminderSettings() {
+  const [isOpen, setIsOpen] = useState(false)
   const [enabled, setEnabled] = useState(false)
   const [hour, setHour] = useState(10)
   const [minute, setMinute] = useState(0)
@@ -85,13 +86,27 @@ export default function DefaulterReminderSettings() {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-red-100 shadow-sm overflow-hidden">
-      <div className="bg-red-50 border-b border-red-100 px-4 py-3 flex items-center gap-2">
-        <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
-        <h3 className="font-bold text-sm text-red-800">Defaulter Payment Reminder</h3>
+    <div className="bg-white rounded-xl border border-red-100 shadow-sm overflow-hidden transition-all">
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        className="bg-red-50 hover:bg-red-100/70 border-b border-red-100 px-4 py-2.5 flex items-center justify-between cursor-pointer select-none transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+          <h3 className="font-bold text-xs text-red-800">Defaulter Payment Reminder</h3>
+          <span
+            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}
+          >
+            {enabled ? 'Active' : 'Off'}
+          </span>
+        </div>
+        <ChevronDown
+          className={`w-4 h-4 text-red-600 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+        />
       </div>
 
-      <div className="p-4 space-y-4">
+      {isOpen && (
+        <div className="p-4 space-y-4">
         <p className="text-xs text-gray-500">
           Automatically sends a payment reminder SMS (via webhook) to all clients tagged as{' '}
           <span className="font-semibold text-red-600">Defaulter</span> at the configured schedule.
@@ -208,6 +223,7 @@ export default function DefaulterReminderSettings() {
           {saving ? 'Saving...' : 'Save Schedule'}
         </button>
       </div>
+      )}
     </div>
   )
 }
