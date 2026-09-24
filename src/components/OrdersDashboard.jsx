@@ -426,6 +426,12 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
     const file = event.target.files?.[0]
     if (!file) return
 
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      toast.error('Internet connection required to upload photo proof')
+      event.target.value = ''
+      return
+    }
+
     setUploadingProofOrderId(order.id)
     try {
       const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')

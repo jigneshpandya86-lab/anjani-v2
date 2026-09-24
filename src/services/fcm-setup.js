@@ -16,10 +16,13 @@ export async function initializeFcm(userId, userEmail = null) {
       return { success: false, reason: 'service-worker-unavailable' }
     }
 
-    // Register FCM service worker before requesting token
-    const serviceWorkerRegistration = await navigator.serviceWorker.register(
-      '/firebase-messaging-sw.js',
-    )
+    // Get active service worker registration (unified with PWA sw)
+    let serviceWorkerRegistration
+    try {
+      serviceWorkerRegistration = await navigator.serviceWorker.ready
+    } catch {
+      serviceWorkerRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
+    }
 
     // Initialize messaging
     messaging = getMessaging(app)

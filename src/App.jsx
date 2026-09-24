@@ -58,6 +58,7 @@ import CelebrationsTab from './components/CelebrationsTab'
 import ExpensesDashboard from './components/ExpensesDashboard'
 import AccountsDashboard from './components/AccountsDashboard'
 import BaileyOrderPage from './components/BaileyOrderPage'
+import NetworkStatusBar from './components/NetworkStatusBar'
 import {
   isMobileOrNative,
   shareOrDownloadPdf,
@@ -1140,6 +1141,8 @@ function App() {
           </button>
         </div>
       </header>
+
+      <NetworkStatusBar />
 
       {/* Main Content Area */}
       <div className="flex flex-col min-h-screen">

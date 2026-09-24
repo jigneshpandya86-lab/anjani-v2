@@ -5,20 +5,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>anjani-v2</title>
+    <meta name="theme-color" content="#131921" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Anjani Water" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
     <!-- Capacitor: Load bridge for native plugin access (runs on Android/iOS only) -->
     <!-- <script src="capacitor://capacitor.js"></script> -->
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-    <script>
-      // Register service worker for push notifications
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker
-          .register('/firebase-messaging-sw.js')
-          .then((reg) => console.log('Service Worker registered'))
-          .catch((err) => console.log('Service Worker registration failed:', err))
-      }
-    </script>
   </body>
 </html>

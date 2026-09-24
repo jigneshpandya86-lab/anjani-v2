@@ -286,6 +286,11 @@ export default function AiAssistantDrawer({
   }
 
   const handleSend = async (customPrompt = null) => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      toast.error('AI Assistant requires an active internet connection. Manual entry is available offline.')
+      return
+    }
+
     const query = (customPrompt || inputMessage).trim()
     const filePayload = selectedFile
     const isSales = isSalesMode
