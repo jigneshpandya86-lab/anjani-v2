@@ -23,6 +23,13 @@ import { db } from '../firebase-config'
 import { DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
 import { DEFAULT_ACCOUNTS, getAccountMeta } from '../constants/accounts'
+import {
+  normalizeOrderWriteData,
+  normalizeOrderDoc,
+  getOrderSortTime,
+} from '../utils/orderUtils'
+
+export { normalizeOrderWriteData, normalizeOrderDoc, getOrderSortTime }
 import { ensureEnglishText, normalizeDigits } from '../utils/textUtils'
 
 let stockUnsubscribe = null
@@ -84,140 +91,11 @@ const buildClientShortId = (clientDocId) => {
   return `CLT-${safeId.slice(0, 6).padEnd(6, '0')}`
 }
 
-const normalizeOrderWriteData = (data = {}) => {
-  const result = {
-    ...data,
-    address: data.address === undefined ? '' : String(data.address).trim(),
-    location: data.location === undefined ? '' : String(data.location).trim(),
-    mapLink: data.mapLink === undefined ? '' : String(data.mapLink).trim(),
-    locationLat: Number.isFinite(Number(data.locationLat)) ? Number(data.locationLat) : null,
-    locationLng: Number.isFinite(Number(data.locationLng)) ? Number(data.locationLng) : null,
-  }
-
-  if (Array.isArray(data.items) && data.items.length > 0) {
-    result.items = data.items.map((it) => {
-      const itQty = Number(it.qty) || 0
-      const itRate = Number(it.rate) || 0
-      const itSku = it.sku || DEFAULT_SKU
-      const itMeta = getSkuMeta(itSku)
-      return {
-        sku: itSku,
-        qty: itQty,
-        rate: itRate,
-        amount: itQty * itRate,
-        unit: it.unit || itMeta.unit,
-      }
-    })
-    result.totalQty = result.items.reduce((sum, it) => sum + it.qty, 0)
-    result.totalAmount = result.items.reduce((sum, it) => sum + it.amount, 0)
-    result.qty = result.totalQty
-    result.rate =
-      Number(data.rate) ||
-      (result.totalQty > 0 ? Math.round((result.totalAmount / result.totalQty) * 100) / 100 : 0)
-    result.sku =
-      result.items.length === 1 ? result.items[0].sku : result.items.map((it) => it.sku).join(', ')
-  }
-
-  return result
-}
-
 const getLegacyLocationCleanupPatch = () => ({
-  mapLink: deleteField(),
   googleMap: deleteField(),
   googleLocation: deleteField(),
   locationName: deleteField(),
 })
-
-export const normalizeOrderDoc = (raw) => {
-  const hasLegacyProducedDelivered = raw.produced !== undefined || raw.delivered !== undefined
-  const hasDirectQty =
-    raw.qty !== undefined || raw.boxes !== undefined || raw.quantity !== undefined
-  let baseQty = Number(raw.qty || raw.boxes || raw.quantity) || 0
-
-  if (hasLegacyProducedDelivered && !hasDirectQty) {
-    baseQty = (Number(raw.produced) || 0) - (Number(raw.delivered) || 0)
-  }
-
-  const rawItems = Array.isArray(raw.items) && raw.items.length > 0 ? raw.items : null
-  let items = []
-  if (rawItems) {
-    items = rawItems.map((it) => {
-      const itQty = Number(it.qty) || 0
-      const itRate = Number(it.rate) || 0
-      const itSku = it.sku || DEFAULT_SKU
-      const itMeta = getSkuMeta(itSku)
-      return {
-        sku: itSku,
-        qty: itQty,
-        rate: itRate,
-        amount: itQty * itRate,
-        unit: it.unit || itMeta.unit,
-      }
-    })
-  } else {
-    const primarySku = raw.sku || raw.product || DEFAULT_SKU
-    const itMeta = getSkuMeta(primarySku)
-    const itRate = Number(raw.rate) || 0
-    items = [
-      {
-        sku: primarySku,
-        qty: baseQty,
-        rate: itRate,
-        amount: baseQty * itRate,
-        unit: itMeta.unit,
-      },
-    ]
-  }
-
-  const totalQty = items.reduce((sum, it) => sum + it.qty, 0)
-  const totalAmount =
-    raw.totalAmount !== undefined
-      ? Number(raw.totalAmount)
-      : items.reduce((sum, it) => sum + it.amount, 0)
-
-  const skuSummary =
-    items.length === 1
-      ? items[0].sku
-      : items.map((it) => `${it.qty}× ${it.sku}`).join(', ')
-
-  return {
-    ...raw,
-    items,
-    totalQty,
-    totalAmount,
-    qty: totalQty,
-    sku: raw.sku || skuSummary,
-    rate:
-      Number(raw.rate) ||
-      (totalQty > 0 ? Math.round((totalAmount / totalQty) * 100) / 100 : 0),
-    date: raw.date || raw.deliveryDate || raw.orderDate || '',
-    time: raw.time || raw.deliveryTime || '',
-    clientId: raw.clientId || raw.customerId || '',
-    address: raw.address || raw.deliveryAddress || raw.location || '',
-    location:
-      raw.location ||
-      raw.googleLocation ||
-      raw.locationName ||
-      raw.mapLink ||
-      raw.googleMap ||
-      '',
-    mapLink: raw.mapLink || raw.googleMap || '',
-    locationLat: Number.isFinite(Number(raw.locationLat ?? raw.lat))
-      ? Number(raw.locationLat ?? raw.lat)
-      : null,
-    locationLng: Number.isFinite(Number(raw.locationLng ?? raw.lng))
-      ? Number(raw.locationLng ?? raw.lng)
-      : null,
-  }
-}
-
-export const getOrderSortTime = (o) => {
-  const ts = o.createdAt
-  if (ts?.toMillis) return ts.toMillis()
-  if (ts?.seconds) return ts.seconds * 1000
-  const d = o.date || o.orderDate || o.deliveryDate || ''
-  return d ? new Date(d).getTime() : 0
-}
 
 export const useClientStore = create((set, get) => ({
   userRole: null,
@@ -1604,7 +1482,7 @@ export const useClientStore = create((set, get) => ({
   },
 
   updateOrder: async (id, data) => {
-    const normalizedData = normalizeOrderWriteData(data)
+    const normalizedData = normalizeOrderWriteData(data, true)
     const orderRef = doc(db, 'orders', id)
     const localExisting = get().orders.find((o) => o.id === id)
     const orderSnap = await getDoc(orderRef)

@@ -4,33 +4,16 @@ import { Package, Clock, IndianRupee, Image as ImageIcon, MapPinned, Plus, Trash
 import toast from 'react-hot-toast'
 import GoogleMapPicker from './GoogleMapPicker'
 import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
+import { resolveOrderInitialData } from '../utils/orderUtils'
 
 export default function OrderModal({ orderToEdit, onClose }) {
   const clients = useClientStore((state) => state.clients)
   const addOrder = useClientStore((state) => state.addOrder)
   const updateOrder = useClientStore((state) => state.updateOrder)
 
-  const [formData, setFormData] = useState(() => {
-    const now = new Date()
-    const yyyy = now.getFullYear()
-    const mm = String(now.getMonth() + 1).padStart(2, '0')
-    const dd = String(now.getDate()).padStart(2, '0')
-    const localDate = `${yyyy}-${mm}-${dd}`
-    const hh = String(now.getHours()).padStart(2, '0')
-    const min = String(now.getMinutes()).padStart(2, '0')
-    const localTime = `${hh}:${min}`
-    return {
-      clientId: '',
-      date: localDate,
-      time: localTime,
-      address: '',
-      location: '',
-      mapLink: '',
-      locationLat: null,
-      locationLng: null,
-      proofUrl: '',
-    }
-  })
+  const [formData, setFormData] = useState(() =>
+    resolveOrderInitialData(orderToEdit, clients),
+  )
 
   const [items, setItems] = useState(() => {
     if (orderToEdit?.items && Array.isArray(orderToEdit.items) && orderToEdit.items.length > 0) {
@@ -55,55 +38,31 @@ export default function OrderModal({ orderToEdit, onClose }) {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    const now = new Date()
-    const yyyy = now.getFullYear()
-    const mm = String(now.getMonth() + 1).padStart(2, '0')
-    const dd = String(now.getDate()).padStart(2, '0')
-    const localDate = `${yyyy}-${mm}-${dd}`
-    const hh = String(now.getHours()).padStart(2, '0')
-    const min = String(now.getMinutes()).padStart(2, '0')
-    const localTime = `${hh}:${min}`
+    if (!orderToEdit || Object.keys(orderToEdit).length === 0) return
+    setFormData(resolveOrderInitialData(orderToEdit, clients))
 
-    if (orderToEdit) {
-      setFormData({
-        clientId: orderToEdit.clientId || orderToEdit.customerId || '',
-        date: orderToEdit.date || orderToEdit.deliveryDate || orderToEdit.orderDate || localDate,
-        time: orderToEdit.time || orderToEdit.deliveryTime || localTime,
-        address: orderToEdit.address || orderToEdit.deliveryAddress || '',
-        location:
-          orderToEdit.location || orderToEdit.googleLocation || orderToEdit.locationName || '',
-        mapLink: orderToEdit.mapLink || orderToEdit.googleMap || '',
-        locationLat: Number.isFinite(Number(orderToEdit.locationLat ?? orderToEdit.lat))
-          ? Number(orderToEdit.locationLat ?? orderToEdit.lat)
-          : null,
-        locationLng: Number.isFinite(Number(orderToEdit.locationLng ?? orderToEdit.lng))
-          ? Number(orderToEdit.locationLng ?? orderToEdit.lng)
-          : null,
-        proofUrl: orderToEdit.proofUrl || '',
-      })
-
-      if (orderToEdit.items && Array.isArray(orderToEdit.items) && orderToEdit.items.length > 0) {
-        setItems(
-          orderToEdit.items.map((it) => ({
-            sku: it.sku || DEFAULT_SKU,
-            qty: String(it.qty ?? ''),
-            rate: String(it.rate ?? ''),
-          })),
-        )
-      } else if (orderToEdit.qty) {
-        setItems([
-          {
-            sku: orderToEdit.sku || orderToEdit.product || DEFAULT_SKU,
-            qty: String(orderToEdit.qty),
-            rate: String(orderToEdit.rate ?? ''),
-          },
-        ])
-      }
+    if (orderToEdit.items && Array.isArray(orderToEdit.items) && orderToEdit.items.length > 0) {
+      setItems(
+        orderToEdit.items.map((it) => ({
+          sku: it.sku || DEFAULT_SKU,
+          qty: String(it.qty ?? ''),
+          rate: String(it.rate ?? ''),
+        })),
+      )
+    } else if (orderToEdit.qty) {
+      setItems([
+        {
+          sku: orderToEdit.sku || orderToEdit.product || DEFAULT_SKU,
+          qty: String(orderToEdit.qty),
+          rate: String(orderToEdit.rate ?? ''),
+        },
+      ])
     }
-  }, [orderToEdit])
+  }, [orderToEdit, clients])
 
+  // If clients finish loading after modal mount, backfill address/location if still empty
   useEffect(() => {
-    if (!formData.clientId) return
+    if (!formData.clientId || !clients.length) return
     const selectedClient = clients.find((client) => client.id === formData.clientId)
     if (!selectedClient) return
 
@@ -111,8 +70,8 @@ export default function OrderModal({ orderToEdit, onClose }) {
       const next = { ...prev }
       let changed = false
 
-      if (!String(prev.address || '').trim() && selectedClient.address) {
-        next.address = selectedClient.address
+      if (!String(prev.address || '').trim() && (selectedClient.address || selectedClient.location)) {
+        next.address = selectedClient.address || selectedClient.location
         changed = true
       }
 
@@ -147,19 +106,58 @@ export default function OrderModal({ orderToEdit, onClose }) {
 
       return changed ? next : prev
     })
-
-    // Autofill rate for items without an explicit rate
-    setItems((prevItems) =>
-      prevItems.map((item) => {
-        if (!item.rate || Number(item.rate) <= 0) {
-          const customSkuRate = selectedClient.skuRates?.[item.sku]
-          const nextRate = Number(customSkuRate ?? selectedClient.rate) || 0
-          return nextRate > 0 ? { ...item, rate: String(nextRate) } : item
-        }
-        return item
-      }),
-    )
   }, [clients, formData.clientId])
+
+  const handleClientChange = (newClientId) => {
+    const selectedClient = clients.find((c) => c.id === newClientId)
+    setFormData((prev) => {
+      const oldClient = clients.find((c) => c.id === prev.clientId)
+      const prevAddr = String(prev.address || '').trim()
+      const oldClientAddr = String(oldClient?.address || oldClient?.location || '').trim()
+      const shouldUpdateAddress = !prevAddr || (oldClient && prevAddr === oldClientAddr)
+
+      const prevLoc = String(prev.location || '').trim()
+      const oldClientLoc = String(oldClient?.location || oldClient?.mapLink || '').trim()
+      const shouldUpdateLocation = !prevLoc || (oldClient && prevLoc === oldClientLoc)
+
+      const prevMap = String(prev.mapLink || '').trim()
+      const oldClientMap = String(oldClient?.mapLink || '').trim()
+      const shouldUpdateMapLink = !prevMap || (oldClient && prevMap === oldClientMap)
+
+      return {
+        ...prev,
+        clientId: newClientId,
+        address: shouldUpdateAddress && (selectedClient?.address || selectedClient?.location)
+          ? (selectedClient.address || selectedClient.location)
+          : prev.address,
+        location: shouldUpdateLocation && (selectedClient?.location || selectedClient?.mapLink)
+          ? (selectedClient.location || selectedClient.mapLink)
+          : prev.location,
+        mapLink: shouldUpdateMapLink && selectedClient?.mapLink
+          ? selectedClient.mapLink
+          : prev.mapLink,
+        locationLat: Number.isFinite(Number(selectedClient?.locationLat))
+          ? Number(selectedClient.locationLat)
+          : prev.locationLat,
+        locationLng: Number.isFinite(Number(selectedClient?.locationLng))
+          ? Number(selectedClient.locationLng)
+          : prev.locationLng,
+      }
+    })
+
+    if (selectedClient) {
+      setItems((prevItems) =>
+        prevItems.map((item) => {
+          if (!item.rate || Number(item.rate) <= 0) {
+            const customSkuRate = selectedClient.skuRates?.[item.sku]
+            const nextRate = Number(customSkuRate ?? selectedClient.rate) || 0
+            return nextRate > 0 ? { ...item, rate: String(nextRate) } : item
+          }
+          return item
+        }),
+      )
+    }
+  }
 
   const handleItemSkuChange = (index, newSku) => {
     setItems((prev) => {
@@ -226,6 +224,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
       locationLng: Number.isFinite(Number(lng)) ? Number(lng) : prev.locationLng,
       location: address || prev.location,
       mapLink: mapLink || prev.mapLink,
+      address: String(prev.address || '').trim() ? prev.address : (address || prev.address),
     }))
   }
 
@@ -315,7 +314,7 @@ export default function OrderModal({ orderToEdit, onClose }) {
             required
             className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none font-bold text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange"
             value={formData.clientId}
-            onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+            onChange={(e) => handleClientChange(e.target.value)}
           >
             <option value="">-- Choose Client --</option>
             {clients.map((c) => (

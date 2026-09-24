@@ -67,6 +67,12 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
   }, [onChange])
 
   useEffect(() => {
+    if (!isFocused) {
+      setSearchTerm(initialAddress || '')
+    }
+  }, [initialAddress, isFocused])
+
+  useEffect(() => {
     let isActive = true
 
     const initializePlaces = async () => {
