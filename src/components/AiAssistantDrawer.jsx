@@ -985,7 +985,7 @@ export default function AiAssistantDrawer({
                   ? 'bg-[#ff9900] text-gray-950 shadow-sm'
                   : 'text-gray-300 hover:text-white hover:bg-white/10'
               }`}
-              title="Permanent AI Memory & Learned Rules"
+              title="Permanent AI Memory (Click to open)"
               aria-label="View AI Memories"
             >
               <Brain className="w-4 h-4 text-[#ff9900]" />
@@ -997,6 +997,12 @@ export default function AiAssistantDrawer({
               >
                 {aiMemories.filter((m) => m && m.active !== false).length}
               </span>
+              <ChevronDown
+                size={12}
+                className={`transition-transform duration-200 ${
+                  showMemoryModal ? 'rotate-180 text-gray-950' : 'text-gray-400'
+                }`}
+              />
             </button>
             <button
               type="button"
@@ -1017,20 +1023,56 @@ export default function AiAssistantDrawer({
           </div>
         </div>
 
-        {/* Memory Inspector & Rules Panel */}
-        {showMemoryModal && (
-          <div className="bg-amber-50/95 border-b border-amber-200 p-3 text-xs space-y-2.5 animate-in slide-in-from-top-2 shadow-xs">
-            <div className="flex items-center justify-between border-b border-amber-200/80 pb-2">
-              <div className="flex items-center gap-1.5">
-                <Brain className="w-4 h-4 text-amber-700" />
+        {/* Click to Open: Permanent AI Memory & Learned Rules Accordion Card */}
+        <div className="border-b border-amber-200/90 bg-amber-50/70 overflow-hidden transition-all shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowMemoryModal((prev) => !prev)}
+            className="w-full px-3.5 py-1.5 flex items-center justify-between cursor-pointer select-none hover:bg-amber-100/60 transition-colors text-left"
+            aria-expanded={showMemoryModal}
+            aria-label="Toggle Permanent AI Memory"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Brain className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+              <div className="flex items-center gap-1.5 truncate">
                 <span className="font-black text-gray-900 uppercase tracking-tight text-[11px]">
-                  Permanent AI Memory ({aiMemories.length})
+                  Permanent AI Memory
+                </span>
+                <span className="text-[10px] font-black px-1.5 py-0.2 rounded-full bg-amber-200 text-amber-900">
+                  {aiMemories.filter((m) => m && m.active !== false).length} Active
                 </span>
               </div>
-              <span className="text-[10px] text-gray-500 font-semibold">
-                Auto-enforced to prevent mistakes
+              <span className="text-[10px] text-gray-500 font-medium hidden sm:inline truncate">
+                • Self-learning rules & error corrections
               </span>
             </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tight">
+                {showMemoryModal ? 'Open' : 'Tap to open'}
+              </span>
+              <ChevronDown
+                size={13}
+                className={`text-gray-400 transition-transform duration-200 ${
+                  showMemoryModal ? 'rotate-180 text-amber-700' : ''
+                }`}
+              />
+            </div>
+          </button>
+
+          {showMemoryModal && (
+            <div className="p-3 pt-2 text-xs space-y-2.5 border-t border-amber-200/80 animate-in fade-in">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-gray-500 font-semibold">
+                  Auto-enforced to prevent mistakes
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowMemoryModal(false)}
+                  className="text-[10px] font-bold text-gray-500 hover:text-gray-800 underline cursor-pointer"
+                >
+                  Collapse
+                </button>
+              </div>
 
             {/* Quick Add Form */}
             <form onSubmit={handleAddNewMemoryManual} className="flex gap-1.5">
@@ -1153,6 +1195,7 @@ export default function AiAssistantDrawer({
             </div>
           </div>
         )}
+      </div>
 
         {/* Quick Action Icon Buttons (Compact, Icon-Only, Strict Sequence: Order -> Payment -> Client -> Remaining) */}
         <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-1 shrink-0">

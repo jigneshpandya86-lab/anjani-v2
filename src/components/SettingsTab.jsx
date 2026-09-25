@@ -26,6 +26,8 @@ import {
   Target,
   Loader2,
   ChevronDown,
+  Brain,
+  Plus,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useClientStore } from '../store/clientStore'
@@ -208,12 +210,21 @@ export default function SettingsTab() {
   const fetchAiSettings = useClientStore((state) => state.fetchAiSettings)
   const saveAiSettings = useClientStore((state) => state.saveAiSettings)
   const setAiDrawerOpen = useClientStore((state) => state.setAiDrawerOpen)
+  const aiMemories = useClientStore((state) => state.aiMemories)
+  const fetchAiMemories = useClientStore((state) => state.fetchAiMemories)
+  const addAiMemory = useClientStore((state) => state.addAiMemory)
+  const toggleAiMemory = useClientStore((state) => state.toggleAiMemory)
+  const deleteAiMemory = useClientStore((state) => state.deleteAiMemory)
 
   const [aiActiveModel, setAiActiveModel] = useState('gemini-2.5-flash-lite')
   const [aiCustomModel, setAiCustomModel] = useState('')
   const [aiFallbackModel, setAiFallbackModel] = useState('gemini-2.5-flash')
   const [aiMaxTokens, setAiMaxTokens] = useState(600)
   const [savingAi, setSavingAi] = useState(false)
+  const [showAiMemories, setShowAiMemories] = useState(false)
+  const [newMemoryRule, setNewMemoryRule] = useState('')
+  const [newMemoryCat, setNewMemoryCat] = useState('general_rule')
+  const [isSavingMem, setIsSavingMem] = useState(false)
 
   const [qrImageDataUrl, setQrImageDataUrl] = useState(null)
   const [upiId, setUpiId] = useState('')
@@ -383,6 +394,31 @@ export default function SettingsTab() {
       if (aiSettings.maxOutputTokens) setAiMaxTokens(aiSettings.maxOutputTokens)
     }
   }, [aiSettings])
+
+  useEffect(() => {
+    const unsub = fetchAiMemories?.()
+    return () => unsub?.()
+  }, [fetchAiMemories])
+
+  const handleAddMemoryInSettings = async (e) => {
+    if (e?.preventDefault) e.preventDefault()
+    if (!newMemoryRule.trim()) return
+    setIsSavingMem(true)
+    try {
+      await addAiMemory({
+        rule: newMemoryRule.trim(),
+        category: newMemoryCat,
+        source: 'settings',
+      })
+      setNewMemoryRule('')
+      toast.success('Saved to Permanent AI Memory!')
+    } catch (err) {
+      console.error('Failed to save memory:', err)
+      toast.error('Failed to save memory rule')
+    } finally {
+      setIsSavingMem(false)
+    }
+  }
 
   const handleSaveAi = async (e) => {
     if (e?.preventDefault) e.preventDefault()
@@ -1280,6 +1316,169 @@ export default function SettingsTab() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Click to Open: Permanent AI Memory & Learned Rules */}
+            <div className="rounded-xl border border-amber-200 bg-white overflow-hidden shadow-xs">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setShowAiMemories((prev) => !prev)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') setShowAiMemories((prev) => !prev)
+                }}
+                className="p-3 bg-amber-50/70 hover:bg-amber-100/70 flex items-center justify-between cursor-pointer select-none transition-colors border-b border-amber-100"
+              >
+                <div className="flex items-center gap-2">
+                  <Brain className="w-4 h-4 text-amber-600 shrink-0" />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-bold text-gray-800">Permanent AI Memory & Learned Rules</h4>
+                      <span className="text-[10px] font-black px-1.5 py-0.2 rounded-full bg-amber-200 text-amber-900">
+                        {aiMemories.filter((m) => m && m.active !== false).length} Active
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-gray-500 font-medium">
+                      Self-improving memory & error corrections • Enforced across all orders, calculations, and chats
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">
+                    {showAiMemories ? 'Open' : 'Tap to open'}
+                  </span>
+                  <ChevronDown
+                    size={16}
+                    className={`text-gray-400 transition-transform duration-200 ${
+                      showAiMemories ? 'rotate-180 text-amber-700' : ''
+                    }`}
+                  />
+                </div>
+              </div>
+
+              {showAiMemories && (
+                <div className="p-3.5 bg-white space-y-3 animate-in fade-in">
+                  {/* Quick Add Form in Settings */}
+                  <form onSubmit={handleAddMemoryInSettings} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newMemoryRule}
+                      onChange={(e) => setNewMemoryRule(e.target.value)}
+                      placeholder="Teach a rule (e.g. Royal Hotel rate is 115, petli = 200ml)..."
+                      className="flex-1 bg-white border border-amber-300 rounded-lg px-3 py-1.5 text-xs text-gray-800 placeholder-gray-400 outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                    <select
+                      value={newMemoryCat}
+                      onChange={(e) => setNewMemoryCat(e.target.value)}
+                      className="bg-white border border-amber-300 rounded-lg px-2 py-1.5 text-xs font-semibold text-gray-700 outline-none"
+                    >
+                      <option value="general_rule">📌 Rule</option>
+                      <option value="error_correction">⚠️ Correction</option>
+                      <option value="client_rule">👤 Client / Rate</option>
+                      <option value="shorthand">📖 Shorthand</option>
+                      <option value="staff_rule">🚚 Staff</option>
+                      <option value="operational">⏱️ Operations</option>
+                    </select>
+                    <button
+                      type="submit"
+                      disabled={isSavingMem || !newMemoryRule.trim()}
+                      className="bg-[#131921] hover:bg-black text-[#ff9900] px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide cursor-pointer transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Learn</span>
+                    </button>
+                  </form>
+
+                  {/* Memories List */}
+                  <div className="max-h-60 overflow-y-auto space-y-2 pr-0.5 scrollbar-thin">
+                    {aiMemories.length === 0 ? (
+                      <div className="text-center py-4 text-gray-400 text-xs italic bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                        No permanent memories saved yet. Teach the AI in chat (e.g. &quot;Remember: Royal rate is 115&quot;) or add above.
+                      </div>
+                    ) : (
+                      aiMemories.map((m) => {
+                        const isCorrection = m.category === 'error_correction'
+                        const isClient = m.category === 'client_rule'
+                        const isShort = m.category === 'shorthand'
+                        const isStaff = m.category === 'staff_rule'
+                        return (
+                          <div
+                            key={m.id}
+                            className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 transition-all ${
+                              m.active !== false
+                                ? isCorrection
+                                  ? 'bg-red-50/70 border-red-200 text-gray-900'
+                                  : isClient
+                                    ? 'bg-blue-50/70 border-blue-200 text-gray-900'
+                                    : isShort
+                                      ? 'bg-purple-50/70 border-purple-200 text-gray-900'
+                                      : isStaff
+                                        ? 'bg-emerald-50/70 border-emerald-200 text-gray-900'
+                                        : 'bg-white border-amber-200 text-gray-900'
+                                : 'bg-gray-100 border-gray-200 text-gray-400 opacity-60'
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span
+                                  className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded-full tracking-wider ${
+                                    isCorrection
+                                      ? 'bg-red-100 text-red-700'
+                                      : isClient
+                                        ? 'bg-blue-100 text-blue-700'
+                                        : isShort
+                                          ? 'bg-purple-100 text-purple-700'
+                                          : isStaff
+                                            ? 'bg-emerald-100 text-emerald-700'
+                                            : 'bg-amber-100 text-amber-800'
+                                  }`}
+                                >
+                                  {isCorrection
+                                    ? 'Learned Correction'
+                                    : isClient
+                                      ? 'Client & Rate'
+                                      : isShort
+                                        ? 'Shorthand'
+                                        : isStaff
+                                          ? 'Staff'
+                                          : 'Rule'}
+                                </span>
+                                {m.active === false && (
+                                  <span className="text-[9px] font-bold text-gray-400 italic">Paused</span>
+                                )}
+                              </div>
+                              <p className="text-xs font-semibold leading-snug break-words">{m.rule}</p>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => toggleAiMemory?.(m.id, !m.active)}
+                                className={`px-2 py-1 rounded text-[10px] font-bold transition-colors cursor-pointer border ${
+                                  m.active !== false
+                                    ? 'bg-emerald-100 border-emerald-300 text-emerald-800'
+                                    : 'bg-gray-200 border-gray-300 text-gray-600'
+                                }`}
+                                title={m.active !== false ? 'Active (Click to pause)' : 'Paused (Click to activate)'}
+                              >
+                                {m.active !== false ? 'Active' : 'Off'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteAiMemory?.(m.id)}
+                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
+                                title="Delete memory"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Click to Open: Advanced Token & Quota Settings */}

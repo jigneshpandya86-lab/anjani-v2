@@ -201,4 +201,37 @@ describe('AiAssistantDrawer', () => {
 
     unmount()
   })
+
+  it('enforces click-to-open style accordion for Permanent AI Memory (collapsed by default)', () => {
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+        onOpenPaymentModal={() => {}}
+        onOpenOrderModal={() => {}}
+        onOpenAddClient={() => {}}
+      />
+    )
+
+    // Accordion toggle exists and is collapsed by default ("Tap to open")
+    const toggleBtn = screen.getByRole('button', { name: /toggle permanent ai memory/i })
+    expect(toggleBtn).toBeInTheDocument()
+    expect(toggleBtn).toHaveTextContent(/tap to open/i)
+    expect(screen.queryByText('Auto-enforced to prevent mistakes')).not.toBeInTheDocument()
+    expect(screen.queryByText('Royal Hotel rate is 115')).not.toBeInTheDocument()
+
+    // Click to open
+    fireEvent.click(toggleBtn)
+    expect(toggleBtn).toHaveTextContent(/open/i)
+    expect(screen.getByText('Auto-enforced to prevent mistakes')).toBeInTheDocument()
+    expect(screen.getByText('Royal Hotel rate is 115')).toBeInTheDocument()
+
+    // Click to collapse
+    fireEvent.click(toggleBtn)
+    expect(toggleBtn).toHaveTextContent(/tap to open/i)
+    expect(screen.queryByText('Auto-enforced to prevent mistakes')).not.toBeInTheDocument()
+
+    unmount()
+  })
 })
