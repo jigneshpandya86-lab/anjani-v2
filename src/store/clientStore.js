@@ -39,6 +39,8 @@ let leadsUnsubscribe = null
 let leadsSubscriberCount = 0
 let accountsUnsubscribe = null
 let accountsSubscriberCount = 0
+let aiMemoriesUnsubscribe = null
+let aiMemoriesSubscriberCount = 0
 const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary')
 const ACCOUNTS_SUMMARY_DOC = doc(db, 'meta', 'accountsSummary')
 const RECENT_STOCK_ENTRIES_LIMIT = 50
@@ -122,6 +124,8 @@ export const useClientStore = create((set, get) => ({
     fallbackModel: 'gemini-2.5-flash',
     maxOutputTokens: 600,
   },
+  aiMemories: [],
+  aiMemoriesLoading: false,
   accountsList: DEFAULT_ACCOUNTS,
   accountsSummary: {
     nilesh: 0,
@@ -877,6 +881,95 @@ export const useClientStore = create((set, get) => ({
       }))
     } catch (err) {
       console.error('Failed to save AI settings:', err)
+      throw err
+    }
+  },
+
+  fetchAiMemories: () => {
+    aiMemoriesSubscriberCount++
+    if (aiMemoriesSubscriberCount === 1) {
+      set({ aiMemoriesLoading: true })
+      const q = query(collection(db, 'aiMemories'), orderBy('createdAt', 'desc'))
+      aiMemoriesUnsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const memories = snapshot.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }))
+          set({ aiMemories: memories, aiMemoriesLoading: false })
+        },
+        (err) => {
+          console.error('Failed to subscribe to aiMemories:', err)
+          set({ aiMemoriesLoading: false })
+        }
+      )
+    }
+
+    return () => {
+      aiMemoriesSubscriberCount--
+      if (aiMemoriesSubscriberCount <= 0) {
+        aiMemoriesSubscriberCount = 0
+        if (aiMemoriesUnsubscribe) {
+          aiMemoriesUnsubscribe()
+          aiMemoriesUnsubscribe = null
+        }
+      }
+    }
+  },
+
+  addAiMemory: async ({ rule, category = 'general_rule', source = 'chat_instruction', metadata = {} }) => {
+    try {
+      const docRef = await addDoc(collection(db, 'aiMemories'), {
+        rule: String(rule).trim(),
+        category,
+        active: true,
+        source,
+        metadata,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+      const newMemory = {
+        id: docRef.id,
+        rule: String(rule).trim(),
+        category,
+        active: true,
+        source,
+        metadata,
+      }
+      set((state) => ({
+        aiMemories: [newMemory, ...state.aiMemories.filter((m) => m.id !== docRef.id)],
+      }))
+      return newMemory
+    } catch (err) {
+      console.error('Failed to save AI memory:', err)
+      throw err
+    }
+  },
+
+  toggleAiMemory: async (id, active) => {
+    try {
+      await updateDoc(doc(db, 'aiMemories', id), {
+        active: Boolean(active),
+        updatedAt: serverTimestamp(),
+      })
+      set((state) => ({
+        aiMemories: state.aiMemories.map((m) => (m.id === id ? { ...m, active: Boolean(active) } : m)),
+      }))
+    } catch (err) {
+      console.error('Failed to toggle AI memory:', err)
+      throw err
+    }
+  },
+
+  deleteAiMemory: async (id) => {
+    try {
+      await deleteDoc(doc(db, 'aiMemories', id))
+      set((state) => ({
+        aiMemories: state.aiMemories.filter((m) => m.id !== id),
+      }))
+    } catch (err) {
+      console.error('Failed to delete AI memory:', err)
       throw err
     }
   },

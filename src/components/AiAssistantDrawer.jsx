@@ -29,6 +29,7 @@ import {
   AtSign,
   ArrowLeft,
   ChevronDown,
+  Brain,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
@@ -41,6 +42,7 @@ import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
 import { ensureEnglishText, sanitizeClientForEnglish } from '../utils/textUtils'
 import { getRecentSkuPrice } from '../utils/orderUtils'
+import { detectMemoryIntent, isQueryingMemories, formatMemoriesForPrompt } from '../utils/aiMemoryUtils'
 
 export const SPEECH_LANGUAGES = [
   { code: 'en-IN', label: 'English', short: 'EN', hint: 'English (India)' },
@@ -75,6 +77,16 @@ export default function AiAssistantDrawer({
   const addOrder = useClientStore((state) => state.addOrder)
   const aiSettings = useClientStore((state) => state.aiSettings)
   const aiPrefillPrompt = useClientStore((state) => state.aiPrefillPrompt)
+  const aiMemories = useClientStore((state) => state.aiMemories)
+  const fetchAiMemories = useClientStore((state) => state.fetchAiMemories)
+  const addAiMemory = useClientStore((state) => state.addAiMemory)
+  const toggleAiMemory = useClientStore((state) => state.toggleAiMemory)
+  const deleteAiMemory = useClientStore((state) => state.deleteAiMemory)
+
+  const [showMemoryModal, setShowMemoryModal] = useState(false)
+  const [newMemoryInput, setNewMemoryInput] = useState('')
+  const [newMemoryCategory, setNewMemoryCategory] = useState('general_rule')
+  const [isSavingMemory, setIsSavingMemory] = useState(false)
 
   const [inputMessage, setInputMessage] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
@@ -135,6 +147,30 @@ export default function AiAssistantDrawer({
       document.removeEventListener('touchstart', handleClickOutside)
     }
   }, [showLangMenu])
+
+  useEffect(() => {
+    const unsub = fetchAiMemories?.()
+    return () => unsub?.()
+  }, [fetchAiMemories])
+
+  const handleAddNewMemoryManual = async (e) => {
+    e?.preventDefault()
+    if (!newMemoryInput.trim()) return
+    setIsSavingMemory(true)
+    try {
+      await addAiMemory({
+        rule: newMemoryInput.trim(),
+        category: newMemoryCategory,
+        source: 'manual',
+      })
+      toast.success('Learned rule saved to permanent memory!', { icon: '🧠' })
+      setNewMemoryInput('')
+    } catch (err) {
+      toast.error('Failed to save rule: ' + err.message)
+    } finally {
+      setIsSavingMemory(false)
+    }
+  }
 
   useEffect(() => {
     if (isOpen && initialMode) {
@@ -453,6 +489,67 @@ export default function AiAssistantDrawer({
     setIsClientMode(false)
     setIsAccountsMode(false)
 
+    // Memory & Learning Check (Immediate zero-latency response & persistent memory save)
+    if (!filePayload && query) {
+      if (isQueryingMemories(query)) {
+        const activeList = aiMemories.filter((m) => m && m.active !== false)
+        let reply = ''
+        if (activeList.length === 0) {
+          reply = `🧠 I don't have any saved business memories or error learnings yet.\n\nYou can teach me anytime! For example:\n• *"Remember: Royal Hotel takes 200ml at 115"*\n• *"Rule: 1 petli means 200ml box"*\n• Or correct me by saying *"That's wrong, ... "*`
+        } else {
+          reply = `🧠 **Active Business Memories & Learned Error Rules (${activeList.length}):**\n\n`
+          activeList.forEach((m, idx) => {
+            const icon = m.category === 'error_correction' ? '⚠️' : '📌'
+            reply += `${idx + 1}. ${icon} ${m.rule}\n`
+          })
+          reply += `\n*I actively apply all these rules to prevent mistakes across your orders and calculations.*`
+        }
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: reply,
+            isMemoryList: true,
+            timestamp: new Date(),
+          },
+        ])
+        return
+      }
+
+      const memoryIntent = detectMemoryIntent(query, clients)
+      if (memoryIntent && memoryIntent.rule) {
+        try {
+          const saved = await addAiMemory({
+            rule: memoryIntent.rule,
+            category: memoryIntent.category,
+            source: memoryIntent.isCorrection ? 'chat_correction' : 'chat_instruction',
+          })
+          const ackText = memoryIntent.isCorrection
+            ? `🧠 **Learned from Correction!**\n\nI have saved this to my permanent memory:\n📌 *"${memoryIntent.rule}"*\n\nI will strictly enforce this rule and avoid repeating this error in future tasks.`
+            : `🧠 **Saved to Permanent Memory!**\n\nI will remember this business rule:\n📌 *"${memoryIntent.rule}"*\n\nThis is now permanently active across all orders, calculations, and AI responses.`
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: ackText,
+              isMemoryAck: true,
+              data: saved,
+              timestamp: new Date(),
+            },
+          ])
+          toast.success('Saved to AI Memory!', { icon: '🧠', duration: 2500 })
+          return
+        } catch (memErr) {
+          console.error('Failed to save memory from chat:', memErr)
+          toast.error('Could not save memory: ' + memErr.message)
+        }
+      }
+    }
+
     // 1. Zero-Token Local Intent Check (Only if no file is uploaded and not in explicit multi-line sales mode)
     if (!filePayload && query && !isSales && !isAccounts) {
       const localRoute = tryLocalIntentRoute(query, {
@@ -490,6 +587,7 @@ export default function AiAssistantDrawer({
       const askAnjaniAi = httpsCallable(functions, 'askAnjaniAi')
 
       const response = await askAnjaniAi({
+        memories: aiMemories.filter((m) => m && m.active !== false),
         text:
           query ||
           (filePayload
@@ -881,6 +979,27 @@ export default function AiAssistantDrawer({
           <div className="flex items-center gap-1">
             <button
               type="button"
+              onClick={() => setShowMemoryModal((prev) => !prev)}
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                showMemoryModal
+                  ? 'bg-[#ff9900] text-gray-950 shadow-sm'
+                  : 'text-gray-300 hover:text-white hover:bg-white/10'
+              }`}
+              title="Permanent AI Memory & Learned Rules"
+              aria-label="View AI Memories"
+            >
+              <Brain className="w-4 h-4 text-[#ff9900]" />
+              <span className="hidden sm:inline font-black text-[11px]">Memory</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  showMemoryModal ? 'bg-black text-[#ff9900]' : 'bg-white/20 text-white'
+                }`}
+              >
+                {aiMemories.filter((m) => m && m.active !== false).length}
+              </span>
+            </button>
+            <button
+              type="button"
               onClick={() => setMessages([])}
               className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
               title="Clear chat"
@@ -897,6 +1016,143 @@ export default function AiAssistantDrawer({
             </button>
           </div>
         </div>
+
+        {/* Memory Inspector & Rules Panel */}
+        {showMemoryModal && (
+          <div className="bg-amber-50/95 border-b border-amber-200 p-3 text-xs space-y-2.5 animate-in slide-in-from-top-2 shadow-xs">
+            <div className="flex items-center justify-between border-b border-amber-200/80 pb-2">
+              <div className="flex items-center gap-1.5">
+                <Brain className="w-4 h-4 text-amber-700" />
+                <span className="font-black text-gray-900 uppercase tracking-tight text-[11px]">
+                  Permanent AI Memory ({aiMemories.length})
+                </span>
+              </div>
+              <span className="text-[10px] text-gray-500 font-semibold">
+                Auto-enforced to prevent mistakes
+              </span>
+            </div>
+
+            {/* Quick Add Form */}
+            <form onSubmit={handleAddNewMemoryManual} className="flex gap-1.5">
+              <input
+                type="text"
+                value={newMemoryInput}
+                onChange={(e) => setNewMemoryInput(e.target.value)}
+                placeholder="Teach a rule (e.g. Royal Hotel rate is 115, petli = 200ml)..."
+                className="flex-1 bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 placeholder-gray-400 outline-none focus:ring-1 focus:ring-amber-500"
+              />
+              <select
+                value={newMemoryCategory}
+                onChange={(e) => setNewMemoryCategory(e.target.value)}
+                className="bg-white border border-amber-300 rounded-lg px-1.5 py-1 text-[11px] font-semibold text-gray-700 outline-none"
+              >
+                <option value="general_rule">📌 Rule</option>
+                <option value="error_correction">⚠️ Correction</option>
+                <option value="client_rule">👤 Client / Rate</option>
+                <option value="shorthand">📖 Shorthand</option>
+                <option value="staff_rule">🚚 Staff</option>
+                <option value="operational">⏱️ Operations</option>
+              </select>
+              <button
+                type="submit"
+                disabled={isSavingMemory || !newMemoryInput.trim()}
+                className="bg-[#131921] hover:bg-black text-[#ff9900] px-2.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide cursor-pointer transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Learn</span>
+              </button>
+            </form>
+
+            {/* Memories List */}
+            <div className="max-h-48 overflow-y-auto space-y-1.5 pr-0.5 scrollbar-thin">
+              {aiMemories.length === 0 ? (
+                <div className="text-center py-3 text-gray-400 text-xs italic bg-white/70 rounded-lg border border-dashed border-amber-200">
+                  No memories saved yet. Teach the AI in chat (e.g. "Remember: Royal rate is 115") or add above.
+                </div>
+              ) : (
+                aiMemories.map((m) => {
+                  const isCorrection = m.category === 'error_correction'
+                  const isClient = m.category === 'client_rule'
+                  const isShort = m.category === 'shorthand'
+                  const isStaff = m.category === 'staff_rule'
+                  return (
+                    <div
+                      key={m.id}
+                      className={`p-2 rounded-lg border flex items-center justify-between gap-2 transition-all ${
+                        m.active !== false
+                          ? isCorrection
+                            ? 'bg-red-50/70 border-red-200 text-gray-900'
+                            : isClient
+                              ? 'bg-blue-50/70 border-blue-200 text-gray-900'
+                              : isShort
+                                ? 'bg-purple-50/70 border-purple-200 text-gray-900'
+                                : isStaff
+                                  ? 'bg-emerald-50/70 border-emerald-200 text-gray-900'
+                                  : 'bg-white border-amber-200 text-gray-900'
+                          : 'bg-gray-100 border-gray-200 text-gray-400 opacity-60'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span
+                            className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded-full tracking-wider ${
+                              isCorrection
+                                ? 'bg-red-100 text-red-700'
+                                : isClient
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : isShort
+                                    ? 'bg-purple-100 text-purple-700'
+                                    : isStaff
+                                      ? 'bg-emerald-100 text-emerald-700'
+                                      : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {isCorrection
+                              ? 'Learned Correction'
+                              : isClient
+                                ? 'Client & Rate'
+                                : isShort
+                                  ? 'Shorthand'
+                                  : isStaff
+                                    ? 'Staff'
+                                    : 'Rule'}
+                          </span>
+                          {m.active === false && (
+                            <span className="text-[9px] font-bold text-gray-400 italic">Paused</span>
+                          )}
+                        </div>
+                        <p className="text-xs font-semibold leading-snug break-words">{m.rule}</p>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => toggleAiMemory?.(m.id, !m.active)}
+                          className={`px-1.5 py-1 rounded text-[10px] font-bold transition-colors cursor-pointer border ${
+                            m.active !== false
+                              ? 'bg-emerald-100 border-emerald-300 text-emerald-800'
+                              : 'bg-gray-200 border-gray-300 text-gray-600'
+                          }`}
+                          title={m.active !== false ? 'Active (Click to pause)' : 'Paused (Click to activate)'}
+                        >
+                          {m.active !== false ? 'Active' : 'Off'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteAiMemory?.(m.id)}
+                          className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
+                          title="Delete memory"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Quick Action Icon Buttons (Compact, Icon-Only, Strict Sequence: Order -> Payment -> Client -> Remaining) */}
         <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-1 shrink-0">

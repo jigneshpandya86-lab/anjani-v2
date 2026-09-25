@@ -1260,6 +1260,66 @@ async function getAiSettings() {
   return cachedAiSettings
 }
 
+let cachedAiMemories = null
+let cachedAiMemoriesTime = 0
+
+async function getAiMemories() {
+  const now = Date.now()
+  if (cachedAiMemories && now - cachedAiMemoriesTime < 60 * 1000) {
+    return cachedAiMemories
+  }
+  try {
+    const snap = await admin
+      .firestore()
+      .collection('aiMemories')
+      .where('active', '==', true)
+      .limit(60)
+      .get()
+
+    cachedAiMemories = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  } catch (e) {
+    logger.warn('Failed to fetch aiMemories in cloud function:', e.message)
+    cachedAiMemories = []
+  }
+  cachedAiMemoriesTime = now
+  return cachedAiMemories
+}
+
+function formatMemoriesForPrompt(memories = []) {
+  if (!Array.isArray(memories) || memories.length === 0) return ''
+  const active = memories.filter((m) => m && m.active !== false && m.rule)
+  if (active.length === 0) return ''
+
+  const categoryHeaders = {
+    error_correction: '⚠️ Learned Error Corrections (DO NOT REPEAT THESE MISTAKES)',
+    client_rule: '👤 Client & Pricing Rules',
+    shorthand: '📖 Shorthand & Slang Mappings',
+    staff_rule: '🚚 Staff & Cash Custody Rules',
+    operational: '⏱️ Delivery & Route Operations',
+    general_rule: '📌 Business Directives',
+  }
+
+  const grouped = {}
+  for (const m of active) {
+    const cat = m.category || 'general_rule'
+    if (!grouped[cat]) grouped[cat] = []
+    grouped[cat].push(m.rule)
+  }
+
+  let output = '\n\n## 🧠 PERMANENT BUSINESS MEMORIES & LEARNED ERROR CORRECTIONS (STRICTLY ENFORCE):\n'
+  output += 'The owner (Jignesh Pandya) has trained you with these persistent rules and past error corrections. You MUST obey every single rule below and avoid repeating past errors:\n\n'
+
+  for (const [cat, rules] of Object.entries(grouped)) {
+    output += `### ${categoryHeaders[cat] || cat.toUpperCase()}:\n`
+    rules.forEach((r, idx) => {
+      output += `${idx + 1}. ${r}\n`
+    })
+    output += '\n'
+  }
+
+  return output.trimEnd()
+}
+
 exports.askAnjaniAi = onCall(async (request) => {
   if (!request.auth) {
     throw new Error('Authentication required')
@@ -1283,6 +1343,8 @@ exports.askAnjaniAi = onCall(async (request) => {
   }
 
   const aiSettings = await getAiSettings()
+  const activeMemories = await getAiMemories()
+  const memoriesBlock = formatMemoriesForPrompt(activeMemories)
   const primaryModelName = aiSettings.activeModel || 'gemini-2.5-flash-lite'
   const fallbackModelName = aiSettings.fallbackModel || 'gemini-2.5-flash'
   const chatMaxTokens = Math.min(Number(aiSettings.maxOutputTokens) || 800, 1500)
@@ -1721,7 +1783,7 @@ Return strict JSON:
             mimeType: mimeType || 'image/jpeg',
           },
         },
-        { text: ocrPrompt },
+        { text: ocrPrompt + memoriesBlock },
       ]
 
       const res = await model.generateContent({
@@ -1877,7 +1939,7 @@ ${rawText.slice(0, 3000)}`
 
         try {
           const res = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: accountsCashPrompt }] }],
+            contents: [{ role: 'user', parts: [{ text: accountsCashPrompt + memoriesBlock }] }],
           })
           const rawJson = res.response.candidates[0].content.parts[0].text.trim()
           const parsedData = parseStructuredJson(rawJson)
@@ -1936,7 +1998,7 @@ User Text: ${rawText.slice(0, 1000)}`
 
         try {
           const res = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: textClientPrompt }] }],
+            contents: [{ role: 'user', parts: [{ text: textClientPrompt + memoriesBlock }] }],
           })
           const rawJson = res.response.candidates[0].content.parts[0].text.trim()
           const parsedData = parseStructuredJson(rawJson)
@@ -1986,7 +2048,7 @@ User Text: ${rawText.slice(0, 1000)}`
 
         try {
           const res = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: textPaymentPrompt }] }],
+            contents: [{ role: 'user', parts: [{ text: textPaymentPrompt + memoriesBlock }] }],
           })
           const rawJson = res.response.candidates[0].content.parts[0].text.trim()
           const parsedData = parseStructuredJson(rawJson)
@@ -2071,7 +2133,7 @@ ${rawText.slice(0, 3000)}`
 
         try {
           const res = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: textSalesPrompt }] }],
+            contents: [{ role: 'user', parts: [{ text: textSalesPrompt + memoriesBlock }] }],
           })
           const rawJson = res.response.candidates[0].content.parts[0].text.trim()
           const parsedData = parseStructuredJson(rawJson)
@@ -2113,7 +2175,7 @@ ACCOUNTS & CASH CUSTODY: Delivery staff Nilesh and Hiteshbhai collect cash on ro
           }))
         : []
 
-      const parts = [{ text: `${systemPrompt}\n\nUser: ${rawText.slice(0, 500)}` }]
+      const parts = [{ text: `${systemPrompt}${memoriesBlock}\n\nUser: ${rawText.slice(0, 500)}` }]
 
       const res = await model.generateContent({
         contents: [...safeHistory, { role: 'user', parts }],

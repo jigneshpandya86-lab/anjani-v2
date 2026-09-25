@@ -41,6 +41,13 @@ vi.mock('../store/clientStore', () => ({
       addOrder: vi.fn(),
       aiSettings: {},
       aiPrefillPrompt: null,
+      aiMemories: [
+        { id: 'm1', rule: 'Royal Hotel rate is 115', category: 'client_rule', active: true }
+      ],
+      fetchAiMemories: vi.fn(),
+      addAiMemory: vi.fn(() => Promise.resolve({ id: 'm2', rule: 'Test Rule', category: 'general_rule', active: true })),
+      toggleAiMemory: vi.fn(),
+      deleteAiMemory: vi.fn(),
     }
     return selector ? selector(state) : state
   },
@@ -163,6 +170,34 @@ describe('AiAssistantDrawer', () => {
     fireEvent.click(screen.getByText('हिंदी'))
     expect(localStorage.getItem('anjani_ai_speech_lang')).toBe('hi-IN')
     expect(langBtn).toHaveTextContent('HI')
+
+    unmount()
+  })
+
+  it('renders Memory Bank button and toggles memory inspector panel with saved rules', () => {
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+        onOpenPaymentModal={() => {}}
+        onOpenOrderModal={() => {}}
+        onOpenAddClient={() => {}}
+      />
+    )
+
+    // Memory button exists in header
+    const memBtn = screen.getByRole('button', { name: /view ai memories/i })
+    expect(memBtn).toBeInTheDocument()
+
+    // Open Memory Inspector
+    fireEvent.click(memBtn)
+    expect(screen.getByText(/Permanent AI Memory/i)).toBeInTheDocument()
+    expect(screen.getByText('Royal Hotel rate is 115')).toBeInTheDocument()
+
+    // Close Memory Inspector
+    fireEvent.click(memBtn)
+    expect(screen.queryByText('Auto-enforced to prevent mistakes')).not.toBeInTheDocument()
 
     unmount()
   })
