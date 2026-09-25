@@ -129,4 +129,41 @@ describe('AiAssistantDrawer', () => {
 
     expect(screen.getByText('Jay Ambe')).toBeInTheDocument()
   })
+
+  it('renders speech language selector defaulting to EN and allows switching to Gujarati and Hindi', () => {
+    localStorage.clear()
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+        onOpenPaymentModal={() => {}}
+        onOpenOrderModal={() => {}}
+        onOpenAddClient={() => {}}
+      />
+    )
+
+    // Language toggle button displays EN by default
+    const langBtn = screen.getByRole('button', { name: /switch speech language/i })
+    expect(langBtn).toHaveTextContent('EN')
+
+    // Open language menu
+    fireEvent.click(langBtn)
+    expect(screen.getByText('Voice Language')).toBeInTheDocument()
+    expect(screen.getByText('ગુજરાતી')).toBeInTheDocument()
+    expect(screen.getByText('हिंदी')).toBeInTheDocument()
+
+    // Select Gujarati
+    fireEvent.click(screen.getByText('ગુજરાતી'))
+    expect(localStorage.getItem('anjani_ai_speech_lang')).toBe('gu-IN')
+    expect(langBtn).toHaveTextContent('GU')
+
+    // Switch to Hindi
+    fireEvent.click(langBtn)
+    fireEvent.click(screen.getByText('हिंदी'))
+    expect(localStorage.getItem('anjani_ai_speech_lang')).toBe('hi-IN')
+    expect(langBtn).toHaveTextContent('HI')
+
+    unmount()
+  })
 })

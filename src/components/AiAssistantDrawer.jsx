@@ -28,6 +28,7 @@ import {
   MapPin,
   AtSign,
   ArrowLeft,
+  ChevronDown,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
@@ -40,6 +41,12 @@ import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
 import { ensureEnglishText, sanitizeClientForEnglish } from '../utils/textUtils'
 import { getRecentSkuPrice } from '../utils/orderUtils'
+
+export const SPEECH_LANGUAGES = [
+  { code: 'en-IN', label: 'English', short: 'EN', hint: 'English (India)' },
+  { code: 'gu-IN', label: 'ગુજરાતી', short: 'GU', hint: 'Gujarati (ગુજરાત)' },
+  { code: 'hi-IN', label: 'हिंदी', short: 'HI', hint: 'Hindi (भारत)' },
+]
 
 export default function AiAssistantDrawer({
   isOpen,
@@ -86,7 +93,19 @@ export default function AiAssistantDrawer({
   const [messages, setMessages] = useState([])
 
   const [isListening, setIsListening] = useState(false)
-  const [speechLang, setSpeechLang] = useState('gu-IN')
+  const [speechLang, setSpeechLang] = useState(() => {
+    try {
+      const saved = localStorage.getItem('anjani_ai_speech_lang')
+      if (saved && SPEECH_LANGUAGES.some((l) => l.code === saved)) {
+        return saved
+      }
+      return 'en-IN'
+    } catch {
+      return 'en-IN'
+    }
+  })
+  const [showLangMenu, setShowLangMenu] = useState(false)
+  const speechLangMenuRef = useRef(null)
   const recognitionRef = useRef(null)
   const speechBaseTextRef = useRef('')
 
@@ -101,6 +120,21 @@ export default function AiAssistantDrawer({
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (!showLangMenu) return
+    const handleClickOutside = (e) => {
+      if (speechLangMenuRef.current && !speechLangMenuRef.current.contains(e.target)) {
+        setShowLangMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('touchstart', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside)
+    }
+  }, [showLangMenu])
 
   useEffect(() => {
     if (isOpen && initialMode) {
@@ -118,35 +152,48 @@ export default function AiAssistantDrawer({
     }
   }, [inputMessage])
 
-  const toggleMic = () => {
+  const stopListening = () => {
+    try {
+      recognitionRef.current?.stop()
+    } catch {
+      // ignore
+    }
+    setIsListening(false)
+  }
+
+  const startListening = (langCode = speechLang) => {
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SpeechRec) {
       toast.error('Voice input is not supported in this browser. Please use Chrome/Edge.')
       return
     }
 
-    if (isListening) {
-      try {
-        recognitionRef.current?.stop()
-      } catch {
-        // ignore
-      }
-      setIsListening(false)
-      return
-    }
-
     try {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop()
+        } catch {
+          // ignore
+        }
+      }
+
       const recognition = new SpeechRec()
       recognition.continuous = false
       recognition.interimResults = true
-      recognition.lang = speechLang
+      recognition.lang = langCode
 
       const baseText = inputMessage.trim()
       speechBaseTextRef.current = baseText
 
+      const targetLang = SPEECH_LANGUAGES.find((l) => l.code === langCode) || { label: 'English' }
+
       recognition.onstart = () => {
         setIsListening(true)
-        toast('Listening... Speak now', { icon: '🎙️', id: 'voice-rec', duration: 2500 })
+        toast(`Listening in ${targetLang.label}... Speak now`, {
+          icon: '🎙️',
+          id: 'voice-rec',
+          duration: 2500,
+        })
       }
 
       recognition.onresult = (event) => {
@@ -181,6 +228,33 @@ export default function AiAssistantDrawer({
       toast.dismiss('voice-rec')
       toast.error('Could not start microphone: ' + err.message)
       setIsListening(false)
+    }
+  }
+
+  const toggleMic = () => {
+    if (isListening) {
+      stopListening()
+    } else {
+      startListening(speechLang)
+    }
+  }
+
+  const handleSelectSpeechLang = (code) => {
+    setSpeechLang(code)
+    try {
+      localStorage.setItem('anjani_ai_speech_lang', code)
+    } catch {
+      // ignore
+    }
+    setShowLangMenu(false)
+    const targetLang = SPEECH_LANGUAGES.find((l) => l.code === code) || { label: 'English' }
+    toast.success(`Voice set to ${targetLang.label}`, { id: 'voice-lang-toast', duration: 1500 })
+
+    if (isListening) {
+      stopListening()
+      setTimeout(() => {
+        startListening(code)
+      }, 150)
     }
   }
 
@@ -2309,18 +2383,76 @@ export default function AiAssistantDrawer({
               <Camera className="w-5 h-5" />
             </button>
 
-            <button
-              type="button"
-              onClick={toggleMic}
-              className={`p-2.5 rounded-xl border transition-colors shrink-0 cursor-pointer mb-0.5 ${
-                isListening
-                  ? 'bg-red-500 text-white border-red-600 animate-pulse shadow-md'
-                  : 'text-gray-500 hover:text-amz-orange hover:bg-orange-50 border-gray-300'
-              }`}
-              title={isListening ? 'Listening (Gujarati / Hindi)... Tap to stop' : 'Voice Dictation'}
-            >
-              {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-            </button>
+            {/* Mic & Speech Language Control */}
+            <div className="relative shrink-0 flex items-center mb-0.5" ref={speechLangMenuRef}>
+              <button
+                type="button"
+                onClick={toggleMic}
+                className={`p-2.5 rounded-l-xl border border-r-0 transition-colors shrink-0 cursor-pointer ${
+                  isListening
+                    ? 'bg-red-500 text-white border-red-600 animate-pulse shadow-md'
+                    : 'text-gray-500 hover:text-amz-orange hover:bg-orange-50 border-gray-300'
+                }`}
+                title={
+                  isListening
+                    ? `Listening in ${SPEECH_LANGUAGES.find((l) => l.code === speechLang)?.label || 'Voice'}... Tap to stop`
+                    : `Voice Dictation (${SPEECH_LANGUAGES.find((l) => l.code === speechLang)?.label || 'English'})`
+                }
+                aria-label={isListening ? 'Stop voice listening' : 'Start voice dictation'}
+              >
+                {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowLangMenu((prev) => !prev)}
+                className={`h-[42px] px-1.5 rounded-r-xl border text-[10px] font-black tracking-tight transition-colors cursor-pointer flex items-center gap-0.5 shrink-0 ${
+                  isListening
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-gray-50 hover:bg-gray-100 text-gray-700 hover:text-gray-900 border-gray-300'
+                }`}
+                title={`Active speech language: ${SPEECH_LANGUAGES.find((l) => l.code === speechLang)?.label || 'English'}. Tap to switch language.`}
+                aria-label="Switch speech language"
+              >
+                <span>{SPEECH_LANGUAGES.find((l) => l.code === speechLang)?.short || 'EN'}</span>
+                <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+              </button>
+
+              {/* Language Dropdown Menu */}
+              {showLangMenu && (
+                <div className="absolute bottom-full mb-2 left-0 z-40 bg-white border border-gray-200 rounded-xl shadow-xl py-1 w-44 text-xs divide-y divide-gray-100 animate-in fade-in slide-in-from-bottom-2">
+                  <div className="px-3 py-1.5 bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    Voice Language
+                  </div>
+                  {SPEECH_LANGUAGES.map((lang) => {
+                    const isSelected = speechLang === lang.code
+                    return (
+                      <button
+                        key={lang.code}
+                        type="button"
+                        onClick={() => handleSelectSpeechLang(lang.code)}
+                        className={`w-full text-left px-3 py-2 flex items-center justify-between transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-orange-50 text-amz-orange font-bold'
+                            : 'hover:bg-gray-50 text-gray-700'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-black">{lang.label}</span>
+                            <span className="text-[10px] px-1 rounded bg-gray-100 text-gray-500 font-semibold">
+                              {lang.short}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-gray-400">{lang.hint}</div>
+                        </div>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-amz-orange shrink-0" />}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
 
             <textarea
               ref={inputRef}
@@ -2337,7 +2469,11 @@ export default function AiAssistantDrawer({
               }}
               placeholder={
                 isListening
-                  ? 'Listening... Speak in Gujarati or Hindi'
+                  ? speechLang === 'gu-IN'
+                    ? 'સાંભળી રહ્યું છે... ગુજરાતીમાં બોલો'
+                    : speechLang === 'hi-IN'
+                      ? 'सुन रहे हैं... हिंदी में बोलें'
+                      : 'Listening in English... Speak now'
                   : isPaymentMode
                     ? 'Payment (e.g. Received 2000 from @Royal...)'
                     : isClientMode
