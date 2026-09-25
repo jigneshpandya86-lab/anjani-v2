@@ -41,7 +41,6 @@ export default function AccountsDashboard() {
   const [handoverSource, setHandoverSource] = useState('nilesh')
   const [editingEntry, setEditingEntry] = useState(null)
   const [showPassbook, setShowPassbook] = useState(true)
-  const [showCashBreakdown, setShowCashBreakdown] = useState(false)
 
   useEffect(() => {
     const unsub = fetchAccountsSummary()
@@ -288,23 +287,11 @@ export default function AccountsDashboard() {
           </button>
         </div>
 
-        <div
-          onClick={() => setShowCashBreakdown((prev) => !prev)}
-          className="mt-2 pt-2 border-t border-white/10 grid grid-cols-2 gap-2 cursor-pointer select-none group"
-          title="Click to view/hide individual account breakdown"
-        >
+        <div className="mt-2 pt-2 border-t border-white/10 grid grid-cols-2 gap-2">
           <div>
-            <div className="flex items-center gap-1">
-              <span className="text-[9px] font-black uppercase text-white/60 tracking-wider block">
-                Staff Cash
-              </span>
-              <ChevronDown
-                size={11}
-                className={`text-white/60 transition-transform duration-200 ${
-                  showCashBreakdown ? 'rotate-180' : ''
-                }`}
-              />
-            </div>
+            <span className="text-[9px] font-black uppercase text-white/60 tracking-wider block">
+              Staff Cash (Custody)
+            </span>
             <p className="text-lg font-black text-amber-300 leading-tight">
               ₹{totalStaffCash.toLocaleString('en-IN')}
             </p>
@@ -318,56 +305,32 @@ export default function AccountsDashboard() {
             </p>
           </div>
         </div>
-
-        {showCashBreakdown && (
-          <div className="mt-2 pt-2 border-t border-white/15 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs animate-in fade-in">
-            <div className="bg-white/10 rounded-xl p-2">
-              <span className="text-[9px] font-bold uppercase text-white/70 block">Nilesh (Cash)</span>
-              <span className="font-black text-amber-200 text-sm">
-                ₹{(Number(accountsSummary?.nilesh) || 0).toLocaleString('en-IN')}
-              </span>
-            </div>
-            <div className="bg-white/10 rounded-xl p-2">
-              <span className="text-[9px] font-bold uppercase text-white/70 block">Hiteshbhai (Cash)</span>
-              <span className="font-black text-amber-200 text-sm">
-                ₹{(Number(accountsSummary?.hiteshbhai) || 0).toLocaleString('en-IN')}
-              </span>
-            </div>
-            <div className="bg-white/10 rounded-xl p-2">
-              <span className="text-[9px] font-bold uppercase text-white/70 block">Counter Drawer</span>
-              <span className="font-black text-emerald-200 text-sm">
-                ₹{(Number(accountsSummary?.counter) || 0).toLocaleString('en-IN')}
-              </span>
-            </div>
-            <div className="bg-white/10 rounded-xl p-2">
-              <span className="text-[9px] font-bold uppercase text-white/70 block">Bank Account</span>
-              <span className="font-black text-sky-200 text-sm">
-                ₹{(Number(accountsSummary?.bank) || 0).toLocaleString('en-IN')}
-              </span>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* ─── 4 Account Cards (Compact Grid) ─── */}
+      {/* ─── 4 Account Cards (Click to Open Passbook) ─── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
         {DEFAULT_ACCOUNTS.map((acc) => {
           const isSelected = selectedAccountId === acc.id
           const balance = Number(accountsSummary?.[acc.id] || 0)
           const isCustody = acc.type === 'custody'
+          const isCardOpen = isSelected && showPassbook
 
           return (
             <button
               key={acc.id}
               type="button"
               onClick={() => {
-                setSelectedAccountId(acc.id)
-                setShowPassbook(true)
+                if (isSelected) {
+                  setShowPassbook((prev) => !prev)
+                } else {
+                  setSelectedAccountId(acc.id)
+                  setShowPassbook(true)
+                }
               }}
-              className={`p-2 rounded-xl border transition-all text-left flex flex-col justify-between ${
-                isSelected
-                  ? 'border-[#ff9900] bg-orange-50/70 shadow-xs ring-1 ring-[#ff9900]'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
+              className={`p-2.5 rounded-xl border transition-all text-left flex flex-col justify-between cursor-pointer select-none ${
+                isCardOpen
+                  ? 'border-[#ff9900] bg-orange-50/70 shadow-xs ring-2 ring-[#ff9900]/60'
+                  : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/50'
               }`}
             >
               <div className="flex items-center justify-between gap-1">
@@ -380,12 +343,15 @@ export default function AccountsDashboard() {
                     {acc.name}
                   </span>
                 </div>
-                {isSelected && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#ff9900] shrink-0" />
-                )}
+                <ChevronDown
+                  size={13}
+                  className={`transition-transform duration-200 ${
+                    isCardOpen ? 'rotate-180 text-[#ff9900]' : 'text-gray-400'
+                  }`}
+                />
               </div>
 
-              <div className="mt-1">
+              <div className="mt-1 flex items-baseline justify-between">
                 <p
                   className={`text-base font-black leading-none ${
                     balance > 0
@@ -399,6 +365,9 @@ export default function AccountsDashboard() {
                 >
                   ₹{balance.toLocaleString('en-IN')}
                 </p>
+                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tight">
+                  {isCardOpen ? 'Open' : 'Tap to open'}
+                </span>
               </div>
             </button>
           )

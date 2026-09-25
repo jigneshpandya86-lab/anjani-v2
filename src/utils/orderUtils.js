@@ -139,11 +139,16 @@ export const normalizeOrderDoc = (raw = {}) => {
 
 export const getOrderSortTime = (o) => {
   if (!o) return 0
-  const ts = o.createdAt
-  if (ts?.toMillis) return ts.toMillis()
-  if (ts?.seconds) return ts.seconds * 1000
-  const d = o.date || o.orderDate || o.deliveryDate || ''
-  return d ? new Date(d).getTime() : 0
+  try {
+    const ts = o.createdAt
+    if (ts?.toMillis && typeof ts.toMillis === 'function') return ts.toMillis()
+    if (Number.isFinite(ts?.seconds)) return ts.seconds * 1000
+    const d = o.date || o.orderDate || o.deliveryDate || ''
+    const t = d ? new Date(d).getTime() : 0
+    return Number.isFinite(t) ? t : 0
+  } catch {
+    return 0
+  }
 }
 
 export const resolveOrderInitialData = (orderToEdit, clients = []) => {
@@ -253,54 +258,63 @@ export const formatPaymentNarration = (clientName, dateVal) => {
 }
 
 export const getRecentSkuPrice = (skuLabelOrId, orders = [], clientId = null) => {
-  if (!Array.isArray(orders) || orders.length === 0) return 0
-  const targetMeta = getSkuMeta(skuLabelOrId)
+  try {
+    if (!Array.isArray(orders) || orders.length === 0) return 0
+    const targetMeta = getSkuMeta(skuLabelOrId)
+    if (!targetMeta?.id) return 0
 
-  // 1. If clientId provided, check client's most recent order for this SKU first
-  if (clientId) {
-    const clientOrders = orders
-      .filter(
-        (o) =>
-          (o.clientId === clientId || o.customerId === clientId) &&
-          o.status !== 'Cancelled',
-      )
+    // 1. If clientId provided, check client's most recent order for this SKU first
+    if (clientId) {
+      const clientOrders = orders
+        .filter(
+          (o) =>
+            o &&
+            (o.clientId === clientId || o.customerId === clientId) &&
+            o.status !== 'Cancelled',
+        )
+        .sort((a, b) => getOrderSortTime(b) - getOrderSortTime(a))
+
+      for (const ord of clientOrders) {
+        if (!ord) continue
+        if (Array.isArray(ord.items) && ord.items.length > 0) {
+          const item = ord.items.find(
+            (it) => it && (it.sku || it.name || it.label) && getSkuMeta(it.sku || it.name || it.label)?.id === targetMeta.id,
+          )
+          if (item && Number(item.rate) > 0) return Number(item.rate)
+        } else if (
+          ord.sku &&
+          getSkuMeta(ord.sku)?.id === targetMeta.id &&
+          Number(ord.rate) > 0
+        ) {
+          return Number(ord.rate)
+        }
+      }
+    }
+
+    // 2. Check across all recent orders (sorted newest to oldest)
+    const sortedOrders = [...orders]
+      .filter((o) => o && o.status !== 'Cancelled')
       .sort((a, b) => getOrderSortTime(b) - getOrderSortTime(a))
 
-    for (const ord of clientOrders) {
+    for (const ord of sortedOrders) {
+      if (!ord) continue
       if (Array.isArray(ord.items) && ord.items.length > 0) {
         const item = ord.items.find(
-          (it) => getSkuMeta(it.sku).id === targetMeta.id,
+          (it) => it && (it.sku || it.name || it.label) && getSkuMeta(it.sku || it.name || it.label)?.id === targetMeta.id,
         )
         if (item && Number(item.rate) > 0) return Number(item.rate)
       } else if (
         ord.sku &&
-        getSkuMeta(ord.sku).id === targetMeta.id &&
+        getSkuMeta(ord.sku)?.id === targetMeta.id &&
         Number(ord.rate) > 0
       ) {
         return Number(ord.rate)
       }
     }
+
+    return 0
+  } catch (err) {
+    console.error('getRecentSkuPrice error:', err)
+    return 0
   }
-
-  // 2. Check across all recent orders (sorted newest to oldest)
-  const sortedOrders = [...orders]
-    .filter((o) => o.status !== 'Cancelled')
-    .sort((a, b) => getOrderSortTime(b) - getOrderSortTime(a))
-
-  for (const ord of sortedOrders) {
-    if (Array.isArray(ord.items) && ord.items.length > 0) {
-      const item = ord.items.find(
-        (it) => getSkuMeta(it.sku).id === targetMeta.id,
-      )
-      if (item && Number(item.rate) > 0) return Number(item.rate)
-    } else if (
-      ord.sku &&
-      getSkuMeta(ord.sku).id === targetMeta.id &&
-      Number(ord.rate) > 0
-    ) {
-      return Number(ord.rate)
-    }
-  }
-
-  return 0
 }

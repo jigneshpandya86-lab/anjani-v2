@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   Sparkles,
   X,
@@ -245,18 +245,30 @@ export default function AiAssistantDrawer({
 
   // Context client for SKU price lookup
   const contextClient = useMemo(() => {
-    if (atMatch) {
-      const q = atMatch[1].trim().toLowerCase()
-      return clients.find((c) => c.name?.toLowerCase().includes(q))
+    try {
+      if (!Array.isArray(clients) || clients.length === 0) return null
+      if (atMatch && atMatch[1]) {
+        const q = atMatch[1].trim().toLowerCase()
+        if (!q) return null
+        return clients.find((c) => typeof c?.name === 'string' && c.name.toLowerCase().includes(q)) || null
+      }
+      const clean = inputMessage.trim().toLowerCase()
+      if (!clean || clean.length < 2) return null
+      return clients.find((c) => typeof c?.name === 'string' && c.name.trim().length > 1 && clean.includes(c.name.toLowerCase().trim())) || null
+    } catch {
+      return null
     }
-    const lower = inputMessage.toLowerCase()
-    return clients.find((c) => c.name && lower.includes(c.name.toLowerCase().trim()))
   }, [inputMessage, atMatch, clients])
 
   // SKU list enriched with label, category, and recent order price
   const enrichedWaterSkus = useMemo(() => {
     return WATER_SKUS.map((s) => {
-      const price = getRecentSkuPrice(s.id, orders, contextClient?.id)
+      let price = 0
+      try {
+        price = getRecentSkuPrice(s.id, orders, contextClient?.id)
+      } catch {
+        price = 0
+      }
       return {
         ...s,
         name: s.label,
