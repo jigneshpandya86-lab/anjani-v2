@@ -251,3 +251,56 @@ export const formatPaymentNarration = (clientName, dateVal) => {
   }
   return `Payment received on ${formattedDate}`
 }
+
+export const getRecentSkuPrice = (skuLabelOrId, orders = [], clientId = null) => {
+  if (!Array.isArray(orders) || orders.length === 0) return 0
+  const targetMeta = getSkuMeta(skuLabelOrId)
+
+  // 1. If clientId provided, check client's most recent order for this SKU first
+  if (clientId) {
+    const clientOrders = orders
+      .filter(
+        (o) =>
+          (o.clientId === clientId || o.customerId === clientId) &&
+          o.status !== 'Cancelled',
+      )
+      .sort((a, b) => getOrderSortTime(b) - getOrderSortTime(a))
+
+    for (const ord of clientOrders) {
+      if (Array.isArray(ord.items) && ord.items.length > 0) {
+        const item = ord.items.find(
+          (it) => getSkuMeta(it.sku).id === targetMeta.id,
+        )
+        if (item && Number(item.rate) > 0) return Number(item.rate)
+      } else if (
+        ord.sku &&
+        getSkuMeta(ord.sku).id === targetMeta.id &&
+        Number(ord.rate) > 0
+      ) {
+        return Number(ord.rate)
+      }
+    }
+  }
+
+  // 2. Check across all recent orders (sorted newest to oldest)
+  const sortedOrders = [...orders]
+    .filter((o) => o.status !== 'Cancelled')
+    .sort((a, b) => getOrderSortTime(b) - getOrderSortTime(a))
+
+  for (const ord of sortedOrders) {
+    if (Array.isArray(ord.items) && ord.items.length > 0) {
+      const item = ord.items.find(
+        (it) => getSkuMeta(it.sku).id === targetMeta.id,
+      )
+      if (item && Number(item.rate) > 0) return Number(item.rate)
+    } else if (
+      ord.sku &&
+      getSkuMeta(ord.sku).id === targetMeta.id &&
+      Number(ord.rate) > 0
+    ) {
+      return Number(ord.rate)
+    }
+  }
+
+  return 0
+}

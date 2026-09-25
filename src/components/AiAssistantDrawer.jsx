@@ -39,6 +39,7 @@ import { processAiBillImage } from '../utils/aiImageHelper'
 import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
 import { ensureEnglishText, sanitizeClientForEnglish } from '../utils/textUtils'
+import { getRecentSkuPrice } from '../utils/orderUtils'
 
 export default function AiAssistantDrawer({
   isOpen,
@@ -87,6 +88,7 @@ export default function AiAssistantDrawer({
   const [isListening, setIsListening] = useState(false)
   const [speechLang, setSpeechLang] = useState('gu-IN')
   const recognitionRef = useRef(null)
+  const speechBaseTextRef = useRef('')
 
   useEffect(() => {
     return () => {
@@ -139,21 +141,23 @@ export default function AiAssistantDrawer({
       recognition.interimResults = true
       recognition.lang = speechLang
 
+      const baseText = inputMessage.trim()
+      speechBaseTextRef.current = baseText
+
       recognition.onstart = () => {
         setIsListening(true)
         toast('Listening... Speak now', { icon: '🎙️', id: 'voice-rec', duration: 2500 })
       }
 
       recognition.onresult = (event) => {
-        let transcript = ''
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript
+        let fullTranscript = ''
+        for (let i = 0; i < event.results.length; i++) {
+          fullTranscript += event.results[i][0].transcript
         }
-        if (transcript) {
-          setInputMessage((prev) => {
-            const clean = prev.trim()
-            return clean ? `${clean} ${transcript}` : transcript
-          })
+        const spoken = fullTranscript.trim()
+        if (spoken) {
+          const base = speechBaseTextRef.current
+          setInputMessage(base ? `${base} ${spoken}` : spoken)
         }
       }
 
@@ -239,15 +243,42 @@ export default function AiAssistantDrawer({
         .slice(0, 5)
     : []
 
+  // Context client for SKU price lookup
+  const contextClient = useMemo(() => {
+    if (atMatch) {
+      const q = atMatch[1].trim().toLowerCase()
+      return clients.find((c) => c.name?.toLowerCase().includes(q))
+    }
+    const lower = inputMessage.toLowerCase()
+    return clients.find((c) => c.name && lower.includes(c.name.toLowerCase().trim()))
+  }, [inputMessage, atMatch, clients])
+
+  // SKU list enriched with label, category, and recent order price
+  const enrichedWaterSkus = useMemo(() => {
+    return WATER_SKUS.map((s) => {
+      const price = getRecentSkuPrice(s.id, orders, contextClient?.id)
+      return {
+        ...s,
+        name: s.label,
+        category: `${s.brand} • ${s.unit}`,
+        price,
+      }
+    })
+  }, [orders, contextClient])
+
   const matchingSkus = slashMatch
-    ? WATER_SKUS.filter((s) => {
-        const q = slashMatch[1].trim().toLowerCase()
-        if (!q) return true
-        return (
-          s.name.toLowerCase().includes(q) ||
-          s.id.toLowerCase().includes(q)
-        )
-      }).slice(0, 5)
+    ? enrichedWaterSkus
+        .filter((s) => {
+          const q = slashMatch[1].trim().toLowerCase()
+          if (!q) return true
+          return (
+            s.label.toLowerCase().includes(q) ||
+            s.shortLabel.toLowerCase().includes(q) ||
+            s.id.toLowerCase().includes(q) ||
+            s.brand.toLowerCase().includes(q)
+          )
+        })
+        .slice(0, 5)
     : []
 
   const quickClientSuggestions =
@@ -277,10 +308,11 @@ export default function AiAssistantDrawer({
   }
 
   const handleSelectSku = (sku) => {
+    const textToInsert = sku.label || sku.name
     if (slashMatch) {
-      setInputMessage(inputMessage.replace(/\/([a-zA-Z0-9\s]*)$/, sku.name + ' '))
+      setInputMessage(inputMessage.replace(/\/([a-zA-Z0-9\s]*)$/, textToInsert + ' '))
     } else {
-      setInputMessage((prev) => (prev ? `${prev.trim()} ${sku.name} ` : `${sku.name} `))
+      setInputMessage((prev) => (prev ? `${prev.trim()} ${textToInsert} ` : `${textToInsert} `))
     }
     inputRef.current?.focus()
   }
@@ -492,7 +524,7 @@ export default function AiAssistantDrawer({
         const salesData = resData.data || {}
         const rawSales = Array.isArray(salesData.sales) ? salesData.sales : []
 
-        const enrichedSales = consolidateRetailSales(rawSales, clients)
+        const enrichedSales = consolidateRetailSales(rawSales, clients, orders)
         const totalQty = enrichedSales.reduce(
           (sum, s) => sum + (s.items || []).reduce((isum, it) => isum + Number(it.qty || 0), 0),
           0
@@ -2186,8 +2218,11 @@ export default function AiAssistantDrawer({
           {/* Autocomplete Dropdown for /SKU */}
           {matchingSkus.length > 0 && (
             <div className="absolute bottom-full mb-1.5 left-3 right-3 z-30 max-h-52 overflow-y-auto bg-white/95 backdrop-blur-md border border-gray-200 rounded-xl shadow-xl divide-y divide-gray-100">
-              <div className="px-2.5 py-1 bg-gray-50 text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wider">
-                <Package className="w-3 h-3 text-emerald-600" /> Products
+              <div className="px-2.5 py-1 bg-gray-50 text-[10px] font-bold text-gray-400 flex items-center justify-between gap-1 uppercase tracking-wider">
+                <div className="flex items-center gap-1">
+                  <Package className="w-3 h-3 text-emerald-600" /> Products & SKUs
+                </div>
+                <span className="text-[9px] text-gray-400 font-semibold lowercase">tap to insert</span>
               </div>
               {matchingSkus.map((sku) => (
                 <button
@@ -2201,13 +2236,17 @@ export default function AiAssistantDrawer({
                       <Package className="w-3.5 h-3.5" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-bold text-gray-900 truncate">{sku.name}</p>
-                      <p className="text-[10px] text-gray-400">{sku.category || 'Water'}</p>
+                      <p className="text-xs font-bold text-gray-900 truncate">{sku.label || sku.name}</p>
+                      <p className="text-[10px] text-gray-400">{sku.category || `${sku.brand} • ${sku.unit}`}</p>
                     </div>
                   </div>
-                  {sku.price > 0 && (
+                  {sku.price > 0 ? (
                     <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
                       ₹{sku.price}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-medium text-gray-400 shrink-0">
+                      Standard
                     </span>
                   )}
                 </button>

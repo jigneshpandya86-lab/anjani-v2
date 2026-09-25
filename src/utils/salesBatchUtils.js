@@ -1,4 +1,5 @@
 import { DEFAULT_SKU, getSkuMeta } from '../constants/skus'
+import { getRecentSkuPrice } from './orderUtils'
 
 /**
  * Checks if a customer name represents an unknown, walk-in, or retail customer.
@@ -21,7 +22,7 @@ export function isRetailCustomer(rawName) {
  * @param {Array} clients - Array of existing customer documents
  * @returns {Array} Enriched and consolidated sales array
  */
-export function consolidateRetailSales(rawSales = [], clients = []) {
+export function consolidateRetailSales(rawSales = [], clients = [], orders = []) {
   if (!Array.isArray(rawSales) || rawSales.length === 0) return []
 
   const namedSales = []
@@ -60,6 +61,9 @@ export function consolidateRetailSales(rawSales = [], clients = []) {
       let rate = Number(it.rate) || 0
       if (rate <= 0 && matched) {
         rate = Number(matched.skuRates?.[meta.label] ?? matched.rate ?? 0)
+      }
+      if (rate <= 0 && Array.isArray(orders) && orders.length > 0) {
+        rate = getRecentSkuPrice(meta.label, orders, matched?.id)
       }
       return {
         sku: meta.label,
@@ -116,6 +120,9 @@ export function consolidateRetailSales(rawSales = [], clients = []) {
         let rate = Number(it.rate) || 0
         if (rate <= 0 && matchedRetail) {
           rate = Number(matchedRetail.skuRates?.[meta.label] ?? matchedRetail.rate ?? 0)
+        }
+        if (rate <= 0 && Array.isArray(orders) && orders.length > 0) {
+          rate = getRecentSkuPrice(meta.label, orders, matchedRetail?.id)
         }
 
         const effectiveRate = rate > 0 ? rate : 0

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { getSkuMeta } from '../constants/skus'
 import { isRetailCustomer, consolidateRetailSales } from '../utils/salesBatchUtils'
+import { getRecentSkuPrice } from '../utils/orderUtils'
 
 describe('Retail Sales Batch Normalization', () => {
   const mockClients = [
@@ -201,5 +202,52 @@ describe('Retail Sales Batch Normalization', () => {
 
     // Total amount: (10 * 120) + (5 * 125) = 1200 + 625 = 1825
     expect(retailOrder.totalAmount).toBe(1825)
+  })
+
+  it('populates SKU price from recent orders when rate is not provided', () => {
+    const mockOrders = [
+      {
+        id: 'ord_1',
+        createdAt: '2026-09-25T10:00:00.000Z',
+        clientId: 'cli_3',
+        status: 'Delivered',
+        items: [
+          { sku: 'Bailey 500ml', qty: 10, rate: 85 },
+          { sku: 'Bailey 250ml', qty: 5, rate: 55 },
+        ],
+      },
+      {
+        id: 'ord_2',
+        createdAt: '2026-09-24T10:00:00.000Z',
+        clientId: 'cli_2',
+        status: 'Delivered',
+        items: [
+          { sku: 'Bailey 500ml', qty: 5, rate: 80 },
+        ],
+      },
+    ]
+
+    // 1. Test getRecentSkuPrice directly
+    const recent500Price = getRecentSkuPrice('Bailey 500ml', mockOrders)
+    expect(recent500Price).toBe(85)
+
+    const clientSpecificPrice = getRecentSkuPrice('Bailey 500ml', mockOrders, 'cli_2')
+    expect(clientSpecificPrice).toBe(80)
+
+    // 2. Test consolidateRetailSales auto-populating rate from orders
+    const rawSales = [
+      {
+        clientName: 'Walk-in Cash Customer',
+        items: [
+          { sku: 'Bailey 500ml', qty: 2 },
+        ],
+        paymentMode: 'cash',
+      },
+    ]
+
+    const consolidated = consolidateRetailSales(rawSales, mockClients, mockOrders)
+    expect(consolidated.length).toBe(1)
+    expect(consolidated[0].items[0].rate).toBe(85)
+    expect(consolidated[0].totalAmount).toBe(170)
   })
 })

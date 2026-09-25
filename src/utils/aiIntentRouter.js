@@ -11,6 +11,7 @@
 
 import { WATER_SKUS, getSkuMeta, DEFAULT_SKU } from '../constants/skus'
 import { ensureEnglishText, normalizeDigits } from './textUtils'
+import { getRecentSkuPrice } from './orderUtils'
 
 // Helper: Match SKU from text
 function matchSkuFromText(text) {
@@ -68,6 +69,9 @@ export function tryLocalIntentRoute(query, store = {}) {
       rate = parseFloat(rateMatch[1])
     } else if (matchedClient) {
       rate = Number(matchedClient.skuRates?.[sku] ?? matchedClient.rate ?? 0)
+    }
+    if (rate <= 0) {
+      rate = getRecentSkuPrice(sku, store.orders || [], matchedClient?.id)
     }
 
     let clientName = matchedClient ? matchedClient.name : ''

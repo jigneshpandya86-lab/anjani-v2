@@ -20,6 +20,7 @@ import {
   Loader2,
   Pencil,
   Trash2,
+  ChevronDown,
 } from 'lucide-react'
 
 export default function AccountsDashboard() {
@@ -39,6 +40,8 @@ export default function AccountsDashboard() {
   const [handoverModalOpen, setHandoverModalOpen] = useState(false)
   const [handoverSource, setHandoverSource] = useState('nilesh')
   const [editingEntry, setEditingEntry] = useState(null)
+  const [showPassbook, setShowPassbook] = useState(true)
+  const [showCashBreakdown, setShowCashBreakdown] = useState(false)
 
   useEffect(() => {
     const unsub = fetchAccountsSummary()
@@ -285,11 +288,23 @@ export default function AccountsDashboard() {
           </button>
         </div>
 
-        <div className="mt-2 pt-2 border-t border-white/10 grid grid-cols-2 gap-2">
+        <div
+          onClick={() => setShowCashBreakdown((prev) => !prev)}
+          className="mt-2 pt-2 border-t border-white/10 grid grid-cols-2 gap-2 cursor-pointer select-none group"
+          title="Click to view/hide individual account breakdown"
+        >
           <div>
-            <span className="text-[9px] font-black uppercase text-white/60 tracking-wider block">
-              Staff Cash
-            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-[9px] font-black uppercase text-white/60 tracking-wider block">
+                Staff Cash
+              </span>
+              <ChevronDown
+                size={11}
+                className={`text-white/60 transition-transform duration-200 ${
+                  showCashBreakdown ? 'rotate-180' : ''
+                }`}
+              />
+            </div>
             <p className="text-lg font-black text-amber-300 leading-tight">
               ₹{totalStaffCash.toLocaleString('en-IN')}
             </p>
@@ -303,6 +318,35 @@ export default function AccountsDashboard() {
             </p>
           </div>
         </div>
+
+        {showCashBreakdown && (
+          <div className="mt-2 pt-2 border-t border-white/15 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs animate-in fade-in">
+            <div className="bg-white/10 rounded-xl p-2">
+              <span className="text-[9px] font-bold uppercase text-white/70 block">Nilesh (Cash)</span>
+              <span className="font-black text-amber-200 text-sm">
+                ₹{(Number(accountsSummary?.nilesh) || 0).toLocaleString('en-IN')}
+              </span>
+            </div>
+            <div className="bg-white/10 rounded-xl p-2">
+              <span className="text-[9px] font-bold uppercase text-white/70 block">Hiteshbhai (Cash)</span>
+              <span className="font-black text-amber-200 text-sm">
+                ₹{(Number(accountsSummary?.hiteshbhai) || 0).toLocaleString('en-IN')}
+              </span>
+            </div>
+            <div className="bg-white/10 rounded-xl p-2">
+              <span className="text-[9px] font-bold uppercase text-white/70 block">Counter Drawer</span>
+              <span className="font-black text-emerald-200 text-sm">
+                ₹{(Number(accountsSummary?.counter) || 0).toLocaleString('en-IN')}
+              </span>
+            </div>
+            <div className="bg-white/10 rounded-xl p-2">
+              <span className="text-[9px] font-bold uppercase text-white/70 block">Bank Account</span>
+              <span className="font-black text-sky-200 text-sm">
+                ₹{(Number(accountsSummary?.bank) || 0).toLocaleString('en-IN')}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ─── 4 Account Cards (Compact Grid) ─── */}
@@ -316,7 +360,10 @@ export default function AccountsDashboard() {
             <button
               key={acc.id}
               type="button"
-              onClick={() => setSelectedAccountId(acc.id)}
+              onClick={() => {
+                setSelectedAccountId(acc.id)
+                setShowPassbook(true)
+              }}
               className={`p-2 rounded-xl border transition-all text-left flex flex-col justify-between ${
                 isSelected
                   ? 'border-[#ff9900] bg-orange-50/70 shadow-xs ring-1 ring-[#ff9900]'
@@ -381,17 +428,33 @@ export default function AccountsDashboard() {
             </button>
           </div>
 
-          {/* 3-metric compact totals */}
-          <div className="flex items-center gap-1.5 text-[10px] font-black shrink-0">
-            <span className="text-emerald-600">+{totals.collections.toLocaleString('en-IN')}</span>
-            <span className="text-gray-300">|</span>
-            <span className="text-red-500">-{totals.expenses.toLocaleString('en-IN')}</span>
-            <span className="text-gray-300">|</span>
-            <span className="text-blue-600">-{totals.handovers.toLocaleString('en-IN')}</span>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* 3-metric compact totals */}
+            <div className="flex items-center gap-1.5 text-[10px] font-black shrink-0">
+              <span className="text-emerald-600">+{totals.collections.toLocaleString('en-IN')}</span>
+              <span className="text-gray-300">|</span>
+              <span className="text-red-500">-{totals.expenses.toLocaleString('en-IN')}</span>
+              <span className="text-gray-300">|</span>
+              <span className="text-blue-600">-{totals.handovers.toLocaleString('en-IN')}</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowPassbook((prev) => !prev)}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-[10px] font-bold text-gray-600 cursor-pointer transition-all"
+            >
+              <span>{showPassbook ? 'Hide' : 'Open'}</span>
+              <ChevronDown
+                size={12}
+                className={`transition-transform duration-200 ${showPassbook ? 'rotate-180' : ''}`}
+              />
+            </button>
           </div>
         </div>
 
-        {/* Compact Filters */}
+        {showPassbook && (
+          <>
+            {/* Compact Filters */}
         <div className="flex items-center justify-between gap-1">
           <div className="flex items-center gap-1 overflow-x-auto">
             {[
@@ -501,6 +564,8 @@ export default function AccountsDashboard() {
             })
           )}
         </div>
+          </>
+        )}
       </div>
 
       {/* Cash Handover Modal */}

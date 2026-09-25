@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   Target,
   Loader2,
+  ChevronDown,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useClientStore } from '../store/clientStore'
@@ -69,80 +70,126 @@ function SchedulerCard({
   onToggleDay,
   selectedDays,
   title,
+  children,
 }) {
+  const [isOpen, setIsOpen] = useState(false)
+
+  const daysSummary =
+    selectedDays.length === 7
+      ? 'Daily'
+      : selectedDays.length === 0
+      ? 'No days'
+      : selectedDays
+          .map((d) => DAYS_OF_WEEK.find((w) => w.value === d)?.label)
+          .filter(Boolean)
+          .join(', ')
+
+  const timeSummary = `${String(hour % 12 || 12).padStart(2, '0')}:00 ${hour >= 12 ? 'PM' : 'AM'}`
+
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-2.5 px-3.5 shadow-sm">
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(210px,1fr)_130px_minmax(230px,1fr)_auto] md:items-center">
-        <div className="flex items-center gap-2 border-b border-gray-100 pb-1.5 md:border-b-0 md:pb-0">
+    <section className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-xs transition-all">
+      <div
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="p-3 bg-white hover:bg-gray-50 flex items-center justify-between gap-2 cursor-pointer select-none transition-colors border-b border-gray-100"
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
           <BellRing className={`${iconColor} h-4 w-4 shrink-0`} />
-          <div>
-            <h3 className="text-xs font-bold leading-tight text-gray-800">{title}</h3>
-            {!enabled && <p className="mt-0.5 text-[11px] italic text-gray-400">{inactiveText}</p>}
+          <div className="min-w-0">
+            <h3 className="text-xs font-bold text-gray-800 truncate">{title}</h3>
+            <p className="text-[10px] text-gray-500 font-medium truncate">
+              {enabled ? `${timeSummary} • ${daysSummary}` : inactiveText}
+            </p>
           </div>
         </div>
 
-        <div className={`${enabled ? '' : 'opacity-50'} min-w-0`}>
-          <label
-            htmlFor={id}
-            className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500"
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggle()
+            }}
+            className="cursor-pointer"
+            title={enabled ? 'Disable' : 'Enable'}
           >
-            <Clock className="h-3 w-3" />
-            {hourLabel}
-          </label>
-          <select
-            id={id}
-            value={hour}
-            onChange={(e) => onHourChange(Number(e.target.value))}
-            disabled={!enabled}
-            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-orange-400 disabled:cursor-not-allowed"
+            {enabled ? (
+              <ToggleRight className="h-6 w-6 text-green-500" />
+            ) : (
+              <ToggleLeft className="h-6 w-6 text-gray-400" />
+            )}
+          </button>
+          <span
+            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+              enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-500'
+            }`}
           >
-            {HOUR_OPTIONS.map((optionHour) => (
-              <option key={optionHour} value={optionHour}>
-                {String(optionHour).padStart(2, '0')}:00 {optionHour >= 12 ? 'PM' : 'AM'}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className={`${enabled ? '' : 'opacity-50'}`}>
-          <span className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
-            <Calendar className="h-3 w-3" />
-            Trigger Weekdays
+            {enabled ? 'Active' : 'Off'}
           </span>
-          <div className="flex flex-wrap gap-1">
-            {DAYS_OF_WEEK.map((day) => {
-              const isSelected = selectedDays.includes(day.value)
-              return (
-                <button
-                  key={day.value}
-                  type="button"
-                  onClick={() => onToggleDay(day.value)}
-                  disabled={!enabled}
-                  className={`min-w-8 rounded-md border px-2 py-0.5 text-[11px] font-bold transition-all ${
-                    isSelected
-                      ? 'border-orange-600 bg-orange-500 text-white'
-                      : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
-                  } ${enabled ? 'cursor-pointer' : 'cursor-not-allowed'}`}
-                >
-                  {day.label}
-                </button>
-              )
-            })}
-          </div>
+          <ChevronDown
+            size={16}
+            className={`text-gray-400 transition-transform duration-200 ${
+              isOpen ? 'rotate-180' : ''
+            }`}
+          />
         </div>
-
-        <button
-          type="button"
-          onClick={onToggle}
-          className="justify-self-end text-gray-600 focus:outline-none"
-        >
-          {enabled ? (
-            <ToggleRight className="h-8 w-8 text-green-500" />
-          ) : (
-            <ToggleLeft className="h-8 w-8 text-gray-400" />
-          )}
-        </button>
       </div>
+
+      {isOpen && (
+        <div className="p-3 bg-gray-50/50 space-y-3 animate-in fade-in">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+            <div className={`${enabled ? '' : 'opacity-50'}`}>
+              <label
+                htmlFor={id}
+                className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500"
+              >
+                <Clock className="h-3 w-3" />
+                {hourLabel}
+              </label>
+              <select
+                id={id}
+                value={hour}
+                onChange={(e) => onHourChange(Number(e.target.value))}
+                disabled={!enabled}
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-[#ff9900] disabled:cursor-not-allowed"
+              >
+                {HOUR_OPTIONS.map((optionHour) => (
+                  <option key={optionHour} value={optionHour}>
+                    {String(optionHour).padStart(2, '0')}:00 {optionHour >= 12 ? 'PM' : 'AM'}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className={`${enabled ? '' : 'opacity-50'}`}>
+              <span className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                <Calendar className="h-3 w-3" />
+                Trigger Weekdays
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {DAYS_OF_WEEK.map((day) => {
+                  const isSelected = selectedDays.includes(day.value)
+                  return (
+                    <button
+                      key={day.value}
+                      type="button"
+                      onClick={() => onToggleDay(day.value)}
+                      disabled={!enabled}
+                      className={`min-w-8 rounded-md border px-2 py-0.5 text-[11px] font-bold transition-all ${
+                        isSelected
+                          ? 'border-[#131921] bg-[#131921] text-white'
+                          : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
+                      } ${enabled ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+                    >
+                      {day.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+          {children}
+        </div>
+      )}
     </section>
   )
 }
@@ -173,6 +220,9 @@ export default function SettingsTab() {
   const [payeeName, setPayeeName] = useState(DEFAULT_PAYEE_NAME)
   const [savingPayment, setSavingPayment] = useState(false)
   const [processingFile, setProcessingFile] = useState(false)
+  const [showUpiDetails, setShowUpiDetails] = useState(false)
+  const [showAiAdvanced, setShowAiAdvanced] = useState(false)
+  const [showAiArchitecture, setShowAiArchitecture] = useState(false)
   const fileInputRef = useRef(null)
 
   // Defaulter Reminder Schedule State
@@ -748,38 +798,70 @@ export default function SettingsTab() {
 
               {/* Right Column: Details & Information */}
               <div className="space-y-4">
-                <div>
-                  <label htmlFor="upi-id-input" className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1">
-                    UPI ID / VPA (Optional)
-                  </label>
-                  <div className="relative">
-                    <CreditCard className="absolute left-3.5 top-3.5 w-4 h-4 text-gray-400" />
-                    <input
-                      id="upi-id-input"
-                      type="text"
-                      placeholder="e.g. 9925997750@okbizaxis"
-                      value={upiId}
-                      onChange={(e) => setUpiId(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#ff9900] focus:bg-white"
+                <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-xs">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setShowUpiDetails((prev) => !prev)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') setShowUpiDetails((prev) => !prev)
+                    }}
+                    className="p-3 bg-gray-50/70 hover:bg-gray-100/70 flex items-center justify-between cursor-pointer select-none transition-colors border-b border-gray-100"
+                  >
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-orange-500" />
+                      <div>
+                        <h4 className="text-xs font-bold text-gray-800">Custom UPI & Payee Details (Optional)</h4>
+                        <p className="text-[10px] text-gray-500 font-medium truncate">
+                          {upiId ? `${payeeName || DEFAULT_PAYEE_NAME} • ${upiId}` : 'Tap to configure custom UPI handle & payee name'}
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronDown
+                      size={16}
+                      className={`text-gray-400 transition-transform duration-200 ${
+                        showUpiDetails ? 'rotate-180' : ''
+                      }`}
                     />
                   </div>
-                  <p className="text-[11px] text-gray-500 mt-1">
-                    Printed below the QR code on the invoice so clients can copy or verify your handle.
-                  </p>
-                </div>
 
-                <div>
-                  <label htmlFor="payee-name-input" className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1">
-                    Business / Payee Name
-                  </label>
-                  <input
-                    id="payee-name-input"
-                    type="text"
-                    placeholder="Annapurna Foods"
-                    value={payeeName}
-                    onChange={(e) => setPayeeName(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#ff9900] focus:bg-white"
-                  />
+                  {showUpiDetails && (
+                    <div className="p-3.5 bg-white space-y-3.5 animate-in fade-in">
+                      <div>
+                        <label htmlFor="upi-id-input" className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1">
+                          UPI ID / VPA (Optional)
+                        </label>
+                        <div className="relative">
+                          <CreditCard className="absolute left-3.5 top-3.5 w-4 h-4 text-gray-400" />
+                          <input
+                            id="upi-id-input"
+                            type="text"
+                            placeholder="e.g. 9925997750@okbizaxis"
+                            value={upiId}
+                            onChange={(e) => setUpiId(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#ff9900] focus:bg-white"
+                          />
+                        </div>
+                        <p className="text-[11px] text-gray-500 mt-1">
+                          Printed below the QR code on the invoice so clients can copy or verify your handle.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label htmlFor="payee-name-input" className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1">
+                          Business / Payee Name
+                        </label>
+                        <input
+                          id="payee-name-input"
+                          type="text"
+                          placeholder="Annapurna Foods"
+                          value={payeeName}
+                          onChange={(e) => setPayeeName(e.target.value)}
+                          className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#ff9900] focus:bg-white"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Info Alert */}
@@ -885,36 +967,36 @@ export default function SettingsTab() {
               onToggleDay={toggleGreetingsDay}
               selectedDays={greetingsDays}
               title="Daily Birthday & Anniversary Greetings"
-            />
-
-            {greetingsEnabled && (
-              <div className="space-y-2 rounded-lg border border-emerald-100 bg-emerald-50/50 p-2.5 text-xs text-gray-700">
-                <div>
-                  <label htmlFor="bdayTemplate" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                    Birthday SMS Template
-                  </label>
-                  <textarea
-                    id="bdayTemplate"
-                    rows={2}
-                    value={greetingsBirthdayTemplate}
-                    onChange={(e) => setGreetingsBirthdayTemplate(e.target.value)}
-                    className="w-full rounded-md border border-gray-300 bg-white p-1.5 text-xs outline-none focus:ring-2 focus:ring-emerald-400"
-                  />
+            >
+              {greetingsEnabled && (
+                <div className="space-y-2 rounded-lg border border-emerald-100 bg-emerald-50/50 p-2.5 text-xs text-gray-700">
+                  <div>
+                    <label htmlFor="bdayTemplate" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                      Birthday SMS Template
+                    </label>
+                    <textarea
+                      id="bdayTemplate"
+                      rows={2}
+                      value={greetingsBirthdayTemplate}
+                      onChange={(e) => setGreetingsBirthdayTemplate(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 bg-white p-1.5 text-xs outline-none focus:ring-2 focus:ring-emerald-400"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="annivTemplate" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                      Anniversary SMS Template
+                    </label>
+                    <textarea
+                      id="annivTemplate"
+                      rows={2}
+                      value={greetingsAnniversaryTemplate}
+                      onChange={(e) => setGreetingsAnniversaryTemplate(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 bg-white p-1.5 text-xs outline-none focus:ring-2 focus:ring-emerald-400"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label htmlFor="annivTemplate" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                    Anniversary SMS Template
-                  </label>
-                  <textarea
-                    id="annivTemplate"
-                    rows={2}
-                    value={greetingsAnniversaryTemplate}
-                    onChange={(e) => setGreetingsAnniversaryTemplate(e.target.value)}
-                    className="w-full rounded-md border border-gray-300 bg-white p-1.5 text-xs outline-none focus:ring-2 focus:ring-emerald-400"
-                  />
-                </div>
-              </div>
-            )}
+              )}
+            </SchedulerCard>
 
             <SchedulerCard
               enabled={leadDiscoveryEnabled}
@@ -928,136 +1010,136 @@ export default function SettingsTab() {
               onToggleDay={toggleLeadDiscoveryDay}
               selectedDays={leadDiscoveryDays}
               title="Bailey Water Key Customer Radar (Corridors & Schedule)"
-            />
-
-            {leadDiscoveryEnabled && (
-              <div className="space-y-3 rounded-2xl border border-blue-200 bg-blue-50/50 p-3 text-xs text-gray-700 shadow-xs">
-                {/* Target Corridors for Bailey Water */}
-                <div className="rounded-xl border border-blue-200 bg-white p-3 space-y-2.5">
-                  <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-gray-100">
-                    <div className="flex items-center gap-1.5">
-                      <Target className="h-4 w-4 text-blue-600" />
-                      <span className="font-black text-xs text-blue-950 uppercase tracking-wide">
-                        Target Corridors (Vadodara)
+            >
+              {leadDiscoveryEnabled && (
+                <div className="space-y-3 rounded-2xl border border-blue-200 bg-blue-50/50 p-3 text-xs text-gray-700 shadow-xs">
+                  {/* Target Corridors for Bailey Water */}
+                  <div className="rounded-xl border border-blue-200 bg-white p-3 space-y-2.5">
+                    <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-gray-100">
+                      <div className="flex items-center gap-1.5">
+                        <Target className="h-4 w-4 text-blue-600" />
+                        <span className="font-black text-xs text-blue-950 uppercase tracking-wide">
+                          Target Corridors (Vadodara)
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-black uppercase text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                        Product: Bailey Packaged Drinking Water
                       </span>
                     </div>
-                    <span className="text-[10px] font-black uppercase text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
-                      Product: Bailey Packaged Drinking Water
-                    </span>
-                  </div>
 
-                  <p className="text-[11px] text-gray-600 font-medium leading-relaxed">
-                    Select the commercial junctions & corridors where the system discovers potential buyers:
-                  </p>
+                    <p className="text-[11px] text-gray-600 font-medium leading-relaxed">
+                      Select the commercial junctions & corridors where the system discovers potential buyers:
+                    </p>
 
-                  {/* Corridors Pill Toggles */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {ALL_BAILEY_CORRIDORS.map((c) => {
-                      const isSelected = selectedCorridors.includes(c)
-                      return (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => toggleCorridor(c)}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition-all flex items-center gap-1 cursor-pointer ${
-                            isSelected
-                              ? 'bg-blue-600 text-white shadow-xs'
-                              : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
-                          }`}
-                        >
-                          <MapPin size={11} className={isSelected ? 'text-white' : 'text-gray-400'} />
-                          {c}
-                        </button>
-                      )
-                    })}
-                  </div>
-
-                  {/* Target Categories */}
-                  <div className="pt-2 border-t border-gray-100">
-                    <span className="text-[10px] font-black uppercase tracking-wide text-gray-500 block mb-1.5">
-                      Target Customer Segments (HoReCa & Snacks):
-                    </span>
+                    {/* Corridors Pill Toggles */}
                     <div className="flex flex-wrap gap-1.5">
-                      {ALL_BAILEY_CATEGORIES.map((cat) => {
-                        const isSelected = selectedCategories.includes(cat)
+                      {ALL_BAILEY_CORRIDORS.map((c) => {
+                        const isSelected = selectedCorridors.includes(c)
                         return (
                           <button
-                            key={cat}
+                            key={c}
                             type="button"
-                            onClick={() => toggleCategory(cat)}
-                            className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                            onClick={() => toggleCorridor(c)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition-all flex items-center gap-1 cursor-pointer ${
                               isSelected
-                                ? 'bg-emerald-600 text-white shadow-xs'
+                                ? 'bg-blue-600 text-white shadow-xs'
                                 : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
                             }`}
                           >
-                            {cat}
+                            <MapPin size={11} className={isSelected ? 'text-white' : 'text-gray-400'} />
+                            {c}
                           </button>
                         )
                       })}
                     </div>
-                  </div>
 
-                  <div className="pt-2 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div>
-                      <label
-                        htmlFor="leadDiscoveryModeSelect"
-                        className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-500"
-                      >
-                        Radar Aggressiveness
-                      </label>
-                      <select
-                        id="leadDiscoveryModeSelect"
-                        value={leadDiscoveryMode}
-                        onChange={(e) => setLeadDiscoveryMode(e.target.value)}
-                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-bold outline-none focus:ring-1 focus:ring-blue-500"
-                      >
-                        <option value="auto">Auto (Balanced Scan)</option>
-                        <option value="aggressive">High Volume (12+ Outlets)</option>
-                        <option value="normal">Normal (5 Outlets)</option>
-                      </select>
+                    {/* Target Categories */}
+                    <div className="pt-2 border-t border-gray-100">
+                      <span className="text-[10px] font-black uppercase tracking-wide text-gray-500 block mb-1.5">
+                        Target Customer Segments (HoReCa & Snacks):
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {ALL_BAILEY_CATEGORIES.map((cat) => {
+                          const isSelected = selectedCategories.includes(cat)
+                          return (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => toggleCategory(cat)}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-emerald-600 text-white shadow-xs'
+                                  : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
+                              }`}
+                            >
+                              {cat}
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
 
-                    <div className="flex flex-col justify-end">
-                      <div className="text-[10px] text-gray-500 bg-gray-50 p-2 rounded-lg border border-gray-200">
-                        {leadDiscoveryStats?.lastRunDate ? (
-                          <p>
-                            Last run: <strong>{leadDiscoveryStats.lastRunDate}</strong> ({leadDiscoveryStats.lastRunCount || 0} leads added)
-                          </p>
-                        ) : (
-                          <p className="italic">Scheduled automated weekly scan or run on-demand below.</p>
-                        )}
+                    <div className="pt-2 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label
+                          htmlFor="leadDiscoveryModeSelect"
+                          className="mb-1 block text-[10px] font-black uppercase tracking-wide text-gray-500"
+                        >
+                          Radar Aggressiveness
+                        </label>
+                        <select
+                          id="leadDiscoveryModeSelect"
+                          value={leadDiscoveryMode}
+                          onChange={(e) => setLeadDiscoveryMode(e.target.value)}
+                          className="w-full rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-bold outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                          <option value="auto">Auto (Balanced Scan)</option>
+                          <option value="aggressive">High Volume (12+ Outlets)</option>
+                          <option value="normal">Normal (5 Outlets)</option>
+                        </select>
+                      </div>
+
+                      <div className="flex flex-col justify-end">
+                        <div className="text-[10px] text-gray-500 bg-gray-50 p-2 rounded-lg border border-gray-200">
+                          {leadDiscoveryStats?.lastRunDate ? (
+                            <p>
+                              Last run: <strong>{leadDiscoveryStats.lastRunDate}</strong> ({leadDiscoveryStats.lastRunCount || 0} leads added)
+                            </p>
+                          ) : (
+                            <p className="italic">Scheduled automated weekly scan or run on-demand below.</p>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Instant Action Bar */}
-                <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
-                  <span className="text-[11px] font-semibold text-gray-600">
-                    Need fresh customer contacts right now?
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleSearchBaileyLeadsNow}
-                    disabled={isSearchingLeads}
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wide bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white flex items-center gap-1.5 shadow-xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                  >
-                    {isSearchingLeads ? (
-                      <>
-                        <Loader2 size={13} className="animate-spin" />
-                        Searching Corridors…
-                      </>
-                    ) : (
-                      <>
-                        <Zap size={13} className="text-amber-300" />
-                        Search Potential Customers Now
-                      </>
-                    )}
-                  </button>
+                  {/* Instant Action Bar */}
+                  <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
+                    <span className="text-[11px] font-semibold text-gray-600">
+                      Need fresh customer contacts right now?
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSearchBaileyLeadsNow}
+                      disabled={isSearchingLeads}
+                      className="px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wide bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white flex items-center gap-1.5 shadow-xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                    >
+                      {isSearchingLeads ? (
+                        <>
+                          <Loader2 size={13} className="animate-spin" />
+                          Searching Corridors…
+                        </>
+                      ) : (
+                        <>
+                          <Zap size={13} className="text-amber-300" />
+                          Search Potential Customers Now
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </SchedulerCard>
 
             <div className="flex justify-end border-t pt-2">
               <button
@@ -1200,69 +1282,127 @@ export default function SettingsTab() {
               </div>
             </div>
 
-            {/* Token & Quota Settings */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-gray-100">
-              <div>
-                <label htmlFor="ai-max-tokens" className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1">
-                  Max Output Tokens Limit
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    id="ai-max-tokens"
-                    type="range"
-                    min="200"
-                    max="1500"
-                    step="50"
-                    value={aiMaxTokens}
-                    onChange={(e) => setAiMaxTokens(Number(e.target.value))}
-                    className="flex-1 accent-[#ff9900]"
-                  />
-                  <span className="px-2.5 py-1 bg-gray-100 text-gray-900 rounded-md font-mono text-xs font-black min-w-[65px] text-center border">
-                    {aiMaxTokens} tok
-                  </span>
+            {/* Click to Open: Advanced Token & Quota Settings */}
+            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-xs">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setShowAiAdvanced((prev) => !prev)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') setShowAiAdvanced((prev) => !prev)
+                }}
+                className="p-3 bg-gray-50/70 hover:bg-gray-100/70 flex items-center justify-between cursor-pointer select-none transition-colors border-b border-gray-100"
+              >
+                <div className="flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-orange-500" />
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-800">Advanced Token & Fallback Settings</h4>
+                    <p className="text-[10px] text-gray-500 font-medium">
+                      Limit: {aiMaxTokens} tokens • Fallback: {aiFallbackModel}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-[10px] text-gray-500 mt-1">
-                  Prevents runaway token generation on verbose queries. Default is 600 tokens.
-                </p>
+                <ChevronDown
+                  size={16}
+                  className={`text-gray-400 transition-transform duration-200 ${
+                    showAiAdvanced ? 'rotate-180' : ''
+                  }`}
+                />
               </div>
 
-              <div>
-                <label htmlFor="ai-fallback-model" className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1">
-                  Automatic Fallback Model
-                </label>
-                <input
-                  id="ai-fallback-model"
-                  type="text"
-                  value={aiFallbackModel}
-                  onChange={(e) => setAiFallbackModel(e.target.value)}
-                  placeholder="gemini-2.5-flash"
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#ff9900] focus:bg-white"
-                />
-                <p className="text-[10px] text-gray-500 mt-1">
-                  If the active model experiences rate limits or temporary downtime, this model is called automatically.
-                </p>
-              </div>
+              {showAiAdvanced && (
+                <div className="p-3.5 bg-white space-y-3.5 animate-in fade-in">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="ai-max-tokens" className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1">
+                        Max Output Tokens Limit
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          id="ai-max-tokens"
+                          type="range"
+                          min="200"
+                          max="1500"
+                          step="50"
+                          value={aiMaxTokens}
+                          onChange={(e) => setAiMaxTokens(Number(e.target.value))}
+                          className="flex-1 accent-[#ff9900]"
+                        />
+                        <span className="px-2.5 py-1 bg-gray-100 text-gray-900 rounded-md font-mono text-xs font-black min-w-[65px] text-center border">
+                          {aiMaxTokens} tok
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-gray-500 mt-1">
+                        Prevents runaway token generation on verbose queries. Default is 600 tokens.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label htmlFor="ai-fallback-model" className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-1">
+                        Automatic Fallback Model
+                      </label>
+                      <input
+                        id="ai-fallback-model"
+                        type="text"
+                        value={aiFallbackModel}
+                        onChange={(e) => setAiFallbackModel(e.target.value)}
+                        placeholder="gemini-2.5-flash"
+                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#ff9900] focus:bg-white"
+                      />
+                      <p className="text-[10px] text-gray-500 mt-1">
+                        If the active model experiences rate limits or temporary downtime, this model is called automatically.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Token Economics & Architecture Highlights */}
-            <div className="p-4 rounded-xl bg-gradient-to-br from-amber-50/70 to-orange-50/40 border border-amber-200 space-y-2.5">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider">
-                  Cost & Zero-Token Optimizer Active
-                </h4>
+            {/* Click to Open: Token Economics & Architecture Highlights */}
+            <div className="rounded-xl border border-amber-200 bg-white overflow-hidden shadow-xs">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setShowAiArchitecture((prev) => !prev)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') setShowAiArchitecture((prev) => !prev)
+                }}
+                className="p-3 bg-amber-50/50 hover:bg-amber-100/50 flex items-center justify-between cursor-pointer select-none transition-colors border-b border-amber-100"
+              >
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                  <div>
+                    <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+                      Cost & Zero-Token Optimizer Specs
+                    </h4>
+                    <p className="text-[10px] text-gray-500 font-medium">
+                      Zero-token router, canvas downsampler & strict SKU validation
+                    </p>
+                  </div>
+                </div>
+                <ChevronDown
+                  size={16}
+                  className={`text-gray-400 transition-transform duration-200 ${
+                    showAiArchitecture ? 'rotate-180' : ''
+                  }`}
+                />
               </div>
-              <ul className="text-[11px] text-gray-700 space-y-1.5 list-disc pl-4">
-                <li>
-                  <strong>Zero-Token Local Intent Router:</strong> 80% of routine questions (stock balance, today&apos;s open deliveries, customer outstanding balances) are resolved directly in client memory at <strong>0 tokens (100% free)</strong>.
-                </li>
-                <li>
-                  <strong>Client-Side Canvas Downsampler:</strong> High-res 12MP camera photos are automatically downsampled to 1280px (~150KB) in the browser before sending, capping multimodal vision tokens at ~258 tokens per scan.
-                </li>
-                <li>
-                  <strong>Strict SKU Schema Validation:</strong> AI only extracts Annapurna&apos;s 5 exact warehouse SKUs (<code>Anjani 200ml</code>, <code>Bailey 250ml</code>, <code>Bailey 500ml</code>, <code>Bailey 1 Liter</code>, <code>Bailey 2 Liter</code>) into an interactive inward card.
-                </li>
-              </ul>
+
+              {showAiArchitecture && (
+                <div className="p-4 bg-gradient-to-br from-amber-50/70 to-orange-50/40 space-y-2.5 animate-in fade-in">
+                  <ul className="text-[11px] text-gray-700 space-y-1.5 list-disc pl-4">
+                    <li>
+                      <strong>Zero-Token Local Intent Router:</strong> 80% of routine questions (stock balance, today&apos;s open deliveries, customer outstanding balances) are resolved directly in client memory at <strong>0 tokens (100% free)</strong>.
+                    </li>
+                    <li>
+                      <strong>Client-Side Canvas Downsampler:</strong> High-res 12MP camera photos are automatically downsampled to 1280px (~150KB) in the browser before sending, capping multimodal vision tokens at ~258 tokens per scan.
+                    </li>
+                    <li>
+                      <strong>Strict SKU Schema Validation:</strong> AI only extracts Annapurna&apos;s 5 exact warehouse SKUs (<code>Anjani 200ml</code>, <code>Bailey 250ml</code>, <code>Bailey 500ml</code>, <code>Bailey 1 Liter</code>, <code>Bailey 2 Liter</code>) into an interactive inward card.
+                    </li>
+                  </ul>
+                </div>
+              )}
             </div>
 
             {/* Footer buttons */}
