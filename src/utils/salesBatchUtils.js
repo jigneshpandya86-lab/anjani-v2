@@ -1,5 +1,6 @@
 import { DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 import { getRecentSkuPrice } from './orderUtils'
+import { findMatchingClient } from './clientMatchingUtils'
 
 /**
  * Checks if a customer name represents an unknown, walk-in, or retail customer.
@@ -43,13 +44,10 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [])
   // 1. Process regular named customers (each gets their own distinct order)
   namedSales.forEach((sale, idx) => {
     const rawName = String(sale.clientName || '').trim()
-    const matched = clients.find(
-      (c) =>
-        (c.name && c.name.toLowerCase().trim() === rawName.toLowerCase().trim()) ||
-        (c.mobile &&
-          sale.mobile &&
-          String(c.mobile).replace(/\D/g, '') === String(sale.mobile).replace(/\D/g, ''))
-    )
+    const matchResult = findMatchingClient(rawName, clients, { mobile: sale.mobile })
+    const matched = matchResult?.client || null
+    const canonicalClientName = matched?.name || rawName
+    const matchType = matchResult?.matchType || null
 
     const rawItems =
       Array.isArray(sale.items) && sale.items.length > 0
@@ -78,9 +76,11 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [])
 
     enrichedSales.push({
       id: sale.id || `sale-named-${Date.now()}-${idx}`,
-      clientName: rawName,
+      clientName: canonicalClientName,
+      rawClientName: rawName !== canonicalClientName ? rawName : undefined,
       clientId: matched?.id || null,
       isMatched: !!matched,
+      matchType,
       mobile: sale.mobile || matched?.mobile || '',
       paymentMode: ['cash', 'online', 'credit'].includes(sale.paymentMode)
         ? sale.paymentMode

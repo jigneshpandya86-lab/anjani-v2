@@ -12,6 +12,7 @@
 import { WATER_SKUS, getSkuMeta, DEFAULT_SKU } from '../constants/skus'
 import { ensureEnglishText, normalizeDigits } from './textUtils'
 import { getRecentSkuPrice } from './orderUtils'
+import { findMatchingClient } from './clientMatchingUtils'
 
 // Helper: Match SKU from text
 function matchSkuFromText(text) {
@@ -24,17 +25,41 @@ function matchSkuFromText(text) {
   return DEFAULT_SKU
 }
 
-// Helper: Match client from text against store.clients
+// Helper: Match client from text against store.clients (with phonetic & fuzzy matching)
 function matchClientFromText(text, clients = []) {
   if (!text || !Array.isArray(clients) || clients.length === 0) return null
   const norm = text.toLowerCase()
-  // Exact or contains match (longest first)
+  // 1. Exact or contains match (longest first)
   const sorted = [...clients].sort((a, b) => (b.name?.length || 0) - (a.name?.length || 0))
   for (const c of sorted) {
     if (c.name && norm.includes(c.name.toLowerCase().trim())) {
       return c
     }
   }
+
+  // 2. Extracted candidate patterns (e.g. "order for Sandeep", "from Sandeep", "Sandeep paid 500")
+  const candidatePatterns = [
+    /(?:for|to|of|client|customer)\s+([A-Za-z0-9\s]{2,25})(?:$|\s+(?:mobile|phone|address|rate|qty|@|\d))/i,
+    /(?:from|by)\s+([A-Za-z0-9\s]{2,25})(?:$|\s+(?:via|through|cash|upi|gpay|online))/i,
+    /^([A-Za-z0-9\s]{2,20})\s+(?:paid|jama|order|bhav|rate|\d)/i,
+  ]
+  for (const pat of candidatePatterns) {
+    const m = text.match(pat)
+    if (m && m[1]) {
+      const match = findMatchingClient(m[1].trim(), clients)
+      if (match?.client) return match.client
+    }
+  }
+
+  // 3. Check word tokens against findMatchingClient (phonetic equivalence e.g. Sandeep <-> Sandip)
+  const tokens = text.replace(/[^A-Za-z0-9\s]/g, ' ').split(/\s+/).filter((t) => t.length >= 3)
+  for (const token of tokens) {
+    const match = findMatchingClient(token, clients)
+    if (match?.client && match.matchType === 'phonetic') {
+      return match.client
+    }
+  }
+
   return null
 }
 

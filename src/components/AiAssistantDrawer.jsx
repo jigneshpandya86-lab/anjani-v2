@@ -588,6 +588,7 @@ export default function AiAssistantDrawer({
 
       const response = await askAnjaniAi({
         memories: aiMemories.filter((m) => m && m.active !== false),
+        knownClients: (clients || []).map((c) => c?.name).filter(Boolean).slice(0, 150),
         text:
           query ||
           (filePayload

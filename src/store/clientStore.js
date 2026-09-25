@@ -32,6 +32,7 @@ import {
 
 export { normalizeOrderWriteData, normalizeOrderDoc, getOrderSortTime }
 import { ensureEnglishText, normalizeDigits } from '../utils/textUtils'
+import { findMatchingClient } from '../utils/clientMatchingUtils'
 
 let stockUnsubscribe = null
 let stockSubscriberCount = 0
@@ -1149,15 +1150,9 @@ export const useClientStore = create((set, get) => ({
         rawName = 'Retail'
       }
 
-      // 1. Find or create client
-      let client = currentClients.find(
-        (c) =>
-          c.name &&
-          (c.name.toLowerCase() === rawName.toLowerCase() ||
-            (c.mobile &&
-              sale.mobile &&
-              String(c.mobile).replace(/\D/g, '') === String(sale.mobile).replace(/\D/g, ''))),
-      )
+      // 1. Find or create client (with phonetic & fuzzy matching)
+      let matchResult = findMatchingClient(rawName, currentClients, { mobile: sale.mobile })
+      let client = matchResult?.client || null
 
       let clientDocId = client?.id
       let clientName = client?.name || rawName

@@ -1320,6 +1320,45 @@ function formatMemoriesForPrompt(memories = []) {
   return output.trimEnd()
 }
 
+let cachedKnownCustomerNames = null
+let cachedKnownCustomersTime = 0
+
+async function getKnownCustomerNames() {
+  const now = Date.now()
+  if (cachedKnownCustomerNames && now - cachedKnownCustomersTime < 5 * 60 * 1000) {
+    return cachedKnownCustomerNames
+  }
+  try {
+    const snap = await admin
+      .firestore()
+      .collection('customers')
+      .where('active', '!=', false)
+      .limit(300)
+      .get()
+    cachedKnownCustomerNames = snap.docs.map((d) => d.data().name).filter(Boolean)
+  } catch (e) {
+    logger.warn('Failed to load known customers in cloud function:', e.message)
+    cachedKnownCustomerNames = []
+  }
+  cachedKnownCustomersTime = now
+  return cachedKnownCustomerNames
+}
+
+function formatKnownClientsForPrompt(clientNames = []) {
+  if (!Array.isArray(clientNames) || clientNames.length === 0) return ''
+  const uniqueNames = Array.from(new Set(clientNames.filter(Boolean))).slice(0, 150)
+  if (uniqueNames.length === 0) return ''
+
+  let block = '\n\n## 👥 KNOWN EXISTING CUSTOMERS / CLIENT MASTER (STRICT REUSE & DEDUPLICATION):\n'
+  block += 'Annapurna already has these registered customers in the system:\n'
+  block += uniqueNames.map((n) => `• "${n}"`).join(', ') + '\n\n'
+  block += 'MANDATORY CLIENT MATCHING & PHONETIC DEDUPLICATION RULES:\n'
+  block += '1. PHONETIC & SPELLING VARIATION MATCHING: If the user dictates or writes a name that is phonetically or functionally identical to any existing customer above (e.g., "Sandeep" vs "Sandip", "Pradeep" vs "Pradip", "Rohit" vs "Rohitbhai", "Jay Ambe" vs "Jay Ambe Provision Store"), you MUST output the EXACT canonical name from the KNOWN EXISTING CUSTOMERS list above.\n'
+  block += '2. NEVER CREATE A SLIGHTLY DIFFERENT SPELLING: Do NOT invent or output "Sandeep" if "Sandip" exists in the known customer list. Output "Sandip".\n'
+  block += '3. Only output a new customer name if the business or person is genuinely new and does not match any existing customer above.\n'
+  return block
+}
+
 exports.askAnjaniAi = onCall(async (request) => {
   if (!request.auth) {
     throw new Error('Authentication required')
@@ -1331,6 +1370,7 @@ exports.askAnjaniAi = onCall(async (request) => {
     mimeType = 'image/jpeg',
     mode = 'auto',
     conversationHistory = [],
+    knownClients = [],
   } = request.data || {}
 
   if (!text && !imageBase64) {
@@ -1345,6 +1385,12 @@ exports.askAnjaniAi = onCall(async (request) => {
   const aiSettings = await getAiSettings()
   const activeMemories = await getAiMemories()
   const memoriesBlock = formatMemoriesForPrompt(activeMemories)
+  const clientNames =
+    Array.isArray(knownClients) && knownClients.length > 0
+      ? knownClients
+      : await getKnownCustomerNames()
+  const knownClientsBlock = formatKnownClientsForPrompt(clientNames)
+  const contextInjections = `${memoriesBlock}${knownClientsBlock}`
   const primaryModelName = aiSettings.activeModel || 'gemini-2.5-flash-lite'
   const fallbackModelName = aiSettings.fallbackModel || 'gemini-2.5-flash'
   const chatMaxTokens = Math.min(Number(aiSettings.maxOutputTokens) || 800, 1500)
@@ -1783,7 +1829,7 @@ Return strict JSON:
             mimeType: mimeType || 'image/jpeg',
           },
         },
-        { text: ocrPrompt + memoriesBlock },
+        { text: ocrPrompt + contextInjections },
       ]
 
       const res = await model.generateContent({
@@ -1939,7 +1985,7 @@ ${rawText.slice(0, 3000)}`
 
         try {
           const res = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: accountsCashPrompt + memoriesBlock }] }],
+            contents: [{ role: 'user', parts: [{ text: accountsCashPrompt + contextInjections }] }],
           })
           const rawJson = res.response.candidates[0].content.parts[0].text.trim()
           const parsedData = parseStructuredJson(rawJson)
@@ -1998,7 +2044,7 @@ User Text: ${rawText.slice(0, 1000)}`
 
         try {
           const res = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: textClientPrompt + memoriesBlock }] }],
+            contents: [{ role: 'user', parts: [{ text: textClientPrompt + contextInjections }] }],
           })
           const rawJson = res.response.candidates[0].content.parts[0].text.trim()
           const parsedData = parseStructuredJson(rawJson)
@@ -2048,7 +2094,7 @@ User Text: ${rawText.slice(0, 1000)}`
 
         try {
           const res = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: textPaymentPrompt + memoriesBlock }] }],
+            contents: [{ role: 'user', parts: [{ text: textPaymentPrompt + contextInjections }] }],
           })
           const rawJson = res.response.candidates[0].content.parts[0].text.trim()
           const parsedData = parseStructuredJson(rawJson)
@@ -2133,7 +2179,7 @@ ${rawText.slice(0, 3000)}`
 
         try {
           const res = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: textSalesPrompt + memoriesBlock }] }],
+            contents: [{ role: 'user', parts: [{ text: textSalesPrompt + contextInjections }] }],
           })
           const rawJson = res.response.candidates[0].content.parts[0].text.trim()
           const parsedData = parseStructuredJson(rawJson)
@@ -2175,7 +2221,7 @@ ACCOUNTS & CASH CUSTODY: Delivery staff Nilesh and Hiteshbhai collect cash on ro
           }))
         : []
 
-      const parts = [{ text: `${systemPrompt}${memoriesBlock}\n\nUser: ${rawText.slice(0, 500)}` }]
+      const parts = [{ text: `${systemPrompt}${contextInjections}\n\nUser: ${rawText.slice(0, 500)}` }]
 
       const res = await model.generateContent({
         contents: [...safeHistory, { role: 'user', parts }],
