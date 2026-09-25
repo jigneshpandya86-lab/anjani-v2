@@ -68,8 +68,8 @@ describe('AiAssistantDrawer', () => {
     }
   })
 
-  it('renders without crashing when closed', () => {
-    const { container } = render(
+  it('renders without crashing when closed and transitions to open', () => {
+    const { rerender } = render(
       <AiAssistantDrawer
         isOpen={false}
         onClose={() => {}}
@@ -79,7 +79,17 @@ describe('AiAssistantDrawer', () => {
         onOpenAddClient={() => {}}
       />
     )
-    expect(container).toBeDefined()
+    rerender(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+        onOpenPaymentModal={() => {}}
+        onOpenOrderModal={() => {}}
+        onOpenAddClient={() => {}}
+      />
+    )
+    expect(screen.getByText('Anjani AI Assistant')).toBeInTheDocument()
   })
 
   it('shows SKU autocomplete popup with pricing when user types /', () => {

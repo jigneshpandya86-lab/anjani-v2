@@ -196,8 +196,6 @@ export default function AiAssistantDrawer({
     }
   }, [messages, loading])
 
-  if (!isOpen) return null
-
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -780,6 +778,8 @@ export default function AiAssistantDrawer({
     const msg = `Anjani Water Delivery Update for Order #${order.orderId || order.id}: Scheduled for ${order.time || 'today'}. Address: ${order.address || order.location || ''}`
     window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`, '_blank')
   }
+
+  if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 z-[1200] flex justify-end bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in">
