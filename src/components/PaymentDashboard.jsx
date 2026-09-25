@@ -254,6 +254,14 @@ function PaymentDashboard({ onNavigateAccounts }) {
                   {label}
                 </p>
               </div>
+              {(tx.narration || tx.note) && (
+                <p
+                  className="text-[10px] text-gray-500 font-medium pl-8 truncate"
+                  title={tx.narration || tx.note}
+                >
+                  {tx.narration || tx.note}
+                </p>
+              )}
             </div>
           </div>
         )

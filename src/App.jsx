@@ -742,7 +742,7 @@ function App() {
             dr,
             cr,
             `Rs.${bal.toLocaleString('en-IN')}`,
-            tx.narration || '-',
+            tx.narration || tx.note || '-',
           ]
         })
         const columns = [

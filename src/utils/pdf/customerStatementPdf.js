@@ -66,7 +66,7 @@ export const buildLedgerPdf = ({ clientName, dateRangeLabel, txns, openingBalanc
       dr,
       cr,
       `Rs.${fmt(balance)}`,
-      tx.narration || '-',
+      tx.narration || tx.note || '-',
     ]
   })
 

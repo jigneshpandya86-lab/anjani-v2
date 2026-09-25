@@ -225,3 +225,29 @@ export const resolveOrderInitialData = (orderToEdit, clients = []) => {
     proofUrl: orderToEdit.proofUrl || '',
   }
 }
+
+export const formatNarrationDate = (dateVal) => {
+  if (!dateVal) return ''
+  let d = dateVal
+  if (d && typeof d.toDate === 'function') d = d.toDate()
+  else if (d && d.seconds) d = new Date(d.seconds * 1000)
+  else if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.trim())) {
+    const [yyyy, mm, dd] = d.trim().split('-')
+    return `${dd}/${mm}/${yyyy}`
+  } else if (!(d instanceof Date)) d = new Date(d)
+
+  if (isNaN(d.getTime())) return ''
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = d.getFullYear()
+  return `${dd}/${mm}/${yyyy}`
+}
+
+export const formatPaymentNarration = (clientName, dateVal) => {
+  const formattedDate = formatNarrationDate(dateVal) || formatNarrationDate(new Date())
+  const name = String(clientName || '').trim()
+  if (name) {
+    return `Payment received for "${name}" on ${formattedDate}`
+  }
+  return `Payment received on ${formattedDate}`
+}

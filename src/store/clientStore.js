@@ -27,6 +27,7 @@ import {
   normalizeOrderWriteData,
   normalizeOrderDoc,
   getOrderSortTime,
+  formatPaymentNarration,
 } from '../utils/orderUtils'
 
 export { normalizeOrderWriteData, normalizeOrderDoc, getOrderSortTime }
@@ -665,10 +666,29 @@ export const useClientStore = create((set, get) => ({
       )
     }
 
+    const resolvedClientName =
+      oldData.clientName ||
+      (get().clients || []).find((c) => c.id === oldData.clientId)?.name ||
+      ''
+    const effectiveDate = date
+      ? new Date(date)
+      : oldData.date?.toDate
+      ? oldData.date.toDate()
+      : oldData.date
+      ? new Date(oldData.date)
+      : new Date()
+    const autoNarration = formatPaymentNarration(resolvedClientName, effectiveDate)
+    const nextNarration =
+      note && note.trim() && note.trim() !== oldData.note
+        ? note.trim()
+        : oldData.narration || autoNarration
+
     const payload = {
       amount: newAmount,
       accountId: newAcc,
-      note: note ? note.trim() : oldData.note || '',
+      clientName: resolvedClientName,
+      narration: nextNarration,
+      note: note ? note.trim() : oldData.note || autoNarration,
       updatedAt: serverTimestamp(),
     }
     if (date) {
@@ -1186,16 +1206,18 @@ export const useClientStore = create((set, get) => ({
             currentClients.find((c) => c.name && c.name.toLowerCase().includes(raw))
         }
 
+        const clientName = client?.name || entry.clientName || 'Cash Collection'
+        const narration = formatPaymentNarration(clientName, entryDate)
+
         await get().addPayment({
           clientId: client?.id || null,
-          clientName: client?.name || entry.clientName || 'Cash Collection',
+          clientName,
           amount,
           type: 'payment',
           method: entry.accountId === 'bank' ? 'upi' : 'cash',
           accountId: entry.accountId || 'counter',
-          note:
-            entry.notes ||
-            `Collected by ${getAccountMeta(entry.accountId || 'counter').shortLabel}`,
+          narration,
+          note: entry.notes || narration,
           date: entryDate,
         })
         successCount++
@@ -1219,12 +1241,26 @@ export const useClientStore = create((set, get) => ({
   },
 
   addPayment: async (data) => {
+    let clientName = data.clientName
+    if (!clientName && data.clientId) {
+      const client = (get().clients || []).find((c) => c.id === data.clientId)
+      if (client?.name) clientName = client.name
+    }
+    const paymentDate = data.date || new Date()
+    const autoNarration = formatPaymentNarration(clientName, paymentDate)
+    const narration = data.narration || autoNarration
+    const note =
+      data.note && String(data.note).trim() ? String(data.note).trim() : autoNarration
+
     const accountId =
       data.accountId ||
       (data.method === 'upi' || data.method === 'online' ? 'bank' : 'counter')
 
     await addDoc(collection(db, 'payments'), {
       ...data,
+      clientName: clientName || '',
+      narration,
+      note,
       accountId,
       createdAt: serverTimestamp(),
     })

@@ -3,6 +3,7 @@ import { useClientStore } from '../store/clientStore'
 import { IndianRupee, Save, CreditCard, Banknote } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { DEFAULT_ACCOUNTS } from '../constants/accounts'
+import { formatPaymentNarration } from '../utils/orderUtils'
 
 const getToday = () => new Date().toISOString().slice(0, 10)
 const getCurrentTime = () =>
@@ -49,14 +50,18 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
 
     setLoading(true)
     try {
+      const pDate = new Date(`${paymentDate}T${paymentTime || '00:00'}`)
+      const narration = formatPaymentNarration(selectedClient.name, pDate)
       await addPayment({
         clientId: selectedClient.id,
+        clientName: selectedClient.name,
         amount: paymentAmount,
         type: 'payment',
         method,
         accountId,
-        note,
-        date: new Date(`${paymentDate}T${paymentTime || '00:00'}`),
+        narration,
+        note: note.trim() || narration,
+        date: pDate,
       })
       toast.success('Payment recorded successfully')
       onClose()
@@ -246,7 +251,11 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
           <input
             id="notes-input"
             className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-[#ff9900] outline-none"
-            placeholder="e.g. Paid for March deliveries"
+            placeholder={
+              selectedClient?.name
+                ? `e.g. Payment received for "${selectedClient.name}"`
+                : 'e.g. Payment received'
+            }
             value={note}
             onChange={(e) => setNote(e.target.value)}
           />

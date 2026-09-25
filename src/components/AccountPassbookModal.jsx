@@ -8,6 +8,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase-config'
 import { getAccountMeta } from '../constants/accounts'
+import { formatPaymentNarration } from '../utils/orderUtils'
 import { useClientStore } from '../store/clientStore'
 import EditAccountEntryModal from './EditAccountEntryModal'
 import toast from 'react-hot-toast'
@@ -33,6 +34,7 @@ export default function AccountPassbookModal({
   currentBalance = 0,
   onOpenHandover,
 }) {
+  const clients = useClientStore((state) => state.clients)
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [filterType, setFilterType] = useState('all') // 'all', 'collection', 'expense', 'transfer'
@@ -114,14 +116,19 @@ export default function AccountPassbookModal({
         const amt = Number(d.amount) || 0
         const rawDate = d.date || d.paymentDate || d.createdAt
         const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
+        const clientName =
+          d.clientName || clients?.find((c) => c.id === d.clientId)?.name || ''
+        const narration =
+          d.narration ||
+          (clientName ? formatPaymentNarration(clientName, rawDate) : (d.note ? `Note: ${d.note}` : 'Payment Received'))
         combined.push({
           id: 'pay_' + docSnap.id,
           rawId: docSnap.id,
           rawDoc: d,
           type: 'collection',
           direction: 'in',
-          title: d.clientName || 'Customer Payment',
-          subtitle: d.note ? `Note: ${d.note}` : 'Payment Received',
+          title: clientName || 'Customer Payment',
+          subtitle: narration,
           amount: amt,
           timestamp: timestamp || Date.now(),
           date: rawDate,
@@ -402,7 +409,9 @@ export default function AccountPassbookModal({
                       <p className="font-extrabold text-xs text-gray-900 truncate">
                         {item.title}
                       </p>
-                      <p className="text-[10px] text-gray-500 truncate">{item.subtitle}</p>
+                      <p className="text-[10px] text-gray-500 truncate" title={item.subtitle}>
+                        {item.subtitle}
+                      </p>
                       <p className="text-[9px] text-gray-400 font-semibold flex items-center gap-1 mt-0.5">
                         <Calendar size={9} /> {formatEntryDate(item)}
                       </p>

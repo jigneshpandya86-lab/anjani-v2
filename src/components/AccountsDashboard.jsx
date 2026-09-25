@@ -9,6 +9,7 @@ import {
 import { db } from '../firebase-config'
 import { useClientStore } from '../store/clientStore'
 import { DEFAULT_ACCOUNTS, getAccountMeta } from '../constants/accounts'
+import { formatPaymentNarration } from '../utils/orderUtils'
 import CashHandoverModal from './CashHandoverModal'
 import EditAccountEntryModal from './EditAccountEntryModal'
 import toast from 'react-hot-toast'
@@ -29,6 +30,7 @@ export default function AccountsDashboard() {
     deleteAccountTransfer,
     deleteAccountExpense,
     deletePayment,
+    clients,
   } = useClientStore()
   const [selectedAccountId, setSelectedAccountId] = useState('nilesh')
   const [entries, setEntries] = useState([])
@@ -91,14 +93,19 @@ export default function AccountsDashboard() {
         const amt = Number(d.amount) || 0
         const rawDate = d.date || d.paymentDate || d.createdAt
         const timestamp = rawDate?.seconds ? rawDate.seconds * 1000 : new Date(rawDate).getTime()
+        const clientName =
+          d.clientName || clients?.find((c) => c.id === d.clientId)?.name || ''
+        const narration =
+          d.narration ||
+          (clientName ? formatPaymentNarration(clientName, rawDate) : d.note || '')
         combined.push({
           id: 'pay_' + docSnap.id,
           rawId: docSnap.id,
           rawDoc: d,
           type: 'collection',
           direction: 'in',
-          title: d.clientName || 'Payment',
-          note: d.note || d.narration || '',
+          title: clientName || 'Payment',
+          note: narration,
           amount: amt,
           timestamp: timestamp || Date.now(),
           date: rawDate,
@@ -439,7 +446,10 @@ export default function AccountsDashboard() {
                         {item.title}
                       </span>
                       {item.note && (
-                        <span className="text-[10px] text-gray-400 truncate max-w-[140px]">
+                        <span
+                          className="text-[10px] text-gray-400 truncate max-w-[200px] sm:max-w-xs"
+                          title={item.note}
+                        >
                           • {item.note}
                         </span>
                       )}

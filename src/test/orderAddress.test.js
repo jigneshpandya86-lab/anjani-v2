@@ -3,6 +3,8 @@ import {
   normalizeOrderWriteData,
   normalizeOrderDoc,
   resolveOrderInitialData,
+  formatNarrationDate,
+  formatPaymentNarration,
 } from '../utils/orderUtils'
 
 describe('Order address normalization and update preservation', () => {
@@ -135,3 +137,45 @@ describe('resolveOrderInitialData', () => {
     expect(initial.location).toBe('Karelibaug Char Rasta')
   })
 })
+
+describe('Payment narration formatting', () => {
+  it('formats dates consistently to DD/MM/YYYY', () => {
+    // Standard JS Date (months are 0-indexed: 8 is September)
+    const d = new Date(2026, 8, 25)
+    expect(formatNarrationDate(d)).toBe('25/09/2026')
+
+    // String YYYY-MM-DD
+    expect(formatNarrationDate('2026-09-25')).toBe('25/09/2026')
+
+    // Firestore timestamp mock with toDate()
+    const firestoreTimestamp = {
+      toDate: () => new Date(2026, 8, 25),
+    }
+    expect(formatNarrationDate(firestoreTimestamp)).toBe('25/09/2026')
+
+    // Firestore timestamp mock with seconds
+    const unixSeconds = Math.floor(new Date(2026, 8, 25, 12, 0, 0).getTime() / 1000)
+    expect(formatNarrationDate({ seconds: unixSeconds })).toBe('25/09/2026')
+
+    // Null or empty
+    expect(formatNarrationDate(null)).toBe('')
+    expect(formatNarrationDate(undefined)).toBe('')
+  })
+
+  it('formats payment narration as: Payment received for "client Name" on Date', () => {
+    const d = new Date(2026, 8, 25)
+    expect(formatPaymentNarration('Shree Ram Hotel', d)).toBe(
+      'Payment received for "Shree Ram Hotel" on 25/09/2026',
+    )
+  })
+
+  it('trims whitespace and handles missing or empty client names cleanly', () => {
+    const d = new Date(2026, 8, 25)
+    expect(formatPaymentNarration('  Nilesh Collection  ', d)).toBe(
+      'Payment received for "Nilesh Collection" on 25/09/2026',
+    )
+    expect(formatPaymentNarration('', d)).toBe('Payment received on 25/09/2026')
+    expect(formatPaymentNarration(null, d)).toBe('Payment received on 25/09/2026')
+  })
+})
+
