@@ -1320,6 +1320,65 @@ function formatMemoriesForPrompt(memories = []) {
   return output.trimEnd()
 }
 
+/**
+ * Context-Targeted Rule Slicing (Cost & Token Optimizer)
+ * Prevents prompt bloat and saves tokens by prioritizing relevant rules for the query.
+ */
+function sliceMemoriesForContext(memories = [], queryText = '', mode = 'auto') {
+  if (!Array.isArray(memories) || memories.length === 0) return []
+  const active = memories.filter((m) => m && m.active !== false && m.rule)
+  if (active.length <= 15) return active
+
+  const qLower = String(queryText || '').toLowerCase()
+  const selected = []
+  const remaining = []
+
+  for (const m of active) {
+    const struct = m.structured || {}
+    const ruleLower = String(m.rule || '').toLowerCase()
+
+    // 1. Always prioritize error corrections
+    if (m.category === 'error_correction' || m.isCorrection) {
+      selected.push(m)
+      continue
+    }
+
+    // 2. Client-targeted match
+    if (
+      struct.clientName &&
+      (qLower.includes(struct.clientName.toLowerCase()) || ruleLower.includes(qLower))
+    ) {
+      selected.push(m)
+      continue
+    }
+
+    // 3. Shorthand mappings if relevant
+    if (m.category === 'shorthand' && (mode === 'sales' || mode === 'auto')) {
+      selected.push(m)
+      continue
+    }
+
+    remaining.push(m)
+  }
+
+  while (selected.length < 20 && remaining.length > 0) {
+    selected.push(remaining.shift())
+  }
+
+  return selected
+}
+
+function formatSkuSlangForPrompt() {
+  return `\n\n## 🍶 BEVERAGE & PRODUCT SLANG DICTIONARY (INDIAN DISTRIBUTION):
+- "petli", "petly", "patli": Anjani 200ml box (or bottle box). Default unit: Box.
+- "chhota botal", "chhoti", "mini", "250ml": Bailey 250ml (Case / Box).
+- "500ml", "aadho liter", "half liter", "500": Bailey 500ml (Case / Box).
+- "1 liter", "1L", "badi botal", "ek liter": Bailey 1 Liter (Case / Box).
+- "2 liter", "2L", "jumbo", "family pack": Bailey 2 Liter (Case / Box).
+- "kedi", "crate", "khokhu", "case", "box": Box unit.
+When parsing voice speech or shorthand notes containing these words, resolve them to the standard product labels above.\n`
+}
+
 let cachedKnownCustomerNames = null
 let cachedKnownCustomersTime = 0
 
@@ -1384,13 +1443,15 @@ exports.askAnjaniAi = onCall(async (request) => {
 
   const aiSettings = await getAiSettings()
   const activeMemories = await getAiMemories()
-  const memoriesBlock = formatMemoriesForPrompt(activeMemories)
+  const slicedMemories = sliceMemoriesForContext(activeMemories, text, mode)
+  const memoriesBlock = formatMemoriesForPrompt(slicedMemories)
+  const skuSlangBlock = formatSkuSlangForPrompt()
   const clientNames =
     Array.isArray(knownClients) && knownClients.length > 0
       ? knownClients
       : await getKnownCustomerNames()
   const knownClientsBlock = formatKnownClientsForPrompt(clientNames)
-  const contextInjections = `${memoriesBlock}${knownClientsBlock}`
+  const contextInjections = `${memoriesBlock}${skuSlangBlock}${knownClientsBlock}`
   const primaryModelName = aiSettings.activeModel || 'gemini-2.5-flash-lite'
   const fallbackModelName = aiSettings.fallbackModel || 'gemini-2.5-flash'
   const chatMaxTokens = Math.min(Number(aiSettings.maxOutputTokens) || 800, 1500)

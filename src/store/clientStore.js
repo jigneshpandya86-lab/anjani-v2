@@ -33,6 +33,7 @@ import {
 export { normalizeOrderWriteData, normalizeOrderDoc, getOrderSortTime }
 import { ensureEnglishText, normalizeDigits } from '../utils/textUtils'
 import { findMatchingClient } from '../utils/clientMatchingUtils'
+import { detectRuleConflict } from '../utils/aiMemoryUtils'
 
 let stockUnsubscribe = null
 let stockSubscriberCount = 0
@@ -919,9 +920,31 @@ export const useClientStore = create((set, get) => ({
     }
   },
 
-  addAiMemory: async ({ rule, category = 'general_rule', source = 'chat_instruction', metadata = {} }) => {
+  addAiMemory: async ({ rule, category = 'general_rule', source = 'chat_instruction', metadata = {}, structured = null }) => {
     try {
-      const docRef = await addDoc(collection(db, 'aiMemories'), {
+      const existing = get().aiMemories || []
+      const conflict = detectRuleConflict({ rule, category, structured }, existing, get().clients || [])
+      let supersededOldId = null
+
+      if (conflict?.hasConflict && conflict.conflictingMemory?.id) {
+        supersededOldId = conflict.conflictingMemory.id
+        try {
+          await updateDoc(doc(db, 'aiMemories', supersededOldId), {
+            active: false,
+            supersededAt: serverTimestamp(),
+            supersededReason: conflict.reason || 'Superseded by newer rule',
+          })
+          set((state) => ({
+            aiMemories: state.aiMemories.map((m) =>
+              m.id === supersededOldId ? { ...m, active: false } : m
+            ),
+          }))
+        } catch (supErr) {
+          console.warn('Failed to archive superseded rule:', supErr)
+        }
+      }
+
+      const docPayload = {
         rule: String(rule).trim(),
         category,
         active: true,
@@ -929,7 +952,15 @@ export const useClientStore = create((set, get) => ({
         metadata,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      })
+      }
+      if (structured) {
+        docPayload.structured = structured
+      }
+      if (supersededOldId) {
+        docPayload.supersededMemoryId = supersededOldId
+      }
+
+      const docRef = await addDoc(collection(db, 'aiMemories'), docPayload)
       const newMemory = {
         id: docRef.id,
         rule: String(rule).trim(),
@@ -937,11 +968,13 @@ export const useClientStore = create((set, get) => ({
         active: true,
         source,
         metadata,
+        structured: structured || undefined,
+        supersededMemoryId: supersededOldId || undefined,
       }
       set((state) => ({
         aiMemories: [newMemory, ...state.aiMemories.filter((m) => m.id !== docRef.id)],
       }))
-      return newMemory
+      return { ...newMemory, conflict }
     } catch (err) {
       console.error('Failed to save AI memory:', err)
       throw err
@@ -1127,7 +1160,12 @@ export const useClientStore = create((set, get) => ({
     }
 
     const currentClients = [...(get().clients || [])]
-    const normalizedSalesList = consolidateRetailSales(salesList, currentClients)
+    const normalizedSalesList = consolidateRetailSales(
+      salesList,
+      currentClients,
+      get().orders || [],
+      get().aiMemories || []
+    )
     const now = new Date()
     const yyyy = now.getFullYear()
     const mm = String(now.getMonth() + 1).padStart(2, '0')

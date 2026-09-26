@@ -250,4 +250,35 @@ describe('Retail Sales Batch Normalization', () => {
     expect(consolidated[0].items[0].rate).toBe(85)
     expect(consolidated[0].totalAmount).toBe(170)
   })
+
+  it('enforces learned AI memory rate rule when rate is not provided in raw sale', () => {
+    const mockMemories = [
+      {
+        id: 'mem_1',
+        rule: 'Hotel Radhika gets Bailey 500ml at 115',
+        active: true,
+        structured: {
+          clientId: 'cli_1', // Hotel Radhika
+          clientName: 'Hotel Radhika',
+          skuLabel: 'Bailey 500ml',
+          enforcedRate: 115,
+        },
+      },
+    ]
+
+    const rawSales = [
+      {
+        clientName: 'Hotel Radhika',
+        items: [{ sku: 'aadho liter', qty: 10 }], // uses slang "aadho liter"
+        paymentMode: 'credit',
+      },
+    ]
+
+    const consolidated = consolidateRetailSales(rawSales, mockClients, [], mockMemories)
+    expect(consolidated.length).toBe(1)
+    expect(consolidated[0].items[0].sku).toBe('Bailey 500ml')
+    expect(consolidated[0].items[0].rate).toBe(115)
+    expect(consolidated[0].items[0].ruleApplied).toBe('Learned Rate: ₹115')
+    expect(consolidated[0].totalAmount).toBe(1150)
+  })
 })

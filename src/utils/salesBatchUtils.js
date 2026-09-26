@@ -1,6 +1,7 @@
 import { DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 import { getRecentSkuPrice } from './orderUtils'
 import { findMatchingClient } from './clientMatchingUtils'
+import { findMatchingSku, normalizeUnit } from './skuAliasUtils'
 
 /**
  * Checks if a customer name represents an unknown, walk-in, or retail customer.
@@ -21,9 +22,11 @@ export function isRetailCustomer(rawName) {
  *
  * @param {Array} rawSales - Array of parsed sale objects
  * @param {Array} clients - Array of existing customer documents
+ * @param {Array} orders - Array of past orders (for recent price fallback)
+ * @param {Array} activeMemories - Array of active AI memories/rules
  * @returns {Array} Enriched and consolidated sales array
  */
-export function consolidateRetailSales(rawSales = [], clients = [], orders = []) {
+export function consolidateRetailSales(rawSales = [], clients = [], orders = [], activeMemories = []) {
   if (!Array.isArray(rawSales) || rawSales.length === 0) return []
 
   const namedSales = []
@@ -55,19 +58,50 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [])
         : [{ sku: DEFAULT_SKU, qty: Number(sale.qty) || 1, rate: Number(sale.rate) || 0 }]
 
     const items = rawItems.map((it) => {
-      const meta = getSkuMeta(it.sku || DEFAULT_SKU)
+      // Deterministically resolve SKU including slang (petli, aadho liter, chhota, etc.)
+      const skuMatch = findMatchingSku(it.sku || DEFAULT_SKU)
+      const meta = skuMatch?.sku || getSkuMeta(DEFAULT_SKU)
       let rate = Number(it.rate) || 0
+      let ruleApplied = null
+
+      // Check client profile rate
       if (rate <= 0 && matched) {
         rate = Number(matched.skuRates?.[meta.label] ?? matched.rate ?? 0)
       }
+
+      // Check learned AI Memory Rules (Pre-Save Guardrail)
+      if (rate <= 0 && Array.isArray(activeMemories) && activeMemories.length > 0) {
+        const mem = activeMemories.find((m) => {
+          if (!m || m.active === false) return false
+          const st = m.structured
+          if (!st || st.enforcedRate === null) return false
+          const clientMatch =
+            (matched && st.clientId && st.clientId === matched.id) ||
+            (matched && st.clientName && st.clientName.toLowerCase() === matched.name?.toLowerCase()) ||
+            (st.clientName && st.clientName.toLowerCase() === rawName.toLowerCase())
+          if (!clientMatch) return false
+          if (st.skuLabel && st.skuLabel !== meta.label) return false
+          return true
+        })
+        if (mem) {
+          rate = Number(mem.structured.enforcedRate)
+          ruleApplied = `Learned Rate: ₹${rate}`
+        }
+      }
+
+      // Fallback to recent order history
       if (rate <= 0 && Array.isArray(orders) && orders.length > 0) {
         rate = getRecentSkuPrice(meta.label, orders, matched?.id)
       }
+
+      const unit = it.unit ? normalizeUnit(it.unit) : meta.unit
+
       return {
         sku: meta.label,
         qty: Math.max(1, Number(it.qty) || 1),
         rate: rate > 0 ? rate : 0,
-        unit: meta.unit,
+        unit,
+        ruleApplied,
       }
     })
 
@@ -115,7 +149,8 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [])
           : [{ sku: DEFAULT_SKU, qty: Number(rs.qty) || 1, rate: Number(rs.rate) || 0 }]
 
       rawItems.forEach((it) => {
-        const meta = getSkuMeta(it.sku || DEFAULT_SKU)
+        const skuMatch = findMatchingSku(it.sku || DEFAULT_SKU)
+        const meta = skuMatch?.sku || getSkuMeta(DEFAULT_SKU)
         const qty = Math.max(1, Number(it.qty) || 1)
         let rate = Number(it.rate) || 0
         if (rate <= 0 && matchedRetail) {
@@ -126,6 +161,7 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [])
         }
 
         const effectiveRate = rate > 0 ? rate : 0
+        const unit = it.unit ? normalizeUnit(it.unit) : meta.unit
         // Key by both SKU and rate so distinct rates for the same SKU remain as separate lines
         const itemKey = `${meta.label}__rate__${effectiveRate}`
 
@@ -134,7 +170,7 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [])
             sku: meta.label,
             qty: 0,
             rate: effectiveRate,
-            unit: meta.unit,
+            unit,
           }
         }
         mergedItemsMap[itemKey].qty += qty

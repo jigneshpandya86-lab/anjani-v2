@@ -42,7 +42,7 @@ import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
 import { ensureEnglishText, sanitizeClientForEnglish } from '../utils/textUtils'
 import { getRecentSkuPrice } from '../utils/orderUtils'
-import { detectMemoryIntent, isQueryingMemories, formatMemoriesForPrompt } from '../utils/aiMemoryUtils'
+import { detectMemoryIntent, isQueryingMemories, formatMemoriesForPrompt, extractStructuredRuleData } from '../utils/aiMemoryUtils'
 
 export const SPEECH_LANGUAGES = [
   { code: 'en-IN', label: 'English', short: 'EN', hint: 'English (India)' },
@@ -158,12 +158,18 @@ export default function AiAssistantDrawer({
     if (!newMemoryInput.trim()) return
     setIsSavingMemory(true)
     try {
-      await addAiMemory({
+      const structured = extractStructuredRuleData(newMemoryInput.trim(), clients)
+      const saved = await addAiMemory({
         rule: newMemoryInput.trim(),
         category: newMemoryCategory,
         source: 'manual',
+        structured,
       })
-      toast.success('Learned rule saved to permanent memory!', { icon: '🧠' })
+      if (saved?.conflict?.hasConflict) {
+        toast.success(`Updated rule! ${saved.conflict.reason}`, { icon: '🧠', duration: 3500 })
+      } else {
+        toast.success('Learned rule saved to permanent memory!', { icon: '🧠' })
+      }
       setNewMemoryInput('')
     } catch (err) {
       toast.error('Failed to save rule: ' + err.message)
@@ -525,10 +531,15 @@ export default function AiAssistantDrawer({
             rule: memoryIntent.rule,
             category: memoryIntent.category,
             source: memoryIntent.isCorrection ? 'chat_correction' : 'chat_instruction',
+            structured: memoryIntent.structured,
           })
-          const ackText = memoryIntent.isCorrection
+          let ackText = memoryIntent.isCorrection
             ? `🧠 **Learned from Correction!**\n\nI have saved this to my permanent memory:\n📌 *"${memoryIntent.rule}"*\n\nI will strictly enforce this rule and avoid repeating this error in future tasks.`
             : `🧠 **Saved to Permanent Memory!**\n\nI will remember this business rule:\n📌 *"${memoryIntent.rule}"*\n\nThis is now permanently active across all orders, calculations, and AI responses.`
+
+          if (saved?.conflict?.hasConflict) {
+            ackText += `\n\n*(Note: Automatically updated prior rule: "${saved.conflict.conflictingMemory.rule}" to prevent conflicts.)*`
+          }
 
           setMessages((prev) => [
             ...prev,
@@ -541,7 +552,12 @@ export default function AiAssistantDrawer({
               timestamp: new Date(),
             },
           ])
-          toast.success('Saved to AI Memory!', { icon: '🧠', duration: 2500 })
+          toast.success(
+            saved?.conflict?.hasConflict
+              ? 'Updated rule in AI Memory!'
+              : 'Saved to AI Memory!',
+            { icon: '🧠', duration: 2500 }
+          )
           return
         } catch (memErr) {
           console.error('Failed to save memory from chat:', memErr)
@@ -709,7 +725,7 @@ export default function AiAssistantDrawer({
         const salesData = resData.data || {}
         const rawSales = Array.isArray(salesData.sales) ? salesData.sales : []
 
-        const enrichedSales = consolidateRetailSales(rawSales, clients, orders)
+        const enrichedSales = consolidateRetailSales(rawSales, clients, orders, aiMemories)
         const totalQty = enrichedSales.reduce(
           (sum, s) => sum + (s.items || []).reduce((isum, it) => isum + Number(it.qty || 0), 0),
           0
@@ -1160,8 +1176,20 @@ export default function AiAssistantDrawer({
                                     ? 'Staff'
                                     : 'Rule'}
                           </span>
+                          {m.structured?.enforcedRate != null && (
+                            <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black px-1.5 py-0.2 rounded-full">
+                              ₹{m.structured.enforcedRate}
+                            </span>
+                          )}
+                          {m.structured?.deliveryDay && (
+                            <span className="bg-cyan-100 text-cyan-800 text-[9px] font-black px-1.5 py-0.2 rounded-full">
+                              {m.structured.deliveryDay}
+                            </span>
+                          )}
                           {m.active === false && (
-                            <span className="text-[9px] font-bold text-gray-400 italic">Paused</span>
+                            <span className="text-[9px] font-bold text-gray-400 italic">
+                              {m.supersededReason ? 'Superseded' : 'Paused'}
+                            </span>
                           )}
                         </div>
                         <p className="text-xs font-semibold leading-snug break-words">{m.rule}</p>

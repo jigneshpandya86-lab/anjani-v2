@@ -13,16 +13,13 @@ import { WATER_SKUS, getSkuMeta, DEFAULT_SKU } from '../constants/skus'
 import { ensureEnglishText, normalizeDigits } from './textUtils'
 import { getRecentSkuPrice } from './orderUtils'
 import { findMatchingClient } from './clientMatchingUtils'
+import { findMatchingSku } from './skuAliasUtils'
 
 // Helper: Match SKU from text
 function matchSkuFromText(text) {
-  const norm = String(text || '').toLowerCase()
-  if (norm.includes('200ml') || norm.includes('anjani')) return 'Anjani 200ml'
-  if (norm.includes('250ml')) return 'Bailey 250ml'
-  if (norm.includes('500ml')) return 'Bailey 500ml'
-  if (norm.includes('1l') || norm.includes('1 liter') || norm.includes('1 litre') || norm.includes('1 ltr')) return 'Bailey 1 Liter'
-  if (norm.includes('2l') || norm.includes('2 liter') || norm.includes('2 litre') || norm.includes('2 ltr')) return 'Bailey 2 Liter'
-  return DEFAULT_SKU
+  if (!text) return DEFAULT_SKU
+  const match = findMatchingSku(text)
+  return match?.sku?.label || DEFAULT_SKU
 }
 
 // Helper: Match client from text against store.clients (with phonetic & fuzzy matching)
