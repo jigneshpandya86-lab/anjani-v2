@@ -683,11 +683,8 @@ export const useClientStore = create((set, get) => ({
       : oldData.date
       ? new Date(oldData.date)
       : new Date()
-    const autoNarration = formatPaymentNarration(resolvedClientName, effectiveDate)
-    const nextNarration =
-      note && note.trim() && note.trim() !== oldData.note
-        ? note.trim()
-        : oldData.narration || autoNarration
+    const autoNarration = formatPaymentNarration(resolvedClientName, effectiveDate, note)
+    const nextNarration = autoNarration
 
     const payload = {
       amount: newAmount,
@@ -1256,14 +1253,26 @@ export const useClientStore = create((set, get) => ({
 
       const orderId = `ORD-${Date.now()}-${i + 1}`
 
+      const effectiveAddress = ensureEnglishText(sale.address || client?.address || sale.location || client?.location || '')
+      const effectiveLocation = ensureEnglishText(sale.location || client?.location || sale.address || client?.address || '')
+
+      if (clientDocId && (!client?.address || !client.address.trim()) && effectiveAddress) {
+        try {
+          await updateDoc(doc(db, 'customers', clientDocId), { address: effectiveAddress })
+          if (client) client.address = effectiveAddress
+        } catch (_err) {
+          // ignore
+        }
+      }
+
       // 3. Create order document in Confirmed state so edits can be made
       await addDoc(collection(db, 'orders'), {
         orderId,
         clientId: clientDocId || '',
         clientName,
         mobile: client?.mobile || sale.mobile || '',
-        address: client?.address || sale.address || '',
-        location: client?.location || '',
+        address: effectiveAddress,
+        location: effectiveLocation,
         items,
         totalQty: saleTotalQty,
         totalAmount: saleTotalAmount,
@@ -1373,8 +1382,8 @@ export const useClientStore = create((set, get) => ({
       if (client?.name) clientName = client.name
     }
     const paymentDate = data.date || new Date()
-    const autoNarration = formatPaymentNarration(clientName, paymentDate)
-    const narration = data.narration || autoNarration
+    const autoNarration = formatPaymentNarration(clientName, paymentDate, data.note || data.narration)
+    const narration = autoNarration
     const note =
       data.note && String(data.note).trim() ? String(data.note).trim() : autoNarration
 
@@ -1746,6 +1755,7 @@ export const useClientStore = create((set, get) => ({
       if (existing.clientId && totalAmount > 0) {
         await addDoc(collection(db, 'payments'), {
           clientId: existing.clientId,
+          clientName: existing.clientName || '',
           amount: totalAmount,
           type: 'invoice',
           method: 'SYSTEM',
@@ -1845,6 +1855,7 @@ export const useClientStore = create((set, get) => ({
           if (reversalClientId && totalReversalAmount > 0) {
             await addDoc(collection(db, 'payments'), {
               clientId: reversalClientId,
+              clientName: existing.clientName || '',
               amount: -totalReversalAmount,
               type: 'reversal',
               method: 'SYSTEM',

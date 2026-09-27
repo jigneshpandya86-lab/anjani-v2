@@ -107,6 +107,31 @@ export function tryLocalIntentRoute(query, store = {}) {
       }
     }
 
+    // Extract delivery address / location from text (e.g. "at Waghodia road", "deliver to Manjalpur", "near D-Mart")
+    let detectedAddress = ''
+    const addrMatch = rawQ.match(
+      /(?:at|in|near|address[:\s]+|location[:\s]+|deliver(?:y)?\s+(?:to|at))\s+([A-Za-z0-9\s,\.\-]{2,40}?)(?:$|\s+(?:mobile|phone|rate|qty|@|\d+\s*(?:box|case|petli)|with|for))/i
+    )
+    if (addrMatch && addrMatch[1]) {
+      const candidate = addrMatch[1].trim()
+      if (
+        candidate.toLowerCase() !== clientName.toLowerCase() &&
+        !candidate.toLowerCase().includes(sku.toLowerCase())
+      ) {
+        detectedAddress = candidate
+      }
+    }
+    const formatTitleCase = (val) => {
+      const eng = ensureEnglishText(val)
+      return eng ? eng.replace(/\b[a-z]/g, (c) => c.toUpperCase()) : ''
+    }
+    const effectiveAddress = formatTitleCase(
+      detectedAddress || matchedClient?.address || matchedClient?.location || ''
+    )
+    const effectiveLocation = formatTitleCase(
+      detectedAddress || matchedClient?.location || matchedClient?.address || ''
+    )
+
     const items = [
       {
         sku,
@@ -120,7 +145,7 @@ export function tryLocalIntentRoute(query, store = {}) {
     return {
       handled: true,
       type: 'order_draft',
-      text: `🛒 **New Order Draft**: Ready to place order for **${clientName}**:\n• **${qty} ${skuMeta.unit}** — *${sku}* @ ₹${rate}/unit = **₹${(qty * rate).toLocaleString('en-IN')}**`,
+      text: `🛒 **New Order Draft**: Ready to place order for **${clientName}**${effectiveAddress ? ` (📍 *${effectiveAddress}*)` : ''}:\n• **${qty} ${skuMeta.unit}** — *${sku}* @ ₹${rate}/unit = **₹${(qty * rate).toLocaleString('en-IN')}**`,
       data: {
         clientId: matchedClient?.id || '',
         clientName,
@@ -128,7 +153,8 @@ export function tryLocalIntentRoute(query, store = {}) {
         totalQty: qty,
         totalAmount: qty * rate,
         mobile: matchedClient?.mobile || '',
-        location: matchedClient?.location || matchedClient?.address || '',
+        address: effectiveAddress,
+        location: effectiveLocation,
         date: new Date().toISOString().slice(0, 10),
       },
     }

@@ -177,5 +177,28 @@ describe('Payment narration formatting', () => {
     expect(formatPaymentNarration('', d)).toBe('Payment received on 25/09/2026')
     expect(formatPaymentNarration(null, d)).toBe('Payment received on 25/09/2026')
   })
+
+  it('appends custom notes / UTR to payment narration when provided', () => {
+    const d = new Date(2026, 8, 25)
+    expect(
+      formatPaymentNarration('Shreeji Mart', d, 'UPI Ref 123456'),
+    ).toBe('Payment received for "Shreeji Mart" on 25/09/2026 (UPI Ref 123456)')
+
+    expect(
+      formatPaymentNarration('', d, 'Cash collected by Nilesh'),
+    ).toBe('Payment received on 25/09/2026 (Cash collected by Nilesh)')
+  })
+
+  it('cross-fills address and location in normalizeOrderWriteData when only one is provided', () => {
+    const orderWithOnlyAddress = { clientId: 'c1', address: 'Gotri Plaza' }
+    const norm1 = normalizeOrderWriteData(orderWithOnlyAddress, false)
+    expect(norm1.address).toBe('Gotri Plaza')
+    expect(norm1.location).toBe('Gotri Plaza')
+
+    const orderWithOnlyLocation = { clientId: 'c1', location: 'Manjalpur Naka' }
+    const norm2 = normalizeOrderWriteData(orderWithOnlyLocation, false)
+    expect(norm2.address).toBe('Manjalpur Naka')
+    expect(norm2.location).toBe('Manjalpur Naka')
+  })
 })
 

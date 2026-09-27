@@ -16,6 +16,19 @@ describe('aiIntentRouter', () => {
     expect(result.data.items[0].sku).toBe('Anjani 200ml')
   })
 
+  it('extracts delivery address/location when dictated in order creation intent', () => {
+    const fakeStore = {
+      clients: [{ id: 'c1', name: 'Jay Ambe Provision', mobile: '9825012345', rate: 65, address: 'Old Padra Road' }],
+    }
+    const result = tryLocalIntentRoute('Order 20 boxes Anjani 200ml for Jay Ambe Provision at Waghodia road', fakeStore)
+    expect(result).not.toBeNull()
+    expect(result.handled).toBe(true)
+    expect(result.type).toBe('order_draft')
+    expect(result.data.address).toBe('Waghodia Road')
+    expect(result.data.location).toBe('Waghodia Road')
+    expect(result.text).toContain('Waghodia Road')
+  })
+
   it('handles payment received intent locally with zero tokens', () => {
     const fakeStore = {
       clients: [{ id: 'c1', name: 'Ramesh Store', mobile: '9825000000' }],

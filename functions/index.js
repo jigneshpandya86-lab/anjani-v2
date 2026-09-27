@@ -1669,6 +1669,7 @@ If it is a retail sales notepad / customer delivery list:
 IMPORTANT RULES:
 1. RETAIL CONSOLIDATION: All walk-in, cash counter, unnamed, or retail customer sales MUST BE CONSOLIDATED INTO A SINGLE order with "clientName": "Retail". NEVER create multiple separate "Retail" sales entries. Regular named business customers (e.g., specific shop names like "Jay Ambe Provision", "Rohitbhai") each get their own separate order.
 2. DIFFERENT RATES MUST REMAIN SEPARATE LINE ITEMS: If the same SKU is sold at different rates (for example: "Bailey 1 Liter 10 @ 120" and "Bailey 1 Liter 5 @ 125"), DO NOT merge them! Keep each distinct rate as its own item in the "items" array with its exact qty and rate. Only combine items if BOTH the SKU and the unit rate are identical.
+3. EXTRACT ADDRESS / DELIVERY LOCATION: If an address, delivery location, road, area, or landmark is visible or mentioned for a customer (e.g. 'Waghodia Road', 'Manjalpur', 'Opposite Bank'), ALWAYS extract it into the 'address' field in clean English Title Case.
 
 Return strict JSON:
 {
@@ -1682,6 +1683,7 @@ Return strict JSON:
     {
       "clientName": string (customer or shop name; for unknown, walk-in, or unnamed retail buyers, use "Retail"),
       "mobile": string (if written, else ""),
+      "address": string (delivery address, road, area, or landmark in English if mentioned, else ""),
       "items": [
         {
           "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",
@@ -2205,7 +2207,8 @@ CRITICAL RULES & USER INSTRUCTIONS:
 1. RETAIL CONSOLIDATION (MANDATORY): All walk-in, counter, cash, unnamed, or retail sales MUST BE COMBINED / CONSOLIDATED INTO A SINGLE order with "clientName": "Retail". NEVER generate multiple separate "Retail" or "Walk-in" sales entries in the "sales" array.
 2. DIFFERENT RATES MUST REMAIN SEPARATE LINE ITEMS (MANDATORY): If the user writes or pastes the same SKU at different rates (for example: "Bailey 1 Liter 10 @ 120" and "Bailey 1 Liter 5 @ 125", or "10 case 120 bhav, 5 case 125 bhav"), ALWAYS output them as SEPARATE items in the "items" array with their own qty and rate. NEVER combine items that have different rates into one line! Only combine items if BOTH the product SKU AND unit rate are identical.
 3. NAMED CUSTOMERS: Regular business / named customers (e.g., "Jay Ambe Provision", "Rohitbhai") each get their own individual order in the "sales" array.
-4. USER INSTRUCTIONS: Strictly follow any explicit instructions written by the user in the prompt (such as specific pricing, dates, or payment notes).
+4. EXTRACT ADDRESS / DELIVERY LOCATION: If an address, delivery location, road, area, or landmark is written or dictated for a customer (e.g. 'Waghodia Road', 'Manjalpur', 'Opposite D-Mart'), ALWAYS extract it into the 'address' field in clean English Title Case.
+5. USER INSTRUCTIONS: Strictly follow any explicit instructions written by the user in the prompt (such as specific pricing, dates, or payment notes).
 
 Return strict JSON:
 {
@@ -2219,6 +2222,7 @@ Return strict JSON:
     {
       "clientName": string (customer or shop name; for unknown, walk-in, or unnamed retail buyers, use "Retail"),
       "mobile": string (if provided, else ""),
+      "address": string (delivery address, road, area, or landmark in English if mentioned, else ""),
       "items": [
         {
           "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",

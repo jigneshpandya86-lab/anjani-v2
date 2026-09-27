@@ -10,6 +10,11 @@ export const normalizeOrderWriteData = (data = {}, isUpdate = false) => {
     if (data.location !== undefined) {
       result.location = String(data.location || '').trim()
     }
+    if (result.address && !result.location) {
+      result.location = result.address
+    } else if (result.location && !result.address) {
+      result.address = result.location
+    }
     if (data.mapLink !== undefined) {
       result.mapLink = String(data.mapLink || '').trim()
     }
@@ -20,8 +25,10 @@ export const normalizeOrderWriteData = (data = {}, isUpdate = false) => {
       result.locationLng = Number.isFinite(Number(data.locationLng)) ? Number(data.locationLng) : null
     }
   } else {
-    result.address = data.address === undefined ? '' : String(data.address).trim()
-    result.location = data.location === undefined ? '' : String(data.location).trim()
+    const rawAddr = data.address === undefined ? '' : String(data.address).trim()
+    const rawLoc = data.location === undefined ? '' : String(data.location).trim()
+    result.address = rawAddr || rawLoc
+    result.location = rawLoc || rawAddr
     result.mapLink = data.mapLink === undefined ? '' : String(data.mapLink).trim()
     result.locationLat = Number.isFinite(Number(data.locationLat)) ? Number(data.locationLat) : null
     result.locationLng = Number.isFinite(Number(data.locationLng)) ? Number(data.locationLng) : null
@@ -248,13 +255,22 @@ export const formatNarrationDate = (dateVal) => {
   return `${dd}/${mm}/${yyyy}`
 }
 
-export const formatPaymentNarration = (clientName, dateVal) => {
+export const formatPaymentNarration = (clientName, dateVal, customNote = '') => {
   const formattedDate = formatNarrationDate(dateVal) || formatNarrationDate(new Date())
   const name = String(clientName || '').trim()
-  if (name) {
-    return `Payment received for "${name}" on ${formattedDate}`
+  let base = name
+    ? `Payment received for "${name}" on ${formattedDate}`
+    : `Payment received on ${formattedDate}`
+
+  const cleanNote = String(customNote || '').trim()
+  if (
+    cleanNote &&
+    !cleanNote.toLowerCase().startsWith('payment received') &&
+    !base.toLowerCase().includes(cleanNote.toLowerCase())
+  ) {
+    base = `${base} (${cleanNote})`
   }
-  return `Payment received on ${formattedDate}`
+  return base
 }
 
 export const getRecentSkuPrice = (skuLabelOrId, orders = [], clientId = null) => {

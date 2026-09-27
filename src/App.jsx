@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import toast, { Toaster } from 'react-hot-toast'
 import { useClientStore } from './store/clientStore'
 import {
@@ -70,9 +70,58 @@ import {
 
 const LEDGER_EXPORT_PAGE_SIZE = 500
 
+const VALID_TABS = [
+  'orders',
+  'clients',
+  'payments',
+  'stock',
+  'expenses',
+  'tasks',
+  'accounts',
+  'intelligence',
+  'celebrations',
+  'leads',
+  'settings',
+  'bailey-order',
+]
+
+const TAB_STORAGE_KEY = 'anjani_active_tab'
+
+const getInitialTab = () => {
+  if (typeof window === 'undefined') return 'orders'
+  const hash = window.location.hash.replace(/^#\/?/, '').trim()
+  if (VALID_TABS.includes(hash)) {
+    return hash
+  }
+  try {
+    const saved = localStorage.getItem(TAB_STORAGE_KEY)
+    if (saved && VALID_TABS.includes(saved)) {
+      return saved
+    }
+  } catch {
+    // localStorage unavailable or restricted
+  }
+  return 'orders'
+}
+
 function App() {
   const NOTIFICATION_READ_STORAGE_PREFIX = 'anjani-notification-read-v1'
-  const [activeTab, setActiveTab] = useState('orders')
+  const [activeTab, setActiveTabState] = useState(getInitialTab)
+
+  const setActiveTab = useCallback((tab) => {
+    if (!VALID_TABS.includes(tab)) return
+    setActiveTabState(tab)
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(TAB_STORAGE_KEY, tab)
+        if (window.location.hash.replace(/^#\/?/, '').trim() !== tab) {
+          window.history.replaceState(null, '', `#${tab}`)
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [])
   const [editOrder, setEditOrder] = useState(null)
   const [editClient, setEditClient] = useState(null)
   const [addClientOpen, setAddClientOpen] = useState(false)
@@ -138,6 +187,36 @@ function App() {
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [aiDrawerOpen, setAiDrawerOpen])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const currentHash = window.location.hash.replace(/^#\/?/, '').trim()
+    if (!currentHash || !VALID_TABS.includes(currentHash)) {
+      try {
+        window.history.replaceState(null, '', `#${activeTab}`)
+      } catch {}
+    }
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace(/^#\/?/, '').trim()
+      if (VALID_TABS.includes(hash)) {
+        setActiveTabState(hash)
+        try {
+          localStorage.setItem(TAB_STORAGE_KEY, hash)
+        } catch {}
+      }
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [activeTab])
+
+  useEffect(() => {
+    if (!authLoading && userRole && userRole !== 'admin') {
+      const adminOnlyTabs = ['accounts', 'expenses', 'bailey-order']
+      if (adminOnlyTabs.includes(activeTab)) {
+        setActiveTab('orders')
+      }
+    }
+  }, [authLoading, userRole, activeTab, setActiveTab])
 
   const readStorageKey = user?.uid ? `${NOTIFICATION_READ_STORAGE_PREFIX}-${user.uid}` : null
 

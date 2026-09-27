@@ -1438,6 +1438,11 @@ export default function AiAssistantDrawer({
                         <div>
                           <p className="font-bold text-gray-900 text-sm">Order Draft</p>
                           <p className="text-[11px] text-gray-500">For {msg.data.clientName || 'Customer'}</p>
+                          {(msg.data.address || msg.data.location) && (
+                            <p className="text-[11px] text-gray-600 flex items-center gap-1 mt-0.5 font-medium">
+                              <span>📍</span> {msg.data.address || msg.data.location}
+                            </p>
+                          )}
                         </div>
                       </div>
                       {placedOrders[msg.id] ? (
@@ -1476,7 +1481,8 @@ export default function AiAssistantDrawer({
                               clientId: msg.data.clientId,
                               clientName: msg.data.clientName,
                               mobile: msg.data.mobile,
-                              location: msg.data.location,
+                              address: msg.data.address || msg.data.location || '',
+                              location: msg.data.location || msg.data.address || '',
                               items: msg.data.items,
                               totalQty: msg.data.totalQty,
                               totalAmount: msg.data.totalAmount,
@@ -1641,16 +1647,23 @@ export default function AiAssistantDrawer({
                         }
                         onClick={async () => {
                           try {
+                            const matchedCli = clients?.find((c) => c.id === msg.data.clientId)
+                            const resolvedName = msg.data.clientName || matchedCli?.name || ''
+                            const pDate = new Date()
+                            const extraNote = msg.data.utr ? `UPI Ref: ${msg.data.utr}` : ''
+                            const narration = formatPaymentNarration(resolvedName, pDate, extraNote)
                             await addPayment({
                               clientId: msg.data.clientId,
+                              clientName: resolvedName,
                               amount: Number(msg.data.amount),
                               type: 'payment',
                               method: msg.data.method || 'online',
                               accountId:
                                 msg.data.accountId ||
                                 (msg.data.method === 'cash' ? 'counter' : 'bank'),
-                              note: msg.data.utr ? `UPI Ref: ${msg.data.utr}` : 'AI recorded payment',
-                              date: new Date(),
+                              narration,
+                              note: extraNote || narration,
+                              date: pDate,
                             })
                             setRecordedPayments((prev) => ({
                               ...prev,

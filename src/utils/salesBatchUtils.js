@@ -108,6 +108,9 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [],
     const calcTotal = items.reduce((s, it) => s + it.qty * it.rate, 0)
     const totalAmount = Number(sale.totalAmount) > 0 ? Number(sale.totalAmount) : calcTotal
 
+    const effectiveAddress = sale.address || matched?.address || sale.location || matched?.location || ''
+    const effectiveLocation = sale.location || matched?.location || sale.address || matched?.address || ''
+
     enrichedSales.push({
       id: sale.id || `sale-named-${Date.now()}-${idx}`,
       clientName: canonicalClientName,
@@ -116,6 +119,8 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [],
       isMatched: !!matched,
       matchType,
       mobile: sale.mobile || matched?.mobile || '',
+      address: effectiveAddress,
+      location: effectiveLocation,
       paymentMode: ['cash', 'online', 'credit'].includes(sale.paymentMode)
         ? sale.paymentMode
         : 'credit',

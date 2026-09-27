@@ -51,7 +51,7 @@ export default function PaymentModal({ client, onClose, initialValues = {} }) {
     setLoading(true)
     try {
       const pDate = new Date(`${paymentDate}T${paymentTime || '00:00'}`)
-      const narration = formatPaymentNarration(selectedClient.name, pDate)
+      const narration = formatPaymentNarration(selectedClient.name, pDate, note.trim())
       await addPayment({
         clientId: selectedClient.id,
         clientName: selectedClient.name,
