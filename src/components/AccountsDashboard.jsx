@@ -13,6 +13,7 @@ import { formatPaymentNarration } from '../utils/orderUtils'
 import CashHandoverModal from './CashHandoverModal'
 import EditAccountEntryModal from './EditAccountEntryModal'
 import toast from 'react-hot-toast'
+import AccountsLedgerReportModal from './AccountsLedgerReportModal'
 import {
   Wallet,
   ArrowRightLeft,
@@ -21,6 +22,7 @@ import {
   Pencil,
   Trash2,
   ChevronDown,
+  FileDown,
 } from 'lucide-react'
 
 export default function AccountsDashboard() {
@@ -41,6 +43,8 @@ export default function AccountsDashboard() {
   const [handoverSource, setHandoverSource] = useState('nilesh')
   const [editingEntry, setEditingEntry] = useState(null)
   const [showPassbook, setShowPassbook] = useState(true)
+  const [pdfReportModalOpen, setPdfReportModalOpen] = useState(false)
+  const [pdfInitialAccount, setPdfInitialAccount] = useState('all')
 
   useEffect(() => {
     const unsub = fetchAccountsSummary()
@@ -274,17 +278,31 @@ export default function AccountsDashboard() {
               Accounts & Cash
             </h1>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setHandoverSource(selectedAccountId)
-              setHandoverModalOpen(true)
-            }}
-            className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-[#ff9900] hover:bg-orange-600 text-white flex items-center gap-1 shadow-xs active:scale-95 transition-all shrink-0"
-          >
-            <ArrowRightLeft size={12} />
-            Handover Cash
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setPdfInitialAccount(selectedAccountId || 'all')
+                setPdfReportModalOpen(true)
+              }}
+              className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-white/10 hover:bg-white/20 text-white flex items-center gap-1 border border-white/20 shadow-xs active:scale-95 transition-all cursor-pointer"
+              title="Generate PDF Ledger Report for Accounts & Cash"
+            >
+              <FileDown size={12} />
+              PDF Report
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setHandoverSource(selectedAccountId)
+                setHandoverModalOpen(true)
+              }}
+              className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-[#ff9900] hover:bg-orange-600 text-white flex items-center gap-1 shadow-xs active:scale-95 transition-all cursor-pointer"
+            >
+              <ArrowRightLeft size={12} />
+              Handover Cash
+            </button>
+          </div>
         </div>
 
         <div className="mt-2 pt-2 border-t border-white/10 grid grid-cols-2 gap-2">
@@ -394,6 +412,18 @@ export default function AccountsDashboard() {
             >
               <SlidersHorizontal size={9} />
               Set
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPdfInitialAccount(selectedAccountId)
+                setPdfReportModalOpen(true)
+              }}
+              className="text-[9px] font-bold text-blue-600 hover:text-blue-800 px-1.5 py-0.5 rounded border border-blue-200 bg-blue-50 flex items-center gap-0.5 shrink-0 cursor-pointer"
+              title={`Download PDF Passbook for ${selectedMeta.name}`}
+            >
+              <FileDown size={9} />
+              PDF
             </button>
           </div>
 
@@ -556,6 +586,13 @@ export default function AccountsDashboard() {
         onSaveSuccess={() => {
           fetchLedger()
         }}
+      />
+
+      {/* Accounts & Cash Ledger PDF Report Modal */}
+      <AccountsLedgerReportModal
+        isOpen={pdfReportModalOpen}
+        onClose={() => setPdfReportModalOpen(false)}
+        initialAccountId={pdfInitialAccount}
       />
     </div>
   )

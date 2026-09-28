@@ -58,6 +58,7 @@ import CelebrationsTab from './components/CelebrationsTab'
 import ExpensesDashboard from './components/ExpensesDashboard'
 import AccountsDashboard from './components/AccountsDashboard'
 import BaileyOrderPage from './components/BaileyOrderPage'
+import AccountsLedgerReportModal from './components/AccountsLedgerReportModal'
 import NetworkStatusBar from './components/NetworkStatusBar'
 import {
   isMobileOrNative,
@@ -138,6 +139,7 @@ function App() {
   const [notificationReadMap, setNotificationReadMap] = useState({})
   const notificationPanelRef = useRef(null)
   const [stockModalOpen, setStockModalOpen] = useState(false)
+  const [accountsLedgerModalOpen, setAccountsLedgerModalOpen] = useState(false)
   const [stockStatementMonth, setStockStatementMonth] = useState(
     new Date().toISOString().slice(0, 7),
   )
@@ -1077,6 +1079,15 @@ function App() {
         setStockModalOpen(true)
       },
     },
+    {
+      id: 'report-accounts-ledger',
+      label: 'Accounts & Cash Ledger (PDF)',
+      icon: <Wallet size={18} />,
+      onClick: () => {
+        setDrawerOpen(false)
+        setAccountsLedgerModalOpen(true)
+      },
+    },
   ].filter((r) => {
     if (r.id === 'report-order-specific') return true
     return userRole === 'admin' || isAdmin
@@ -1617,6 +1628,13 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Accounts & Cash Ledger Modal */}
+      <AccountsLedgerReportModal
+        isOpen={accountsLedgerModalOpen}
+        onClose={() => setAccountsLedgerModalOpen(false)}
+        initialAccountId="all"
+      />
 
       {/* Bottom Navigation (all screen sizes) */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-1 pb-3 flex justify-around items-center z-[999] shadow-[0_-10px_20px_rgba(0,0,0,0.08)]">

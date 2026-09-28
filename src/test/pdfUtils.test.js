@@ -8,6 +8,7 @@ import {
   buildLedgerPdf,
   buildSimpleInvoicePdfFile,
   buildTabularReportPdf,
+  buildAccountsLedgerPdf,
 } from '../utils/pdf'
 
 describe('PDF Utilities & Generators', () => {
@@ -84,4 +85,80 @@ describe('PDF Utilities & Generators', () => {
     expect(file).toBeDefined()
     expect(file.name).toBe('stock_test.pdf')
   })
+
+  it('generates an accounts and cash ledger PDF for an employee with running balance', () => {
+    const txns = [
+      {
+        type: 'collection',
+        direction: 'in',
+        amount: 2500,
+        title: 'Jay Ambe Provision',
+        note: 'Payment received for "Jay Ambe Provision" on 28/09/2026 (GPay)',
+        timestamp: 1700000100000,
+        accountName: 'Nilesh',
+      },
+      {
+        type: 'expense',
+        direction: 'out',
+        amount: 300,
+        title: 'Fuel',
+        note: 'Van diesel refuel',
+        timestamp: 1700000200000,
+        accountName: 'Nilesh',
+      },
+      {
+        type: 'transfer',
+        direction: 'out',
+        amount: 1500,
+        title: 'To Counter Cash',
+        note: 'Evening handover to Jigneshbhai',
+        timestamp: 1700000300000,
+        accountName: 'Nilesh',
+      },
+    ]
+
+    const file = buildAccountsLedgerPdf({
+      accountTitle: 'Nilesh',
+      accountType: 'Staff Cash Custody',
+      dateRangeLabel: 'Current Month (Sep 2026)',
+      accountsSummary: { nilesh: 1200, hiteshbhai: 800, counter: 5000, bank: 20000 },
+      txns,
+      openingBalance: 500,
+      filterTypeLabel: 'All Transactions',
+    })
+
+    expect(file).toBeDefined()
+    expect(file.type).toBe('application/pdf')
+    expect(file.name).toContain('Accounts_Ledger_Nilesh_')
+    expect(file.size).toBeGreaterThan(500)
+  })
+
+  it('generates multi-page accounts ledger PDF when many transactions exist', () => {
+    const txns = []
+    for (let i = 0; i < 40; i++) {
+      txns.push({
+        type: i % 2 === 0 ? 'collection' : 'expense',
+        direction: i % 2 === 0 ? 'in' : 'out',
+        amount: 100 * (i + 1),
+        title: i % 2 === 0 ? `Client ${i}` : 'Daily Expense',
+        note: `Transaction note #${i}`,
+        timestamp: 1700000000000 + i * 3600000,
+        accountName: 'Counter',
+      })
+    }
+
+    const file = buildAccountsLedgerPdf({
+      accountTitle: 'Counter Cash',
+      accountType: 'Cash Drawer',
+      dateRangeLabel: '01/09/2026 to 28/09/2026',
+      accountsSummary: { nilesh: 1000, hiteshbhai: 500, counter: 8000, bank: 15000 },
+      txns,
+      openingBalance: 2000,
+      filterTypeLabel: 'All Entries',
+    })
+
+    expect(file).toBeDefined()
+    expect(file.size).toBeGreaterThan(1500)
+  })
 })
+
