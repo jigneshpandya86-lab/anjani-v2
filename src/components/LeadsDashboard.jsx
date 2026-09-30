@@ -9,6 +9,7 @@ import {
   updateDoc,
 } from 'firebase/firestore'
 import { db } from '../firebase-config'
+import { useClientStore } from '../store/clientStore'
 import { MessageSquare, Trash2, Plus, Zap, RefreshCw, Users, ChevronDown } from 'lucide-react'
 import toast from 'react-hot-toast'
 import React from 'react'
