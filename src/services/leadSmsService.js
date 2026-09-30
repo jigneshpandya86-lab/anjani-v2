@@ -4,9 +4,34 @@ const INDIA_COUNTRY_CODE = '91'
 const DAY_IN_MS = 24 * 60 * 60 * 1000
 const BUSINESS_WHATSAPP_NUMBER = import.meta.env.VITE_BUSINESS_WHATSAPP_NUMBER || ''
 
+export const DEFAULT_MACRO_URL =
+  'https://trigger.macrodroid.com/25efcbac-eb13-4461-ae90-3158ba6c5b90/anjani_sms'
+
 export const FOLLOW_UP_DAYS = [20, 45]
 
-export const getLeadPhone = (lead) => lead.mobile || lead.phone || ''
+export const getLeadPhone = (lead) => {
+  if (!lead) return ''
+  const raw =
+    lead.mobile ??
+    lead.phone ??
+    lead.Mobile ??
+    lead.Phone ??
+    lead.contact ??
+    lead.Contact ??
+    lead.mobileNumber ??
+    lead.phoneNumber ??
+    lead.mobileNo ??
+    lead.MobileNo ??
+    lead.number ??
+    lead.whatsapp ??
+    lead.contactNumber ??
+    ''
+  let clean = String(raw).replace(/\D/g, '')
+  if (clean.length === 11 && clean.startsWith('0')) clean = clean.slice(1)
+  if (clean.length === 12 && clean.startsWith('91')) clean = clean.slice(2)
+  if (clean.length > 10) clean = clean.slice(-10)
+  return clean.length === 10 ? clean : ''
+}
 
 export const toDateObject = (value) => {
   if (!value) return null
@@ -16,15 +41,23 @@ export const toDateObject = (value) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
-const normalizeIndianPhone = (phone) => {
+export const normalizeIndianPhone = (phone) => {
   let cleanPhone = String(phone || '').replace(/\D/g, '')
-  if (cleanPhone.length === 10) cleanPhone = `${INDIA_COUNTRY_CODE}${cleanPhone}`
+  if (cleanPhone.length === 11 && cleanPhone.startsWith('0')) cleanPhone = cleanPhone.slice(1)
+  if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) cleanPhone = cleanPhone.slice(2)
+  if (cleanPhone.length > 10) cleanPhone = cleanPhone.slice(-10)
+  if (cleanPhone.length === 10) return `${INDIA_COUNTRY_CODE}${cleanPhone}`
   return cleanPhone
 }
 
 export const sendBackgroundSms = async ({ macroUrl, phone, message }) => {
-  const packet = `${normalizeIndianPhone(phone)}@@@${message}`
-  const finalUrl = `${macroUrl}?data=${encodeURIComponent(packet)}`
+  const url = macroUrl || DEFAULT_MACRO_URL
+  const normalizedPhone = normalizeIndianPhone(phone)
+  if (!normalizedPhone || normalizedPhone.length < 10) {
+    throw new Error('Invalid phone number for SMS')
+  }
+  const packet = `${normalizedPhone}@@@${message}`
+  const finalUrl = `${url}?data=${encodeURIComponent(packet)}`
   const response = await fetch(finalUrl, { method: 'GET' })
 
   if (!response.ok) {

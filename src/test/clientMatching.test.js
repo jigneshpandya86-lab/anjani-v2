@@ -98,5 +98,32 @@ describe('clientMatchingUtils', () => {
       const match = findMatchingClient('Kailash Parbat Dhaba', clients)
       expect(match).toBeNull()
     })
+
+    it('isolates "Retail" and generic walk-in customers from matching unrelated clients (e.g. Dr. Rahul Vasava)', () => {
+      const clientsWithDoctor = [
+        ...clients,
+        { id: 'c99', name: 'Dr. Rahul Vasava', mobile: '9426011111' },
+      ]
+
+      // When no exact "Retail" doc exists, Retail must return null (NEVER match Dr. Rahul Vasava!)
+      const match1 = findMatchingClient('Retail', clientsWithDoctor)
+      expect(match1).toBeNull()
+
+      const match2 = findMatchingClient('retail', clientsWithDoctor)
+      expect(match2).toBeNull()
+
+      const match3 = findMatchingClient('Counter', clientsWithDoctor)
+      expect(match3).toBeNull()
+
+      // When an exact "Retail" customer document exists, it matches that exact Retail doc
+      const clientsWithRetailDoc = [
+        ...clientsWithDoctor,
+        { id: 'c_retail', name: 'Retail', mobile: '' },
+      ]
+      const match4 = findMatchingClient('Retail', clientsWithRetailDoc)
+      expect(match4).not.toBeNull()
+      expect(match4.client.id).toBe('c_retail')
+      expect(match4.client.name).toBe('Retail')
+    })
   })
 })

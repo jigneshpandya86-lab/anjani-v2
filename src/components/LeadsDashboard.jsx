@@ -9,11 +9,11 @@ import {
   updateDoc,
 } from 'firebase/firestore'
 import { db } from '../firebase-config'
-import { useClientStore } from '../store/clientStore'
-import { MessageSquare, Trash2, Plus, Zap, RefreshCw, Users } from 'lucide-react'
+import { MessageSquare, Trash2, Plus, Zap, RefreshCw, Users, ChevronDown } from 'lucide-react'
 import toast from 'react-hot-toast'
 import React from 'react'
 import {
+  DEFAULT_MACRO_URL,
   buildFollowUpSmsMessage,
   buildFollowUpUpdate,
   buildInitialSmsMessage,
@@ -25,7 +25,7 @@ import {
 
 // ─── Module-level constants ──────────────────────────────────────────────────
 
-const MACRO_URL = import.meta.env.VITE_MACRO_URL || ''
+const MACRO_URL = import.meta.env.VITE_MACRO_URL || DEFAULT_MACRO_URL
 
 const TAG_CONFIG = {
   SMS_SENT: {
@@ -167,6 +167,7 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
   const [isSavingLead, setIsSavingLead] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isRemessaging, setIsRemessaging] = useState(false)
+  const [isActionPanelOpen, setIsActionPanelOpen] = useState(false)
 
   useEffect(() => {
     const unsub = fetchLeads()
@@ -272,8 +273,6 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
     setNewLeadMobile('')
   }, [isSavingLead])
 
-
-
   const connectTopFiveUntaggedLeads = useCallback(async () => {
     if (isConnecting) return
     setIsConnecting(true)
@@ -281,20 +280,47 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
       // Fetch recent leads and include records where Tag is null, empty, or missing
       const q = query(collection(db, 'leads'), limit(100))
       const snapshot = await getDocs(q)
-      const untaggedLeads = snapshot.docs
-        .filter((leadDoc) => isLeadUntagged(leadDoc.data()))
-        .slice(0, 5)
+      const allUntagged = snapshot.docs.filter((leadDoc) => isLeadUntagged(leadDoc.data()))
 
-      if (untaggedLeads.length === 0) {
+      if (allUntagged.length === 0) {
         toast('No untagged leads found')
         return
       }
 
+      const untaggedWithPhone = []
+      const phonelessDocs = []
+
+      for (const leadDoc of allUntagged) {
+        const data = leadDoc.data()
+        const mobile = getLeadPhone(data)
+        if (mobile) {
+          if (untaggedWithPhone.length < 5) {
+            untaggedWithPhone.push({ leadDoc, data, mobile })
+          }
+        } else {
+          phonelessDocs.push(leadDoc)
+        }
+      }
+
+      // Auto-tag phoneless leads with NO_PHONE so they never stall the queue
+      if (phonelessDocs.length > 0) {
+        Promise.allSettled(
+          phonelessDocs.slice(0, 10).map((d) =>
+            updateDoc(doc(db, 'leads', d.id), {
+              Tag: 'NO_PHONE',
+            })
+          )
+        ).catch((err) => console.error('Failed to mark phoneless leads:', err))
+      }
+
+      if (untaggedWithPhone.length === 0) {
+        toast('Untagged leads found, but none have a valid phone number (marked as NO_PHONE)')
+        return
+      }
+
       let sentCount = 0
-      for (const leadDoc of untaggedLeads) {
-        const lead = leadDoc.data()
-        const mobile = getLeadPhone(lead)
-        if (!mobile) continue
+      for (const item of untaggedWithPhone) {
+        const { leadDoc, data, mobile } = item
         await sendBackgroundSms({
           macroUrl: MACRO_URL,
           phone: mobile,
@@ -302,15 +328,11 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
         })
         await updateDoc(
           doc(db, 'leads', leadDoc.id),
-          buildInitialSmsUpdate({ lead, leadId: leadDoc.id, now: new Date() }),
+          buildInitialSmsUpdate({ lead: data, leadId: leadDoc.id, now: new Date() }),
         )
         sentCount += 1
       }
 
-      if (sentCount === 0) {
-        toast('No valid phone numbers found')
-        return
-      }
       toast.success(`Connected ${sentCount} lead${sentCount > 1 ? 's' : ''}`)
     } catch (error) {
       console.error('Failed to connect leads:', error)
@@ -339,7 +361,10 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
       for (const leadDoc of snapshot.docs) {
         const lead = leadDoc.data()
         const mobile = getLeadPhone(lead)
-        if (!mobile) continue
+        if (!mobile) {
+          await updateLead(leadDoc.id, { Tag: 'NO_PHONE' })
+          continue
+        }
 
         const cleanPhone = String(mobile).replace(/\D/g, '')
         const last10 = cleanPhone.slice(-10)
@@ -387,10 +412,11 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
     } finally {
       setIsRemessaging(false)
     }
-  }, [isRemessaging])
+  }, [isRemessaging, updateLead])
 
   const connectAndSendDueFollowUps = useCallback(async () => {
     if (isConnecting || isRemessaging) return
+    setIsActionPanelOpen(true)
     await connectTopFiveUntaggedLeads()
     await sendDueFollowUpSms()
   }, [isConnecting, isRemessaging, connectTopFiveUntaggedLeads, sendDueFollowUpSms])
@@ -399,6 +425,7 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
     if (!pendingAction) return
 
     const runPendingAction = async () => {
+      setIsActionPanelOpen(true)
       if (pendingAction === 'connect') {
         await connectTopFiveUntaggedLeads()
       } else if (pendingAction === 'both') {
@@ -427,91 +454,146 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
         </span>
       </div>
 
-      {/* Action Panel */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        {/* Connect row */}
-        <div className="flex items-center gap-4 px-4 py-4">
-          <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center">
-            <Zap size={18} className="text-orange-500" />
+      {/* Action Panel (Click to Expand / Collapse) */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-all">
+        {/* Click to expand toggle header */}
+        <button
+          type="button"
+          onClick={() => setIsActionPanelOpen((prev) => !prev)}
+          className="w-full px-4 py-3.5 flex items-center justify-between cursor-pointer select-none hover:bg-gray-50/80 transition-colors text-left"
+          aria-expanded={isActionPanelOpen}
+          aria-label="Toggle lead automations"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-orange-50 text-orange-500 flex items-center justify-center shrink-0">
+              <Zap size={18} />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-black text-gray-900 leading-tight">
+                  Lead Automations & SMS
+                </p>
+                {untaggedCount > 0 && (
+                  <span className="bg-orange-100 text-orange-600 text-[10px] font-black px-2 py-0.5 rounded-full">
+                    {untaggedCount} New
+                  </span>
+                )}
+                {smsSentCount > 0 && (
+                  <span className="bg-blue-100 text-blue-600 text-[10px] font-black px-2 py-0.5 rounded-full">
+                    {smsSentCount} In Follow-up
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5 truncate">
+                {isActionPanelOpen
+                  ? 'Click to collapse options'
+                  : 'Click to expand options (Connect, Re-message, Run Both)'}
+              </p>
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-900 leading-tight">Connect New Leads</p>
-            <p className="text-xs text-gray-400 mt-0.5">Send SMS to top 5 untagged leads</p>
-          </div>
-          {untaggedCount > 0 && (
-            <span className="flex-shrink-0 bg-orange-100 text-orange-600 text-xs font-bold px-2 py-0.5 rounded-full">
-              {untaggedCount}
+
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider hidden sm:inline">
+              {isActionPanelOpen ? 'Collapse' : 'Expand'}
             </span>
-          )}
-          <button
-            type="button"
-            disabled={isConnecting || isRemessaging}
-            onClick={connectTopFiveUntaggedLeads}
-            className="flex-shrink-0 inline-flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2 rounded-xl transition-all"
-          >
-            {isConnecting ? (
-              <>
-                <ButtonSpinner />
-                <span>Connecting…</span>
-              </>
-            ) : (
-              <span>{untaggedCount > 0 ? `Connect ${Math.min(untaggedCount, 5)}` : 'Connect'}</span>
-            )}
-          </button>
-        </div>
-
-        <div className="h-px bg-gray-100 mx-4" />
-
-        {/* Re-message row */}
-        <div className="flex items-center gap-4 px-4 py-4">
-          <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
-            <RefreshCw size={18} className="text-blue-500" />
+            <ChevronDown
+              size={16}
+              className={`text-gray-400 transition-transform duration-200 ${
+                isActionPanelOpen ? 'rotate-180 text-orange-500' : ''
+              }`}
+            />
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-900 leading-tight">Send Follow-ups</p>
-            <p className="text-xs text-gray-400 mt-0.5">Deliver due follow-up messages</p>
-          </div>
-          {smsSentCount > 0 && (
-            <span className="flex-shrink-0 bg-blue-100 text-blue-600 text-xs font-bold px-2 py-0.5 rounded-full">
-              {smsSentCount}
-            </span>
-          )}
-          <button
-            type="button"
-            disabled={isConnecting || isRemessaging}
-            onClick={sendDueFollowUpSms}
-            className="flex-shrink-0 inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2 rounded-xl transition-all"
-          >
-            {isRemessaging ? (
-              <>
-                <ButtonSpinner />
-                <span>Sending…</span>
-              </>
-            ) : (
-              <span>Re-message</span>
-            )}
-          </button>
-        </div>
+        </button>
 
-        <div className="h-px bg-gray-100 mx-4" />
+        {/* Collapsible Action Rows */}
+        {isActionPanelOpen && (
+          <div className="border-t border-gray-100 animate-in fade-in duration-150">
+            {/* Connect row */}
+            <div className="flex items-center gap-4 px-4 py-3.5">
+              <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-orange-50 flex items-center justify-center">
+                <Zap size={16} className="text-orange-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900 leading-tight">Connect New Leads</p>
+                <p className="text-xs text-gray-400 mt-0.5">Send SMS to top 5 untagged leads</p>
+              </div>
+              {untaggedCount > 0 && (
+                <span className="flex-shrink-0 bg-orange-100 text-orange-600 text-xs font-bold px-2 py-0.5 rounded-full">
+                  {untaggedCount}
+                </span>
+              )}
+              <button
+                type="button"
+                disabled={isConnecting || isRemessaging}
+                onClick={connectTopFiveUntaggedLeads}
+                className="flex-shrink-0 inline-flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer"
+              >
+                {isConnecting ? (
+                  <>
+                    <ButtonSpinner />
+                    <span>Connecting…</span>
+                  </>
+                ) : (
+                  <span>{untaggedCount > 0 ? `Connect ${Math.min(untaggedCount, 5)}` : 'Connect'}</span>
+                )}
+              </button>
+            </div>
 
-        <div className="flex items-center gap-4 px-4 py-4">
-          <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center">
-            <RefreshCw size={18} className="text-violet-500" />
+            <div className="h-px bg-gray-100 mx-4" />
+
+            {/* Re-message row */}
+            <div className="flex items-center gap-4 px-4 py-3.5">
+              <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center">
+                <RefreshCw size={16} className="text-blue-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900 leading-tight">Send Follow-ups</p>
+                <p className="text-xs text-gray-400 mt-0.5">Deliver due follow-up messages</p>
+              </div>
+              {smsSentCount > 0 && (
+                <span className="flex-shrink-0 bg-blue-100 text-blue-600 text-xs font-bold px-2 py-0.5 rounded-full">
+                  {smsSentCount}
+                </span>
+              )}
+              <button
+                type="button"
+                disabled={isConnecting || isRemessaging}
+                onClick={sendDueFollowUpSms}
+                className="flex-shrink-0 inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer"
+              >
+                {isRemessaging ? (
+                  <>
+                    <ButtonSpinner />
+                    <span>Sending…</span>
+                  </>
+                ) : (
+                  <span>Re-message</span>
+                )}
+              </button>
+            </div>
+
+            <div className="h-px bg-gray-100 mx-4" />
+
+            {/* Quick Action row */}
+            <div className="flex items-center gap-4 px-4 py-3.5">
+              <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-violet-50 flex items-center justify-center">
+                <RefreshCw size={16} className="text-violet-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900 leading-tight">Quick Action</p>
+                <p className="text-xs text-gray-400 mt-0.5">Connect + send due follow-ups</p>
+              </div>
+              <button
+                type="button"
+                disabled={isConnecting || isRemessaging}
+                onClick={connectAndSendDueFollowUps}
+                className="flex-shrink-0 inline-flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer"
+              >
+                <span>Run Both</span>
+              </button>
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-900 leading-tight">Quick Action</p>
-            <p className="text-xs text-gray-400 mt-0.5">Connect + send due follow-ups</p>
-          </div>
-          <button
-            type="button"
-            disabled={isConnecting || isRemessaging}
-            onClick={connectAndSendDueFollowUps}
-            className="flex-shrink-0 inline-flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2 rounded-xl transition-all"
-          >
-            <span>Run Both</span>
-          </button>
-        </div>
+        )}
       </div>
 
       {/* Add Lead Modal */}

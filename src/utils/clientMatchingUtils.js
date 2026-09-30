@@ -147,6 +147,32 @@ export function findMatchingClient(rawName, clients = [], options = {}) {
 
   if (!targetName) return null
 
+  // Special Isolation: Generic walk-in / retail customers should NEVER be phonetically
+  // or fuzzily matched to named business clients or individuals (e.g. Dr. Rahul Vasava).
+  const isGenericRetail =
+    targetLower === 'retail' ||
+    targetLower === 'counter' ||
+    targetLower === 'walk-in' ||
+    targetLower === 'walkin' ||
+    targetLower === 'unknown' ||
+    /^customer\s*\d*$/i.test(targetName)
+
+  if (isGenericRetail) {
+    const retailClient = clients.find(
+      (c) => c?.name && c.name.toLowerCase().trim() === 'retail'
+    )
+    if (retailClient) {
+      return {
+        matched: true,
+        client: retailClient,
+        matchType: 'exact',
+        confidence: 1.0,
+        canonicalName: 'Retail',
+      }
+    }
+    return null
+  }
+
   // Tier 2: Exact Name Match
   const exactMatch = clients.find((c) => c?.name && c.name.toLowerCase().trim() === targetLower)
   if (exactMatch) {

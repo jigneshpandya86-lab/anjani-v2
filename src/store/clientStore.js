@@ -1105,7 +1105,16 @@ export const useClientStore = create((set, get) => ({
   addOrder: async (data) => {
     const normalizedData = normalizeOrderWriteData(data)
     const orderId = `ORD-${Date.now()}`
-    const selectedClient = get().clients.find((client) => client.id === normalizedData.clientId)
+    const isRetail =
+      (data.clientName && data.clientName.toLowerCase().trim() === 'retail') ||
+      (normalizedData.clientName && normalizedData.clientName.toLowerCase().trim() === 'retail')
+
+    let selectedClient = null
+    if (isRetail) {
+      selectedClient = get().clients.find((c) => c?.name && c.name.toLowerCase().trim() === 'retail') || null
+    } else if (normalizedData.clientId) {
+      selectedClient = get().clients.find((client) => client.id === normalizedData.clientId) || null
+    }
 
     let items = normalizedData.items
     if (!Array.isArray(items) || items.length === 0) {
@@ -1131,8 +1140,9 @@ export const useClientStore = create((set, get) => ({
     await addDoc(collection(db, 'orders'), {
       ...normalizedData,
       orderId,
-      clientName: selectedClient?.name || data.clientName || '',
-      mobile: selectedClient?.mobile || data.mobile || '',
+      clientId: isRetail ? (selectedClient?.id || '') : (normalizedData.clientId || selectedClient?.id || ''),
+      clientName: isRetail ? 'Retail' : (selectedClient?.name || data.clientName || ''),
+      mobile: isRetail ? (selectedClient?.mobile || '') : (selectedClient?.mobile || data.mobile || ''),
       address: normalizedData.address || selectedClient?.address || '',
       location: normalizedData.location || selectedClient?.location || selectedClient?.mapLink || '',
       mapLink: normalizedData.mapLink || selectedClient?.mapLink || '',
@@ -1181,24 +1191,40 @@ export const useClientStore = create((set, get) => ({
       let rawName = String(sale.clientName || '').trim()
 
       // Normalize unknown / walk-in clients to "Retail" (never Customer 1, 2, 3...)
-      if (!rawName || /^customer\s*\d*$/i.test(rawName) || /^walk[\s-]*in/i.test(rawName) || /^unknown/i.test(rawName)) {
+      const isRetail =
+        !rawName ||
+        /^customer\s*\d*$/i.test(rawName) ||
+        /^walk[\s-]*in/i.test(rawName) ||
+        /^unknown/i.test(rawName) ||
+        rawName.toLowerCase() === 'retail' ||
+        rawName.toLowerCase() === 'counter'
+
+      if (isRetail) {
         rawName = 'Retail'
       }
 
       // 1. Find or create client (with phonetic & fuzzy matching)
-      let matchResult = findMatchingClient(rawName, currentClients, { mobile: sale.mobile })
-      let client = matchResult?.client || null
+      let client = null
+      let clientDocId = null
+      let clientName = rawName
 
-      let clientDocId = client?.id
-      let clientName = client?.name || rawName
+      if (isRetail) {
+        client = currentClients.find((c) => c?.name && c.name.toLowerCase().trim() === 'retail') || null
+        clientDocId = client?.id || null
+        clientName = 'Retail'
+      } else {
+        const matchResult = findMatchingClient(rawName, currentClients, { mobile: sale.mobile })
+        client = matchResult?.client || null
+        clientDocId = client?.id || null
+        clientName = client?.name || rawName
+      }
 
       // For "Retail", if not found, create a single master "Retail" client; avoid unlimited customer docs
       if (!clientDocId) {
-        const isRetail = rawName.toLowerCase() === 'retail'
         if (isRetail || sale.createClient !== false) {
           const englishClientName = isRetail ? 'Retail' : ensureEnglishText(rawName)
-          const englishAddress = ensureEnglishText(sale.address || '')
-          const cleanMobile = normalizeDigits(sale.mobile || '').replace(/\D/g, '')
+          const englishAddress = isRetail ? '' : ensureEnglishText(sale.address || '')
+          const cleanMobile = isRetail ? '' : normalizeDigits(sale.mobile || '').replace(/\D/g, '')
 
           const newDoc = await addDoc(collection(db, 'customers'), {
             name: englishClientName,
@@ -1256,7 +1282,7 @@ export const useClientStore = create((set, get) => ({
       const effectiveAddress = ensureEnglishText(sale.address || client?.address || sale.location || client?.location || '')
       const effectiveLocation = ensureEnglishText(sale.location || client?.location || sale.address || client?.address || '')
 
-      if (clientDocId && (!client?.address || !client.address.trim()) && effectiveAddress) {
+      if (clientDocId && !isRetail && (!client?.address || !client.address.trim()) && effectiveAddress) {
         try {
           await updateDoc(doc(db, 'customers', clientDocId), { address: effectiveAddress })
           if (client) client.address = effectiveAddress

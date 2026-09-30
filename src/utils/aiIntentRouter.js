@@ -76,7 +76,7 @@ export function tryLocalIntentRoute(query, store = {}) {
 
   if (isOrderCreationIntent) {
     const clients = store.clients || []
-    const matchedClient = matchClientFromText(rawQ, clients)
+    let matchedClient = matchClientFromText(rawQ, clients)
     const sku = matchSkuFromText(rawQ)
     const skuMeta = getSkuMeta(sku)
 
@@ -104,6 +104,12 @@ export function tryLocalIntentRoute(query, store = {}) {
         clientName = nameMatch[1].trim()
       } else {
         clientName = 'Retail'
+      }
+    }
+    if (clientName.toLowerCase() === 'retail' || clientName.toLowerCase() === 'counter') {
+      clientName = 'Retail'
+      if (matchedClient && matchedClient.name?.toLowerCase().trim() !== 'retail') {
+        matchedClient = null
       }
     }
 

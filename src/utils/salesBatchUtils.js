@@ -10,8 +10,9 @@ export function isRetailCustomer(rawName) {
   const name = String(rawName || '').trim()
   if (!name) return true
   if (name.toLowerCase() === 'retail') return true
+  if (name.toLowerCase() === 'counter') return true
+  if (name.toLowerCase() === 'walkin' || /^walk[\s-]*in/i.test(name)) return true
   if (/^customer\s*\d*$/i.test(name)) return true
-  if (/^walk[\s-]*in/i.test(name)) return true
   if (/^unknown/i.test(name)) return true
   return false
 }
