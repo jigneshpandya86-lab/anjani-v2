@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import StaffSalariesDashboard from '../components/StaffSalariesDashboard'
 
 // Mock dependencies
@@ -57,12 +57,26 @@ vi.mock('../store/clientStore', () => ({
         amount: 2000,
         date: '2026-09-28',
         reason: 'Fuel and bike repair',
+        note: 'Fuel and bike repair',
+        sourceAccountId: 'counter',
         status: 'active',
       },
     ],
     staffTransactionsLoading: false,
     fetchStaffTransactions: vi.fn(),
-    salarySettlements: [],
+    salarySettlements: [
+      {
+        id: 'sal-1',
+        employeeId: 'nilesh',
+        month: '2026-08',
+        baseSalary: 15000,
+        grossEarnings: 15000,
+        advancesDeducted: 2000,
+        netPaid: 13000,
+        payoutAccountId: 'counter',
+        payoutDate: '2026-09-01',
+      },
+    ],
     salarySettlementsLoading: false,
     fetchSalarySettlements: vi.fn(),
     accountsSummary: {
@@ -108,5 +122,57 @@ describe('StaffSalariesDashboard', () => {
 
     expect(screen.getByRole('button', { name: /Give Advance/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Settle Monthly Salary/i })).toBeInTheDocument()
+  })
+
+  it('supports click-to-expand on Advances & Repayments via top metric card and accordion toggle', () => {
+    render(<StaffSalariesDashboard />)
+
+    // Initially collapsed: filter pills not present
+    expect(screen.queryByRole('button', { name: /Active Only/i })).not.toBeInTheDocument()
+
+    // Click Active Advance card to expand
+    const activeAdvanceCard = screen.getByTitle(/Click to expand advances and repayments/i)
+    fireEvent.click(activeAdvanceCard)
+
+    // Now expanded: filter pills and row details are visible
+    expect(screen.getByRole('button', { name: /Active Only \(1\)/i })).toBeInTheDocument()
+    expect(screen.getByText(/Fuel and bike repair/i)).toBeInTheDocument()
+
+    // Clicking row expands additional audit details
+    const advanceRow = screen.getByRole('button', { name: /Toggle advance tx-1 details/i })
+    fireEvent.click(advanceRow)
+    expect(screen.getByText(/Counter Cash Drawer/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Delete Advance & Refund/i })).toBeInTheDocument()
+
+    // Click accordion header to collapse
+    const accordionHeader = screen.getByRole('button', { name: /Advances & Repayments/i })
+    fireEvent.click(accordionHeader)
+    expect(screen.queryByRole('button', { name: /Active Only/i })).not.toBeInTheDocument()
+  })
+
+  it('supports click-to-expand on Settled Salary Slips via top metric card and accordion toggle', () => {
+    render(<StaffSalariesDashboard />)
+
+    // Initially collapsed: slip PDF button is not visible
+    expect(screen.queryByRole('button', { name: /Slip PDF/i })).not.toBeInTheDocument()
+
+    // Click Est. Pending Pay card to expand settlements
+    const estPendingCard = screen.getByTitle(/Click to expand settled monthly salary slips/i)
+    fireEvent.click(estPendingCard)
+
+    // Now expanded: slip row and PDF button are visible
+    expect(screen.getByRole('button', { name: /Slip PDF/i })).toBeInTheDocument()
+    expect(screen.getAllByText(/August 2026/i).length).toBeGreaterThanOrEqual(1)
+
+    // Click slip row to expand financial breakdown
+    const slipRow = screen.getByRole('button', { name: /Toggle August 2026 slip breakdown/i })
+    fireEvent.click(slipRow)
+    expect(screen.getByText(/Gross Base/i)).toBeInTheDocument()
+    expect(screen.getByText(/Advance Deducted/i)).toBeInTheDocument()
+
+    // Click accordion header to collapse
+    const accordionHeader = screen.getByRole('button', { name: /Settled Salary Slips/i })
+    fireEvent.click(accordionHeader)
+    expect(screen.queryByRole('button', { name: /Slip PDF/i })).not.toBeInTheDocument()
   })
 })
