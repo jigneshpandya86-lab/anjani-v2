@@ -5,6 +5,7 @@ import {
   doc,
   where,
   limit,
+  orderBy,
   getDocs,
   updateDoc,
 } from 'firebase/firestore'
@@ -39,6 +40,16 @@ const TAG_CONFIG = {
     badge: 'bg-green-100 text-green-700',
     avatar: 'bg-green-100 text-green-600',
   },
+  NO_PHONE: {
+    label: 'No Phone',
+    badge: 'bg-rose-100 text-rose-600',
+    avatar: 'bg-rose-100 text-rose-600',
+  },
+  FAILED_NO_MOBILE: {
+    label: 'No Phone',
+    badge: 'bg-rose-100 text-rose-600',
+    avatar: 'bg-rose-100 text-rose-600',
+  },
   _default: {
     label: 'New',
     badge: 'bg-gray-100 text-gray-500',
@@ -55,8 +66,12 @@ const formatDate = (lead) => {
 }
 
 const isLeadUntagged = (lead = {}) => {
-  if (!Object.prototype.hasOwnProperty.call(lead, 'Tag')) return true
-  return lead.Tag === null || lead.Tag === ''
+  if (!lead) return false
+  const tag = lead.Tag ?? lead.tag
+  if (tag === 'NO_PHONE' || tag === 'FAILED_NO_MOBILE') return false
+  if (tag === 'SMS_SENT' || tag === 'FOLLOWUP_DONE' || tag === 'SENDING') return false
+  if (tag === null || tag === undefined || tag === '' || tag === 'null' || tag === 'undefined') return true
+  return false
 }
 
 // ─── Sub-components (memoized) ───────────────────────────────────────────────
@@ -103,6 +118,7 @@ const SkeletonCard = React.memo(function SkeletonCard() {
 const LeadCard = React.memo(function LeadCard({ lead, onWhatsApp, onDelete }) {
   const smsCount = lead.smsCount || 0
   const showSmsCounter = lead.Tag === 'SMS_SENT'
+  const displayPhone = getLeadPhone(lead) || lead.mobile
 
   return (
     <div className="relative bg-white rounded-2xl px-3 py-2.5 shadow-sm border border-gray-100">
@@ -114,13 +130,16 @@ const LeadCard = React.memo(function LeadCard({ lead, onWhatsApp, onDelete }) {
       <div className="flex items-center gap-3">
         {/* Info */}
         <div className="flex-1 min-w-0">
+          {lead.name && (
+            <p className="text-xs font-bold text-gray-900 truncate">{lead.name}</p>
+          )}
           {lead.Tag !== 'SMS_SENT' && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mt-0.5">
               <StatusBadge tag={lead.Tag} />
             </div>
           )}
           <p className="text-xs text-gray-500 mt-1 truncate">
-            {lead.mobile ? `+91 ${lead.mobile}` : 'No number'}
+            {displayPhone ? `+91 ${displayPhone}` : 'No number'}
             <span className="text-gray-300 mx-1">·</span>
             {formatDate(lead)}
           </p>
@@ -134,15 +153,15 @@ const LeadCard = React.memo(function LeadCard({ lead, onWhatsApp, onDelete }) {
           <button
             onClick={() => onWhatsApp(lead)}
             className="flex items-center justify-center gap-1 bg-[#25D366] text-white px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-wider active:scale-95 transition-transform"
-            aria-label={`WhatsApp ${lead.name || lead.mobile}`}
+            aria-label={`WhatsApp ${lead.name || displayPhone || 'lead'}`}
           >
             <MessageSquare size={13} />
             WA
           </button>
           <button
-            onClick={() => onDelete(lead.id, lead.name || lead.mobile)}
+            onClick={() => onDelete(lead.id, lead.name || displayPhone || 'lead')}
             className="text-red-400 p-2 bg-red-50 rounded-xl active:scale-90 transition-transform"
-            aria-label={`Delete ${lead.name || lead.mobile}`}
+            aria-label={`Delete ${lead.name || displayPhone || 'lead'}`}
           >
             <Trash2 size={16} />
           </button>
@@ -177,14 +196,27 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
   }, [fetchLeads])
 
   // Derived counts — memoized, only recalculate when leads change
-  const untaggedCount = useMemo(() => leads.filter((l) => !l.Tag).length, [leads])
+  const connectableLeads = useMemo(
+    () => leads.filter((l) => isLeadUntagged(l) && Boolean(getLeadPhone(l))),
+    [leads],
+  )
+  const untaggedCount = connectableLeads.length
+  const noPhoneUntaggedCount = useMemo(
+    () => leads.filter((l) => isLeadUntagged(l) && !getLeadPhone(l)).length,
+    [leads],
+  )
   const smsSentCount = useMemo(() => leads.filter((l) => l.Tag === 'SMS_SENT').length, [leads])
 
   // ── Handlers (stable references via useCallback) ────────────────────────
 
   const sendWhatsApp = useCallback((lead) => {
+    const phone = getLeadPhone(lead)
+    if (!phone) {
+      toast.error('No valid phone number for WhatsApp')
+      return
+    }
     const msg = `Hello! 🌟 I'm *Jignesh Pandya*, owner of *Annapurna Foods* (Authorized Distributorship for *Anjani & Bailey Water*, Vadodara). 💧\n\nWe provide **Anjani 200ml** as well as **Bailey Packaged Drinking Water (250ml, 500ml, 1 Liter & 2 Liter)** across all areas of Vadodara, Gujarat. ✨\n\n*Why choose us?*\n✅ **Full SKU Range**: Anjani 200ml + Bailey 250ml, 500ml, 1L, 2L for offices, restaurants & events.\n✅ **Certified Pure Quality**: 100% pure, sealed & hygienic.\n✅ **Best Bulk Rates & Fast Delivery**: Direct doorstep delivery.\n\nWould you like to try a free sample or get a bulk quote? Please *reply with 1*! 👍`
-    window.open(`https://wa.me/91${lead.mobile}?text=${encodeURIComponent(msg)}`, '_blank')
+    window.open(`https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`, '_blank')
   }, [])
 
   const deleteLeadHandler = useCallback(
@@ -278,12 +310,27 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
     if (isConnecting) return
     setIsConnecting(true)
     try {
-      // Fetch recent leads and include records where Tag is null, empty, or missing
-      const q = query(collection(db, 'leads'), limit(100))
-      const snapshot = await getDocs(q)
-      const allUntagged = snapshot.docs.filter((leadDoc) => isLeadUntagged(leadDoc.data()))
+      // 1. Prioritize active leads from the store (already sorted by createdAt desc)
+      let candidates = leads.filter(isLeadUntagged)
 
-      if (allUntagged.length === 0) {
+      // 2. If store doesn't have untagged leads, query Firestore with orderBy createdAt desc
+      if (candidates.length === 0) {
+        try {
+          const q = query(collection(db, 'leads'), orderBy('createdAt', 'desc'), limit(100))
+          const snapshot = await getDocs(q)
+          candidates = snapshot.docs
+            .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+            .filter(isLeadUntagged)
+        } catch (_err) {
+          const fallbackQ = query(collection(db, 'leads'), limit(100))
+          const snapshot = await getDocs(fallbackQ)
+          candidates = snapshot.docs
+            .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+            .filter(isLeadUntagged)
+        }
+      }
+
+      if (candidates.length === 0) {
         toast('No untagged leads found')
         return
       }
@@ -291,22 +338,21 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
       const untaggedWithPhone = []
       const phonelessDocs = []
 
-      for (const leadDoc of allUntagged) {
-        const data = leadDoc.data()
-        const mobile = getLeadPhone(data)
+      for (const lead of candidates) {
+        const mobile = getLeadPhone(lead)
         if (mobile) {
           if (untaggedWithPhone.length < 5) {
-            untaggedWithPhone.push({ leadDoc, data, mobile })
+            untaggedWithPhone.push({ lead, mobile })
           }
         } else {
-          phonelessDocs.push(leadDoc)
+          phonelessDocs.push(lead)
         }
       }
 
-      // Auto-tag phoneless leads with NO_PHONE so they never stall the queue
+      // Auto-tag phoneless leads with NO_PHONE so they never stall the queue or get falsely counted
       if (phonelessDocs.length > 0) {
         Promise.allSettled(
-          phonelessDocs.slice(0, 10).map((d) =>
+          phonelessDocs.slice(0, 20).map((d) =>
             updateDoc(doc(db, 'leads', d.id), {
               Tag: 'NO_PHONE',
             })
@@ -321,15 +367,15 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
 
       let sentCount = 0
       for (const item of untaggedWithPhone) {
-        const { leadDoc, data, mobile } = item
+        const { lead, mobile } = item
         await sendBackgroundSms({
           macroUrl: MACRO_URL,
           phone: mobile,
           message: buildInitialSmsMessage(),
         })
         await updateDoc(
-          doc(db, 'leads', leadDoc.id),
-          buildInitialSmsUpdate({ lead: data, leadId: leadDoc.id, now: new Date() }),
+          doc(db, 'leads', lead.id),
+          buildInitialSmsUpdate({ lead, leadId: lead.id, now: new Date() }),
         )
         sentCount += 1
       }
@@ -341,7 +387,7 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
     } finally {
       setIsConnecting(false)
     }
-  }, [isConnecting])
+  }, [isConnecting, leads])
 
   const sendDueFollowUpSms = useCallback(async () => {
     if (isRemessaging) return
@@ -470,13 +516,18 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
               <Zap size={18} />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <p className="text-sm font-black text-gray-900 leading-tight">
                   Lead Automations & SMS
                 </p>
                 {untaggedCount > 0 && (
                   <span className="bg-orange-100 text-orange-600 text-[10px] font-black px-2 py-0.5 rounded-full">
                     {untaggedCount} New
+                  </span>
+                )}
+                {noPhoneUntaggedCount > 0 && (
+                  <span className="bg-rose-100 text-rose-600 text-[10px] font-black px-2 py-0.5 rounded-full">
+                    {noPhoneUntaggedCount} No Phone
                   </span>
                 )}
                 {smsSentCount > 0 && (
@@ -516,7 +567,13 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-900 leading-tight">Connect New Leads</p>
-                <p className="text-xs text-gray-400 mt-0.5">Send SMS to top 5 untagged leads</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {untaggedCount > 0
+                    ? `Send SMS to top ${Math.min(untaggedCount, 5)} untagged leads`
+                    : noPhoneUntaggedCount > 0
+                    ? `${noPhoneUntaggedCount} untagged leads missing valid phone numbers`
+                    : 'Send SMS to top 5 untagged leads'}
+                </p>
               </div>
               {untaggedCount > 0 && (
                 <span className="flex-shrink-0 bg-orange-100 text-orange-600 text-xs font-bold px-2 py-0.5 rounded-full">
@@ -525,7 +582,7 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
               )}
               <button
                 type="button"
-                disabled={isConnecting || isRemessaging}
+                disabled={isConnecting || isRemessaging || (untaggedCount === 0 && noPhoneUntaggedCount === 0)}
                 onClick={connectTopFiveUntaggedLeads}
                 className="flex-shrink-0 inline-flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer"
               >

@@ -34,6 +34,14 @@ export { normalizeOrderWriteData, normalizeOrderDoc, getOrderSortTime }
 import { ensureEnglishText, normalizeDigits } from '../utils/textUtils'
 import { findMatchingClient } from '../utils/clientMatchingUtils'
 import { detectRuleConflict } from '../utils/aiMemoryUtils'
+import {
+  DEFAULT_STAFF,
+  getStaffList,
+  updateStaffProfile as updateStaffProfileApi,
+  recordStaffAdvance as recordStaffAdvanceApi,
+  deleteStaffTransaction as deleteStaffTransactionApi,
+  settleStaffSalary as settleStaffSalaryApi,
+} from '../services/staffSalaryService'
 
 let stockUnsubscribe = null
 let stockSubscriberCount = 0
@@ -43,6 +51,12 @@ let accountsUnsubscribe = null
 let accountsSubscriberCount = 0
 let aiMemoriesUnsubscribe = null
 let aiMemoriesSubscriberCount = 0
+let staffUnsubscribe = null
+let staffSubscriberCount = 0
+let staffTransactionsUnsubscribe = null
+let staffTransactionsSubscriberCount = 0
+let salarySettlementsUnsubscribe = null
+let salarySettlementsSubscriberCount = 0
 const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary')
 const ACCOUNTS_SUMMARY_DOC = doc(db, 'meta', 'accountsSummary')
 const RECENT_STOCK_ENTRIES_LIMIT = 50
@@ -136,6 +150,12 @@ export const useClientStore = create((set, get) => ({
     bank: 0,
   },
   accountsLoading: false,
+  staffList: DEFAULT_STAFF,
+  staffLoading: false,
+  staffTransactions: [],
+  staffTransactionsLoading: false,
+  salarySettlements: [],
+  salarySettlementsLoading: false,
 
   fetchUserRole: async (uid) => {
     if (!uid) {
@@ -1047,6 +1067,120 @@ export const useClientStore = create((set, get) => ({
 
   updateLead: async (id, data) => {
     await updateDoc(doc(db, 'leads', id), data)
+  },
+
+  fetchStaff: () => {
+    staffSubscriberCount += 1
+    if (!staffUnsubscribe) {
+      set({ staffLoading: true })
+      getStaffList().catch((err) => console.warn('[StaffSalary] seed error:', err))
+
+      const q = query(collection(db, 'staff'), orderBy('name', 'asc'))
+      staffUnsubscribe = onSnapshot(
+        q,
+        (snap) => {
+          let list = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+          if (list.length === 0) list = DEFAULT_STAFF
+          set({ staffList: list, staffLoading: false })
+        },
+        (err) => {
+          console.error('[StaffSalary] subscription error:', err)
+          set({ staffList: DEFAULT_STAFF, staffLoading: false })
+        },
+      )
+    }
+
+    return () => {
+      staffSubscriberCount = Math.max(0, staffSubscriberCount - 1)
+      if (staffSubscriberCount === 0 && staffUnsubscribe) {
+        staffUnsubscribe()
+        staffUnsubscribe = null
+      }
+    }
+  },
+
+  fetchStaffTransactions: (employeeId) => {
+    staffTransactionsSubscriberCount += 1
+    if (!staffTransactionsUnsubscribe) {
+      set({ staffTransactionsLoading: true })
+      const q = employeeId
+        ? query(collection(db, 'staff_transactions'), where('employeeId', '==', employeeId), limit(100))
+        : query(collection(db, 'staff_transactions'), limit(100))
+
+      staffTransactionsUnsubscribe = onSnapshot(
+        q,
+        (snap) => {
+          const txs = snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => {
+              const ta = a.date?.toMillis ? a.date.toMillis() : new Date(a.date || a.createdAt || 0).getTime()
+              const tb = b.date?.toMillis ? b.date.toMillis() : new Date(b.date || b.createdAt || 0).getTime()
+              return tb - ta
+            })
+          set({ staffTransactions: txs, staffTransactionsLoading: false })
+        },
+        (err) => {
+          console.error('[StaffSalary] transactions subscription error:', err)
+          set({ staffTransactionsLoading: false })
+        },
+      )
+    }
+
+    return () => {
+      staffTransactionsSubscriberCount = Math.max(0, staffTransactionsSubscriberCount - 1)
+      if (staffTransactionsSubscriberCount === 0 && staffTransactionsUnsubscribe) {
+        staffTransactionsUnsubscribe()
+        staffTransactionsUnsubscribe = null
+      }
+    }
+  },
+
+  fetchSalarySettlements: (employeeId) => {
+    salarySettlementsSubscriberCount += 1
+    if (!salarySettlementsUnsubscribe) {
+      set({ salarySettlementsLoading: true })
+      const q = employeeId
+        ? query(collection(db, 'salary_settlements'), where('employeeId', '==', employeeId), limit(100))
+        : query(collection(db, 'salary_settlements'), limit(100))
+
+      salarySettlementsUnsubscribe = onSnapshot(
+        q,
+        (snap) => {
+          const list = snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => String(b.month || '').localeCompare(String(a.month || '')))
+          set({ salarySettlements: list, salarySettlementsLoading: false })
+        },
+        (err) => {
+          console.error('[StaffSalary] settlements subscription error:', err)
+          set({ salarySettlementsLoading: false })
+        },
+      )
+    }
+
+    return () => {
+      salarySettlementsSubscriberCount = Math.max(0, salarySettlementsSubscriberCount - 1)
+      if (salarySettlementsSubscriberCount === 0 && salarySettlementsUnsubscribe) {
+        salarySettlementsUnsubscribe()
+        salarySettlementsUnsubscribe = null
+      }
+    }
+  },
+
+  recordStaffAdvance: async (payload) => {
+    return await recordStaffAdvanceApi(payload)
+  },
+
+  deleteStaffTransaction: async (id) => {
+    return await deleteStaffTransactionApi(id)
+  },
+
+  settleStaffSalary: async (payload) => {
+    return await settleStaffSalaryApi(payload)
+  },
+
+  updateStaffProfile: async (employeeId, data) => {
+    return await updateStaffProfileApi(employeeId, data)
   },
 
   addClient: async (data) => {

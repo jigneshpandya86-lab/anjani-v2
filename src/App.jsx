@@ -28,6 +28,7 @@ import {
   Droplets,
   IndianRupee,
   ArrowRightLeft,
+  UserCheck,
 } from 'lucide-react'
 import {
   collection,
@@ -57,6 +58,7 @@ import IntelligenceDashboard from './components/IntelligenceDashboard'
 import CelebrationsTab from './components/CelebrationsTab'
 import ExpensesDashboard from './components/ExpensesDashboard'
 import AccountsDashboard from './components/AccountsDashboard'
+import StaffSalariesDashboard from './components/StaffSalariesDashboard'
 import BaileyOrderPage from './components/BaileyOrderPage'
 import AccountsLedgerReportModal from './components/AccountsLedgerReportModal'
 import NetworkStatusBar from './components/NetworkStatusBar'
@@ -84,6 +86,7 @@ const VALID_TABS = [
   'leads',
   'settings',
   'bailey-order',
+  'staff',
 ]
 
 const TAB_STORAGE_KEY = 'anjani_active_tab'
@@ -495,6 +498,11 @@ function App() {
       id: 'accounts',
       label: 'Accounts & Staff Cash',
       icon: <Wallet size={20} />,
+    },
+    userRole === 'admin' && {
+      id: 'staff',
+      label: 'Staff & Salaries',
+      icon: <UserCheck size={20} />,
     },
     userRole === 'admin' && {
       id: 'intelligence',
@@ -1277,6 +1285,7 @@ function App() {
             <PaymentDashboard onNavigateAccounts={() => setActiveTab('accounts')} />
           )}
           {activeTab === 'accounts' && userRole === 'admin' && <AccountsDashboard />}
+          {activeTab === 'staff' && userRole === 'admin' && <StaffSalariesDashboard />}
           {activeTab === 'clients' && (
             <div className="space-y-6">
               <ClientList

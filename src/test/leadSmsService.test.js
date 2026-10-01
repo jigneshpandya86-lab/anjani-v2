@@ -40,6 +40,13 @@ describe('leadSmsService', () => {
       expect(getLeadPhone({ mobile: '12345' })).toBe('')
       expect(getLeadPhone({ mobile: 'invalid-text' })).toBe('')
     })
+
+    it('scans arbitrary fields for 10-digit Indian numbers and ignores date/timestamp fields', () => {
+      expect(getLeadPhone({ notes: 'Please call Ravi at 9825012345 after 5pm' })).toBe('9825012345')
+      expect(getLeadPhone({ Phone_No: '+91 9712345678' })).toBe('9712345678')
+      expect(getLeadPhone({ createdAt: '2026-09-30T14:40:11.000Z', notes: 'No number here' })).toBe('')
+      expect(getLeadPhone({ timestamp: 1727707211000 })).toBe('')
+    })
   })
 
   describe('normalizeIndianPhone', () => {

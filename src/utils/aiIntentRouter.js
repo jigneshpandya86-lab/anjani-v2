@@ -460,6 +460,51 @@ export function tryLocalIntentRoute(query, store = {}) {
     }
   }
 
+  // 4C. Staff Salary & Advance (Nilesh / Hiteshbhai)
+  const salaryAdvancePatterns = [
+    /advance/i,
+    /salary/i,
+    /upad/i, // Gujarati for advance
+    /pagar/i, // Gujarati for salary
+    /vetan/i,
+  ]
+
+  if (
+    salaryAdvancePatterns.some((pattern) => pattern.test(q)) &&
+    (/nilesh/i.test(q) || /hitesh/i.test(q) || /staff/i.test(q) || /driver/i.test(q))
+  ) {
+    const staffList = store.staffList || []
+    const isNilesh = /nilesh/i.test(q) || !/hitesh/i.test(q)
+    const empId = isNilesh ? 'nilesh' : 'hiteshbhai'
+    const emp = staffList.find((s) => s.id === empId) || {
+      name: isNilesh ? 'Nilesh' : 'Hiteshbhai',
+      baseSalary: 15000,
+      advanceBalance: 0,
+    }
+
+    const txs = (store.staffTransactions || []).filter(
+      (tx) => tx.employeeId === empId && (tx.status === 'active' || !tx.status),
+    )
+    const activeAdvanceTotal =
+      txs.length > 0
+        ? txs.reduce((s, tx) => s + (Number(tx.amount) || 0), 0)
+        : Number(emp.advanceBalance || 0)
+    const baseSal = Number(emp.baseSalary || 15000)
+    const pendingPay = Math.max(0, baseSal - activeAdvanceTotal)
+
+    return {
+      handled: true,
+      type: 'staff_salary_summary',
+      text: `💳 **${emp.name}'s Salary & Advance Summary**:\n• **Monthly Base Salary**: ₹${baseSal.toLocaleString('en-IN')}\n• **Active / Unsettled Advance**: ₹${activeAdvanceTotal.toLocaleString('en-IN')}\n• **Est. Pending Salary**: ₹${pendingPay.toLocaleString('en-IN')}\n\nYou can manage advances and settle monthly salary in the **Staff & Salaries** section from the menu.`,
+      data: {
+        employee: emp,
+        activeAdvanceTotal,
+        baseSalary: baseSal,
+        estimatedPendingSalary: pendingPay,
+      },
+    }
+  }
+
   // 4D. Staff Cash Custody & Accounts Overview (Nilesh, Hiteshbhai, Counter, Bank)
   const cashCustodyPatterns = [
     /nilesh/i,

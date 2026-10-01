@@ -10,27 +10,45 @@ export const DEFAULT_MACRO_URL =
 export const FOLLOW_UP_DAYS = [20, 45]
 
 export const getLeadPhone = (lead) => {
-  if (!lead) return ''
-  const raw =
-    lead.mobile ??
-    lead.phone ??
-    lead.Mobile ??
-    lead.Phone ??
-    lead.contact ??
-    lead.Contact ??
-    lead.mobileNumber ??
-    lead.phoneNumber ??
-    lead.mobileNo ??
-    lead.MobileNo ??
-    lead.number ??
-    lead.whatsapp ??
-    lead.contactNumber ??
-    ''
-  let clean = String(raw).replace(/\D/g, '')
-  if (clean.length === 11 && clean.startsWith('0')) clean = clean.slice(1)
-  if (clean.length === 12 && clean.startsWith('91')) clean = clean.slice(2)
-  if (clean.length > 10) clean = clean.slice(-10)
-  return clean.length === 10 ? clean : ''
+  if (!lead || typeof lead !== 'object') return ''
+
+  // 1. Direct candidate keys
+  const candidateKeys = [
+    'mobile', 'phone', 'Mobile', 'Phone', 'contact', 'Contact',
+    'mobileNumber', 'phoneNumber', 'mobileNo', 'MobileNo',
+    'mobile_number', 'phone_number', 'contact_no', 'mobile_no',
+    'number', 'whatsapp', 'contactNumber', 'tel', 'cell',
+    'phone_no', 'Phone_No', 'Mobile_No', 'contactPersonNumber'
+  ]
+
+  for (const k of candidateKeys) {
+    if (lead[k] != null && lead[k] !== '') {
+      let clean = String(lead[k]).replace(/\D/g, '')
+      if (clean.length === 11 && clean.startsWith('0')) clean = clean.slice(1)
+      if (clean.length === 12 && clean.startsWith('91')) clean = clean.slice(2)
+      if (clean.length > 10) clean = clean.slice(-10)
+      if (clean.length === 10 && /^[6-9]\d{9}$/.test(clean)) return clean
+    }
+  }
+
+  // 2. Scan string/number values in the lead object for an Indian 10-digit phone pattern
+  const PHONE_REGEX = /(?:(?:\+?91|0)?[ -]?)?([6-9]\d{2}[ -]?\d{3}[ -]?\d{4}|[6-9]\d{4}[ -]?\d{5}|[6-9]\d{9})\b/
+
+  for (const [key, val] of Object.entries(lead)) {
+    if (/date|time|at$|history|log|id$|^tag$/i.test(key)) continue
+    if (typeof val === 'string' || typeof val === 'number') {
+      const strVal = String(val)
+      const match = strVal.match(PHONE_REGEX)
+      if (match && match[1]) {
+        const clean = match[1].replace(/\D/g, '')
+        if (clean.length === 10 && /^[6-9]\d{9}$/.test(clean)) {
+          return clean
+        }
+      }
+    }
+  }
+
+  return ''
 }
 
 export const toDateObject = (value) => {
