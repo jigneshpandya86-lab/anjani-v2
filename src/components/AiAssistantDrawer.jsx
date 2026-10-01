@@ -41,7 +41,7 @@ import { processAiBillImage } from '../utils/aiImageHelper'
 import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
 import { ensureEnglishText, sanitizeClientForEnglish } from '../utils/textUtils'
-import { getRecentSkuPrice } from '../utils/orderUtils'
+import { getRecentSkuPrice, formatPaymentNarration } from '../utils/orderUtils'
 import { detectMemoryIntent, isQueryingMemories, formatMemoriesForPrompt, extractStructuredRuleData } from '../utils/aiMemoryUtils'
 
 export const SPEECH_LANGUAGES = [

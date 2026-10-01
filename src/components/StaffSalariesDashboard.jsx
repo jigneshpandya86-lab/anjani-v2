@@ -106,7 +106,7 @@ export default function StaffSalariesDashboard() {
   const estimatedPendingSalary = Math.max(0, baseSalaryNum - totalActiveAdvanceAmount)
 
   // Cash custody for current employee (e.g. accountsSummary.nilesh)
-  const custodyCash = Number(accountsSummary?.[selectedEmployeeId] || 0)
+  const custodyBal = Number(accountsSummary?.[selectedEmployeeId] || 0)
 
   // Handle Base Salary Update
   const handleSaveBaseSalary = async (e) => {
