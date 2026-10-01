@@ -42,6 +42,8 @@ import {
   recordStaffAdvance as recordStaffAdvanceApi,
   deleteStaffTransaction as deleteStaffTransactionApi,
   settleStaffSalary as settleStaffSalaryApi,
+  deleteSalarySettlement as deleteSalarySettlementApi,
+  restoreExcessAdvance as restoreExcessAdvanceApi,
 } from '../services/staffSalaryService'
 
 let stockUnsubscribe = null
@@ -1178,6 +1180,14 @@ export const useClientStore = create((set, get) => ({
 
   settleStaffSalary: async (payload) => {
     return await settleStaffSalaryApi(payload)
+  },
+
+  deleteSalarySettlement: async (settlementId, employeeId) => {
+    return await deleteSalarySettlementApi(settlementId, employeeId)
+  },
+
+  restoreExcessAdvance: async (payload) => {
+    return await restoreExcessAdvanceApi(payload)
   },
 
   updateStaffProfile: async (employeeId, data) => {

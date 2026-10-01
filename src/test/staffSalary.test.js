@@ -5,9 +5,12 @@ import {
   recordStaffAdvance,
   deleteStaffTransaction,
   settleStaffSalary,
+  deleteSalarySettlement,
+  restoreExcessAdvance,
   DEFAULT_STAFF,
 } from '../services/staffSalaryService'
 import { buildSalarySlipPdf } from '../utils/pdf/salarySlipPdf'
+import { buildStaffStatementPdf } from '../utils/pdf/staffStatementPdf'
 import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
 
 // Mock Firebase
@@ -186,6 +189,137 @@ describe('Staff Salary & Advance Management', () => {
         expect.objectContaining({ status: 'settled' }),
       )
     })
+
+    it('settles advances with chronological partial carry-forward when advances exceed deduction (e.g. 16600 advance vs 15000 salary)', async () => {
+      const result = await settleStaffSalary({
+        employeeId: 'nilesh',
+        employeeName: 'Nilesh',
+        month: '2026-09',
+        baseSalary: 15000,
+        advancesDeducted: 15000,
+        payoutAccountId: 'counter',
+        payoutDate: new Date('2026-10-01'),
+        activeAdvances: [
+          { id: 'adv_a', amount: 10000, date: new Date('2026-09-05'), note: 'Advance 1' },
+          { id: 'adv_b', amount: 6600, date: new Date('2026-09-20'), note: 'Advance 2' },
+        ],
+      })
+
+      expect(result.netPaid).toBe(0)
+      expect(result.advancesDeducted).toBe(15000)
+
+      // Adv A (10,000) is fully settled
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'adv_a' }),
+        expect.objectContaining({
+          status: 'settled',
+          settledAmount: 10000,
+        }),
+      )
+
+      // Adv B (6,600) is partially settled (5,000) with 1,600 carried forward
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'adv_b' }),
+        expect.objectContaining({
+          status: 'settled',
+          settledAmount: 5000,
+          partialCarryForward: true,
+          carryForwardAmount: 1600,
+        }),
+      )
+
+      // Active carry-forward advance of 1,600 is recorded in staff_transactions
+      expect(mockAddDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          amount: 1600,
+          status: 'active',
+          isCarryForward: true,
+          employeeId: 'nilesh',
+        }),
+      )
+
+      // Employee advance balance decremented by 15,000 (leaving 1,600)
+      expect(mockSetDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'nilesh' }),
+        expect.objectContaining({
+          advanceBalance: 'INCREMENT(-15000)',
+        }),
+        { merge: true },
+      )
+    })
+  })
+
+  describe('deleteSalarySettlement', () => {
+    it('reverts settled advances, deletes carry-forward records, and refunds account', async () => {
+      mockGetDoc.mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          employeeId: 'nilesh',
+          month: '2026-09',
+          advancesDeducted: 15000,
+          netPaid: 0,
+          expenseId: 'exp_sal_1',
+          payoutAccountId: 'counter',
+        }),
+      })
+
+      mockGetDocs.mockResolvedValue({
+        empty: false,
+        docs: [
+          { id: 'cf_1', ref: { id: 'cf_1' } },
+        ],
+      })
+
+      const success = await deleteSalarySettlement('settle_123', 'nilesh')
+      expect(success).toBe(true)
+
+      // Restores advance balance by adding back 15000
+      expect(mockSetDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'nilesh' }),
+        expect.objectContaining({
+          advanceBalance: 'INCREMENT(15000)',
+        }),
+        { merge: true },
+      )
+
+      // Deletes expense
+      expect(mockDeleteDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'exp_sal_1' }),
+      )
+      // Deletes settlement record
+      expect(mockDeleteDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'settle_123' }),
+      )
+    })
+  })
+
+  describe('restoreExcessAdvance', () => {
+    it('creates active carry-forward advance and increments employee advance balance', async () => {
+      const res = await restoreExcessAdvance({
+        employeeId: 'nilesh',
+        employeeName: 'Nilesh',
+        amount: 1600,
+        note: 'Restored excess advance',
+      })
+
+      expect(res.amount).toBe(1600)
+      expect(mockAddDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          amount: 1600,
+          status: 'active',
+          isCarryForward: true,
+        }),
+      )
+      expect(mockSetDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'nilesh' }),
+        expect.objectContaining({
+          advanceBalance: 'INCREMENT(1600)',
+        }),
+        { merge: true },
+      )
+    })
   })
 
   describe('deleteStaffTransaction', () => {
@@ -260,6 +394,55 @@ describe('Staff Salary & Advance Management', () => {
 
       expect(file).toBeDefined()
       expect(file.name).toContain('Salary_Slip_Nilesh_2026_09.pdf')
+      expect(file.size).toBeGreaterThan(500)
+    })
+  })
+
+  describe('buildStaffStatementPdf', () => {
+    it('creates a period advance & salary ledger PDF with chronological rows and summaries', () => {
+      const file = buildStaffStatementPdf({
+        employee: DEFAULT_STAFF[0],
+        dateRangeLabel: 'September 2026',
+        startDate: new Date('2026-09-01'),
+        endDate: new Date('2026-09-30'),
+        advances: [
+          {
+            id: 'adv_1',
+            amount: 6000,
+            date: new Date('2026-09-05'),
+            sourceAccountId: 'counter',
+            note: 'Advance 1',
+          },
+          {
+            id: 'adv_2',
+            amount: 6000,
+            date: new Date('2026-09-15'),
+            sourceAccountId: 'bank',
+            note: 'Advance 2',
+          },
+          {
+            id: 'adv_3',
+            amount: 4600,
+            date: new Date('2026-09-22'),
+            sourceAccountId: 'counter',
+            note: 'Advance 3',
+          },
+        ],
+        salarySettlements: [
+          {
+            id: 'sal_1',
+            month: '2026-09',
+            grossEarnings: 15000,
+            advancesDeducted: 15000,
+            netPaid: 0,
+            payoutAccountId: 'counter',
+            payoutDate: new Date('2026-09-30'),
+          },
+        ],
+      })
+
+      expect(file).toBeDefined()
+      expect(file.name).toContain('Staff_Statement_Nilesh_')
       expect(file.size).toBeGreaterThan(500)
     })
   })

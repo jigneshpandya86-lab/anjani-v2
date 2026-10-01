@@ -242,6 +242,7 @@ export async function settleStaffSalary({
   payoutDate = new Date(),
   note = '',
   activeAdvanceIds = [],
+  activeAdvances = [],
 }) {
   if (!employeeId) throw new Error('Employee ID is required')
   if (!month) throw new Error('Salary month is required')
@@ -306,8 +307,76 @@ export async function settleStaffSalary({
   }
   const settlementRef = await addDoc(collection(db, 'salary_settlements'), settlementPayload)
 
-  // 4. Mark specific advance transactions as settled
-  if (Array.isArray(activeAdvanceIds) && activeAdvanceIds.length > 0) {
+  // 4. Mark specific advance transactions as settled / allocate partial carry-forward
+  if (Array.isArray(activeAdvances) && activeAdvances.length > 0) {
+    let remainingToDeduct = Number(advancesDeducted) || 0
+
+    const getMillis = (obj) => {
+      if (!obj) return 0
+      if (typeof obj.toDate === 'function') return obj.toDate().getTime()
+      if (obj.seconds) return obj.seconds * 1000
+      if (obj instanceof Date) return obj.getTime()
+      if (typeof obj === 'string' || typeof obj === 'number') return new Date(obj).getTime()
+      return 0
+    }
+
+    // Sort advances chronologically: oldest first
+    const sortedAdvances = [...activeAdvances].sort((a, b) => {
+      const tA = getMillis(a.date) || getMillis(a.createdAt)
+      const tB = getMillis(b.date) || getMillis(b.createdAt)
+      return tA - tB
+    })
+
+    for (const adv of sortedAdvances) {
+      if (remainingToDeduct <= 0) {
+        // Any remaining advances stay active untouched
+        break
+      }
+      const advAmt = Number(adv.amount) || 0
+      if (advAmt <= remainingToDeduct) {
+        // Full settlement of this advance
+        await updateDoc(doc(db, 'staff_transactions', adv.id), {
+          status: 'settled',
+          settledInSalaryId: settlementRef.id,
+          settledAmount: advAmt,
+          settledAt: serverTimestamp(),
+        })
+        remainingToDeduct -= advAmt
+      } else {
+        // Partial settlement of this advance
+        const portionDeducted = remainingToDeduct
+        const remainder = advAmt - portionDeducted
+
+        await updateDoc(doc(db, 'staff_transactions', adv.id), {
+          status: 'settled',
+          settledInSalaryId: settlementRef.id,
+          settledAmount: portionDeducted,
+          settledAt: serverTimestamp(),
+          partialCarryForward: true,
+          carryForwardAmount: remainder,
+        })
+
+        // Create an active carry-forward record for the remaining advance
+        await addDoc(collection(db, 'staff_transactions'), {
+          employeeId,
+          employeeName,
+          amount: remainder,
+          sourceAccountId: adv.sourceAccountId || 'counter',
+          date: Timestamp.fromDate(effectivePayoutDate),
+          note: `Carry-forward balance from advance of ₹${advAmt}${adv.note ? ` (${adv.note})` : ''}`,
+          status: 'active',
+          isCarryForward: true,
+          previousTransactionId: adv.id,
+          settledInSalaryId: settlementRef.id,
+          createdAt: serverTimestamp(),
+        })
+
+        remainingToDeduct = 0
+        break
+      }
+    }
+  } else if (Array.isArray(activeAdvanceIds) && activeAdvanceIds.length > 0) {
+    // Fallback: If only IDs were passed, mark them as settled
     await Promise.allSettled(
       activeAdvanceIds.map((advId) =>
         updateDoc(doc(db, 'staff_transactions', advId), {
@@ -336,4 +405,148 @@ export async function settleStaffSalary({
     id: settlementRef.id,
     ...settlementPayload,
   }
+}
+
+/**
+ * Reverts/deletes a salary settlement slip:
+ * - Restores settled advances back to 'active'
+ * - Deletes any carry-forward advance transactions created by the settlement
+ * - Refunds employee's advanceBalance
+ * - Removes salary expense from P&L
+ * - Refunds net paid amount back to payout account (counter/bank)
+ */
+export async function deleteSalarySettlement(settlementId, employeeId) {
+  if (!settlementId) throw new Error('Settlement ID is required')
+
+  const settlementRef = doc(db, 'salary_settlements', settlementId)
+  const settlementSnap = await getDoc(settlementRef)
+  if (!settlementSnap.exists()) {
+    throw new Error('Salary settlement record not found')
+  }
+  const settlementData = settlementSnap.data()
+
+  // 1. Delete carry-forward transactions created by this settlement
+  try {
+    const cfQ = query(
+      collection(db, 'staff_transactions'),
+      where('settledInSalaryId', '==', settlementId),
+      where('isCarryForward', '==', true),
+    )
+    const cfDocs = await getDocs(cfQ)
+    if (!cfDocs.empty) {
+      await Promise.allSettled(cfDocs.docs.map((d) => deleteDoc(d.ref)))
+    }
+  } catch (err) {
+    console.warn('[StaffSalary] Error deleting carry-forward docs on settlement undo:', err)
+  }
+
+  // 2. Revert settled advance transactions back to active
+  try {
+    const settledQ = query(
+      collection(db, 'staff_transactions'),
+      where('settledInSalaryId', '==', settlementId),
+    )
+    const settledDocs = await getDocs(settledQ)
+    if (!settledDocs.empty) {
+      await Promise.allSettled(
+        settledDocs.docs.map((d) =>
+          updateDoc(d.ref, {
+            status: 'active',
+            settledInSalaryId: null,
+            settledAmount: null,
+            partialCarryForward: null,
+            carryForwardAmount: null,
+          }),
+        ),
+      )
+    }
+  } catch (err) {
+    console.warn('[StaffSalary] Error reverting advances on settlement undo:', err)
+  }
+
+  // 3. Restore staff profile advanceBalance
+  const advancesDeducted = Number(settlementData.advancesDeducted || 0)
+  if (advancesDeducted > 0 && employeeId) {
+    const staffRef = doc(db, 'staff', employeeId)
+    await setDoc(
+      staffRef,
+      {
+        advanceBalance: increment(advancesDeducted),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    )
+  }
+
+  // 4. Delete corresponding expense
+  if (settlementData.expenseId) {
+    try {
+      await deleteDoc(doc(db, 'expenses', settlementData.expenseId))
+    } catch (err) {
+      console.warn('[StaffSalary] Error deleting salary expense:', err)
+    }
+  }
+
+  // 5. Refund netPaid to payoutAccountId
+  const netPaid = Number(settlementData.netPaid || 0)
+  const payoutAccountId = settlementData.payoutAccountId
+  if (netPaid > 0 && payoutAccountId) {
+    await setDoc(
+      ACCOUNTS_SUMMARY_DOC,
+      {
+        balances: {
+          [payoutAccountId]: increment(netPaid),
+        },
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    )
+  }
+
+  // 6. Delete settlement record
+  await deleteDoc(settlementRef)
+  return true
+}
+
+/**
+ * Restores uncarried excess advance to active advance balance
+ */
+export async function restoreExcessAdvance({
+  employeeId,
+  employeeName = 'Nilesh',
+  amount,
+  note = 'Restored advance balance carried forward from salary settlement',
+  sourceAccountId = 'counter',
+}) {
+  const num = Math.abs(Number(amount) || 0)
+  if (!num || num <= 0) {
+    throw new Error('Valid advance amount required')
+  }
+
+  const txPayload = {
+    employeeId,
+    employeeName,
+    amount: num,
+    sourceAccountId,
+    date: Timestamp.fromDate(new Date()),
+    note: note.trim(),
+    status: 'active',
+    isCarryForward: true,
+    createdAt: serverTimestamp(),
+  }
+
+  const docRef = await addDoc(collection(db, 'staff_transactions'), txPayload)
+
+  // Update staff advanceBalance
+  const staffRef = doc(db, 'staff', employeeId)
+  await setDoc(
+    staffRef,
+    {
+      advanceBalance: increment(num),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  )
+
+  return { id: docRef.id, ...txPayload }
 }

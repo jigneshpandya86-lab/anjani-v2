@@ -91,3 +91,16 @@ export const shareOrDownloadPdf = async (file, shareTitle = '', shareText = '') 
   setTimeout(() => URL.revokeObjectURL(url), 1000)
   toast.success('PDF generated.')
 }
+
+/**
+ * Formats a YYYY-MM string to readable month label (e.g. '2026-09' -> 'September 2026')
+ */
+export function formatSalaryMonth(monthStr) {
+  if (!monthStr) return ''
+  const parts = String(monthStr).split('-')
+  if (parts.length < 2) return String(monthStr)
+  const year = parseInt(parts[0], 10)
+  const monthIdx = parseInt(parts[1], 10) - 1
+  const date = new Date(year, monthIdx, 1)
+  return date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+}

@@ -1,5 +1,4 @@
-import { san, fmt, resolveTimestamp, createPdfFile } from './pdfCore'
-import { formatSalaryMonth } from '../../services/staffSalaryService'
+import { san, fmt, resolveTimestamp, createPdfFile, formatSalaryMonth } from './pdfCore'
 
 /**
  * Generates an official, branded Staff Salary Slip & Advance Statement PDF

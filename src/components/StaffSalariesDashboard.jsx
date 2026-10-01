@@ -14,11 +14,14 @@ import {
   Truck,
   Building2,
   ChevronDown,
+  FileSpreadsheet,
+  RotateCcw,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useClientStore } from '../store/clientStore'
 import GiveAdvanceModal from './GiveAdvanceModal'
 import SalarySettlementModal from './SalarySettlementModal'
+import StaffStatementReportModal from './StaffStatementReportModal'
 import { formatSalaryMonth } from '../services/staffSalaryService'
 import { buildSalarySlipPdf } from '../utils/pdf/salarySlipPdf'
 import { shareOrDownloadPdf, resolveTimestamp } from '../utils/pdf/pdfCore'
@@ -37,6 +40,8 @@ export default function StaffSalariesDashboard() {
     fetchAccountsSummary,
     updateStaffProfile,
     deleteStaffTransaction,
+    deleteSalarySettlement,
+    restoreExcessAdvance,
   } = useClientStore()
 
   // Selected employee (defaults to 'nilesh')
@@ -52,8 +57,10 @@ export default function StaffSalariesDashboard() {
   // Modals & Inline Edits
   const [advanceModalOpen, setAdvanceModalOpen] = useState(false)
   const [settlementModalOpen, setSettlementModalOpen] = useState(false)
+  const [statementModalOpen, setStatementModalOpen] = useState(false)
   const [isEditingBaseSalary, setIsEditingBaseSalary] = useState(false)
   const [newBaseSalary, setNewBaseSalary] = useState('')
+  const [isRestoringAdvance, setIsRestoringAdvance] = useState(false)
 
   // Subscriptions
   useEffect(() => {
@@ -167,6 +174,91 @@ export default function StaffSalariesDashboard() {
     }
   }
 
+  // Detect uncarried advance discrepancy from recent settlements
+  const detectedDiscrepancy = useMemo(() => {
+    if (!salarySettlements || salarySettlements.length === 0) return null
+    const latest = salarySettlements[0]
+
+    const gross = Number(latest.grossEarnings || latest.baseSalary || 0)
+    const ded = Number(latest.advancesDeducted || 0)
+
+    // Check 1: advancesDeducted > gross earnings
+    if (ded > gross) {
+      return {
+        amount: ded - gross,
+        month: latest.month,
+        settlement: latest,
+      }
+    }
+
+    // Check 2: Past advances totaling more than advancesDeducted were marked settled under this slip
+    const settledUnderThis = (staffTransactions || []).filter(
+      (tx) => tx.settledInSalaryId === latest.id && tx.status === 'settled',
+    )
+    const sumSettledUnder = settledUnderThis.reduce(
+      (s, tx) => s + (Number(tx.amount) || 0),
+      0,
+    )
+    if (sumSettledUnder > ded) {
+      return {
+        amount: sumSettledUnder - ded,
+        month: latest.month,
+        settlement: latest,
+      }
+    }
+
+    return null
+  }, [salarySettlements, staffTransactions])
+
+  // Delete / Undo a settlement slip
+  const handleDeleteSettlement = async (sal) => {
+    const monthLabel = formatSalaryMonth(sal.month)
+    if (
+      !window.confirm(
+        `Delete salary settlement slip for ${currentEmployee.name} (${monthLabel})?\n\nThis will:\n1. Restore settled advances back to Active\n2. Refund ₹${Number(
+          sal.netPaid || 0,
+        ).toLocaleString('en-IN')} to ${sal.payoutAccountId || 'counter'}\n3. Remove salary expense from P&L`,
+      )
+    ) {
+      return
+    }
+
+    try {
+      await deleteSalarySettlement(sal.id, selectedEmployeeId)
+      toast.success(`Settlement for ${monthLabel} deleted and advances restored!`)
+    } catch (err) {
+      console.error('Failed to delete settlement:', err)
+      toast.error(err.message || 'Failed to delete settlement')
+    }
+  }
+
+  // 1-Click Restore uncarried advance
+  const handleRestoreExcessAdvance = async (amountToRestore) => {
+    const amt = Number(amountToRestore)
+    if (!amt || amt <= 0) return
+    setIsRestoringAdvance(true)
+    try {
+      await restoreExcessAdvance({
+        employeeId: selectedEmployeeId,
+        employeeName: currentEmployee.name,
+        amount: amt,
+        note: `Restored carry-forward advance balance from ${formatSalaryMonth(
+          detectedDiscrepancy?.month || salarySettlements[0]?.month,
+        )} salary settlement`,
+      })
+      toast.success(
+        `₹${amt.toLocaleString('en-IN')} active advance restored successfully for ${
+          currentEmployee.name
+        }!`,
+      )
+    } catch (err) {
+      console.error('Failed to restore advance:', err)
+      toast.error('Failed to restore advance')
+    } finally {
+      setIsRestoringAdvance(false)
+    }
+  }
+
   return (
     <div className="space-y-3 pb-24 max-w-4xl mx-auto px-1 sm:px-2">
       {/* ─── Header & Employee Switcher ─── */}
@@ -212,12 +304,12 @@ export default function StaffSalariesDashboard() {
           </div>
         </div>
 
-        {/* ─── 4 Metric Highlights (Click to expand corresponding drawer) ─── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+        {/* ─── 4 Metric Highlights (Compact, Click to expand corresponding drawer) ─── */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-0.5">
           {/* Card 1: Base Monthly Salary */}
-          <div className="p-3 rounded-2xl bg-gray-50 border border-gray-200/80 flex flex-col justify-between">
+          <div className="p-2 sm:p-2.5 rounded-xl bg-gray-50 border border-gray-200/80 flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase tracking-wider text-gray-500">
+              <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-gray-500">
                 Monthly Salary
               </span>
               <button
@@ -232,17 +324,17 @@ export default function StaffSalariesDashboard() {
                 <Pencil size={11} />
               </button>
             </div>
-            <p className="text-lg font-black text-gray-900 mt-1">
+            <p className="text-base sm:text-lg font-black text-gray-900 mt-0.5">
               ₹{baseSalaryNum.toLocaleString('en-IN')}
             </p>
-            <span className="text-[9px] text-gray-400 font-medium">Fixed base amount</span>
+            <span className="text-[8px] sm:text-[9px] text-gray-400 font-medium truncate">Fixed base amount</span>
           </div>
 
           {/* Card 2: Unsettled Advances (Click to toggle Advances Section) */}
           <button
             type="button"
             onClick={() => setIsAdvancesOpen((prev) => !prev)}
-            className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer select-none ${
+            className={`p-2 sm:p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer select-none ${
               isAdvancesOpen
                 ? 'bg-rose-50/90 border-rose-400 ring-2 ring-rose-300/60 shadow-xs'
                 : 'bg-rose-50/70 border-rose-200/80 hover:border-rose-300 hover:bg-rose-50/90'
@@ -250,28 +342,28 @@ export default function StaffSalariesDashboard() {
             title="Click to expand advances and repayments"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase tracking-wider text-rose-700">
+              <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-rose-700">
                 Active Advance
               </span>
               <div className="flex items-center gap-1">
-                <AlertCircle size={13} className="text-rose-500" />
+                <AlertCircle size={11} className="text-rose-500" />
                 <ChevronDown
-                  size={12}
+                  size={11}
                   className={`text-rose-600 transition-transform duration-200 ${
                     isAdvancesOpen ? 'rotate-180' : ''
                   }`}
                 />
               </div>
             </div>
-            <p className="text-lg font-black text-rose-600 mt-1">
+            <p className="text-base sm:text-lg font-black text-rose-600 mt-0.5">
               ₹{totalActiveAdvanceAmount.toLocaleString('en-IN')}
             </p>
-            <div className="flex items-center justify-between mt-0.5">
-              <span className="text-[9px] text-rose-500 font-medium">
-                {activeAdvances.length} active advance{activeAdvances.length === 1 ? '' : 's'}
+            <div className="flex items-center justify-between mt-0.5 text-[8px] sm:text-[9px]">
+              <span className="text-rose-500 font-medium truncate">
+                {activeAdvances.length} active
               </span>
-              <span className="text-[9px] font-bold text-rose-600 uppercase tracking-tight">
-                {isAdvancesOpen ? 'Open' : 'Tap to expand'}
+              <span className="font-bold text-rose-600 uppercase tracking-tight ml-1 shrink-0">
+                {isAdvancesOpen ? 'Open' : 'Expand'}
               </span>
             </div>
           </button>
@@ -280,7 +372,7 @@ export default function StaffSalariesDashboard() {
           <button
             type="button"
             onClick={() => setIsSettlementsOpen((prev) => !prev)}
-            className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer select-none ${
+            className={`p-2 sm:p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer select-none ${
               isSettlementsOpen
                 ? 'bg-emerald-50/90 border-emerald-400 ring-2 ring-emerald-300/60 shadow-xs'
                 : 'bg-emerald-50/70 border-emerald-200/80 hover:border-emerald-300 hover:bg-emerald-50/90'
@@ -288,42 +380,42 @@ export default function StaffSalariesDashboard() {
             title="Click to expand settled monthly salary slips"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
+              <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-emerald-700">
                 Est. Pending Pay
               </span>
               <div className="flex items-center gap-1">
-                <Calculator size={13} className="text-emerald-500" />
+                <Calculator size={11} className="text-emerald-500" />
                 <ChevronDown
-                  size={12}
+                  size={11}
                   className={`text-emerald-600 transition-transform duration-200 ${
                     isSettlementsOpen ? 'rotate-180' : ''
                   }`}
                 />
               </div>
             </div>
-            <p className="text-lg font-black text-emerald-600 mt-1">
+            <p className="text-base sm:text-lg font-black text-emerald-600 mt-0.5">
               ₹{estimatedPendingSalary.toLocaleString('en-IN')}
             </p>
-            <div className="flex items-center justify-between mt-0.5">
-              <span className="text-[9px] text-emerald-600 font-medium">Salary minus advance</span>
-              <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-tight">
-                {isSettlementsOpen ? 'Open' : 'Tap to expand'}
+            <div className="flex items-center justify-between mt-0.5 text-[8px] sm:text-[9px]">
+              <span className="text-emerald-600 font-medium truncate">Salary - advance</span>
+              <span className="font-bold text-emerald-700 uppercase tracking-tight ml-1 shrink-0">
+                {isSettlementsOpen ? 'Open' : 'Expand'}
               </span>
             </div>
           </button>
 
           {/* Card 4: Route Cash Custody */}
-          <div className="p-3 rounded-2xl bg-blue-50/70 border border-blue-200/80 flex flex-col justify-between">
+          <div className="p-2 sm:p-2.5 rounded-xl bg-blue-50/70 border border-blue-200/80 flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase tracking-wider text-blue-700">
+              <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-blue-700">
                 Route Custody
               </span>
-              <Truck size={13} className="text-blue-500" />
+              <Truck size={11} className="text-blue-500" />
             </div>
-            <p className="text-lg font-black text-blue-600 mt-1">
+            <p className="text-base sm:text-lg font-black text-blue-600 mt-0.5">
               ₹{custodyBal.toLocaleString('en-IN')}
             </p>
-            <span className="text-[9px] text-blue-500 font-medium">Delivery cash on hand</span>
+            <span className="text-[8px] sm:text-[9px] text-blue-500 font-medium truncate">Cash on hand</span>
           </div>
         </div>
 
@@ -335,21 +427,66 @@ export default function StaffSalariesDashboard() {
               setAdvanceModalOpen(true)
               setIsAdvancesOpen(true)
             }}
-            className="flex-1 min-w-[140px] px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs uppercase tracking-wider shadow-sm flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+            className="flex-1 min-w-[120px] px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs uppercase tracking-wider shadow-sm flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
           >
-            <Plus size={16} />
+            <Plus size={15} />
             <span>Give Advance</span>
           </button>
 
           <button
             type="button"
             onClick={() => setSettlementModalOpen(true)}
-            className="flex-1 min-w-[140px] px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs uppercase tracking-wider shadow-sm flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+            className="flex-1 min-w-[120px] px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs uppercase tracking-wider shadow-sm flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
           >
-            <Calculator size={16} />
+            <Calculator size={15} />
             <span>Settle Monthly Salary</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setStatementModalOpen(true)}
+            className="flex-1 min-w-[120px] px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white font-black text-xs uppercase tracking-wider shadow-sm flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+            title="Generate statement PDF for selected period and share with staff"
+          >
+            <FileSpreadsheet size={15} />
+            <span>Statement (PDF)</span>
+          </button>
         </div>
+
+        {/* ─── Discrepancy & Recovery Banner (Auto-detects uncarried advance) ─── */}
+        {detectedDiscrepancy && totalActiveAdvanceAmount === 0 && (
+          <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-in fade-in">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle size={18} className="text-amber-600 mt-0.5 shrink-0" />
+              <div className="text-xs">
+                <p className="font-black text-amber-950">
+                  Advance Discrepancy Detected: ₹{detectedDiscrepancy.amount.toLocaleString('en-IN')} Uncarried Advance
+                </p>
+                <p className="text-amber-800 mt-0.5 text-[11px] leading-relaxed">
+                  In {formatSalaryMonth(detectedDiscrepancy.month)}, your advance was settled without carrying forward the remaining <b>₹{detectedDiscrepancy.amount.toLocaleString('en-IN')}</b>, causing active advance to show ₹0. Click below to restore this active advance balance.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto flex-wrap">
+              <button
+                type="button"
+                onClick={() => handleRestoreExcessAdvance(detectedDiscrepancy.amount)}
+                disabled={isRestoringAdvance}
+                className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs uppercase tracking-wider shadow-xs cursor-pointer flex items-center gap-1.5 transition-all active:scale-95"
+              >
+                <RotateCcw size={13} />
+                <span>Restore ₹{detectedDiscrepancy.amount.toLocaleString('en-IN')} Active Advance</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteSettlement(detectedDiscrepancy.settlement)}
+                className="px-3 py-2 rounded-xl border border-amber-300 bg-white hover:bg-amber-100 text-amber-900 font-bold text-xs cursor-pointer transition-all"
+              >
+                Delete Slip & Re-settle
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ─── Inline Edit Base Salary Form (if opened) ─── */}
@@ -482,9 +619,30 @@ export default function StaffSalariesDashboard() {
                 </button>
               </div>
 
-              <span className="text-[10px] text-gray-400 font-medium">
-                Click any row for full audit & delete options
-              </span>
+              <div className="flex items-center gap-2">
+                {activeAdvances.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const amtStr = window.prompt(
+                        `Enter unrecorded advance balance to restore for ${currentEmployee.name} (₹):`,
+                        '1600',
+                      )
+                      if (amtStr) {
+                        const num = Number(amtStr)
+                        if (num > 0) handleRestoreExcessAdvance(num)
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-all"
+                  >
+                    <RotateCcw size={11} />
+                    <span>Restore Unclaimed Advance</span>
+                  </button>
+                )}
+                <span className="text-[10px] text-gray-400 font-medium hidden sm:inline">
+                  Click any row for full audit & delete options
+                </span>
+              </div>
             </div>
 
             {/* Advances List */}
@@ -572,10 +730,16 @@ export default function StaffSalariesDashboard() {
                                 className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
                                   isSettled
                                     ? 'bg-gray-200 text-gray-600'
+                                    : tx.isCarryForward
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
                                     : 'bg-rose-100 text-rose-700'
                                 }`}
                               >
-                                {isSettled ? 'Settled' : 'Active Advance'}
+                                {isSettled
+                                  ? 'Settled'
+                                  : tx.isCarryForward
+                                  ? 'Carry-Forward'
+                                  : 'Active Advance'}
                               </span>
                             </div>
                             <p className="text-[11px] text-gray-500 truncate mt-0.5">
@@ -815,15 +979,23 @@ export default function StaffSalariesDashboard() {
                           />
                         </button>
 
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0">
                           <button
                             type="button"
                             onClick={() => handleDownloadSlip(sal)}
-                            className="px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+                            className="px-2.5 sm:px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer"
                             title="Export PDF Salary Slip & Share"
                           >
                             <FileDown size={13} />
                             <span>Slip PDF</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSettlement(sal)}
+                            className="p-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-800 transition-all cursor-pointer"
+                            title="Delete this settlement slip and restore advances"
+                          >
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </div>
@@ -868,14 +1040,24 @@ export default function StaffSalariesDashboard() {
 
                           <div className="flex items-center justify-between text-[11px] text-gray-400 pt-1 flex-wrap gap-2">
                             <span>Settled and logged in Firebase on {dateStr}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleDownloadSlip(sal)}
-                              className="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer"
-                            >
-                              <FileDown size={11} />
-                              <span>Download Official Slip PDF</span>
-                            </button>
+                            <div className="flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteSettlement(sal)}
+                                className="text-rose-600 hover:text-rose-800 font-bold flex items-center gap-1 cursor-pointer"
+                              >
+                                <Trash2 size={11} />
+                                <span>Delete / Undo Slip</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadSlip(sal)}
+                                className="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer"
+                              >
+                                <FileDown size={11} />
+                                <span>Download Official Slip PDF</span>
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -906,6 +1088,12 @@ export default function StaffSalariesDashboard() {
           setIsSettlementsOpen(true)
           handleDownloadSlip(result)
         }}
+      />
+
+      <StaffStatementReportModal
+        isOpen={statementModalOpen}
+        onClose={() => setStatementModalOpen(false)}
+        initialEmployee={currentEmployee}
       />
     </div>
   )

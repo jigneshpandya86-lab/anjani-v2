@@ -88,6 +88,8 @@ vi.mock('../store/clientStore', () => ({
     fetchAccountsSummary: vi.fn(),
     updateStaffProfile: vi.fn(),
     deleteStaffTransaction: vi.fn(),
+    deleteSalarySettlement: vi.fn(),
+    restoreExcessAdvance: vi.fn(),
   }),
 }))
 
@@ -117,11 +119,24 @@ describe('StaffSalariesDashboard', () => {
     expect(screen.getByText('₹3,200')).toBeInTheDocument()
   })
 
-  it('renders Action buttons for giving advance and settling salary', () => {
+  it('renders Action buttons for giving advance, settling salary, and generating statement', () => {
     render(<StaffSalariesDashboard />)
 
     expect(screen.getByRole('button', { name: /Give Advance/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Settle Monthly Salary/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Statement \(PDF\)/i })).toBeInTheDocument()
+  })
+
+  it('opens statement report modal when Statement (PDF) button is clicked', () => {
+    render(<StaffSalariesDashboard />)
+
+    const statementBtn = screen.getByRole('button', { name: /Statement \(PDF\)/i })
+    fireEvent.click(statementBtn)
+
+    expect(screen.getByText(/Staff Advance & Salary Statement/i)).toBeInTheDocument()
+    expect(screen.getByText(/Select Statement Period/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Download PDF/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Share WhatsApp/i })).toBeInTheDocument()
   })
 
   it('supports click-to-expand on Advances & Repayments via top metric card and accordion toggle', () => {

@@ -30,6 +30,7 @@ export default function SalarySettlementModal({
   const [baseSalary, setBaseSalary] = useState(() => employee?.baseSalary || 15000)
   const [incentives, setIncentives] = useState('')
   const [overtime, setOvertime] = useState('')
+  const [otherDeductions, setOtherDeductions] = useState('')
 
   // Sum of unsettled advances
   const totalActiveAdvances = useMemo(() => {
@@ -41,17 +42,24 @@ export default function SalarySettlementModal({
     return Number(employee?.advanceBalance || 0)
   }, [activeAdvances, employee])
 
-  const [advancesDeducted, setAdvancesDeducted] = useState(totalActiveAdvances)
-  const [otherDeductions, setOtherDeductions] = useState('')
+  const grossEarningsTemp =
+    (Number(baseSalary) || 0) + (Number(incentives) || 0) + (Number(overtime) || 0)
+  const maxDeductible = Math.max(0, grossEarningsTemp - (Number(otherDeductions) || 0))
+
+  // Default advancesDeducted capped at maxDeductible so excess carries forward automatically
+  const [advancesDeducted, setAdvancesDeducted] = useState(() =>
+    Math.min(totalActiveAdvances, maxDeductible),
+  )
   const [payoutAccountId, setPayoutAccountId] = useState('counter')
   const [payoutDate, setPayoutDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [note, setNote] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Re-sync advancesDeducted if totalActiveAdvances changes
+  // Re-sync advancesDeducted if totalActiveAdvances or maxDeductible changes
   React.useEffect(() => {
-    setAdvancesDeducted(totalActiveAdvances)
-  }, [totalActiveAdvances])
+    const capped = Math.min(totalActiveAdvances, maxDeductible)
+    setAdvancesDeducted(capped)
+  }, [totalActiveAdvances, maxDeductible])
 
   if (!isOpen || !employee) return null
 
@@ -66,6 +74,12 @@ export default function SalarySettlementModal({
     otherDeductions: Number(otherDeductions) || 0,
   })
 
+  // Carry-forward advance liability (unrecovered balance that stays active)
+  const carryForwardAdvance = Math.max(
+    0,
+    totalActiveAdvances - (Number(advancesDeducted) || 0),
+  )
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!month) {
@@ -73,11 +87,22 @@ export default function SalarySettlementModal({
       return
     }
 
+    const deductedNum = Number(advancesDeducted) || 0
+    if (deductedNum > grossEarnings) {
+      toast.error(
+        `Advance deduction cannot exceed gross salary (₹${grossEarnings.toLocaleString(
+          'en-IN',
+        )}). Excess advance will automatically carry forward to next month.`,
+      )
+      return
+    }
+
     setIsSubmitting(true)
     try {
-      const activeIds = activeAdvances
-        .filter((adv) => adv.status === 'active' || !adv.status)
-        .map((adv) => adv.id)
+      const activeList = activeAdvances.filter(
+        (adv) => adv.status === 'active' || !adv.status,
+      )
+      const activeIds = activeList.map((adv) => adv.id)
 
       const result = await settleStaffSalary({
         employeeId: employee.id,
@@ -86,18 +111,19 @@ export default function SalarySettlementModal({
         baseSalary: Number(baseSalary) || 0,
         incentives: Number(incentives) || 0,
         overtime: Number(overtime) || 0,
-        advancesDeducted: Number(advancesDeducted) || 0,
+        advancesDeducted: deductedNum,
         otherDeductions: Number(otherDeductions) || 0,
         payoutAccountId,
         payoutDate: new Date(payoutDate),
         note,
         activeAdvanceIds: activeIds,
+        activeAdvances: activeList,
       })
 
       toast.success(
         `Salary for ${formatSalaryMonth(month)} settled! Net paid: ₹${netPayable.toLocaleString(
           'en-IN',
-        )}`,
+        )}${carryForwardAdvance > 0 ? ` • ₹${carryForwardAdvance.toLocaleString('en-IN')} advance carried forward` : ''}`,
       )
       if (onSettled) onSettled(result)
       onClose()
@@ -253,6 +279,46 @@ export default function SalarySettlementModal({
                 />
               </div>
             </div>
+
+            {/* Advance Carry-Forward Breakdown Card */}
+            {totalActiveAdvances > 0 && (
+              <div className="p-2.5 rounded-xl bg-amber-50/90 border border-amber-200 text-xs">
+                <div className="flex items-center justify-between font-bold text-amber-950">
+                  <span className="flex items-center gap-1.5">
+                    <AlertCircle size={14} className="text-amber-600 shrink-0" />
+                    <span>Advance Settlement Breakdown</span>
+                  </span>
+                  {carryForwardAdvance > 0 ? (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-black uppercase">
+                      ₹{carryForwardAdvance.toLocaleString('en-IN')} Carried Over
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase">
+                      Fully Settled
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1.5 grid grid-cols-3 gap-2 text-[11px] text-amber-900 border-t border-amber-200/60 pt-1.5">
+                  <div>
+                    <span className="text-[9px] text-amber-700 block uppercase font-semibold">Active Advance</span>
+                    <span className="font-black">₹{totalActiveAdvances.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-amber-700 block uppercase font-semibold">Deducting Now</span>
+                    <span className="font-black text-rose-700">-₹{(Number(advancesDeducted) || 0).toLocaleString('en-IN')}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-amber-700 block uppercase font-semibold">Carries Forward</span>
+                    <span className="font-black text-emerald-700">₹{carryForwardAdvance.toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+                {carryForwardAdvance > 0 && (
+                  <p className="text-[10px] text-amber-800 mt-1.5 font-medium leading-relaxed">
+                    💡 Nilesh will still have <b>₹{carryForwardAdvance.toLocaleString('en-IN')}</b> in active advance liability after this settlement. None of your advance money will be lost.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Net Payable Summary Card */}
