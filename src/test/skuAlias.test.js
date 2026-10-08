@@ -56,6 +56,13 @@ describe('skuAliasUtils', () => {
       expect(findMatchingSku('be liter').sku.id).toBe('bailey_2l')
       expect(findMatchingSku('2L case').sku.id).toBe('bailey_2l')
     })
+
+    it('resolves Bisleri 200ml and Bisleri 1 Liter correctly', () => {
+      expect(findMatchingSku('bisleri 200ml').sku.id).toBe('bisleri_200ml')
+      expect(findMatchingSku('200 bisleri').sku.id).toBe('bisleri_200ml')
+      expect(findMatchingSku('bisleri 1 liter').sku.id).toBe('bisleri_1l')
+      expect(findMatchingSku('1l bisleri').sku.id).toBe('bisleri_1l')
+    })
   })
 
   describe('parseQuantityAndSku', () => {
@@ -69,6 +76,11 @@ describe('skuAliasUtils', () => {
       expect(parsed2.qty).toBe(12)
       expect(parsed2.sku.id).toBe('bailey_1l')
       expect(parsed2.unit).toBe('Bottle')
+
+      const parsed3 = parseQuantityAndSku('15 box bisleri 200ml')
+      expect(parsed3.qty).toBe(15)
+      expect(parsed3.sku.id).toBe('bisleri_200ml')
+      expect(parsed3.unit).toBe('Box')
     })
   })
 

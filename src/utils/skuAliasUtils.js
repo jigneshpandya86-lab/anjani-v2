@@ -71,6 +71,23 @@ export const SKU_ALIAS_PATTERNS = [
     ],
     priority: 2,
   },
+  {
+    skuId: 'bisleri_200ml',
+    patterns: [
+      /\bbisleri\s*(?:200\s*ml|200ml|200)\b/i,
+      /\b(?:200\s*ml|200ml|200)\s*bisleri\b/i,
+    ],
+    priority: 1,
+  },
+  {
+    skuId: 'bisleri_1l',
+    patterns: [
+      /\bbisleri\s*(?:1\s*l(?:iter|itre|tr)?|1l|ek\s*liter)\b/i,
+      /\b(?:1\s*l(?:iter|itre|tr)?|1l|ek\s*liter)\s*bisleri\b/i,
+      /\bbisleri\s*(?:bad[ai]\s+botal|big\s+bottle)\b/i,
+    ],
+    priority: 1,
+  },
 ]
 
 /**
@@ -104,7 +121,21 @@ export function findMatchingSku(text, skusList = WATER_SKUS) {
     }
   }
 
-  // 2. Specific volume checks (highest determinism)
+  // 2. Bisleri-specific matching (explicit brand mention)
+  if (/\bbisleri\b/i.test(clean)) {
+    if (/\b(?:200\s*ml|200ml|200)\b/i.test(clean)) {
+      const s = skusList.find((x) => x.id === 'bisleri_200ml')
+      if (s) return { sku: s, matchedAlias: 'Bisleri 200ml', confidence: 0.98 }
+    }
+    if (/\b(?:1\s*l(?:iter|itre|tr)?|1l|ek\s*liter|liter|litre|bad[ai]\s+botal|big\s+bottle)\b/i.test(clean)) {
+      const s = skusList.find((x) => x.id === 'bisleri_1l')
+      if (s) return { sku: s, matchedAlias: 'Bisleri 1L', confidence: 0.98 }
+    }
+    const defaultBisleri = skusList.find((x) => x.id === 'bisleri_1l') || skusList.find((x) => x.brand === 'Bisleri')
+    if (defaultBisleri) return { sku: defaultBisleri, matchedAlias: 'Bisleri', confidence: 0.9 }
+  }
+
+  // 3. Specific volume checks (highest determinism)
   if (/\b(?:2\s*l|2\s*liter|2\s*ltr|2l|be\s*liter|do\s*liter)\b/i.test(clean)) {
     const s = skusList.find((x) => x.id === 'bailey_2l')
     if (s) return { sku: s, matchedAlias: '2L', confidence: 0.95 }
@@ -184,11 +215,13 @@ export function parseQuantityAndSku(line, skusList = WATER_SKUS) {
  */
 export function getSkuShorthandDict() {
   return [
-    { slang: 'petli / patli / 200', sku: 'Anjani 200ml (Box)' },
-    { slang: 'chhota / chhoti botal / 250', sku: 'Bailey 250ml (Case / Box)' },
-    { slang: '500 / aadho liter / half liter', sku: 'Bailey 500ml (Case / Box)' },
-    { slang: '1L / 1 liter / badi botal', sku: 'Bailey 1 Liter (Case / Box)' },
-    { slang: '2L / 2 liter / jumbo', sku: 'Bailey 2 Liter (Case / Box)' },
+    { slang: 'petli / patli / 200 / anjani', sku: 'Anjani 200ml (Box)' },
+    { slang: 'chhota / chhoti botal / 250 / bailey 250', sku: 'Bailey 250ml (Case / Box)' },
+    { slang: '500 / aadho liter / half liter / bailey 500', sku: 'Bailey 500ml (Case / Box)' },
+    { slang: '1L / 1 liter / badi botal / bailey 1L', sku: 'Bailey 1 Liter (Case / Box)' },
+    { slang: '2L / 2 liter / jumbo / bailey 2L', sku: 'Bailey 2 Liter (Case / Box)' },
+    { slang: 'bisleri 200 / bisleri 200ml', sku: 'Bisleri 200ml (Case / Box)' },
+    { slang: 'bisleri 1L / bisleri 1 liter', sku: 'Bisleri 1 Liter (Case / Box)' },
     { slang: 'kedi / crate / box / khokhu', unit: 'Box unit' },
   ]
 }

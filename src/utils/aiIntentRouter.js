@@ -352,7 +352,7 @@ export function tryLocalIntentRoute(query, store = {}) {
     return {
       handled: true,
       type: 'stock_summary',
-      text: `📦 **Live Warehouse Inventory** (Total: **${totalUnits.toLocaleString()}** units):\nHere is your current available stock across all 5 water products:`,
+      text: `📦 **Live Warehouse Inventory** (Total: **${totalUnits.toLocaleString()}** units):\nHere is your current available stock across all ${WATER_SKUS.length} water products:`,
       data: {
         stockItems,
         totalUnits,

@@ -49,6 +49,26 @@ export const WATER_SKUS = [
     badgeClass: 'border-purple-200 bg-purple-50 text-purple-800',
     color: '#6b21a8',
   },
+  {
+    id: 'bisleri_200ml',
+    label: 'Bisleri 200ml',
+    shortLabel: 'Bisleri 200ml',
+    brand: 'Bisleri',
+    size: '200ml',
+    unit: 'Case / Box',
+    badgeClass: 'border-teal-200 bg-teal-50 text-teal-800',
+    color: '#0f766e',
+  },
+  {
+    id: 'bisleri_1l',
+    label: 'Bisleri 1 Liter',
+    shortLabel: 'Bisleri 1L',
+    brand: 'Bisleri',
+    size: '1 Liter',
+    unit: 'Case / Box',
+    badgeClass: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    color: '#047857',
+  },
 ]
 
 export const DEFAULT_SKU = 'Anjani 200ml'
@@ -59,16 +79,56 @@ export function getSkuMeta(skuLabel) {
   const norm = String(skuLabel || '').trim().toLowerCase()
   if (!norm) return WATER_SKUS[0]
 
-  const found = WATER_SKUS.find(
+  // 1. Direct match on label, id, or shortLabel
+  const exact = WATER_SKUS.find(
     (s) =>
       s.label.toLowerCase() === norm ||
       s.id.toLowerCase() === norm ||
-      s.shortLabel.toLowerCase() === norm ||
-      (norm.includes('500') && s.id === 'bailey_500ml') ||
-      (norm.includes('250') && s.id === 'bailey_250ml') ||
-      (norm.includes('200') && s.id === 'anjani_200ml') ||
-      ((norm.includes('2 l') || norm.includes('2l')) && s.id === 'bailey_2l') ||
-      ((norm.includes('1 l') || norm.includes('1l')) && s.id === 'bailey_1l')
+      s.shortLabel.toLowerCase() === norm,
   )
-  return found || WATER_SKUS[0]
+  if (exact) return exact
+
+  // 2. Bisleri specific matches
+  if (norm.includes('bisleri')) {
+    if (norm.includes('200')) {
+      return WATER_SKUS.find((s) => s.id === 'bisleri_200ml') || WATER_SKUS[0]
+    }
+    if (
+      norm.includes('1 l') ||
+      norm.includes('1l') ||
+      norm.includes('1 liter') ||
+      norm.includes('1ltr') ||
+      norm.includes('liter') ||
+      norm.includes('litre')
+    ) {
+      return WATER_SKUS.find((s) => s.id === 'bisleri_1l') || WATER_SKUS[0]
+    }
+    return WATER_SKUS.find((s) => s.id === 'bisleri_1l') || WATER_SKUS[0]
+  }
+
+  // 3. Anjani specific matches
+  if (norm.includes('anjani') || norm.includes('petli') || norm.includes('patli')) {
+    return WATER_SKUS.find((s) => s.id === 'anjani_200ml') || WATER_SKUS[0]
+  }
+
+  // 4. Bailey specific matches
+  if (norm.includes('bailey')) {
+    if (norm.includes('250')) return WATER_SKUS.find((s) => s.id === 'bailey_250ml') || WATER_SKUS[0]
+    if (norm.includes('500')) return WATER_SKUS.find((s) => s.id === 'bailey_500ml') || WATER_SKUS[0]
+    if (norm.includes('2 l') || norm.includes('2l') || norm.includes('2 liter')) {
+      return WATER_SKUS.find((s) => s.id === 'bailey_2l') || WATER_SKUS[0]
+    }
+    if (norm.includes('1 l') || norm.includes('1l') || norm.includes('1 liter')) {
+      return WATER_SKUS.find((s) => s.id === 'bailey_1l') || WATER_SKUS[0]
+    }
+  }
+
+  // 5. Fallback volume checks when brand is omitted
+  if (norm.includes('500')) return WATER_SKUS.find((s) => s.id === 'bailey_500ml') || WATER_SKUS[0]
+  if (norm.includes('250')) return WATER_SKUS.find((s) => s.id === 'bailey_250ml') || WATER_SKUS[0]
+  if (norm.includes('2 l') || norm.includes('2l')) return WATER_SKUS.find((s) => s.id === 'bailey_2l') || WATER_SKUS[0]
+  if (norm.includes('1 l') || norm.includes('1l')) return WATER_SKUS.find((s) => s.id === 'bailey_1l') || WATER_SKUS[0]
+  if (norm.includes('200')) return WATER_SKUS.find((s) => s.id === 'anjani_200ml') || WATER_SKUS[0]
+
+  return WATER_SKUS[0]
 }

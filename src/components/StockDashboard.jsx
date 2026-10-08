@@ -298,7 +298,7 @@ export default function StockDashboard({ onOpenReport, onOpenBaileyOrder }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
               {WATER_SKUS.map((sku) => {
                 const qty = getSkuStock(sku.label)
                 const isSelected = skuFilter === sku.label
@@ -322,6 +322,8 @@ export default function StockDashboard({ onOpenReport, onOpenBaileyOrder }) {
                           isSelected
                             ? sku.brand === 'Bailey'
                               ? 'bg-emerald-100 text-emerald-800'
+                              : sku.brand === 'Bisleri'
+                              ? 'bg-teal-100 text-teal-800'
                               : 'bg-blue-100 text-blue-800'
                             : 'bg-white/20 text-white'
                         }`}
