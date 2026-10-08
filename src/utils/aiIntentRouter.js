@@ -116,7 +116,7 @@ export function tryLocalIntentRoute(query, store = {}) {
     // Extract delivery address / location from text (e.g. "at Waghodia road", "deliver to Manjalpur", "near D-Mart")
     let detectedAddress = ''
     const addrMatch = rawQ.match(
-      /(?:at|in|near|address[:\s]+|location[:\s]+|deliver(?:y)?\s+(?:to|at))\s+([A-Za-z0-9\s,\.\-]{2,40}?)(?:$|\s+(?:mobile|phone|rate|qty|@|\d+\s*(?:box|case|petli)|with|for))/i
+      /(?:at|in|near|address[:\s]+|location[:\s]+|deliver(?:y)?\s+(?:to|at))\s+([A-Za-z0-9\s,.-]{2,40}?)(?:$|\s+(?:mobile|phone|rate|qty|@|\d+\s*(?:box|case|petli)|with|for))/i
     )
     if (addrMatch && addrMatch[1]) {
       const candidate = addrMatch[1].trim()
