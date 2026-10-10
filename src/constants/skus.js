@@ -69,6 +69,26 @@ export const WATER_SKUS = [
     badgeClass: 'border-emerald-200 bg-emerald-50 text-emerald-800',
     color: '#047857',
   },
+  {
+    id: 'rushi_500ml',
+    label: 'Rushi 500ml',
+    shortLabel: 'Rushi 500ml',
+    brand: 'Rushi',
+    size: '500ml',
+    unit: 'Case / Box',
+    badgeClass: 'border-amber-200 bg-amber-50 text-amber-800',
+    color: '#d97706',
+  },
+  {
+    id: 'rushi_1l',
+    label: 'Rushi 1 Liter',
+    shortLabel: 'Rushi 1L',
+    brand: 'Rushi',
+    size: '1 Liter',
+    unit: 'Case / Box',
+    badgeClass: 'border-orange-200 bg-orange-50 text-orange-800',
+    color: '#ea580c',
+  },
 ]
 
 export const DEFAULT_SKU = 'Anjani 200ml'
@@ -106,12 +126,30 @@ export function getSkuMeta(skuLabel) {
     return WATER_SKUS.find((s) => s.id === 'bisleri_1l') || WATER_SKUS[0]
   }
 
-  // 3. Anjani specific matches
+  // 3. Rushi specific matches
+  if (norm.includes('rushi')) {
+    if (norm.includes('500') || norm.includes('aadho') || norm.includes('half')) {
+      return WATER_SKUS.find((s) => s.id === 'rushi_500ml') || WATER_SKUS[0]
+    }
+    if (
+      norm.includes('1 l') ||
+      norm.includes('1l') ||
+      norm.includes('1 liter') ||
+      norm.includes('1ltr') ||
+      norm.includes('liter') ||
+      norm.includes('litre')
+    ) {
+      return WATER_SKUS.find((s) => s.id === 'rushi_1l') || WATER_SKUS[0]
+    }
+    return WATER_SKUS.find((s) => s.id === 'rushi_1l') || WATER_SKUS[0]
+  }
+
+  // 4. Anjani specific matches
   if (norm.includes('anjani') || norm.includes('petli') || norm.includes('patli')) {
     return WATER_SKUS.find((s) => s.id === 'anjani_200ml') || WATER_SKUS[0]
   }
 
-  // 4. Bailey specific matches
+  // 5. Bailey specific matches
   if (norm.includes('bailey')) {
     if (norm.includes('250')) return WATER_SKUS.find((s) => s.id === 'bailey_250ml') || WATER_SKUS[0]
     if (norm.includes('500')) return WATER_SKUS.find((s) => s.id === 'bailey_500ml') || WATER_SKUS[0]
@@ -123,7 +161,7 @@ export function getSkuMeta(skuLabel) {
     }
   }
 
-  // 5. Fallback volume checks when brand is omitted
+  // 6. Fallback volume checks when brand is omitted
   if (norm.includes('500')) return WATER_SKUS.find((s) => s.id === 'bailey_500ml') || WATER_SKUS[0]
   if (norm.includes('250')) return WATER_SKUS.find((s) => s.id === 'bailey_250ml') || WATER_SKUS[0]
   if (norm.includes('2 l') || norm.includes('2l')) return WATER_SKUS.find((s) => s.id === 'bailey_2l') || WATER_SKUS[0]

@@ -88,6 +88,23 @@ export const SKU_ALIAS_PATTERNS = [
     ],
     priority: 1,
   },
+  {
+    skuId: 'rushi_500ml',
+    patterns: [
+      /\brushi\s*(?:500\s*ml|500ml|500|aadho|adha|aadha|half)\b/i,
+      /\b(?:500\s*ml|500ml|500)\s*rushi\b/i,
+    ],
+    priority: 1,
+  },
+  {
+    skuId: 'rushi_1l',
+    patterns: [
+      /\brushi\s*(?:1\s*l(?:iter|itre|tr)?|1l|ek\s*liter)\b/i,
+      /\b(?:1\s*l(?:iter|itre|tr)?|1l|ek\s*liter)\s*rushi\b/i,
+      /\brushi\s*(?:bad[ai]\s+botal|big\s+bottle)\b/i,
+    ],
+    priority: 1,
+  },
 ]
 
 /**
@@ -135,7 +152,21 @@ export function findMatchingSku(text, skusList = WATER_SKUS) {
     if (defaultBisleri) return { sku: defaultBisleri, matchedAlias: 'Bisleri', confidence: 0.9 }
   }
 
-  // 3. Specific volume checks (highest determinism)
+  // 3. Rushi-specific matching (explicit brand mention)
+  if (/\brushi\b/i.test(clean)) {
+    if (/\b(?:500\s*ml|500ml|500|aadho|adha|aadha|half)\b/i.test(clean)) {
+      const s = skusList.find((x) => x.id === 'rushi_500ml')
+      if (s) return { sku: s, matchedAlias: 'Rushi 500ml', confidence: 0.98 }
+    }
+    if (/\b(?:1\s*l(?:iter|itre|tr)?|1l|ek\s*liter|liter|litre|bad[ai]\s+botal|big\s+bottle)\b/i.test(clean)) {
+      const s = skusList.find((x) => x.id === 'rushi_1l')
+      if (s) return { sku: s, matchedAlias: 'Rushi 1L', confidence: 0.98 }
+    }
+    const defaultRushi = skusList.find((x) => x.id === 'rushi_1l') || skusList.find((x) => x.brand === 'Rushi')
+    if (defaultRushi) return { sku: defaultRushi, matchedAlias: 'Rushi', confidence: 0.9 }
+  }
+
+  // 4. Specific volume checks (highest determinism)
   if (/\b(?:2\s*l|2\s*liter|2\s*ltr|2l|be\s*liter|do\s*liter)\b/i.test(clean)) {
     const s = skusList.find((x) => x.id === 'bailey_2l')
     if (s) return { sku: s, matchedAlias: '2L', confidence: 0.95 }
@@ -222,6 +253,8 @@ export function getSkuShorthandDict() {
     { slang: '2L / 2 liter / jumbo / bailey 2L', sku: 'Bailey 2 Liter (Case / Box)' },
     { slang: 'bisleri 200 / bisleri 200ml', sku: 'Bisleri 200ml (Case / Box)' },
     { slang: 'bisleri 1L / bisleri 1 liter', sku: 'Bisleri 1 Liter (Case / Box)' },
+    { slang: 'rushi 500 / rushi 500ml', sku: 'Rushi 500ml (Case / Box)' },
+    { slang: 'rushi 1L / rushi 1 liter', sku: 'Rushi 1 Liter (Case / Box)' },
     { slang: 'kedi / crate / box / khokhu', unit: 'Box unit' },
   ]
 }

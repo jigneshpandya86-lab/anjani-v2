@@ -3,6 +3,7 @@ import { useClientStore } from '../store/clientStore'
 import { Package, Clock, IndianRupee, Image as ImageIcon, MapPinned, Plus, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import GoogleMapPicker from './GoogleMapPicker'
+import SkuSelect from './SkuSelect'
 import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 import { resolveOrderInitialData } from '../utils/orderUtils'
 
@@ -374,18 +375,11 @@ export default function OrderModal({ orderToEdit, onClose }) {
                       >
                         Product
                       </label>
-                      <select
+                      <SkuSelect
                         id={`sku-select-${idx}`}
                         value={item.sku}
-                        onChange={(e) => handleItemSkuChange(idx, e.target.value)}
-                        className="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-xs font-bold focus:ring-1 focus:ring-amz-orange outline-none"
-                      >
-                        {WATER_SKUS.map((s) => (
-                          <option key={s.id} value={s.label}>
-                            {s.label}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(newSku) => handleItemSkuChange(idx, newSku)}
+                      />
                     </div>
 
                     {/* Quantity */}

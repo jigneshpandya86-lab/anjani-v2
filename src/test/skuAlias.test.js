@@ -63,6 +63,13 @@ describe('skuAliasUtils', () => {
       expect(findMatchingSku('bisleri 1 liter').sku.id).toBe('bisleri_1l')
       expect(findMatchingSku('1l bisleri').sku.id).toBe('bisleri_1l')
     })
+
+    it('resolves Rushi 500ml and Rushi 1 Liter correctly', () => {
+      expect(findMatchingSku('rushi 500ml').sku.id).toBe('rushi_500ml')
+      expect(findMatchingSku('500 rushi').sku.id).toBe('rushi_500ml')
+      expect(findMatchingSku('rushi 1 liter').sku.id).toBe('rushi_1l')
+      expect(findMatchingSku('1l rushi').sku.id).toBe('rushi_1l')
+    })
   })
 
   describe('parseQuantityAndSku', () => {
@@ -81,6 +88,11 @@ describe('skuAliasUtils', () => {
       expect(parsed3.qty).toBe(15)
       expect(parsed3.sku.id).toBe('bisleri_200ml')
       expect(parsed3.unit).toBe('Box')
+
+      const parsed4 = parseQuantityAndSku('20 box rushi 500ml')
+      expect(parsed4.qty).toBe(20)
+      expect(parsed4.sku.id).toBe('rushi_500ml')
+      expect(parsed4.unit).toBe('Box')
     })
   })
 

@@ -701,6 +701,10 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
               skuFilter === s.label
                 ? s.brand === 'Bailey'
                   ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
+                  : s.brand === 'Bisleri'
+                  ? 'bg-teal-700 text-white border-teal-700 shadow-xs'
+                  : s.brand === 'Rushi'
+                  ? 'bg-amber-700 text-white border-amber-700 shadow-xs'
                   : 'bg-blue-700 text-white border-blue-700 shadow-xs'
                 : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
             }`}

@@ -298,7 +298,7 @@ export default function StockDashboard({ onOpenReport, onOpenBaileyOrder }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-9 gap-2">
               {WATER_SKUS.map((sku) => {
                 const qty = getSkuStock(sku.label)
                 const isSelected = skuFilter === sku.label
@@ -324,6 +324,8 @@ export default function StockDashboard({ onOpenReport, onOpenBaileyOrder }) {
                               ? 'bg-emerald-100 text-emerald-800'
                               : sku.brand === 'Bisleri'
                               ? 'bg-teal-100 text-teal-800'
+                              : sku.brand === 'Rushi'
+                              ? 'bg-amber-100 text-amber-800'
                               : 'bg-blue-100 text-blue-800'
                             : 'bg-white/20 text-white'
                         }`}
@@ -416,6 +418,10 @@ export default function StockDashboard({ onOpenReport, onOpenBaileyOrder }) {
               skuFilter === s.label
                 ? s.brand === 'Bailey'
                   ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
+                  : s.brand === 'Bisleri'
+                  ? 'bg-teal-700 text-white border-teal-700 shadow-xs'
+                  : s.brand === 'Rushi'
+                  ? 'bg-amber-700 text-white border-amber-700 shadow-xs'
                   : 'bg-blue-700 text-white border-blue-700 shadow-xs'
                 : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
             }`}

@@ -256,7 +256,7 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
                     className="flex items-center gap-1.5 text-xs font-semibold text-amz-navy hover:text-amz-orange transition-colors"
                   >
                     <Package className="w-3.5 h-3.5 text-amz-orange" />
-                    <span>{showSkuRates ? 'Hide SKU-Specific Rates' : 'Set SKU-Specific Rates (Bailey & Anjani)'}</span>
+                    <span>{showSkuRates ? 'Hide SKU-Specific Rates' : 'Set SKU-Specific Rates'}</span>
                     {showSkuRates ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                   </button>
 
@@ -270,7 +270,17 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
                           <div key={s.id} className="bg-white p-2 rounded border border-gray-200">
                             <div className="flex items-center justify-between mb-1">
                               <span className="font-semibold text-gray-700">{s.label}</span>
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${s.brand === 'Bailey' ? 'bg-cyan-100 text-cyan-800' : 'bg-blue-100 text-blue-800'}`}>
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                  s.brand === 'Bailey'
+                                    ? 'bg-cyan-100 text-cyan-800'
+                                    : s.brand === 'Bisleri'
+                                    ? 'bg-teal-100 text-teal-800'
+                                    : s.brand === 'Rushi'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-blue-100 text-blue-800'
+                                }`}
+                              >
                                 {s.brand}
                               </span>
                             </div>

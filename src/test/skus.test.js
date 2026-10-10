@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { WATER_SKUS, DEFAULT_SKU, SKU_LABELS, getSkuMeta } from '../constants/skus'
 
 describe('WATER_SKUS Configuration', () => {
-  it('contains Anjani, Bailey, and Bisleri SKUs', () => {
-    expect(WATER_SKUS.length).toBe(7)
+  it('contains Anjani, Bailey, Bisleri, and Rushi SKUs', () => {
+    expect(WATER_SKUS.length).toBe(9)
     const labels = WATER_SKUS.map((s) => s.label)
     expect(labels).toContain('Anjani 200ml')
     expect(labels).toContain('Bailey 250ml')
@@ -12,6 +12,8 @@ describe('WATER_SKUS Configuration', () => {
     expect(labels).toContain('Bailey 2 Liter')
     expect(labels).toContain('Bisleri 200ml')
     expect(labels).toContain('Bisleri 1 Liter')
+    expect(labels).toContain('Rushi 500ml')
+    expect(labels).toContain('Rushi 1 Liter')
   })
 
   it('has DEFAULT_SKU set to Anjani 200ml', () => {
@@ -27,6 +29,8 @@ describe('WATER_SKUS Configuration', () => {
       'Bailey 2 Liter',
       'Bisleri 200ml',
       'Bisleri 1 Liter',
+      'Rushi 500ml',
+      'Rushi 1 Liter',
     ])
   })
 
@@ -43,6 +47,14 @@ describe('WATER_SKUS Configuration', () => {
     const bisleri1L = getSkuMeta('bisleri 1 liter')
     expect(bisleri1L.id).toBe('bisleri_1l')
     expect(bisleri1L.brand).toBe('Bisleri')
+
+    const rushi500 = getSkuMeta('Rushi 500ml')
+    expect(rushi500.id).toBe('rushi_500ml')
+    expect(rushi500.brand).toBe('Rushi')
+
+    const rushi1L = getSkuMeta('rushi 1 liter')
+    expect(rushi1L.id).toBe('rushi_1l')
+    expect(rushi1L.brand).toBe('Rushi')
   })
 
   it('getSkuMeta falls back gracefully to default for unknown or empty input', () => {

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { PackagePlus, Layers, Save, X, ArrowUpRight, ArrowDownLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
+import SkuSelect from './SkuSelect'
 import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 import { useClientStore } from '../store/clientStore'
 
@@ -360,18 +361,11 @@ export default function AddStockModal({ onClose }) {
             >
               Product / Water SKU
             </label>
-            <select
+            <SkuSelect
               id="single-sku-select"
               value={singleSku}
-              onChange={(e) => setSingleSku(e.target.value)}
-              className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm font-bold focus:ring-2 focus:ring-[#ff9900] outline-none"
-            >
-              {WATER_SKUS.map((s) => (
-                <option key={s.id} value={s.label}>
-                  {s.label} ({s.unit})
-                </option>
-              ))}
-            </select>
+              onChange={(newSku) => setSingleSku(newSku)}
+            />
           </div>
 
           <div>
