@@ -11,9 +11,10 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase-config'
 import { useClientStore } from '../store/clientStore'
-import { MessageSquare, Trash2, Plus, Zap, RefreshCw, Users, ChevronDown } from 'lucide-react'
+import { MessageSquare, Trash2, Plus, Zap, RefreshCw, Users, ChevronDown, PhoneCall } from 'lucide-react'
 import toast from 'react-hot-toast'
 import React from 'react'
+import ImportCallLogModal from './ImportCallLogModal'
 import {
   DEFAULT_MACRO_URL,
   buildFollowUpSmsMessage,
@@ -134,8 +135,15 @@ const LeadCard = React.memo(function LeadCard({ lead, onWhatsApp, onDelete }) {
             <p className="text-xs font-bold text-gray-900 truncate">{lead.name}</p>
           )}
           {lead.Tag !== 'SMS_SENT' && (
-            <div className="flex items-center gap-2 mt-0.5">
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               <StatusBadge tag={lead.Tag} />
+              {(lead.source === 'share_target' ||
+                lead.source === 'call_log' ||
+                lead.source === 'call_share_target') && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-600">
+                  📞 Call/Share
+                </span>
+              )}
             </div>
           )}
           <p className="text-xs text-gray-500 mt-1 truncate">
@@ -173,7 +181,12 @@ const LeadCard = React.memo(function LeadCard({ lead, onWhatsApp, onDelete }) {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
-export default function LeadsDashboard({ pendingAction = null, onPendingActionHandled }) {
+export default function LeadsDashboard({
+  pendingAction = null,
+  onPendingActionHandled,
+  incomingSharedLead = null,
+  onClearSharedLead,
+}) {
   const leads = useClientStore((state) => state.leads)
   const fetchLeads = useClientStore((state) => state.fetchLeads)
   const updateLead = useClientStore((state) => state.updateLead)
@@ -188,6 +201,23 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
   const [isConnecting, setIsConnecting] = useState(false)
   const [isRemessaging, setIsRemessaging] = useState(false)
   const [isActionPanelOpen, setIsActionPanelOpen] = useState(false)
+
+  // Call log & Android Share Target import modal
+  const [callImportModalOpen, setCallImportModalOpen] = useState(false)
+  const [activeImportData, setActiveImportData] = useState(null)
+
+  useEffect(() => {
+    if (incomingSharedLead) {
+      setActiveImportData(incomingSharedLead)
+      setCallImportModalOpen(true)
+    }
+  }, [incomingSharedLead])
+
+  const handleCloseImportModal = useCallback(() => {
+    setCallImportModalOpen(false)
+    setActiveImportData(null)
+    if (onClearSharedLead) onClearSharedLead()
+  }, [onClearSharedLead])
 
   useEffect(() => {
     const unsub = fetchLeads()
@@ -495,10 +525,25 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
     <div className="space-y-4 pb-24">
       {/* Header */}
       <div className="flex items-center justify-between px-1">
-        <h2 className="text-xl font-black text-gray-800 tracking-tight">Leads</h2>
-        <span className="bg-orange-100 text-orange-600 px-2.5 py-1 rounded-lg text-xs font-bold">
-          {leads.length}
-        </span>
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl font-black text-gray-800 tracking-tight">Leads</h2>
+          <span className="bg-orange-100 text-orange-600 px-2.5 py-1 rounded-lg text-xs font-bold">
+            {leads.length}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setActiveImportData(null)
+            setCallImportModalOpen(true)
+          }}
+          className="inline-flex items-center gap-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-xs font-bold px-3 py-1.5 rounded-xl active:scale-95 transition-all shadow-sm cursor-pointer"
+          aria-label="Import lead from call log or clipboard"
+          title="Import lead from call log or clipboard"
+        >
+          <PhoneCall size={14} className="text-orange-500" />
+          <span>From Call / Paste</span>
+        </button>
       </div>
 
       {/* Action Panel (Click to Expand / Collapse) */}
@@ -785,7 +830,12 @@ export default function LeadsDashboard({ pendingAction = null, onPendingActionHa
         <Plus size={24} strokeWidth={2.5} />
       </button>
 
-
+      {/* Import from Call Log / Android Share Target Modal */}
+      <ImportCallLogModal
+        isOpen={callImportModalOpen}
+        onClose={handleCloseImportModal}
+        initialData={activeImportData}
+      />
     </div>
   )
 }

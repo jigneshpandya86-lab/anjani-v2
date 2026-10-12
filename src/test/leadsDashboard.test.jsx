@@ -153,4 +153,31 @@ describe('LeadsDashboard Component', () => {
       )
     })
   })
+
+  it('renders "From Call / Paste" button and opens import modal on click', () => {
+    render(<LeadsDashboard />)
+
+    const fromCallButton = screen.getByRole('button', { name: /import lead from call log or clipboard/i })
+    expect(fromCallButton).toBeInTheDocument()
+
+    fireEvent.click(fromCallButton)
+    expect(screen.getByText(/import from call log/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/mobile number/i)).toBeInTheDocument()
+  })
+
+  it('automatically opens import modal when incomingSharedLead is passed', () => {
+    render(
+      <LeadsDashboard
+        incomingSharedLead={{
+          phone: '9825012345',
+          name: 'Sunil Store',
+          isShareTarget: true,
+        }}
+      />
+    )
+
+    expect(screen.getByText(/add shared lead/i)).toBeInTheDocument()
+    expect(screen.getByDisplayValue('9825012345')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Sunil Store')).toBeInTheDocument()
+  })
 })

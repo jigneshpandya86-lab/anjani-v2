@@ -62,6 +62,7 @@ import StaffSalariesDashboard from './components/StaffSalariesDashboard'
 import BaileyOrderPage from './components/BaileyOrderPage'
 import AccountsLedgerReportModal from './components/AccountsLedgerReportModal'
 import NetworkStatusBar from './components/NetworkStatusBar'
+import { parseShareTargetUrl } from './utils/shareTargetUtils'
 import {
   isMobileOrNative,
   shareOrDownloadPdf,
@@ -147,6 +148,7 @@ function App() {
     new Date().toISOString().slice(0, 7),
   )
   const [pendingLeadAction, setPendingLeadAction] = useState(null)
+  const [incomingSharedLead, setIncomingSharedLead] = useState(null)
   // ─────────────────────────────────────────
   // AUTH — DO NOT MODIFY WITHOUT TEAM REVIEW
   // ─────────────────────────────────────────
@@ -213,6 +215,29 @@ function App() {
     window.addEventListener('hashchange', handleHashChange)
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [activeTab])
+
+  // Android Web Share Target handler (captures shared phone/text on launch)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const checkIncomingShare = () => {
+      const parsedShare = parseShareTargetUrl(window.location.search)
+      if (parsedShare) {
+        // Clean query search from URL so browser refresh does not re-trigger modal
+        try {
+          const cleanUrl = window.location.pathname + (window.location.hash || '#leads')
+          window.history.replaceState(null, '', cleanUrl)
+        } catch {}
+
+        setActiveTab('leads')
+        setIncomingSharedLead(parsedShare)
+      }
+    }
+
+    checkIncomingShare()
+    window.addEventListener('popstate', checkIncomingShare)
+    return () => window.removeEventListener('popstate', checkIncomingShare)
+  }, [setActiveTab])
 
   useEffect(() => {
     if (!authLoading && userRole && userRole !== 'admin') {
@@ -1328,6 +1353,8 @@ function App() {
             <LeadsDashboard
               pendingAction={pendingLeadAction}
               onPendingActionHandled={() => setPendingLeadAction(null)}
+              incomingSharedLead={incomingSharedLead}
+              onClearSharedLead={() => setIncomingSharedLead(null)}
             />
           )}
           {activeTab === 'settings' && <SettingsTab />}
