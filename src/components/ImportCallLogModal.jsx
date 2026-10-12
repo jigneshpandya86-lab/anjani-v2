@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
-import { Phone, Clipboard, AlertTriangle, Info, CheckCircle2, X } from 'lucide-react'
+import { Phone, Clipboard, AlertTriangle, Info, CheckCircle2, X, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { extractPhoneNumber, checkNumberCollisions } from '../utils/shareTargetUtils'
 import { useClientStore } from '../store/clientStore'
@@ -67,6 +67,31 @@ export default function ImportCallLogModal({
       toast.error('Could not read clipboard. Please paste manually.')
     }
   }, [])
+
+  const isContactsSupported =
+    typeof navigator !== 'undefined' &&
+    'contacts' in navigator &&
+    typeof navigator.contacts?.select === 'function'
+
+  const handlePickFromContacts = useCallback(async () => {
+    try {
+      if (!isContactsSupported) {
+        toast.error('Contact picker is only supported on mobile Android devices.')
+        return
+      }
+      const selected = await navigator.contacts.select(['name', 'tel'], { multiple: false })
+      if (selected && selected.length > 0) {
+        const c = selected[0]
+        const rawPhone = c.tel?.[0] || ''
+        const rawName = c.name?.[0] || ''
+        if (rawPhone) setPhoneInput(rawPhone)
+        if (rawName) setNameInput(rawName)
+        toast.success(`Selected: ${rawName || rawPhone}`)
+      }
+    } catch (err) {
+      console.warn('Contact picker error or cancelled:', err)
+    }
+  }, [isContactsSupported])
 
   const handleSubmit = useCallback(
     async (e) => {
@@ -147,14 +172,27 @@ export default function ImportCallLogModal({
               <label htmlFor="callLeadPhone" className="text-xs font-bold text-gray-700 uppercase tracking-wide">
                 Mobile Number *
               </label>
-              <button
-                type="button"
-                onClick={handlePasteClipboard}
-                className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-600 hover:text-orange-700 bg-orange-50 px-2 py-0.5 rounded-lg active:scale-95 transition-all cursor-pointer"
-              >
-                <Clipboard size={12} />
-                <span>Paste</span>
-              </button>
+              <div className="flex items-center gap-1.5">
+                {isContactsSupported && (
+                  <button
+                    type="button"
+                    onClick={handlePickFromContacts}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg active:scale-95 transition-all cursor-pointer"
+                    title="Select contact from phone"
+                  >
+                    <Users size={12} />
+                    <span>Contacts</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handlePasteClipboard}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-600 hover:text-orange-700 bg-orange-50 px-2 py-0.5 rounded-lg active:scale-95 transition-all cursor-pointer"
+                >
+                  <Clipboard size={12} />
+                  <span>Paste</span>
+                </button>
+              </div>
             </div>
             <input
               id="callLeadPhone"
