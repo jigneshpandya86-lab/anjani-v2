@@ -21,6 +21,7 @@ import {
   buildFollowUpUpdate,
   buildInitialSmsMessage,
   buildInitialSmsUpdate,
+  buildLeadWhatsAppMessage,
   getDueReminderContext,
   getLeadPhone,
   sendBackgroundSms,
@@ -245,7 +246,7 @@ export default function LeadsDashboard({
       toast.error('No valid phone number for WhatsApp')
       return
     }
-    const msg = `Hello! 🌟 I'm *Jignesh Pandya*, owner of *Annapurna Foods* (Authorized Distributorship for *Anjani & Bailey Water*, Vadodara). 💧\n\nWe provide **Anjani 200ml** as well as **Bailey Packaged Drinking Water (250ml, 500ml, 1 Liter & 2 Liter)** across all areas of Vadodara, Gujarat. ✨\n\n*Why choose us?*\n✅ **Full SKU Range**: Anjani 200ml + Bailey 250ml, 500ml, 1L, 2L for offices, restaurants & events.\n✅ **Certified Pure Quality**: 100% pure, sealed & hygienic.\n✅ **Best Bulk Rates & Fast Delivery**: Direct doorstep delivery.\n\nWould you like to try a free sample or get a bulk quote? Please *reply with 1*! 👍`
+    const msg = buildLeadWhatsAppMessage(lead)
     window.open(`https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`, '_blank')
   }, [])
 

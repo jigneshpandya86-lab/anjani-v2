@@ -83,6 +83,24 @@ export const sendBackgroundSms = async ({ macroUrl, phone, message }) => {
   }
 }
 
+export const buildLeadWhatsAppMessage = (lead = {}) => {
+  const name =
+    lead?.name && !/^(call lead|shared lead|untitled|lead)$/i.test(lead.name.trim())
+      ? ` ${lead.name.trim()}`
+      : ''
+
+  return (
+    `Hello${name}! 👋\n` +
+    `I'm Jignesh Pandya, owner of *Anjani Water* (Vadodara). 💧\n\n` +
+    `Along with *Anjani Water*, we provide *Bailey* and *Bisleri* as well at direct wholesale rates!\n\n` +
+    `Looking for packaged water for:\n` +
+    `🎉 *Marriages & Family Events*\n` +
+    `🏷️ *Customer Branding* (customized label/logo)\n` +
+    `📦 *Retail & Daily Supply*\n\n` +
+    `We provide fast doorstep delivery across Vadodara. Let us know your requirement or reply for rates! 😊`
+  )
+}
+
 export const buildInitialSmsMessage = () => {
   const waLink = BUSINESS_WHATSAPP_NUMBER ? `\nChat/Order: https://wa.me/${BUSINESS_WHATSAPP_NUMBER}` : ''
   return `Hello! I'm Jignesh Pandya, Annapurna Foods (Anjani & Bailey Water Distributorship, Vadodara). We supply Anjani 200ml & Bailey (250ml, 500ml, 1L, 2L) pure packaged water at direct bulk rates! Reply 1 for free sample/quote!${waLink}`

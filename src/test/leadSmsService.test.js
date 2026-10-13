@@ -8,6 +8,7 @@ import {
   buildFollowUpSmsMessage,
   getDueReminderContext,
   buildInitialSmsUpdate,
+  buildLeadWhatsAppMessage,
 } from '../services/leadSmsService'
 
 describe('leadSmsService', () => {
@@ -89,6 +90,29 @@ describe('leadSmsService', () => {
           message: 'Hello test',
         })
       ).rejects.toThrow('Webhook failed with status 500')
+    })
+  })
+
+  describe('buildLeadWhatsAppMessage', () => {
+    it('creates shortened retail-focused message mentioning owner of Anjani Water, Bailey and Bisleri', () => {
+      const msg = buildLeadWhatsAppMessage({ name: 'Rahul Patel' })
+
+      expect(msg).toContain('Hello Rahul Patel! 👋')
+      expect(msg).toContain('owner of *Anjani Water*')
+      expect(msg).toContain('Bailey')
+      expect(msg).toContain('Bisleri')
+      expect(msg).toContain('Marriages & Family Events')
+      expect(msg).toContain('Customer Branding')
+      expect(msg).toContain('Retail & Daily Supply')
+    })
+
+    it('handles lead without name or generic names cleanly', () => {
+      const msgNoName = buildLeadWhatsAppMessage({})
+      expect(msgNoName).toContain('Hello! 👋')
+      expect(msgNoName).toContain('owner of *Anjani Water*')
+
+      const msgGeneric = buildLeadWhatsAppMessage({ name: 'Call Lead' })
+      expect(msgGeneric).toContain('Hello! 👋')
     })
   })
 })
