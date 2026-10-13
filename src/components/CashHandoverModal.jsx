@@ -1,7 +1,22 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useClientStore } from '../store/clientStore'
 import { DEFAULT_ACCOUNTS, getAccountMeta } from '../constants/accounts'
-import { IndianRupee, ArrowRight, X, Check, ArrowRightLeft } from 'lucide-react'
+import { DEFAULT_STAFF } from '../services/staffSalaryService'
+import { sendBackgroundSms } from '../services/leadSmsService'
+import {
+  evaluateArithmetic,
+  hasArithmeticOperators,
+  buildCashHandoverSms,
+} from '../utils/calculatorUtils'
+import {
+  ArrowRightLeft,
+  X,
+  Check,
+  Calculator,
+  MessageSquare,
+  Delete,
+  CheckCircle2,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function CashHandoverModal({
@@ -11,6 +26,7 @@ export default function CashHandoverModal({
   accountsSummary = {},
 }) {
   const recordAccountTransfer = useClientStore((state) => state.recordAccountTransfer)
+  const staffList = useClientStore((state) => state.staffList) || []
 
   const [fromAccountId, setFromAccountId] = useState(initialSource)
   const [toAccountId, setToAccountId] = useState('counter')
@@ -19,34 +35,141 @@ export default function CashHandoverModal({
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  // Calculator state
+  const [showCalculator, setShowCalculator] = useState(false)
+
+  // SMS state
+  const [sendSms, setSendSms] = useState(false)
+  const [smsPhone, setSmsPhone] = useState('')
+
+  // Helper to find staff phone by account ID
+  const lookupAccountPhone = useCallback(
+    (accId) => {
+      const fromStaffList = staffList.find((s) => s.id === accId)
+      if (fromStaffList?.mobile) return fromStaffList.mobile
+      const fromDefault = DEFAULT_STAFF.find((s) => s.id === accId)
+      if (fromDefault?.mobile) return fromDefault.mobile
+      return ''
+    },
+    [staffList],
+  )
+
   useEffect(() => {
     if (isOpen) {
-      setFromAccountId(initialSource || 'nilesh')
-      // If from is counter, default to bank or nilesh; otherwise default to counter
-      setToAccountId(initialSource === 'counter' ? 'bank' : 'counter')
+      const initialFrom = initialSource || 'nilesh'
+      const initialTo = initialFrom === 'counter' ? 'bank' : 'counter'
+
+      setFromAccountId(initialFrom)
+      setToAccountId(initialTo)
       setAmount('')
       setNotes('')
+      setShowCalculator(false)
       setDate(new Date().toISOString().slice(0, 10))
+
+      // Auto-configure SMS based on staff account
+      const detectedPhone = lookupAccountPhone(initialFrom) || lookupAccountPhone(initialTo)
+      if (detectedPhone) {
+        setSmsPhone(detectedPhone)
+        setSendSms(true)
+      } else {
+        setSmsPhone('')
+        setSendSms(false)
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, initialSource])
+
+  // Update SMS phone when accounts change
+  const handleFromAccountChange = (newFrom) => {
+    setFromAccountId(newFrom)
+    let newTo = toAccountId
+    if (newFrom === toAccountId) {
+      newTo = newFrom === 'counter' ? 'bank' : 'counter'
+      setToAccountId(newTo)
+    }
+
+    const detectedPhone = lookupAccountPhone(newFrom) || lookupAccountPhone(newTo)
+    if (detectedPhone) {
+      setSmsPhone(detectedPhone)
+      setSendSms(true)
+    } else {
+      setSmsPhone('')
+      setSendSms(false)
+    }
+  }
+
+  const handleToAccountChange = (newTo) => {
+    setToAccountId(newTo)
+    if (!smsPhone) {
+      const detected = lookupAccountPhone(fromAccountId) || lookupAccountPhone(newTo)
+      if (detected) {
+        setSmsPhone(detected)
+        setSendSms(true)
+      }
+    }
+  }
+
+  // Evaluate amount if it's an arithmetic expression
+  const enteredAmount = useMemo(() => {
+    if (!amount) return 0
+    const str = String(amount).trim()
+    if (hasArithmeticOperators(str)) {
+      const res = evaluateArithmetic(str)
+      return res !== null && res > 0 ? res : 0
+    }
+    const num = Number(str.replace(/,/g, ''))
+    return !Number.isNaN(num) && num > 0 ? num : 0
+  }, [amount])
 
   if (!isOpen) return null
 
   const currentSourceBalance = Number(accountsSummary[fromAccountId] || 0)
-  const enteredAmount = Number(amount) || 0
   const remainingBalance = currentSourceBalance - enteredAmount
 
   const fromMeta = getAccountMeta(fromAccountId)
   const toMeta = getAccountMeta(toAccountId)
 
+  // Quick chips
   const handleQuickAmount = (val) => {
     setAmount(String(val))
   }
 
+  // Keypad button click
+  const handleKeypadPress = (key) => {
+    if (key === 'C') {
+      setAmount('')
+      return
+    }
+
+    if (key === '⌫') {
+      setAmount((prev) => (prev.length > 0 ? prev.slice(0, -1) : ''))
+      return
+    }
+
+    if (key === '=') {
+      if (enteredAmount > 0) {
+        setAmount(String(enteredAmount))
+      }
+      return
+    }
+
+    setAmount((prev) => prev + key)
+  }
+
+  // Live Khatabook-style SMS preview text
+  const smsPreviewText = buildCashHandoverSms({
+    amount: enteredAmount,
+    fromName: fromMeta.shortLabel || fromMeta.name,
+    toName: toMeta.shortLabel || toMeta.name,
+    date,
+    remainingBalance: currentSourceBalance > 0 ? remainingBalance : null,
+  })
+
   const handleSubmit = async (e) => {
     e.preventDefault()
+
     if (!enteredAmount || enteredAmount <= 0) {
-      toast.error('Please enter a valid handover amount')
+      toast.error('Please enter a valid handover amount or formula')
       return
     }
     if (fromAccountId === toAccountId) {
@@ -64,6 +187,7 @@ export default function CashHandoverModal({
 
     setSubmitting(true)
     try {
+      // 1. Record transfer in database
       await recordAccountTransfer({
         fromAccountId,
         toAccountId,
@@ -72,9 +196,31 @@ export default function CashHandoverModal({
         date: new Date(`${date}T12:00:00`),
       })
 
-      toast.success(
-        `₹${enteredAmount.toLocaleString('en-IN')} handed over from ${fromMeta.shortLabel} to ${toMeta.shortLabel}`,
-      )
+      // 2. Send SMS via MacroDroid if enabled
+      let smsSentSuccessfully = false
+      if (sendSms && smsPhone) {
+        try {
+          await sendBackgroundSms({
+            phone: smsPhone,
+            message: smsPreviewText,
+          })
+          smsSentSuccessfully = true
+        } catch (smsErr) {
+          console.warn('Handover SMS failed:', smsErr)
+          toast.error(`Transfer recorded, but SMS failed: ${smsErr.message}`)
+        }
+      }
+
+      if (smsSentSuccessfully) {
+        toast.success(
+          `₹${enteredAmount.toLocaleString('en-IN')} handed over & SMS sent to ${fromMeta.shortLabel}!`,
+        )
+      } else {
+        toast.success(
+          `₹${enteredAmount.toLocaleString('en-IN')} handed over from ${fromMeta.shortLabel} to ${toMeta.shortLabel}`,
+        )
+      }
+
       onClose()
     } catch (err) {
       console.error('Handover failed:', err)
@@ -85,10 +231,10 @@ export default function CashHandoverModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-100 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-150">
+      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-100 flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-[#0f1f46] via-[#143366] to-[#1e4a88] px-3.5 py-2.5 text-white">
+        <div className="relative overflow-hidden bg-gradient-to-br from-[#0f1f46] via-[#143366] to-[#1e4a88] px-4 py-3 text-white flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ArrowRightLeft size={16} className="text-[#ff9900]" />
@@ -97,7 +243,7 @@ export default function CashHandoverModal({
             <button
               type="button"
               onClick={onClose}
-              className="p-1 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-all"
+              className="p-1 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-all cursor-pointer"
             >
               <X size={15} />
             </button>
@@ -105,24 +251,18 @@ export default function CashHandoverModal({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-3 space-y-3 overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-3.5 space-y-3 overflow-y-auto">
           {/* Transfer Flow Visual */}
-          <div className="bg-gray-50 border border-gray-100 rounded-xl p-2.5">
+          <div className="bg-gray-50 border border-gray-100 rounded-2xl p-2.5">
             <div className="grid grid-cols-2 gap-2 items-center">
               {/* From Account */}
               <div>
                 <span className="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1">
-                  From
+                  From (Payer)
                 </span>
                 <select
                   value={fromAccountId}
-                  onChange={(e) => {
-                    const newFrom = e.target.value
-                    setFromAccountId(newFrom)
-                    if (newFrom === toAccountId) {
-                      setToAccountId(newFrom === 'counter' ? 'bank' : 'counter')
-                    }
-                  }}
+                  onChange={(e) => handleFromAccountChange(e.target.value)}
                   className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-900 outline-none focus:ring-1 focus:ring-[#ff9900]"
                 >
                   {DEFAULT_ACCOUNTS.map((acc) => (
@@ -144,11 +284,11 @@ export default function CashHandoverModal({
               {/* To Account */}
               <div>
                 <span className="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1">
-                  To
+                  To (Receiver)
                 </span>
                 <select
                   value={toAccountId}
-                  onChange={(e) => setToAccountId(e.target.value)}
+                  onChange={(e) => handleToAccountChange(e.target.value)}
                   className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-900 outline-none focus:ring-1 focus:ring-[#ff9900]"
                 >
                   {DEFAULT_ACCOUNTS.filter((acc) => acc.id !== fromAccountId).map((acc) => (
@@ -167,28 +307,214 @@ export default function CashHandoverModal({
             </div>
           </div>
 
-          {/* Amount Section */}
+          {/* Amount Section with Khatabook Calculator */}
           <div className="space-y-1.5">
-            <label
-              htmlFor="handover-amount"
-              className="block text-[10px] font-black text-gray-600 uppercase tracking-wider"
-            >
-              Amount (₹)
-            </label>
+            <div className="flex items-center justify-between">
+              <label
+                htmlFor="handover-amount"
+                className="block text-[10px] font-black text-gray-600 uppercase tracking-wider"
+              >
+                Amount (₹)
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowCalculator((prev) => !prev)}
+                className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-lg border transition-all cursor-pointer ${
+                  showCalculator
+                    ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
+                    : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'
+                }`}
+                title="Toggle Khatabook Calculator"
+              >
+                <Calculator size={12} />
+                <span>{showCalculator ? 'Hide Calc' : 'Calculator'}</span>
+              </button>
+            </div>
+
             <div className="relative flex items-center">
-              <span className="absolute left-3.5 text-gray-400 font-bold text-lg">₹</span>
+              <span className="absolute left-3.5 text-gray-400 font-bold text-lg select-none">₹</span>
               <input
                 id="handover-amount"
-                type="number"
+                type="text"
+                inputMode="text"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
+                placeholder="0.00 or e.g. 1000+500"
                 required
-                min="1"
-                step="any"
                 className="w-full pl-8 pr-3 py-2 bg-white border border-gray-200 rounded-xl text-lg font-black outline-none focus:border-[#ff9900] focus:ring-1 focus:ring-[#ff9900] transition-all"
               />
             </div>
+
+            {/* Live Arithmetic Result Banner if Formula is Typed */}
+            {hasArithmeticOperators(amount) && enteredAmount > 0 && (
+              <div className="flex items-center justify-between text-xs font-bold bg-amber-50 text-amber-900 px-2.5 py-1.5 rounded-xl border border-amber-200 animate-in fade-in">
+                <span>Calculated: = ₹{enteredAmount.toLocaleString('en-IN')}</span>
+                <button
+                  type="button"
+                  onClick={() => setAmount(String(enteredAmount))}
+                  className="text-[10px] font-black uppercase text-amber-950 bg-amber-200 hover:bg-amber-300 px-2 py-0.5 rounded-lg active:scale-95 transition-all cursor-pointer"
+                >
+                  Use Total (=)
+                </button>
+              </div>
+            )}
+
+            {/* Embedded Khatabook Calculator Keypad */}
+            {showCalculator && (
+              <div className="bg-gray-100/90 p-2 rounded-2xl border border-gray-200 space-y-1 animate-in slide-in-from-top-2 duration-150">
+                <div className="grid grid-cols-4 gap-1">
+                  {/* Row 1 */}
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('C')}
+                    className="p-2 rounded-xl font-black text-xs text-rose-600 bg-white border border-rose-100 hover:bg-rose-50 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    C
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('(')}
+                    className="p-2 rounded-xl font-bold text-xs text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    (
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress(')')}
+                    className="p-2 rounded-xl font-bold text-xs text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    )
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('÷')}
+                    className="p-2 rounded-xl font-black text-sm text-amber-800 bg-amber-50 border border-amber-200 hover:bg-amber-100 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    ÷
+                  </button>
+
+                  {/* Row 2 */}
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('7')}
+                    className="p-2 rounded-xl font-black text-xs text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    7
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('8')}
+                    className="p-2 rounded-xl font-black text-xs text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    8
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('9')}
+                    className="p-2 rounded-xl font-black text-xs text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    9
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('×')}
+                    className="p-2 rounded-xl font-black text-sm text-amber-800 bg-amber-50 border border-amber-200 hover:bg-amber-100 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    ×
+                  </button>
+
+                  {/* Row 3 */}
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('4')}
+                    className="p-2 rounded-xl font-black text-xs text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    4
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('5')}
+                    className="p-2 rounded-xl font-black text-xs text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    5
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('6')}
+                    className="p-2 rounded-xl font-black text-xs text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    6
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('-')}
+                    className="p-2 rounded-xl font-black text-sm text-amber-800 bg-amber-50 border border-amber-200 hover:bg-amber-100 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    -
+                  </button>
+
+                  {/* Row 4 */}
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('1')}
+                    className="p-2 rounded-xl font-black text-xs text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('2')}
+                    className="p-2 rounded-xl font-black text-xs text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    2
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('3')}
+                    className="p-2 rounded-xl font-black text-xs text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    3
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('+')}
+                    className="p-2 rounded-xl font-black text-sm text-amber-800 bg-amber-50 border border-amber-200 hover:bg-amber-100 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    +
+                  </button>
+
+                  {/* Row 5 */}
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('0')}
+                    className="p-2 rounded-xl font-black text-xs text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    0
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('00')}
+                    className="p-2 rounded-xl font-bold text-xs text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    00
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('.')}
+                    className="p-2 rounded-xl font-bold text-xs text-gray-900 bg-white border border-gray-200 hover:bg-gray-50 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    .
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKeypadPress('=')}
+                    className="p-2 rounded-xl font-black text-sm text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 shadow-sm transition-all cursor-pointer"
+                  >
+                    =
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Quick Shortcut Chips */}
             <div className="flex flex-wrap gap-1 pt-0.5">
@@ -197,14 +523,14 @@ export default function CashHandoverModal({
                   <button
                     type="button"
                     onClick={() => handleQuickAmount(currentSourceBalance)}
-                    className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-all"
+                    className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-all cursor-pointer"
                   >
                     All (₹{currentSourceBalance.toLocaleString('en-IN')})
                   </button>
                   <button
                     type="button"
                     onClick={() => handleQuickAmount(Math.floor(currentSourceBalance / 2))}
-                    className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 transition-all"
+                    className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 transition-all cursor-pointer"
                   >
                     50% (₹{Math.floor(currentSourceBalance / 2).toLocaleString('en-IN')})
                   </button>
@@ -215,7 +541,7 @@ export default function CashHandoverModal({
                   key={val}
                   type="button"
                   onClick={() => handleQuickAmount(val)}
-                  className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 transition-all"
+                  className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 transition-all cursor-pointer"
                 >
                   ₹{val.toLocaleString('en-IN')}
                 </button>
@@ -225,7 +551,7 @@ export default function CashHandoverModal({
             {/* Partial Handover Remaining Balance Indicator */}
             {enteredAmount > 0 && currentSourceBalance > 0 && (
               <div
-                className={`p-2 rounded-lg border text-xs font-bold flex items-center justify-between ${
+                className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-between ${
                   remainingBalance >= 0
                     ? 'bg-blue-50 text-blue-800 border-blue-100'
                     : 'bg-amber-50 text-amber-800 border-amber-200'
@@ -275,11 +601,65 @@ export default function CashHandoverModal({
             </div>
           </div>
 
+          {/* SMS Confirmation (Khatabook Style via MacroDroid) */}
+          <div className="bg-gray-50 border border-gray-200 rounded-2xl p-2.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={sendSms}
+                  onChange={(e) => setSendSms(e.target.checked)}
+                  className="w-4 h-4 rounded text-orange-600 focus:ring-orange-500 border-gray-300"
+                />
+                <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                  <MessageSquare size={13} className="text-orange-500" />
+                  Send SMS Confirmation (MacroDroid)
+                </span>
+              </label>
+              {sendSms && (
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-full">
+                  Enabled
+                </span>
+              )}
+            </div>
+
+            {sendSms && (
+              <div className="space-y-2 pt-1 border-t border-gray-200/60 animate-in fade-in duration-150">
+                <div>
+                  <label
+                    htmlFor="sms-phone"
+                    className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1"
+                  >
+                    Recipient Mobile Number
+                  </label>
+                  <input
+                    id="sms-phone"
+                    type="tel"
+                    value={smsPhone}
+                    onChange={(e) => setSmsPhone(e.target.value)}
+                    placeholder="e.g. 9925997750"
+                    className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-semibold text-gray-900 outline-none focus:ring-1 focus:ring-orange-500"
+                  />
+                </div>
+
+                {/* Live SMS Preview */}
+                <div className="bg-white border border-gray-200 rounded-xl p-2 text-[11px] text-gray-600">
+                  <span className="font-bold text-gray-400 block text-[9px] uppercase tracking-wider mb-0.5">
+                    SMS Preview (Khatabook Style):
+                  </span>
+                  <p className="font-medium text-gray-800 italic">
+                    "{smsPreviewText}"
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Action Button */}
           <button
             type="submit"
             disabled={submitting || !enteredAmount}
-            className="w-full bg-[#131921] hover:bg-black text-white py-2.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:pointer-events-none"
+            className="w-full bg-[#131921] hover:bg-black text-white py-2.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
           >
             {submitting ? (
               'Processing…'
