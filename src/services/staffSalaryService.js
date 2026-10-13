@@ -107,8 +107,80 @@ export async function getStaffList() {
  * Update staff member base salary and settings
  */
 export async function updateStaffProfile(employeeId, data) {
+  if (!employeeId) throw new Error('Employee ID is required')
+  const cleanData = { ...data }
+  if (cleanData.mobile !== undefined) {
+    cleanData.mobile = String(cleanData.mobile || '').replace(/\D/g, '').slice(-10)
+  }
+  if (cleanData.baseSalary !== undefined) {
+    cleanData.baseSalary = Number(cleanData.baseSalary) || 0
+  }
+  if (cleanData.name !== undefined) {
+    cleanData.name = String(cleanData.name || '').trim()
+  }
+  if (cleanData.role !== undefined) {
+    cleanData.role = String(cleanData.role || '').trim()
+  }
   const ref = doc(db, 'staff', employeeId)
-  await setDoc(ref, { ...data, updatedAt: serverTimestamp() }, { merge: true })
+  await setDoc(ref, { ...cleanData, updatedAt: serverTimestamp() }, { merge: true })
+}
+
+/**
+ * Add a new staff member profile
+ */
+export async function addStaffMember({
+  name,
+  mobile = '',
+  role = 'Delivery Staff & Driver',
+  baseSalary = 15000,
+  salaryType = 'monthly',
+  active = true,
+  color = '#2563eb',
+}) {
+  const cleanName = String(name || '').trim()
+  if (!cleanName) throw new Error('Staff name is required')
+
+  const cleanMobile = String(mobile || '').replace(/\D/g, '').slice(-10)
+
+  // Generate a slug ID
+  let id = cleanName.toLowerCase().replace(/[^a-z0-9]/g, '_')
+  if (!id) id = `staff_${Date.now()}`
+
+  try {
+    const existing = await getDoc(doc(db, 'staff', id))
+    if (existing?.exists?.()) {
+      id = `${id}_${Date.now().toString().slice(-4)}`
+    }
+  } catch (_e) {
+    // Proceed if cache check errors
+  }
+
+  const newStaff = {
+    id,
+    name: cleanName,
+    mobile: cleanMobile,
+    role: String(role || 'Delivery Staff & Driver').trim(),
+    baseSalary: Number(baseSalary) || 0,
+    salaryType: salaryType || 'monthly',
+    active: active !== false,
+    color: color || '#2563eb',
+    advanceBalance: 0,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }
+
+  const staffRef = doc(db, 'staff', id)
+  await setDoc(staffRef, newStaff)
+  return newStaff
+}
+
+/**
+ * Delete a staff member profile
+ */
+export async function deleteStaffMember(employeeId) {
+  if (!employeeId) throw new Error('Employee ID is required')
+  const ref = doc(db, 'staff', employeeId)
+  await deleteDoc(ref)
 }
 
 /**

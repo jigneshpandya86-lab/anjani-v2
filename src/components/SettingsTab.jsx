@@ -28,10 +28,12 @@ import {
   ChevronDown,
   Brain,
   Plus,
+  Users,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useClientStore } from '../store/clientStore'
 import { processUploadedQrFile, DEFAULT_UPI_ID, DEFAULT_PAYEE_NAME } from '../utils/qrHelper'
+import StaffSettingsSection from './StaffSettingsSection'
 
 const ALL_BAILEY_CORRIDORS = [
   'Ajwa Road',
@@ -707,6 +709,18 @@ export default function SettingsTab() {
         </button>
         <button
           type="button"
+          onClick={() => setSubTab('staff')}
+          className={`flex-1 py-2 px-2 sm:px-3 rounded-xl text-xs md:text-sm font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            subTab === 'staff'
+              ? 'bg-[#131921] text-[#ff9900] shadow-md'
+              : 'text-gray-700 hover:text-black hover:bg-gray-100/60'
+          }`}
+        >
+          <Users size={16} />
+          <span className="truncate">Staff</span>
+        </button>
+        <button
+          type="button"
           onClick={() => setSubTab('schedulers')}
           className={`flex-1 py-2 px-2 sm:px-3 rounded-xl text-xs md:text-sm font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
             subTab === 'schedulers'
@@ -926,7 +940,10 @@ export default function SettingsTab() {
         </div>
       )}
 
-      {/* SUBTAB 2: SYSTEM SCHEDULER SETTINGS */}
+      {/* SUBTAB 2: STAFF & EMPLOYEES */}
+      {subTab === 'staff' && <StaffSettingsSection />}
+
+      {/* SUBTAB 3: SYSTEM SCHEDULER SETTINGS */}
       {subTab === 'schedulers' && (
         <div className="overflow-hidden rounded-lg border border-gray-100 bg-gray-50 shadow-sm">
           <div className="flex items-center gap-1.5 bg-[#131921] px-3.5 py-2 text-white">

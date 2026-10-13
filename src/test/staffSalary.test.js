@@ -8,6 +8,9 @@ import {
   deleteSalarySettlement,
   restoreExcessAdvance,
   DEFAULT_STAFF,
+  addStaffMember,
+  updateStaffProfile,
+  deleteStaffMember,
 } from '../services/staffSalaryService'
 import { buildSalarySlipPdf } from '../utils/pdf/salarySlipPdf'
 import { buildStaffStatementPdf } from '../utils/pdf/staffStatementPdf'
@@ -488,6 +491,69 @@ describe('Staff Salary & Advance Management', () => {
       expect(res.handled).toBe(true)
       expect(res.type).toBe('accounts_summary')
       expect(res.data.balances.nilesh).toBe(4000)
+    })
+  })
+
+  describe('Staff Profile & Settings Management', () => {
+    it('creates a new staff member with sanitized phone number and slug id', async () => {
+      mockGetDoc.mockResolvedValueOnce({ exists: () => false })
+
+      const newStaff = await addStaffMember({
+        name: 'Ramesh Patel',
+        mobile: '+91 98765-43210',
+        role: 'Delivery Driver',
+        baseSalary: 16000,
+        salaryType: 'monthly',
+        active: true,
+        color: '#059669',
+      })
+
+      expect(newStaff.id).toBe('ramesh_patel')
+      expect(newStaff.name).toBe('Ramesh Patel')
+      expect(newStaff.mobile).toBe('9876543210')
+      expect(newStaff.role).toBe('Delivery Driver')
+      expect(newStaff.baseSalary).toBe(16000)
+      expect(mockSetDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'ramesh_patel' }),
+        expect.objectContaining({
+          id: 'ramesh_patel',
+          name: 'Ramesh Patel',
+          mobile: '9876543210',
+          baseSalary: 16000,
+        }),
+      )
+    })
+
+    it('requires staff name when adding a staff member', async () => {
+      await expect(addStaffMember({ name: '' })).rejects.toThrow('Staff name is required')
+    })
+
+    it('updates staff profile with sanitized mobile number and base salary', async () => {
+      await updateStaffProfile('nilesh', {
+        name: 'Nilesh Rathod',
+        mobile: '099259-97750',
+        baseSalary: 18000,
+        active: true,
+      })
+
+      expect(mockSetDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'nilesh' }),
+        expect.objectContaining({
+          name: 'Nilesh Rathod',
+          mobile: '9925997750',
+          baseSalary: 18000,
+          active: true,
+        }),
+        { merge: true },
+      )
+    })
+
+    it('deletes staff member from firestore', async () => {
+      await deleteStaffMember('ramesh_patel')
+
+      expect(mockDeleteDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'ramesh_patel' }),
+      )
     })
   })
 })

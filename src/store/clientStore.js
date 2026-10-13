@@ -39,6 +39,8 @@ import {
   DEFAULT_STAFF,
   getStaffList,
   updateStaffProfile as updateStaffProfileApi,
+  addStaffMember as addStaffMemberApi,
+  deleteStaffMember as deleteStaffMemberApi,
   recordStaffAdvance as recordStaffAdvanceApi,
   deleteStaffTransaction as deleteStaffTransactionApi,
   settleStaffSalary as settleStaffSalaryApi,
@@ -1192,6 +1194,14 @@ export const useClientStore = create((set, get) => ({
 
   updateStaffProfile: async (employeeId, data) => {
     return await updateStaffProfileApi(employeeId, data)
+  },
+
+  addStaffMember: async (data) => {
+    return await addStaffMemberApi(data)
+  },
+
+  deleteStaffMember: async (employeeId) => {
+    return await deleteStaffMemberApi(employeeId)
   },
 
   addClient: async (data) => {
