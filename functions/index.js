@@ -2820,6 +2820,77 @@ exports.hourlySmsScheduler = onSchedule(
   }
 );
 
+const WATER_SKU_LABELS = [
+  'Anjani 200ml',
+  'Bailey 250ml',
+  'Bailey 500ml',
+  'Bailey 1 Liter',
+  'Bailey 2 Liter',
+  'Bisleri 200ml',
+  'Bisleri 1 Liter',
+  'Rushi 500ml',
+  'Rushi 1 Liter',
+];
+
+function resolveSkuLabel(rawSku) {
+  const norm = String(rawSku || '').trim().toLowerCase();
+  if (!norm) return 'Anjani 200ml';
+
+  for (const label of WATER_SKU_LABELS) {
+    if (label.toLowerCase() === norm) return label;
+  }
+
+  if (norm.includes('bisleri')) {
+    if (norm.includes('200')) return 'Bisleri 200ml';
+    return 'Bisleri 1 Liter';
+  }
+
+  if (norm.includes('rushi')) {
+    if (norm.includes('500') || norm.includes('half') || norm.includes('aadho')) return 'Rushi 500ml';
+    return 'Rushi 1 Liter';
+  }
+
+  if (norm.includes('anjani') || norm.includes('petli') || norm.includes('patli')) {
+    return 'Anjani 200ml';
+  }
+
+  if (norm.includes('bailey')) {
+    if (norm.includes('250')) return 'Bailey 250ml';
+    if (norm.includes('500')) return 'Bailey 500ml';
+    if (norm.includes('2 l') || norm.includes('2l') || norm.includes('2 liter')) return 'Bailey 2 Liter';
+    if (norm.includes('1 l') || norm.includes('1l') || norm.includes('1 liter')) return 'Bailey 1 Liter';
+  }
+
+  if (norm.includes('500')) return 'Bailey 500ml';
+  if (norm.includes('250')) return 'Bailey 250ml';
+  if (norm.includes('2 l') || norm.includes('2l')) return 'Bailey 2 Liter';
+  if (norm.includes('1 l') || norm.includes('1l')) return 'Bailey 1 Liter';
+  if (norm.includes('200')) return 'Anjani 200ml';
+
+  return 'Anjani 200ml';
+}
+
+function getStockEntryTimestamp(raw) {
+  const val = raw.createdAt || raw.date;
+  if (!val) return 0;
+  if (typeof val.toMillis === 'function') return val.toMillis();
+  if (typeof val._seconds === 'number') return val._seconds * 1000;
+  if (typeof val.seconds === 'number') return val.seconds * 1000;
+  if (val instanceof Date) return val.getTime();
+  if (typeof val === 'string') {
+    const ddmmyyyy = val.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (ddmmyyyy) {
+      return new Date(`${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}T00:00:00+05:30`).getTime();
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+      return new Date(`${val}T00:00:00+05:30`).getTime();
+    }
+    const t = new Date(val).getTime();
+    return isNaN(t) ? 0 : t;
+  }
+  return 0;
+}
+
 /**
  * Helper to process Daily Stock Report summary to Nilesh
  */
@@ -2865,85 +2936,119 @@ async function processDailyStockReportToNilesh(db, currentHour, currentDayOfWeek
       year: 'numeric',
       month: 'numeric',
       day: 'numeric',
-    })
-    const parts = formatter.formatToParts(new Date())
-    const year = parts.find(p => p.type === 'year').value
-    const month = parts.find(p => p.type === 'month').value.padStart(2, '0')
-    const day = parts.find(p => p.type === 'day').value.padStart(2, '0')
-    
-    const indiaDateStr = `${year}-${month}-${day}`
-    const startOfTodayIndia = new Date(`${indiaDateStr}T00:00:00.000+05:30`)
+    });
+    const parts = formatter.formatToParts(new Date());
+    const year = parts.find((p) => p.type === 'year').value;
+    const month = parts.find((p) => p.type === 'month').value.padStart(2, '0');
+    const day = parts.find((p) => p.type === 'day').value.padStart(2, '0');
 
-    // 1. Fetch stock entries since start of today in India
-    const stockSnap = await db
-      .collection('stock')
-      .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startOfTodayIndia))
-      .get()
+    const indiaDateStr = `${year}-${month}-${day}`;
+    const startOfTodayIndia = new Date(`${indiaDateStr}T00:00:00.000+05:30`);
+    const startOfTodayMs = startOfTodayIndia.getTime();
+    const endOfTodayMs = startOfTodayMs + 24 * 60 * 60 * 1000;
 
-    // 2. Exit early if there are no stock entries today (no movements)
-    if (stockSnap.empty) {
-      logger.info(`Stock Summary: No stock additions or dispatches found for today (${indiaDateStr}). Skipping report SMS.`);
+    // 1. Fetch ALL stock entries to calculate true closing balance directly from ledger
+    const allStockSnap = await db.collection('stock').get();
+
+    const bySku = {};
+    WATER_SKU_LABELS.forEach((label) => {
+      bySku[label] = 0;
+    });
+
+    let closingStock = 0;
+    let additions = 0;
+    let dispatches = 0;
+    const stockListToday = [];
+
+    allStockSnap.forEach((doc) => {
+      const raw = doc.data() || {};
+      const hasLegacy = raw.produced !== undefined || raw.delivered !== undefined;
+      let qty = 0;
+      if (hasLegacy && raw.qty === undefined) {
+        qty = (Number(raw.produced) || 0) - (Number(raw.delivered) || 0);
+      } else {
+        qty = Number(raw.qty || raw.boxes || raw.quantity) || 0;
+      }
+
+      closingStock += qty;
+
+      const skuLabel = resolveSkuLabel(raw.sku || raw.product || 'Anjani 200ml');
+      bySku[skuLabel] = (bySku[skuLabel] || 0) + qty;
+
+      const entryTime = getStockEntryTimestamp(raw);
+      const rawDateStr = typeof raw.date === 'string' ? raw.date : '';
+      const isToday =
+        (entryTime >= startOfTodayMs && entryTime < endOfTodayMs) ||
+        rawDateStr === indiaDateStr ||
+        rawDateStr.startsWith(indiaDateStr);
+
+      if (isToday) {
+        if (qty > 0) {
+          additions += qty;
+        } else if (qty < 0) {
+          dispatches += Math.abs(qty);
+        }
+        stockListToday.push({
+          id: doc.id,
+          qty: Math.abs(qty),
+          narration: String(raw.narration || ''),
+        });
+      }
+    });
+
+    // 2. Persist auto-reconciled stock summary so meta/stockSummary is 100% refreshed in Firestore
+    await db.collection('meta').doc('stockSummary').set(
+      {
+        totalQty: closingStock,
+        bySku,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastAutoSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    logger.info(`Stock Summary: Auto-refreshed meta/stockSummary with totalQty=${closingStock}`);
+
+    // 3. Exit early if there are no stock movements today (no movements)
+    if (stockListToday.length === 0) {
+      logger.info(`Stock Summary: No stock additions or dispatches found for today (${indiaDateStr}). meta/stockSummary refreshed. Skipping report SMS.`);
       return;
     }
 
-    let additions = 0
-    let dispatches = 0
-    const stockList = []
-
-    stockSnap.forEach((doc) => {
-      const data = doc.data()
-      const qty = Number(data.qty || 0)
-      if (qty > 0) {
-        additions += qty
-      } else if (qty < 0) {
-        dispatches += Math.abs(qty)
-      }
-      stockList.push({
-        id: doc.id,
-        qty: Math.abs(qty),
-        narration: String(data.narration || ''),
-      })
-    })
-
-    // 3. Fetch closing stock summary
-    const summaryDoc = await db.collection('meta').doc('stockSummary').get()
-    const closingStock = summaryDoc.exists ? (Number(summaryDoc.data().totalQty) || 0) : 0
-
-    // 4. Calculate starting stock
-    const startingStock = closingStock - additions + dispatches
+    // 4. Calculate starting stock directly from reconciled closing stock
+    const startingStock = closingStock - additions + dispatches;
 
     // 5. Difference analysis (filtered locally to bypass index requirements)
     const ordersSnap = await db
       .collection('orders')
       .where('date', '==', indiaDateStr)
-      .get()
+      .get();
 
-    const deliveredOrders = []
+    const deliveredOrders = [];
     ordersSnap.forEach((doc) => {
-      const data = doc.data()
+      const data = doc.data();
       if ((data.status || '').toLowerCase() === 'delivered') {
         deliveredOrders.push({
           id: doc.id,
           orderId: data.orderId || doc.id,
           ...data,
-        })
+        });
       }
-    })
+    });
 
-    let differencesCount = 0
+    let differencesCount = 0;
     deliveredOrders.forEach((order) => {
-      const match = stockList.find(
+      const match = stockListToday.find(
         (se) => se.narration.includes(order.orderId) || se.narration.includes(order.id),
-      )
+      );
       if (!match) {
-        differencesCount++
+        differencesCount++;
       }
-    })
+    });
 
     // 6. Format SMS message (kept concise to remain under 160 character limit)
-    const message = `Anjani Stock Report (${indiaDateStr}): Closing: ${closingStock} boxes. (Start: ${startingStock}, Add: +${additions}, Disp: -${dispatches}). Diff: ${differencesCount}.`
+    const message = `Anjani Stock Report (${indiaDateStr}): Closing: ${closingStock} boxes. (Start: ${startingStock}, Add: +${additions}, Disp: -${dispatches}). Diff: ${differencesCount}.`;
 
-    logger.info(`Stock Summary: Sending stock report to Nilesh: ${message}`)
+    logger.info(`Stock Summary: Sending stock report to Nilesh: ${message}`);
 
     // 7. Send via Macrodroid webhook using standardized sendBackgroundSms helper
     try {
@@ -2951,10 +3056,10 @@ async function processDailyStockReportToNilesh(db, currentHour, currentDayOfWeek
         macroUrl: MACRODROID_URL,
         phone: STAFF_MOBILE,
         message,
-      })
-      logger.info(`Stock Summary: Stock report SMS successfully sent to Nilesh for ${indiaDateStr}.`)
+      });
+      logger.info(`Stock Summary: Stock report SMS successfully sent to Nilesh for ${indiaDateStr}.`);
     } catch (err) {
-      logger.error(`Stock Summary: Failed to send stock report webhook: ${err.message}`)
+      logger.error(`Stock Summary: Failed to send stock report webhook: ${err.message}`);
     }
   } catch (error) {
     logger.error("Error processing daily stock report to Nilesh:", error);

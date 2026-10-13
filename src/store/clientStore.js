@@ -21,7 +21,7 @@ import {
   startAfter,
 } from 'firebase/firestore'
 import { db } from '../firebase-config'
-import { DEFAULT_SKU, getSkuMeta } from '../constants/skus'
+import { DEFAULT_SKU, getSkuMeta, WATER_SKUS } from '../constants/skus'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
 import { DEFAULT_ACCOUNTS, getAccountMeta } from '../constants/accounts'
 import {
@@ -50,6 +50,7 @@ import {
 
 let stockUnsubscribe = null
 let stockSubscriberCount = 0
+let hasAutoReconciledStock = false
 let leadsUnsubscribe = null
 let leadsSubscriberCount = 0
 let accountsUnsubscribe = null
@@ -316,8 +317,21 @@ export const useClientStore = create((set, get) => ({
           bySku,
         })
         set({ stockTotal: storedTotal, stockSummary: bySku })
+
+        // Auto-reconcile in background once per session, or if SKUs are missing, or total has drifted
+        const isMissingSkus = WATER_SKUS.some((s) => bySku[s.label] === undefined)
+        const hasDrift = Math.abs(storedTotal - sumBySku) > 0.001
+        if (!hasAutoReconciledStock || isMissingSkus || hasDrift) {
+          hasAutoReconciledStock = true
+          setTimeout(() => {
+            get().recalculateStockTotal().catch((err) => {
+              console.warn('[Stock] Auto-reconciliation check failed:', err)
+            })
+          }, 600)
+        }
         return
       }
+      hasAutoReconciledStock = true
       get().recalculateStockTotal()
     })
   },
@@ -326,13 +340,10 @@ export const useClientStore = create((set, get) => ({
     set({ loading: true })
     try {
       const fullSnap = await getDocs(query(collection(db, 'stock')))
-      const bySku = {
-        'Anjani 200ml': 0,
-        'Bailey 250ml': 0,
-        'Bailey 500ml': 0,
-        'Bailey 1 Liter': 0,
-        'Bailey 2 Liter': 0,
-      }
+      const bySku = WATER_SKUS.reduce((acc, s) => {
+        acc[s.label] = 0
+        return acc
+      }, {})
       let computedTotal = 0
 
       fullSnap.docs.forEach((d) => {
@@ -345,19 +356,23 @@ export const useClientStore = create((set, get) => ({
           qty = Number(raw.qty || raw.boxes || raw.quantity) || 0
         }
         computedTotal += qty
-        const meta = getSkuMeta(raw.sku || raw.product || 'Anjani 200ml')
-        const skuLabel = meta?.label || 'Anjani 200ml'
+        const meta = getSkuMeta(raw.sku || raw.product || DEFAULT_SKU)
+        const skuLabel = meta?.label || DEFAULT_SKU
         bySku[skuLabel] = (bySku[skuLabel] || 0) + qty
       })
 
       console.log(
-        '[Stock] Backfilled summary from',
+        '[Stock] Auto-reconciled summary from',
         fullSnap.docs.length,
         'entries:',
         computedTotal,
         bySku,
       )
-      await setDoc(STOCK_SUMMARY_DOC, { totalQty: computedTotal, bySku }, { merge: true })
+      await setDoc(
+        STOCK_SUMMARY_DOC,
+        { totalQty: computedTotal, bySku, lastReconciledAt: serverTimestamp() },
+        { merge: true },
+      )
       set({ stockTotal: computedTotal, stockSummary: bySku, loading: false })
       return { computedTotal, bySku }
     } catch (error) {
@@ -1842,6 +1857,10 @@ export const useClientStore = create((set, get) => ({
     const existing = localExisting || remoteExisting
     const previousStatus = remoteExisting?.status || localExisting?.status || ''
     const shouldMarkDelivered = normalizedData.status === 'Delivered'
+    const shouldUnmarkDelivered =
+      previousStatus === 'Delivered' &&
+      normalizedData.status !== undefined &&
+      normalizedData.status !== 'Delivered'
     const alreadyPostedToStock = Boolean(
       remoteExisting?.stockPostedAt || remoteExisting?.stockEntryId,
     )
@@ -1948,6 +1967,106 @@ export const useClientStore = create((set, get) => ({
         // 3. Increase customer outstanding atomically
         await updateDoc(doc(db, 'customers', existing.clientId), {
           outstanding: increment(totalAmount),
+        })
+      }
+    } else if (
+      existing &&
+      shouldUnmarkDelivered &&
+      (alreadyPostedToStock || previousStatus === 'Delivered')
+    ) {
+      const items = normalizedData.items || existing.items || [
+        {
+          sku: existing.sku || DEFAULT_SKU,
+          qty:
+            Number(
+              normalizedData.qty ?? existing.qty ?? existing.boxes ?? existing.quantity,
+            ) || 0,
+          rate: Number(normalizedData.rate ?? existing.rate) || 0,
+        },
+      ]
+
+      const clientName = await getOrderClientName(existing, get().clients)
+      const reversalNarration = formatOrderNarration(
+        'Order Status Changed (Reversal)',
+        existing.orderId || id,
+        clientName,
+      )
+
+      let totalReversalQty = 0
+      let totalReversalAmount = 0
+
+      for (const item of items) {
+        const itemQty = Math.abs(Number(item.qty || 0))
+        const itemRate = Number(item.rate || 0)
+        if (itemQty <= 0) continue
+
+        totalReversalQty += itemQty
+        totalReversalAmount += itemQty * itemRate
+        const itemSku = item.sku || DEFAULT_SKU
+
+        await addDoc(collection(db, 'stock'), {
+          qty: itemQty,
+          sku: itemSku,
+          narration:
+            items.length > 1
+              ? `${reversalNarration} (${itemSku})`
+              : reversalNarration,
+          type: 'reversal',
+          date: serverTimestamp(),
+          createdAt: serverTimestamp(),
+        })
+      }
+
+      extraOrderPatch = {
+        stockEntryIds: deleteField(),
+        stockEntryId: deleteField(),
+        stockPostedAt: deleteField(),
+      }
+
+      if (totalReversalQty > 0) {
+        const updatePayload = { totalQty: increment(totalReversalQty) }
+        items.forEach((it) => {
+          const itQty = Math.abs(Number(it.qty || 0))
+          if (itQty > 0) {
+            const meta = getSkuMeta(it.sku || DEFAULT_SKU)
+            const skuLabel = meta?.label || DEFAULT_SKU
+            updatePayload[`bySku.${skuLabel}`] = increment(itQty)
+          }
+        })
+        await setDoc(STOCK_SUMMARY_DOC, updatePayload, { merge: true })
+        set((state) => {
+          const nextSummary = { ...state.stockSummary }
+          items.forEach((it) => {
+            const itQty = Math.abs(Number(it.qty || 0))
+            if (itQty > 0) {
+              const meta = getSkuMeta(it.sku || DEFAULT_SKU)
+              const skuLabel = meta?.label || DEFAULT_SKU
+              nextSummary[skuLabel] = (Number(nextSummary[skuLabel]) || 0) + itQty
+            }
+          })
+          return {
+            stockTotal: (Number(state.stockTotal) || 0) + totalReversalQty,
+            stockSummary: nextSummary,
+          }
+        })
+      }
+
+      // Reverse invoice and customer outstanding
+      const reversalClientId = existing.clientId || existing.customerId || ''
+      if (reversalClientId && totalReversalAmount > 0) {
+        await addDoc(collection(db, 'payments'), {
+          clientId: reversalClientId,
+          clientName: existing.clientName || '',
+          amount: -totalReversalAmount,
+          type: 'reversal',
+          method: 'SYSTEM',
+          narration: reversalNarration,
+          date: serverTimestamp(),
+          createdAt: serverTimestamp(),
+          orderId: existing.orderId || id,
+        })
+        await updateDoc(doc(db, 'customers', reversalClientId), {
+          outstanding: increment(-totalReversalAmount),
         })
       }
     }
