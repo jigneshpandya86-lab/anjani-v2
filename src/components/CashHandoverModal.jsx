@@ -16,6 +16,7 @@ import {
   MessageSquare,
   Delete,
   CheckCircle2,
+  ChevronDown,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -38,9 +39,10 @@ export default function CashHandoverModal({
   // Calculator state
   const [showCalculator, setShowCalculator] = useState(false)
 
-  // SMS state
+  // SMS / MacroDroid state
   const [sendSms, setSendSms] = useState(false)
   const [smsPhone, setSmsPhone] = useState('')
+  const [showMacroDroidMenu, setShowMacroDroidMenu] = useState(false)
 
   // Helper to find staff phone by account ID
   const lookupAccountPhone = useCallback(
@@ -64,6 +66,7 @@ export default function CashHandoverModal({
       setAmount('')
       setNotes('')
       setShowCalculator(false)
+      setShowMacroDroidMenu(false)
       setDate(new Date().toISOString().slice(0, 10))
 
       // Auto-configure SMS based on staff account
@@ -601,56 +604,113 @@ export default function CashHandoverModal({
             </div>
           </div>
 
-          {/* SMS Confirmation (Khatabook Style via MacroDroid) */}
-          <div className="bg-gray-50 border border-gray-200 rounded-2xl p-2.5 space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={sendSms}
-                  onChange={(e) => setSendSms(e.target.checked)}
-                  className="w-4 h-4 rounded text-orange-600 focus:ring-orange-500 border-gray-300"
-                />
-                <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                  <MessageSquare size={13} className="text-orange-500" />
-                  Send SMS Confirmation (MacroDroid)
-                </span>
-              </label>
-              {sendSms && (
-                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-full">
-                  Enabled
-                </span>
-              )}
-            </div>
-
-            {sendSms && (
-              <div className="space-y-2 pt-1 border-t border-gray-200/60 animate-in fade-in duration-150">
-                <div>
-                  <label
-                    htmlFor="sms-phone"
-                    className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1"
-                  >
-                    Recipient Mobile Number
-                  </label>
-                  <input
-                    id="sms-phone"
-                    type="tel"
-                    value={smsPhone}
-                    onChange={(e) => setSmsPhone(e.target.value)}
-                    placeholder="e.g. 9925997750"
-                    className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-semibold text-gray-900 outline-none focus:ring-1 focus:ring-orange-500"
-                  />
+          {/* SMS Confirmation (Khatabook Style via MacroDroid) - Click to Open */}
+          <div className="border border-gray-200 rounded-2xl overflow-hidden transition-all bg-gray-50/70">
+            {/* Click to open toggle header */}
+            <button
+              type="button"
+              onClick={() => setShowMacroDroidMenu((prev) => !prev)}
+              className="w-full p-2.5 flex items-center justify-between text-left cursor-pointer select-none hover:bg-gray-100/70 transition-colors"
+              aria-expanded={showMacroDroidMenu}
+              aria-label="Toggle MacroDroid SMS confirmation menu"
+              title={showMacroDroidMenu ? 'Click to collapse MacroDroid SMS menu' : 'Click to open MacroDroid SMS menu'}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-6 h-6 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
+                  <MessageSquare size={13} />
                 </div>
-
-                {/* Live SMS Preview */}
-                <div className="bg-white border border-gray-200 rounded-xl p-2 text-[11px] text-gray-600">
-                  <span className="font-bold text-gray-400 block text-[9px] uppercase tracking-wider mb-0.5">
-                    SMS Preview (Khatabook Style):
-                  </span>
-                  <p className="font-medium text-gray-800 italic">
-                    "{smsPreviewText}"
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-gray-800 leading-tight truncate">
+                    SMS Confirmation (MacroDroid)
+                  </p>
+                  <p className="text-[10px] text-gray-400 truncate">
+                    {sendSms && smsPhone
+                      ? `Send to ${smsPhone}`
+                      : sendSms
+                      ? 'No recipient phone entered'
+                      : 'SMS is off'}
                   </p>
                 </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span
+                  className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                    sendSms && smsPhone
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      : sendSms
+                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                      : 'bg-gray-200 text-gray-600'
+                  }`}
+                >
+                  {sendSms && smsPhone ? 'Enabled' : sendSms ? 'No Phone' : 'Disabled'}
+                </span>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight hidden sm:inline">
+                  {showMacroDroidMenu ? 'Hide' : 'Click to open'}
+                </span>
+                <ChevronDown
+                  size={14}
+                  className={`text-gray-400 transition-transform duration-200 ${
+                    showMacroDroidMenu ? 'rotate-180 text-orange-500' : ''
+                  }`}
+                />
+              </div>
+            </button>
+
+            {/* Expandable MacroDroid SMS Menu Body */}
+            {showMacroDroidMenu && (
+              <div className="p-3 pt-2.5 bg-white border-t border-gray-200 space-y-2.5 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between pb-1.5 border-b border-gray-100">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={sendSms}
+                      onChange={(e) => setSendSms(e.target.checked)}
+                      className="w-4 h-4 rounded text-orange-600 focus:ring-orange-500 border-gray-300"
+                    />
+                    <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                      Send SMS Confirmation (MacroDroid)
+                    </span>
+                  </label>
+                  <span
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                      sendSms ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
+                    {sendSms ? 'On' : 'Off'}
+                  </span>
+                </div>
+
+                {sendSms && (
+                  <div className="space-y-2 pt-0.5">
+                    <div>
+                      <label
+                        htmlFor="sms-phone"
+                        className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1"
+                      >
+                        Recipient Mobile Number
+                      </label>
+                      <input
+                        id="sms-phone"
+                        type="tel"
+                        value={smsPhone}
+                        onChange={(e) => setSmsPhone(e.target.value)}
+                        placeholder="e.g. 9925997750"
+                        className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-semibold text-gray-900 outline-none focus:ring-1 focus:ring-orange-500"
+                      />
+                    </div>
+
+                    {/* Live SMS Preview */}
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-2 text-[11px] text-gray-600">
+                      <span className="font-bold text-gray-400 block text-[9px] uppercase tracking-wider mb-0.5">
+                        SMS Preview (Khatabook Style):
+                      </span>
+                      <p className="font-medium text-gray-800 italic">
+                        "{smsPreviewText}"
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

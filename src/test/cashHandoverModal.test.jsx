@@ -71,11 +71,24 @@ describe('CashHandoverModal Component', () => {
     // Calculator button exists
     expect(screen.getByRole('button', { name: /calculator/i })).toBeInTheDocument()
 
+    // MacroDroid menu starts collapsed with click-to-open header
+    const macroButton = screen.getByRole('button', { name: /macrodroid/i })
+    expect(macroButton).toBeInTheDocument()
+    expect(screen.getByText(/click to open/i)).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('9925997750')).not.toBeInTheDocument()
+
+    // Click to open MacroDroid menu
+    fireEvent.click(macroButton)
+
     // SMS checkbox exists and is checked for Nilesh with phone 9925997750
     const smsCheckbox = screen.getByRole('checkbox', { name: /send sms confirmation/i })
     expect(smsCheckbox).toBeChecked()
     expect(screen.getByDisplayValue('9925997750')).toBeInTheDocument()
     expect(screen.getByText(/SMS Preview \(Khatabook Style\):/i)).toBeInTheDocument()
+
+    // Click again to collapse
+    fireEvent.click(macroButton)
+    expect(screen.queryByDisplayValue('9925997750')).not.toBeInTheDocument()
   })
 
   it('toggles Khatabook calculator keypad and evaluates formula using = button', () => {
