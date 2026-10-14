@@ -53,7 +53,16 @@ describe('PDF Utilities & Generators', () => {
     })
     expect(file).toBeDefined()
     expect(file.size).toBeGreaterThan(100)
-    expect(file.name).toBe('ledger.pdf')
+    expect(file.name).toContain('Customer_Ledger_ABC_Traders')
+
+    const customFile = buildLedgerPdf({
+      clientName: 'ABC Traders',
+      dateRangeLabel: 'Current Month',
+      txns,
+      openingBalance: 100,
+      filename: 'custom_ledger.pdf',
+    })
+    expect(customFile.name).toBe('custom_ledger.pdf')
   })
 
   it('generates an itemized invoice PDF', () => {

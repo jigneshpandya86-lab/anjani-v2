@@ -11,9 +11,10 @@ import {
   UserCheck,
   Flag,
   AlertTriangle,
+  BookText,
 } from 'lucide-react'
 
-export default function ClientList({ onEdit, onPay, onOrder }) {
+export default function ClientList({ onEdit, onPay, onOrder, onLedger }) {
   const clients = useClientStore((state) => state.clients)
   const updateClient = useClientStore((state) => state.updateClient)
   const [search, setSearch] = useState('')
@@ -161,9 +162,20 @@ export default function ClientList({ onEdit, onPay, onOrder }) {
               <button
                 onClick={() => onPay(client)}
                 className="flex justify-center p-2 bg-purple-50 text-purple-600 rounded-md"
+                title="Record Payment"
               >
                 <IndianRupee className="w-4 h-4" />
               </button>
+              {onLedger && (
+                <button
+                  type="button"
+                  onClick={() => onLedger(client)}
+                  className="flex justify-center p-2 bg-indigo-50 text-indigo-600 rounded-md hover:bg-indigo-100 transition-colors"
+                  title="Customer Ledger Statement (PDF)"
+                >
+                  <BookText className="w-4 h-4" />
+                </button>
+              )}
             </div>
             <div className="text-right min-w-[80px]">
               <p className="text-[9px] uppercase font-bold text-gray-400 leading-none">Balance</p>

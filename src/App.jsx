@@ -61,6 +61,7 @@ import AccountsDashboard from './components/AccountsDashboard'
 import StaffSalariesDashboard from './components/StaffSalariesDashboard'
 import BaileyOrderPage from './components/BaileyOrderPage'
 import AccountsLedgerReportModal from './components/AccountsLedgerReportModal'
+import CustomerLedgerReportModal from './components/CustomerLedgerReportModal'
 import NetworkStatusBar from './components/NetworkStatusBar'
 import { parseShareTargetUrl } from './utils/shareTargetUtils'
 import {
@@ -69,10 +70,7 @@ import {
   resolveTimestamp,
   buildTabularReportPdf,
   buildSimpleInvoicePdfFile,
-  buildLedgerPdf,
 } from './utils/pdf'
-
-const LEDGER_EXPORT_PAGE_SIZE = 500
 
 const VALID_TABS = [
   'orders',
@@ -137,7 +135,6 @@ function App() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
   const [ledgerClientId, setLedgerClientId] = useState('')
-  const [ledgerDateRange, setLedgerDateRange] = useState('current-month')
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
   const [notificationReadMap, setNotificationReadMap] = useState({})
@@ -713,178 +710,6 @@ function App() {
     }
   }
 
-  const getLedgerDateRange = (rangeKey) => {
-    const now = new Date()
-    const endDate = new Date(now)
-    endDate.setHours(23, 59, 59, 999)
-
-    const startDate = new Date(now)
-    startDate.setHours(0, 0, 0, 0)
-
-    if (rangeKey === 'current-month') {
-      startDate.setDate(1)
-      return { startDate, endDate, label: 'Current Month' }
-    }
-
-    if (rangeKey === 'past-6-months') {
-      startDate.setMonth(startDate.getMonth() - 6)
-      return { startDate, endDate, label: 'Past 6 Months' }
-    }
-
-    startDate.setFullYear(startDate.getFullYear() - 1)
-    return { startDate, endDate, label: 'Past 1 Year' }
-  }
-
-
-  const handleLedgerStatementPdf = async () => {
-    try {
-      const selectedClient = clients.find((client) => client.id === ledgerClientId)
-      if (!selectedClient) {
-        toast.error('Please select a valid client.')
-        return
-      }
-
-      const { startDate, endDate, label: dateRangeLabel } = getLedgerDateRange(ledgerDateRange)
-
-      // Fetch payments — always query Firestore directly (no stale cache for ledger)
-      let payments = []
-      let lastVisibleDoc = null
-      while (true) {
-        const constraints =
-          selectedClient.id === 'all'
-            ? [
-                where('createdAt', '>=', startDate),
-                where('createdAt', '<=', endDate),
-                orderBy('createdAt', 'asc'),
-                limit(LEDGER_EXPORT_PAGE_SIZE),
-              ]
-            : [where('clientId', '==', selectedClient.id), limit(LEDGER_EXPORT_PAGE_SIZE)]
-        if (lastVisibleDoc) constraints.push(startAfter(lastVisibleDoc))
-        const snap = await getDocs(query(collection(db, 'payments'), ...constraints))
-        if (snap.empty) break
-        payments.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-        if (snap.docs.length < LEDGER_EXPORT_PAGE_SIZE) break
-        lastVisibleDoc = snap.docs[snap.docs.length - 1]
-      }
-
-      // Date filter for single-client (Firestore can't compound-index clientId+createdAt without composite index)
-      const filtered = payments.filter((tx) => {
-        const d = resolveTimestamp(tx.createdAt) || resolveTimestamp(tx.date)
-        return d && d >= startDate && d <= endDate
-      })
-
-      if (filtered.length === 0) {
-        toast.error('No ledger entries found for the selected period.')
-        return
-      }
-
-      // Sort chronologically so running balance flows correctly
-      filtered.sort((a, b) => {
-        const ta = (
-          resolveTimestamp(a.createdAt) ||
-          resolveTimestamp(a.date) ||
-          new Date(0)
-        ).getTime()
-        const tb = (
-          resolveTimestamp(b.createdAt) ||
-          resolveTimestamp(b.date) ||
-          new Date(0)
-        ).getTime()
-        return ta - tb
-      })
-
-      // Opening balance: sum of all prior transactions before startDate (0 extra database reads)
-      let openingBalance = 0
-      if (selectedClient.id !== 'all') {
-        openingBalance = payments.reduce((acc, tx) => {
-          const d = resolveTimestamp(tx.createdAt) || resolveTimestamp(tx.date)
-          if (!d || d >= startDate) return acc
-          const amt = Number(tx.amount || 0)
-          if (tx.type === 'invoice') {
-            return acc + Math.abs(amt)
-          } else if (tx.type === 'payment') {
-            return acc - Math.abs(amt)
-          } else {
-            return amt < 0 ? acc + Math.abs(amt) : acc - amt
-          }
-        }, 0)
-      }
-
-      if (isMobileOrNative) {
-        const file = buildLedgerPdf({
-          clientName: selectedClient.name,
-          dateRangeLabel,
-          txns: filtered,
-          openingBalance,
-        })
-        await shareOrDownloadPdf(file, 'Ledger Statement')
-      } else {
-        // Desktop: improved HTML table with running balance
-        const clientMap = new Map(clients.map((c) => [c.id, c.name || 'Unknown']))
-        let bal = openingBalance
-        const rows = filtered.map((tx, idx) => {
-          const amt = Math.abs(Number(tx.amount || 0))
-          let dr = '',
-            cr = ''
-          if (tx.type === 'invoice') {
-            bal += amt
-            dr = `Rs.${amt.toLocaleString('en-IN')}`
-          } else if (tx.type === 'payment') {
-            bal -= amt
-            cr = `Rs.${amt.toLocaleString('en-IN')}`
-          } else {
-            if (Number(tx.amount || 0) < 0) {
-              bal += amt
-              dr = `Rs.${amt.toLocaleString('en-IN')}`
-            } else {
-              bal -= amt
-              cr = `Rs.${amt.toLocaleString('en-IN')}`
-            }
-          }
-          const txDate =
-            (resolveTimestamp(tx.date) || resolveTimestamp(tx.createdAt))?.toLocaleDateString(
-              'en-IN',
-            ) || '-'
-          const typeLabel =
-            tx.type === 'invoice' ? 'Invoice' : tx.type === 'payment' ? 'Payment' : 'Reversal'
-          const client = selectedClient.id === 'all' ? clientMap.get(tx.clientId) || '-' : ''
-          return [
-            String(idx + 1),
-            ...(selectedClient.id === 'all' ? [client] : []),
-            txDate,
-            typeLabel,
-            dr,
-            cr,
-            `Rs.${bal.toLocaleString('en-IN')}`,
-            tx.narration || tx.note || '-',
-          ]
-        })
-        const columns = [
-          'Sr',
-          ...(selectedClient.id === 'all' ? ['Client'] : []),
-          'Date',
-          'Type',
-          'Debit (Dr)',
-          'Credit (Cr)',
-          'Balance',
-          'Narration',
-        ]
-        const metadata = [
-          `Client: ${selectedClient.name}`,
-          `Date Range: ${dateRangeLabel}`,
-          `Opening Balance: Rs.${openingBalance.toLocaleString('en-IN')}`,
-          `Closing Balance: Rs.${bal.toLocaleString('en-IN')}`,
-        ]
-        openReportWindow({ title: 'Ledger Statement', columns, rows, metadata })
-      }
-
-      setLedgerModalOpen(false)
-    } catch (error) {
-      toast.error('Unable to generate ledger statement.')
-      console.error(error)
-    }
-  }
-
   const handleStockStatementPdf = async () => {
     try {
       const selectedMonthStr = stockStatementMonth
@@ -1319,6 +1144,10 @@ function App() {
                   setPaymentPrefill(null)
                   setPayClient(client)
                 }}
+                onLedger={(client) => {
+                  setLedgerClientId(client?.id || '')
+                  setLedgerModalOpen(true)
+                }}
                 onOrder={(client) =>
                   setEditOrder({
                     clientId: client.id,
@@ -1537,76 +1366,12 @@ function App() {
         </div>
       )}
 
-      {/* Ledger Statement Modal */}
-      {ledgerModalOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-[1000] flex items-end md:items-center justify-center p-4"
-          onClick={() => setLedgerModalOpen(false)}
-        >
-          <div
-            className="relative bg-white rounded-2xl w-full max-w-lg p-5"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => setLedgerModalOpen(false)}
-              className="absolute top-3 right-3 p-2 rounded-lg text-gray-500 bg-gray-100 hover:bg-gray-200"
-              aria-label="Close ledger statement options"
-            >
-              <X size={18} />
-            </button>
-
-            <h3 className="text-lg font-black text-[#131921]">Ledger Statement Options</h3>
-
-            <div className="mt-4 space-y-4">
-              <label className="block">
-                <span className="text-sm font-bold text-gray-700">Client</span>
-                <select
-                  value={ledgerClientId}
-                  onChange={(e) => setLedgerClientId(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
-                >
-                  {clients.map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.name || 'Unnamed Client'}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block">
-                <span className="text-sm font-bold text-gray-700">Date Range</span>
-                <select
-                  value={ledgerDateRange}
-                  onChange={(e) => setLedgerDateRange(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
-                >
-                  <option value="current-month">Current Month</option>
-                  <option value="past-6-months">Past 6 Months</option>
-                  <option value="past-1-year">Past 1 Year</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setLedgerModalOpen(false)}
-                className="rounded-xl bg-gray-100 px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleLedgerStatementPdf}
-                className="rounded-xl bg-[#2563eb] px-4 py-2 text-sm font-bold text-white hover:bg-[#1d4ed8]"
-              >
-                Generate PDF
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Customer Ledger Statement Modal */}
+      <CustomerLedgerReportModal
+        isOpen={ledgerModalOpen}
+        onClose={() => setLedgerModalOpen(false)}
+        initialClientId={ledgerClientId}
+      />
 
       {/* Stock Statement Modal */}
       {stockModalOpen && (
