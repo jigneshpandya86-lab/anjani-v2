@@ -51,7 +51,7 @@ export default function StaffStatementReportModal({
         id: 'nilesh',
         name: 'Nilesh',
         role: 'Delivery Staff & Driver',
-        mobile: '9925997750',
+        mobile: '7990943652',
         baseSalary: 15000,
       }
     )
@@ -219,7 +219,7 @@ export default function StaffStatementReportModal({
       const pdfFile = handleGeneratePdf()
       if (!pdfFile) return
 
-      const phone = (currentEmployee.mobile || '9925997750').replace(/\D/g, '')
+      const phone = (currentEmployee.mobile || '7990943652').replace(/\D/g, '')
 
       const waMessage = [
         `*ANNAPURNA FOODS - STAFF STATEMENT*`,

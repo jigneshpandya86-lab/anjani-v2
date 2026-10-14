@@ -84,5 +84,41 @@ describe('calculatorUtils', () => {
       expect(sms).not.toContain('Remaining:')
       expect(sms).toContain('Thank you!')
     })
+
+    it('generates DEBIT entry SMS for staff handing over cash custody', () => {
+      const sms = buildCashHandoverSms({
+        amount: 5000,
+        fromName: 'Nilesh',
+        toName: 'Counter Cash',
+        date: '2026-10-14',
+        remainingBalance: 1200,
+        entryType: 'debit',
+        staffName: 'Nilesh',
+      })
+
+      expect(sms).toContain('Annapurna Foods: Hi Nilesh, ₹5,000 DEBITED from your cash custody account.')
+      expect(sms).toContain('Handed over to Counter Cash on 14-Oct.')
+      expect(sms).toContain('Remaining custody balance: ₹1,200.')
+      expect(sms).toContain('Thank you!')
+      expect(sms.length).toBeLessThan(160)
+    })
+
+    it('generates CREDIT entry SMS for staff receiving cash custody', () => {
+      const sms = buildCashHandoverSms({
+        amount: 2000,
+        fromName: 'Counter Cash',
+        toName: 'Nilesh',
+        date: '2026-10-14',
+        remainingBalance: 3200,
+        entryType: 'credit',
+        staffName: 'Nilesh',
+      })
+
+      expect(sms).toContain('Annapurna Foods: Hi Nilesh, ₹2,000 CREDITED to your cash custody account.')
+      expect(sms).toContain('Received from Counter Cash on 14-Oct.')
+      expect(sms).toContain('Current custody balance: ₹3,200.')
+      expect(sms).toContain('Thank you!')
+      expect(sms.length).toBeLessThan(160)
+    })
   })
 })

@@ -109,6 +109,8 @@ export function hasArithmeticOperators(str) {
  * @param {string} [params.toName]
  * @param {string|Date} [params.date]
  * @param {number} [params.remainingBalance]
+ * @param {'debit'|'credit'|null} [params.entryType]
+ * @param {string} [params.staffName]
  * @returns {string}
  */
 export function buildCashHandoverSms({
@@ -117,6 +119,8 @@ export function buildCashHandoverSms({
   toName = 'Counter',
   date = new Date(),
   remainingBalance = null,
+  entryType = null,
+  staffName = '',
 }) {
   const d =
     typeof date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(date)
@@ -133,11 +137,29 @@ export function buildCashHandoverSms({
 
   const amtStr = Number(amount || 0).toLocaleString('en-IN')
 
-  let remText = ''
-  if (remainingBalance !== null && remainingBalance !== undefined && !Number.isNaN(Number(remainingBalance))) {
-    remText = ` Remaining: ₹${Number(remainingBalance).toLocaleString('en-IN')}.`
+  const hasRem =
+    remainingBalance !== null &&
+    remainingBalance !== undefined &&
+    !Number.isNaN(Number(remainingBalance))
+  const remFormatted = hasRem ? `₹${Number(remainingBalance).toLocaleString('en-IN')}` : ''
+
+  if (entryType === 'debit') {
+    const greeting = staffName ? `Hi ${staffName}, ` : ''
+    const remText = hasRem ? ` Remaining custody balance: ${remFormatted}.` : ''
+    return `Annapurna Foods: ${greeting}₹${amtStr} DEBITED from your cash custody account. Handed over to ${toName} on ${dateStr}.${remText} Thank you!`
   }
 
-  // Short and sweet Khatabook format
+  if (entryType === 'credit') {
+    const greeting = staffName ? `Hi ${staffName}, ` : ''
+    const remText = hasRem ? ` Current custody balance: ${remFormatted}.` : ''
+    return `Annapurna Foods: ${greeting}₹${amtStr} CREDITED to your cash custody account. Received from ${fromName} on ${dateStr}.${remText} Thank you!`
+  }
+
+  let remText = ''
+  if (hasRem) {
+    remText = ` Remaining: ${remFormatted}.`
+  }
+
+  // Short and sweet Khatabook format (general fallback)
   return `Annapurna Foods: Received ₹${amtStr} cash from ${fromName} on ${dateStr}.${remText} Thank you!`
 }

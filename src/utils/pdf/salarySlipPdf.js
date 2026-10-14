@@ -42,7 +42,7 @@ export function buildSalarySlipPdf({
   lines.push('0.1 0.1 0.1 rg')
   lines.push(txt(mg + 10, y - 14, 9, `Employee: ${employee.name || 'Nilesh'}`, 35, '/F2'))
   lines.push(txt(mg + 10, y - 24, 7.5, `Designation: ${employee.role || 'Delivery Staff & Driver'}`, 35))
-  lines.push(txt(mg + 10, y - 33, 7, `Contact: +91 ${employee.mobile || '9925997750'}`, 30))
+  lines.push(txt(mg + 10, y - 33, 7, `Contact: +91 ${employee.mobile || '7990943652'}`, 30))
 
   lines.push(txt(mg + 300, y - 14, 8.5, `Salary Month: ${monthLabel}`, 30, '/F2'))
   lines.push(txt(mg + 300, y - 24, 7.5, `Disbursed Date: ${payoutDateStr}`, 30))

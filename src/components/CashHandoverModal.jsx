@@ -28,6 +28,7 @@ export default function CashHandoverModal({
 }) {
   const recordAccountTransfer = useClientStore((state) => state.recordAccountTransfer)
   const staffList = useClientStore((state) => state.staffList) || []
+  const fetchStaff = useClientStore((state) => state.fetchStaff)
 
   const [fromAccountId, setFromAccountId] = useState(initialSource)
   const [toAccountId, setToAccountId] = useState('counter')
@@ -44,10 +45,24 @@ export default function CashHandoverModal({
   const [smsPhone, setSmsPhone] = useState('')
   const [showMacroDroidMenu, setShowMacroDroidMenu] = useState(false)
 
+  // Helper to identify if an account belongs to staff (custody)
+  const isStaffAccount = useCallback(
+    (accId) => {
+      if (!accId) return false
+      const meta = getAccountMeta(accId)
+      if (meta?.type === 'custody') return true
+      return (
+        (staffList || []).some((s) => s.id === accId) ||
+        DEFAULT_STAFF.some((s) => s.id === accId)
+      )
+    },
+    [staffList],
+  )
+
   // Helper to find staff phone by account ID
   const lookupAccountPhone = useCallback(
     (accId) => {
-      const fromStaffList = staffList.find((s) => s.id === accId)
+      const fromStaffList = (staffList || []).find((s) => s.id === accId)
       if (fromStaffList?.mobile) return fromStaffList.mobile
       const fromDefault = DEFAULT_STAFF.find((s) => s.id === accId)
       if (fromDefault?.mobile) return fromDefault.mobile
@@ -56,8 +71,44 @@ export default function CashHandoverModal({
     [staffList],
   )
 
+  // Helper to get staff member object by account ID
+  const getStaffMember = useCallback(
+    (accId) => {
+      const fromStaffList = (staffList || []).find((s) => s.id === accId)
+      if (fromStaffList) return fromStaffList
+      const fromDefault = DEFAULT_STAFF.find((s) => s.id === accId)
+      if (fromDefault) return fromDefault
+      return null
+    },
+    [staffList],
+  )
+
+  // Accounting Context for Staff Custody
+  const isFromStaff = isStaffAccount(fromAccountId)
+  const isToStaff = isStaffAccount(toAccountId)
+
+  // Target staff member whose custody account is being modified
+  const targetStaff = useMemo(() => {
+    if (isFromStaff) return getStaffMember(fromAccountId)
+    if (isToStaff) return getStaffMember(toAccountId)
+    return null
+  }, [isFromStaff, isToStaff, fromAccountId, toAccountId, getStaffMember])
+
+  // Entry type from staff perspective:
+  // - Staff -> Counter/Bank: DEBIT (deducted from staff custody)
+  // - Counter/Bank -> Staff: CREDIT (added to staff custody)
+  const entryType = useMemo(() => {
+    if (isFromStaff) return 'debit'
+    if (isToStaff) return 'credit'
+    return null
+  }, [isFromStaff, isToStaff])
+
   useEffect(() => {
     if (isOpen) {
+      if (typeof fetchStaff === 'function') {
+        fetchStaff()
+      }
+
       const initialFrom = initialSource || 'nilesh'
       const initialTo = initialFrom === 'counter' ? 'bank' : 'counter'
 
@@ -69,20 +120,40 @@ export default function CashHandoverModal({
       setShowMacroDroidMenu(false)
       setDate(new Date().toISOString().slice(0, 10))
 
-      // Auto-configure SMS based on staff account
-      const detectedPhone = lookupAccountPhone(initialFrom) || lookupAccountPhone(initialTo)
-      if (detectedPhone) {
-        setSmsPhone(detectedPhone)
-        setSendSms(true)
+      // Auto-configure SMS based on staff account (staff receives the notification)
+      const staffTarget = isStaffAccount(initialFrom)
+        ? initialFrom
+        : isStaffAccount(initialTo)
+        ? initialTo
+        : null
+
+      if (staffTarget) {
+        const detectedPhone = lookupAccountPhone(staffTarget)
+        if (detectedPhone) {
+          setSmsPhone(detectedPhone)
+          setSendSms(true)
+        } else {
+          setSmsPhone('')
+          setSendSms(false)
+        }
       } else {
         setSmsPhone('')
         setSendSms(false)
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, initialSource])
+  }, [isOpen, initialSource, fetchStaff, isStaffAccount, lookupAccountPhone])
 
-  // Update SMS phone when accounts change
+  // Keep phone updated if staffList finishes loading after mount
+  useEffect(() => {
+    if (isOpen && targetStaff) {
+      const found = (staffList || []).find((s) => s.id === targetStaff.id)
+      if (found?.mobile && (!smsPhone || smsPhone !== found.mobile)) {
+        setSmsPhone(found.mobile)
+      }
+    }
+  }, [isOpen, staffList, targetStaff, smsPhone])
+
+  // Update SMS phone and entry routing when accounts change
   const handleFromAccountChange = (newFrom) => {
     setFromAccountId(newFrom)
     let newTo = toAccountId
@@ -91,10 +162,21 @@ export default function CashHandoverModal({
       setToAccountId(newTo)
     }
 
-    const detectedPhone = lookupAccountPhone(newFrom) || lookupAccountPhone(newTo)
-    if (detectedPhone) {
-      setSmsPhone(detectedPhone)
-      setSendSms(true)
+    const staffTarget = isStaffAccount(newFrom)
+      ? newFrom
+      : isStaffAccount(newTo)
+      ? newTo
+      : null
+
+    if (staffTarget) {
+      const detectedPhone = lookupAccountPhone(staffTarget)
+      if (detectedPhone) {
+        setSmsPhone(detectedPhone)
+        setSendSms(true)
+      } else {
+        setSmsPhone('')
+        setSendSms(false)
+      }
     } else {
       setSmsPhone('')
       setSendSms(false)
@@ -103,12 +185,24 @@ export default function CashHandoverModal({
 
   const handleToAccountChange = (newTo) => {
     setToAccountId(newTo)
-    if (!smsPhone) {
-      const detected = lookupAccountPhone(fromAccountId) || lookupAccountPhone(newTo)
-      if (detected) {
-        setSmsPhone(detected)
+    const staffTarget = isStaffAccount(fromAccountId)
+      ? fromAccountId
+      : isStaffAccount(newTo)
+      ? newTo
+      : null
+
+    if (staffTarget) {
+      const detectedPhone = lookupAccountPhone(staffTarget)
+      if (detectedPhone) {
+        setSmsPhone(detectedPhone)
         setSendSms(true)
+      } else {
+        setSmsPhone('')
+        setSendSms(false)
       }
+    } else {
+      setSmsPhone('')
+      setSendSms(false)
     }
   }
 
@@ -159,13 +253,28 @@ export default function CashHandoverModal({
     setAmount((prev) => prev + key)
   }
 
-  // Live Khatabook-style SMS preview text
+  // Compute staff custody balance for SMS
+  const staffBalanceAfterTransfer = useMemo(() => {
+    if (entryType === 'debit') {
+      const current = Number(accountsSummary[fromAccountId] || 0)
+      return current - enteredAmount
+    }
+    if (entryType === 'credit') {
+      const current = Number(accountsSummary[toAccountId] || 0)
+      return current + enteredAmount
+    }
+    return currentSourceBalance > 0 ? remainingBalance : null
+  }, [entryType, accountsSummary, fromAccountId, toAccountId, enteredAmount, currentSourceBalance, remainingBalance])
+
+  // Live Khatabook-style SMS preview text with Debit / Credit accounting entry
   const smsPreviewText = buildCashHandoverSms({
     amount: enteredAmount,
     fromName: fromMeta.shortLabel || fromMeta.name,
     toName: toMeta.shortLabel || toMeta.name,
     date,
-    remainingBalance: currentSourceBalance > 0 ? remainingBalance : null,
+    remainingBalance: staffBalanceAfterTransfer,
+    entryType,
+    staffName: targetStaff?.name || '',
   })
 
   const handleSubmit = async (e) => {
@@ -215,8 +324,11 @@ export default function CashHandoverModal({
       }
 
       if (smsSentSuccessfully) {
+        const staffLabel = targetStaff?.name || fromMeta.shortLabel
+        const actionVerb = entryType === 'debit' ? 'handed over' : 'transferred'
+        const entryLabel = entryType ? ` (${entryType.toUpperCase()} SMS to ${staffLabel})` : ` & SMS sent to ${staffLabel}`
         toast.success(
-          `₹${enteredAmount.toLocaleString('en-IN')} handed over & SMS sent to ${fromMeta.shortLabel}!`,
+          `₹${enteredAmount.toLocaleString('en-IN')} ${actionVerb}${entryLabel}!`,
         )
       } else {
         toast.success(
@@ -623,9 +735,11 @@ export default function CashHandoverModal({
                   <p className="text-xs font-bold text-gray-800 leading-tight truncate">
                     SMS Confirmation (MacroDroid)
                   </p>
-                  <p className="text-[10px] text-gray-400 truncate">
+                  <p className="text-[10px] text-gray-500 truncate">
                     {sendSms && smsPhone
-                      ? `Send to ${smsPhone}`
+                      ? targetStaff
+                        ? `Send to ${targetStaff.name}: ${smsPhone}`
+                        : `Send to ${smsPhone}`
                       : sendSms
                       ? 'No recipient phone entered'
                       : 'SMS is off'}
@@ -634,6 +748,17 @@ export default function CashHandoverModal({
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
+                {entryType && sendSms && (
+                  <span
+                    className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                      entryType === 'debit'
+                        ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                        : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                    }`}
+                  >
+                    {entryType}
+                  </span>
+                )}
                 <span
                   className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
                     sendSms && smsPhone
@@ -683,28 +808,58 @@ export default function CashHandoverModal({
 
                 {sendSms && (
                   <div className="space-y-2 pt-0.5">
+                    {/* Staff Account Entry Info Card */}
+                    {targetStaff && (
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-orange-50/60 border border-orange-200">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
+                              entryType === 'debit'
+                                ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                                : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                            }`}
+                          >
+                            {entryType === 'debit' ? 'DEBIT ENTRY' : 'CREDIT ENTRY'}
+                          </span>
+                          <span className="text-xs font-bold text-gray-800">
+                            {targetStaff.name}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-medium text-gray-500">
+                          {entryType === 'debit'
+                            ? 'Deducted from cash custody'
+                            : 'Added to cash custody'}
+                        </span>
+                      </div>
+                    )}
+
                     <div>
                       <label
                         htmlFor="sms-phone"
                         className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1"
                       >
-                        Recipient Mobile Number
+                        Recipient Mobile Number {targetStaff ? `(Staff: ${targetStaff.name})` : ''}
                       </label>
                       <input
                         id="sms-phone"
                         type="tel"
                         value={smsPhone}
                         onChange={(e) => setSmsPhone(e.target.value)}
-                        placeholder="e.g. 9925997750"
+                        placeholder={targetStaff?.mobile ? `e.g. ${targetStaff.mobile}` : 'e.g. 7990943652'}
                         className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-semibold text-gray-900 outline-none focus:ring-1 focus:ring-orange-500"
                       />
                     </div>
 
                     {/* Live SMS Preview */}
                     <div className="bg-gray-50 border border-gray-200 rounded-xl p-2 text-[11px] text-gray-600">
-                      <span className="font-bold text-gray-400 block text-[9px] uppercase tracking-wider mb-0.5">
-                        SMS Preview (Khatabook Style):
-                      </span>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-bold text-gray-400 block text-[9px] uppercase tracking-wider">
+                          SMS Preview ({entryType ? `${entryType.toUpperCase()} ENTRY` : 'Khatabook Style'}):
+                        </span>
+                        <span className="text-[9px] font-semibold text-gray-400">
+                          {smsPreviewText.length} chars
+                        </span>
+                      </div>
                       <p className="font-medium text-gray-800 italic">
                         "{smsPreviewText}"
                       </p>

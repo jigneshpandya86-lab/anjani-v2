@@ -220,7 +220,7 @@ export function buildStaffStatementPdf({
       lines.push(
         txt(mg + 8, y - 13, 8.5, `Staff: ${employee.name || 'Nilesh'} (${employee.role || 'Delivery Staff'})`, 40, '/F2'),
       )
-      lines.push(txt(mg + 8, y - 25, 7.5, `Contact: +91 ${employee.mobile || '9925997750'}`, 30, '/F1'))
+      lines.push(txt(mg + 8, y - 25, 7.5, `Contact: +91 ${employee.mobile || '7990943652'}`, 30, '/F1'))
 
       lines.push(txt(mg + 280, y - 13, 8, `Statement Period: ${dateRangeLabel}`, 35, '/F2'))
       lines.push(

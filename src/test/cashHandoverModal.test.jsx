@@ -5,6 +5,7 @@ import CashHandoverModal from '../components/CashHandoverModal'
 
 const mockRecordAccountTransfer = vi.fn().mockResolvedValue({})
 const mockSendBackgroundSms = vi.fn().mockResolvedValue({})
+const mockFetchStaff = vi.fn().mockReturnValue(vi.fn())
 
 vi.mock('../firebase-config', () => ({
   db: {},
@@ -34,8 +35,8 @@ vi.mock('../services/leadSmsService', () => ({
 }))
 
 const mockStaffList = [
-  { id: 'nilesh', name: 'Nilesh', mobile: '9925997750' },
-  { id: 'hiteshbhai', name: 'Hiteshbhai', mobile: '9825012345' },
+  { id: 'nilesh', name: 'Nilesh', mobile: '7990943652' },
+  { id: 'hiteshbhai', name: 'Hiteshbhai', mobile: '7778077617' },
 ]
 
 vi.mock('../store/clientStore', () => ({
@@ -43,6 +44,7 @@ vi.mock('../store/clientStore', () => ({
     const state = {
       recordAccountTransfer: mockRecordAccountTransfer,
       staffList: mockStaffList,
+      fetchStaff: mockFetchStaff,
     }
     return selector(state)
   },
@@ -75,20 +77,21 @@ describe('CashHandoverModal Component', () => {
     const macroButton = screen.getByRole('button', { name: /macrodroid/i })
     expect(macroButton).toBeInTheDocument()
     expect(screen.getByText(/click to open/i)).toBeInTheDocument()
-    expect(screen.queryByDisplayValue('9925997750')).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue('7990943652')).not.toBeInTheDocument()
 
     // Click to open MacroDroid menu
     fireEvent.click(macroButton)
 
-    // SMS checkbox exists and is checked for Nilesh with phone 9925997750
+    // SMS checkbox exists and is checked for Nilesh with real phone 7990943652
     const smsCheckbox = screen.getByRole('checkbox', { name: /send sms confirmation/i })
     expect(smsCheckbox).toBeChecked()
-    expect(screen.getByDisplayValue('9925997750')).toBeInTheDocument()
-    expect(screen.getByText(/SMS Preview \(Khatabook Style\):/i)).toBeInTheDocument()
+    expect(screen.getByDisplayValue('7990943652')).toBeInTheDocument()
+    expect(screen.getByText('DEBIT ENTRY')).toBeInTheDocument()
+    expect(screen.getByText(/SMS Preview \(DEBIT ENTRY\):/i)).toBeInTheDocument()
 
     // Click again to collapse
     fireEvent.click(macroButton)
-    expect(screen.queryByDisplayValue('9925997750')).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue('7990943652')).not.toBeInTheDocument()
   })
 
   it('toggles Khatabook calculator keypad and evaluates formula using = button', () => {
@@ -126,7 +129,7 @@ describe('CashHandoverModal Component', () => {
     expect(amountInput.value).toBe('1500')
   })
 
-  it('submits handover and triggers sendBackgroundSms with Khatabook format', async () => {
+  it('submits handover and triggers sendBackgroundSms to staff with DEBIT format', async () => {
     const handleClose = vi.fn()
     render(
       <CashHandoverModal
@@ -155,11 +158,55 @@ describe('CashHandoverModal Component', () => {
         }),
       )
 
-      // SMS triggered via MacroDroid
+      // SMS triggered via MacroDroid to staff mobile (7990943652), not owner
       expect(mockSendBackgroundSms).toHaveBeenCalledWith(
         expect.objectContaining({
-          phone: '9925997750',
-          message: expect.stringContaining('Annapurna Foods: Received ₹5,000 cash from Nilesh'),
+          phone: '7990943652',
+          message: expect.stringContaining('Annapurna Foods: Hi Nilesh, ₹5,000 DEBITED from your cash custody account.'),
+        }),
+      )
+
+      expect(handleClose).toHaveBeenCalled()
+    })
+  })
+
+  it('sends CREDIT entry SMS to staff when cash is transferred to staff custody', async () => {
+    const handleClose = vi.fn()
+    render(
+      <CashHandoverModal
+        isOpen={true}
+        onClose={handleClose}
+        initialSource="counter"
+        accountsSummary={{ counter: 15000, nilesh: 1000 }}
+      />,
+    )
+
+    // Set destination to nilesh
+    const selects = screen.getAllByRole('combobox')
+    fireEvent.change(selects[1], { target: { value: 'nilesh' } })
+
+    // Set amount to 2000
+    const amountInput = screen.getByPlaceholderText(/0.00 or e.g. 1000\+500/i)
+    fireEvent.change(amountInput, { target: { value: '2000' } })
+
+    // Submit
+    const submitButton = screen.getByRole('button', { name: /confirm handover/i })
+    fireEvent.click(submitButton)
+
+    await waitFor(() => {
+      expect(mockRecordAccountTransfer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fromAccountId: 'counter',
+          toAccountId: 'nilesh',
+          amount: 2000,
+        }),
+      )
+
+      // SMS triggered to staff with CREDIT entry
+      expect(mockSendBackgroundSms).toHaveBeenCalledWith(
+        expect.objectContaining({
+          phone: '7990943652',
+          message: expect.stringContaining('Annapurna Foods: Hi Nilesh, ₹2,000 CREDITED to your cash custody account.'),
         }),
       )
 
