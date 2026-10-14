@@ -72,6 +72,14 @@ export const buildLedgerPdf = ({
     lines.push('0 0 0 rg')
   }
 
+  // Balance formatter with Indian accounting Dr / Cr suffix
+  const fmtBal = (val) => {
+    const n = Number(val || 0)
+    if (Math.abs(n) < 0.001) return '0.00'
+    if (n > 0) return `${fmt(n)} Dr`
+    return `${fmt(Math.abs(n))} Cr`
+  }
+
   // Pre-calculate running balances and totals
   let runningBal = Number(openingBalance || 0)
   let totalDr = 0
@@ -139,7 +147,7 @@ export const buildLedgerPdf = ({
         narrationText,
         dr,
         cr,
-        `Rs.${fmt(runningBal)}`,
+        `Rs.${fmtBal(runningBal)}`,
       ],
     }
   })
@@ -210,14 +218,14 @@ export const buildLedgerPdf = ({
 
       lines.push('0.3 0.3 0.3 rg')
       lines.push(txt(rCardX + 8, y - 13, 7, `Period: ${dateRangeLabel}`, 40, '/F2'))
-      lines.push(txt(rCardX + 8, y - 24, 6.5, `Opening Bal (B/F): Rs.${fmt(openingBalance)}`, 35, '/F1'))
+      lines.push(txt(rCardX + 8, y - 24, 6.5, `Opening Bal (B/F): Rs.${fmtBal(openingBalance)}`, 35, '/F1'))
       lines.push(txt(rCardX + 8, y - 35, 6.5, `Total Billed (Dr): +Rs.${fmt(totalDr)} | Paid (Cr): -Rs.${fmt(totalCr)}`, 45, '/F1'))
 
       // Net Balance in card
       const balColor = closingBalance > 0 ? '0.75 0.1 0.1' : closingBalance < 0 ? '0.1 0.5 0.1' : '0.2 0.2 0.2'
       lines.push(`${balColor} rg`)
-      const balTag = closingBalance > 0 ? 'DUE / PAYABLE' : closingBalance < 0 ? 'ADVANCE' : 'NIL'
-      lines.push(txt(rCardX + 8, y - 46, 7.5, `Closing Balance: Rs.${fmt(closingBalance)} (${balTag})`, 40, '/F2'))
+      const balTag = closingBalance > 0 ? 'DUE / PAYABLE' : closingBalance < 0 ? 'ADVANCE CREDIT' : 'NIL'
+      lines.push(txt(rCardX + 8, y - 46, 7.5, `Closing Balance: Rs.${fmtBal(closingBalance)} (${balTag})`, 40, '/F2'))
 
       y -= cardH + 10
     } else {
@@ -253,7 +261,7 @@ export const buildLedgerPdf = ({
       drawRow(
         lines,
         y,
-        ['-', '-', 'B/F', 'Opening Balance Brought Forward', '', '', `Rs.${fmt(openingBalance)}`],
+        ['-', '-', 'B/F', 'Opening Balance Brought Forward', '', '', `Rs.${fmtBal(openingBalance)}`],
         '0.92 0.95 0.99',
         '0.15 0.25 0.5',
         '/F2',
@@ -298,7 +306,7 @@ export const buildLedgerPdf = ({
         `Period Summary (${dataRows.length} entries)`,
         fmt(totalDr),
         fmt(totalCr),
-        `Rs.${fmt(closingBalance)}`,
+        `Rs.${fmtBal(closingBalance)}`,
       ],
       '0.88 0.91 0.96',
       '0.06 0.13 0.29',
@@ -314,14 +322,14 @@ export const buildLedgerPdf = ({
       lines.push('0.85 0.5 0.5 RG 0.5 w')
       lines.push(`${mg} ${y - 14} ${usableW} 18 re S`)
       lines.push('0.75 0.1 0.1 rg')
-      lines.push(txt(mg + 10, y - 3, 7.5, `NET AMOUNT PAYABLE: Rs.${fmt(closingBalance)} (Kindly clear at your earliest convenience)`, 65, '/F2'))
+      lines.push(txt(mg + 10, y - 3, 7.5, `NET AMOUNT PAYABLE: Rs.${fmt(closingBalance)} Dr (Kindly clear at your earliest convenience)`, 65, '/F2'))
     } else if (closingBalance < 0) {
       lines.push('0.93 0.98 0.93 rg')
       lines.push(`${mg} ${y - 14} ${usableW} 18 re f`)
       lines.push('0.5 0.8 0.5 RG 0.5 w')
       lines.push(`${mg} ${y - 14} ${usableW} 18 re S`)
       lines.push('0.1 0.5 0.1 rg')
-      lines.push(txt(mg + 10, y - 3, 7.5, `ADVANCE CREDIT BALANCE: Rs.${fmt(Math.abs(closingBalance))} (Adjustable against future orders)`, 65, '/F2'))
+      lines.push(txt(mg + 10, y - 3, 7.5, `ADVANCE CREDIT BALANCE: Rs.${fmt(Math.abs(closingBalance))} Cr (Adjustable against future orders)`, 65, '/F2'))
     } else {
       lines.push('0.95 0.96 0.97 rg')
       lines.push(`${mg} ${y - 14} ${usableW} 18 re f`)

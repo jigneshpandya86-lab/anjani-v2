@@ -172,7 +172,7 @@ export default function CustomerLedgerReportModal({
     return { startDate: start, endDate: end, label }
   }, [dateRangePreset, customStartDate, customEndDate])
 
-  // Fetch payments for selected client and period
+  // Fetch payments and delivered orders for selected client and period
   const fetchLedgerData = useCallback(async () => {
     if (!selectedClient) return
     setLoadingPreview(true)
@@ -180,6 +180,7 @@ export default function CustomerLedgerReportModal({
     try {
       const { startDate, endDate } = computeDateRange()
 
+      // 1. Fetch payments
       let allPayments = []
       let lastVisibleDoc = null
 
@@ -198,28 +199,115 @@ export default function CustomerLedgerReportModal({
         lastVisibleDoc = snap.docs[snap.docs.length - 1]
       }
 
+      // 2. Fetch delivered orders for client
+      let deliveredOrders = []
+      let lastOrderDoc = null
+      while (true) {
+        const orderConstraints =
+          selectedClient.id === 'all'
+            ? [where('status', '==', 'Delivered'), limit(LEDGER_QUERY_PAGE_SIZE)]
+            : [where('clientId', '==', selectedClient.id), where('status', '==', 'Delivered'), limit(LEDGER_QUERY_PAGE_SIZE)]
+
+        if (lastOrderDoc) orderConstraints.push(startAfter(lastOrderDoc))
+        const snap = await getDocs(query(collection(db, 'orders'), ...orderConstraints))
+        if (snap.empty) break
+
+        deliveredOrders.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+        if (snap.docs.length < LEDGER_QUERY_PAGE_SIZE) break
+        lastOrderDoc = snap.docs[snap.docs.length - 1]
+      }
+
+      // Index all orders already represented as invoices in payments
+      const invoiceOrderIds = new Set()
+      allPayments.forEach((p) => {
+        if (p.orderId) invoiceOrderIds.add(String(p.orderId))
+        const match = (p.narration || p.note || '').match(/ORD-\d+/)
+        if (match) invoiceOrderIds.add(match[0])
+      })
+
+      // Convert delivered orders that are not in payments into invoice entries
+      const syntheticInvoices = []
+      deliveredOrders.forEach((o) => {
+        const oId = String(o.orderId || o.id)
+        if (!invoiceOrderIds.has(oId)) {
+          const amt = Number(
+            o.totalAmount ||
+            o.amount ||
+            (Number(o.qty || o.boxes || 0) * Number(o.rate || 0))
+          ) || 0
+          if (amt > 0) {
+            const rawDate = o.deliveryDate || o.orderDate || o.date || o.createdAt
+            syntheticInvoices.push({
+              id: `ord_${o.id}`,
+              clientId: o.clientId,
+              clientName: o.clientName || o.customer || '',
+              amount: amt,
+              type: 'invoice',
+              method: 'SYSTEM',
+              narration: `Order Delivered: #${oId}${o.address ? ` • ${o.address}` : ''}`,
+              orderId: oId,
+              date: rawDate,
+              createdAt: rawDate,
+            })
+          }
+        }
+      })
+
+      // Combine and normalize payments and synthetic invoices
+      const combinedTxns = [...allPayments, ...syntheticInvoices].map((tx) => {
+        const rawAmt = Number(tx.amount || 0)
+        let resolvedType = tx.type
+        if (!resolvedType) {
+          if (tx.mode || tx.method) resolvedType = 'payment'
+          else if (rawAmt < 0) resolvedType = 'reversal'
+          else resolvedType = 'payment'
+        }
+        return {
+          ...tx,
+          type: resolvedType,
+          amount: Math.abs(rawAmt),
+          rawAmount: rawAmt,
+        }
+      })
+
       // Chronological sort
-      allPayments.sort((a, b) => {
+      combinedTxns.sort((a, b) => {
         const ta = (resolveTimestamp(a.date) || resolveTimestamp(a.createdAt) || new Date(0)).getTime()
         const tb = (resolveTimestamp(b.date) || resolveTimestamp(b.createdAt) || new Date(0)).getTime()
         return ta - tb
       })
 
-      // Calculate opening balance before startDate
-      let openingBalance = 0
+      // Baseline opening balance (B/F) if client has unrecorded prior balance
+      let baselineOpening = 0
       if (selectedClient.id !== 'all') {
-        openingBalance = allPayments.reduce((acc, tx) => {
+        const canonicalOutstanding = Number(selectedClient.outstanding || 0)
+        const lifetimeDr = combinedTxns
+          .filter((t) => t.type === 'invoice')
+          .reduce((sum, t) => sum + t.amount, 0)
+        const lifetimeCr = combinedTxns
+          .filter((t) => t.type === 'payment')
+          .reduce((sum, t) => sum + t.amount, 0)
+        const lifetimeNet = lifetimeDr - lifetimeCr
+        const diff = canonicalOutstanding - lifetimeNet
+        if (Math.abs(diff) >= 1) {
+          baselineOpening = diff
+        }
+      }
+
+      // Calculate opening balance before startDate
+      let openingBalance = baselineOpening
+      if (selectedClient.id !== 'all') {
+        openingBalance = combinedTxns.reduce((acc, tx) => {
           const d = resolveTimestamp(tx.date) || resolveTimestamp(tx.createdAt)
           if (!d || d >= startDate) return acc
-          const amt = Number(tx.amount || 0)
-          if (tx.type === 'invoice') return acc + Math.abs(amt)
-          if (tx.type === 'payment') return acc - Math.abs(amt)
-          return amt < 0 ? acc + Math.abs(amt) : acc - amt
-        }, 0)
+          if (tx.type === 'invoice') return acc + tx.amount
+          if (tx.type === 'payment') return acc - tx.amount
+          return tx.rawAmount < 0 ? acc + tx.amount : acc - tx.amount
+        }, baselineOpening)
       }
 
       // Filter txns in range
-      const inRangeTxns = allPayments.filter((tx) => {
+      const inRangeTxns = combinedTxns.filter((tx) => {
         const d = resolveTimestamp(tx.date) || resolveTimestamp(tx.createdAt)
         return d && d >= startDate && d <= endDate
       })
@@ -229,20 +317,19 @@ export default function CustomerLedgerReportModal({
       let totalPaid = 0
 
       inRangeTxns.forEach((tx) => {
-        const amt = Number(tx.amount || 0)
         if (tx.type === 'invoice') {
-          running += Math.abs(amt)
-          totalBilled += Math.abs(amt)
+          running += tx.amount
+          totalBilled += tx.amount
         } else if (tx.type === 'payment') {
-          running -= Math.abs(amt)
-          totalPaid += Math.abs(amt)
+          running -= tx.amount
+          totalPaid += tx.amount
         } else {
-          if (amt < 0) {
-            running += Math.abs(amt)
-            totalBilled += Math.abs(amt)
+          if (tx.rawAmount < 0) {
+            running += tx.amount
+            totalBilled += tx.amount
           } else {
-            running -= amt
-            totalPaid += amt
+            running -= tx.amount
+            totalPaid += tx.amount
           }
         }
       })
@@ -326,9 +413,9 @@ export default function CustomerLedgerReportModal({
       const clientMobile = selectedClient?.mobile?.replace(/\D/g, '') || ''
       const dueText =
         previewStats.closingBalance > 0
-          ? `Outstanding Balance Due: Rs. ${previewStats.closingBalance.toLocaleString('en-IN')}`
+          ? `Outstanding Balance Due: Rs. ${previewStats.closingBalance.toLocaleString('en-IN')} Dr`
           : previewStats.closingBalance < 0
-            ? `Advance Credit Balance: Rs. ${Math.abs(previewStats.closingBalance).toLocaleString('en-IN')}`
+            ? `Advance Credit Balance: Rs. ${Math.abs(previewStats.closingBalance).toLocaleString('en-IN')} Cr`
             : 'All Dues Settled (Nil Balance)'
 
       const shareText = `*Account Ledger Statement - Anjani Water Suppliers*\nClient: *${selectedClient?.name || 'Customer'}*\nPeriod: ${computeDateRange().label}\n${dueText}\n\n_Official customer ledger statement attached._`
@@ -525,7 +612,10 @@ export default function CustomerLedgerReportModal({
               <div className="bg-white rounded-xl p-2.5 border border-gray-100 shadow-2xs">
                 <p className="text-[10px] font-bold uppercase text-gray-400">Opening (B/F)</p>
                 <p className="text-xs font-black text-gray-700 truncate mt-0.5">
-                  ₹{previewStats.openingBalance.toLocaleString('en-IN')}
+                  ₹{Math.abs(previewStats.openingBalance).toLocaleString('en-IN')}{' '}
+                  <span className="text-[10px] font-bold text-gray-400">
+                    {previewStats.openingBalance > 0 ? 'Dr' : previewStats.openingBalance < 0 ? 'Cr' : ''}
+                  </span>
                 </p>
               </div>
               <div className="bg-white rounded-xl p-2.5 border border-gray-100 shadow-2xs">
@@ -573,7 +663,10 @@ export default function CustomerLedgerReportModal({
                         : 'text-gray-800'
                   }`}
                 >
-                  ₹{previewStats.closingBalance.toLocaleString('en-IN')}
+                  ₹{Math.abs(previewStats.closingBalance).toLocaleString('en-IN')}{' '}
+                  <span className="text-[10px] font-bold">
+                    {previewStats.closingBalance > 0 ? 'Dr' : previewStats.closingBalance < 0 ? 'Cr' : ''}
+                  </span>
                 </p>
               </div>
             </div>
