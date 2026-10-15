@@ -174,12 +174,9 @@ export default function CashHandoverModal({
 
     if (staffTarget) {
       const detectedPhone = lookupAccountPhone(staffTarget)
+      setSendSms(true)
       if (detectedPhone) {
         setSmsPhone(detectedPhone)
-        setSendSms(true)
-      } else {
-        setSmsPhone('')
-        setSendSms(false)
       }
     } else {
       setSmsPhone('')
@@ -197,12 +194,9 @@ export default function CashHandoverModal({
 
     if (staffTarget) {
       const detectedPhone = lookupAccountPhone(staffTarget)
+      setSendSms(true)
       if (detectedPhone) {
         setSmsPhone(detectedPhone)
-        setSendSms(true)
-      } else {
-        setSmsPhone('')
-        setSendSms(false)
       }
     } else {
       setSmsPhone('')
@@ -802,7 +796,11 @@ export default function CashHandoverModal({
                       : 'bg-gray-200 text-gray-600'
                   }`}
                 >
-                  {sendSms && smsPhone ? 'Enabled' : sendSms ? 'No Phone' : 'Disabled'}
+                  {sendSms && smsPhone
+                    ? `SMS: ${targetStaff?.name || 'Staff'}`
+                    : sendSms
+                    ? 'No Phone'
+                    : 'SMS Off'}
                 </span>
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tight hidden sm:inline">
                   {showMacroDroidMenu ? 'Hide' : 'Click to open'}
@@ -927,6 +925,11 @@ export default function CashHandoverModal({
           >
             {submitting ? (
               'Processing…'
+            ) : sendSms && smsPhone ? (
+              <>
+                <MessageSquare size={13} className="text-orange-400" />
+                <span>Confirm & Send SMS to {targetStaff?.name || 'Staff'} (₹{enteredAmount.toLocaleString('en-IN')})</span>
+              </>
             ) : (
               <>
                 <Check size={14} /> Confirm Handover (₹{enteredAmount.toLocaleString('en-IN')})

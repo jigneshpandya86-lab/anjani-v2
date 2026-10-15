@@ -1,4 +1,7 @@
 import { serverTimestamp } from 'firebase/firestore'
+import { DEFAULT_STAFF } from '../constants/staff'
+import { getAccountMeta } from '../constants/accounts'
+import { buildCashHandoverSms } from '../utils/calculatorUtils'
 
 const INDIA_COUNTRY_CODE = '91'
 const DAY_IN_MS = 24 * 60 * 60 * 1000
@@ -75,12 +78,85 @@ export const sendBackgroundSms = async ({ macroUrl, phone, message }) => {
     throw new Error('Invalid phone number for SMS')
   }
   const packet = `${normalizedPhone}@@@${message}`
-  // Include data packet as well as phone and message query params for universal MacroDroid compatibility
-  const finalUrl = `${url}?data=${encodeURIComponent(packet)}&phone=${normalizedPhone}&message=${encodeURIComponent(message)}`
+  const clean10 = normalizedPhone.length >= 10 ? normalizedPhone.slice(-10) : normalizedPhone
+  // Include data packet as well as phone, mobile, number, and message query params for universal MacroDroid compatibility
+  const finalUrl = `${url}?data=${encodeURIComponent(packet)}&phone=${normalizedPhone}&mobile=${clean10}&number=${clean10}&message=${encodeURIComponent(message)}&msg=${encodeURIComponent(message)}`
   const response = await fetch(finalUrl, { method: 'GET' })
 
   if (!response.ok) {
     throw new Error(`Webhook failed with status ${response.status}`)
+  }
+}
+
+/**
+ * Triggers or re-triggers a Khatabook-style SMS for an account transfer involving a staff custody account.
+ *
+ * @param {Object} options
+ * @param {Object} options.transferDoc - Raw transfer document data or passbook entry object
+ * @param {Array} [options.staffList] - Array of staff members from store
+ * @param {string} [options.macroUrl] - Optional custom MacroDroid webhook URL
+ * @returns {Promise<{ staffMember: Object, phone: string, message: string }>}
+ */
+export const sendCashHandoverTransferSms = async ({ transferDoc, staffList = [], macroUrl }) => {
+  if (!transferDoc) throw new Error('No transfer data provided')
+  const d = transferDoc.rawDoc || transferDoc.raw || transferDoc
+  const fromAcc = d.fromAccountId || ''
+  const toAcc = d.toAccountId || ''
+  const amt = Number(d.amount) || Number(transferDoc.amount) || 0
+
+  const isStaff = (accId) => {
+    if (!accId) return false
+    const meta = getAccountMeta(accId)
+    if (meta?.type === 'custody') return true
+    return (
+      (staffList || []).some((s) => s.id === accId) ||
+      DEFAULT_STAFF.some((s) => s.id === accId)
+    )
+  }
+
+  const staffTargetId = isStaff(fromAcc) ? fromAcc : isStaff(toAcc) ? toAcc : null
+
+  if (!staffTargetId) {
+    throw new Error('This transfer does not involve a staff custody account')
+  }
+
+  const staffMember =
+    (staffList || []).find((s) => s.id === staffTargetId) ||
+    DEFAULT_STAFF.find((s) => s.id === staffTargetId)
+  const phone = staffMember?.mobile || '7990943652'
+  const isDebit = staffTargetId === fromAcc
+  const entryType = isDebit ? 'debit' : 'credit'
+  const fromMeta = getAccountMeta(fromAcc)
+  const toMeta = getAccountMeta(toAcc)
+
+  const rawDate = d.date || d.createdAt || transferDoc.date || transferDoc.timestamp
+  let dateStr = ''
+  if (rawDate?.seconds) {
+    dateStr = new Date(rawDate.seconds * 1000).toISOString().slice(0, 10)
+  } else if (rawDate) {
+    try {
+      dateStr = new Date(rawDate).toISOString().slice(0, 10)
+    } catch {
+      dateStr = new Date().toISOString().slice(0, 10)
+    }
+  } else {
+    dateStr = new Date().toISOString().slice(0, 10)
+  }
+
+  const message = buildCashHandoverSms({
+    amount: amt,
+    fromName: fromMeta.shortLabel || fromMeta.name,
+    toName: toMeta.shortLabel || toMeta.name,
+    date: dateStr,
+    entryType,
+    staffName: staffMember?.name || '',
+  })
+
+  await sendBackgroundSms({ macroUrl, phone, message })
+  return {
+    staffMember,
+    phone,
+    message,
   }
 }
 

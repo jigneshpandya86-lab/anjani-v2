@@ -9,6 +9,7 @@ import {
   getDueReminderContext,
   buildInitialSmsUpdate,
   buildLeadWhatsAppMessage,
+  sendCashHandoverTransferSms,
 } from '../services/leadSmsService'
 
 describe('leadSmsService', () => {
@@ -113,6 +114,69 @@ describe('leadSmsService', () => {
 
       const msgGeneric = buildLeadWhatsAppMessage({ name: 'Call Lead' })
       expect(msgGeneric).toContain('Hello! 👋')
+    })
+  })
+
+  describe('sendCashHandoverTransferSms', () => {
+    beforeEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('formats and dispatches debit SMS when staff hands over cash to bank/counter', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+      globalThis.fetch = mockFetch
+
+      const result = await sendCashHandoverTransferSms({
+        transferDoc: {
+          fromAccountId: 'nilesh',
+          toAccountId: 'bank',
+          amount: 2100,
+          date: '2026-10-14T12:00:00',
+        },
+      })
+
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      const calledUrl = decodeURIComponent(mockFetch.mock.calls[0][0])
+      expect(calledUrl).toContain('phone=917990943652')
+      expect(calledUrl).toContain('mobile=7990943652')
+      expect(calledUrl).toContain('Hi Nilesh, Rs. 2,100 DEBITED from cash custody')
+      expect(calledUrl).toContain('Handed over to Bank on 14-Oct.')
+      expect(calledUrl).not.toContain('₹') // Verify no non-ASCII ₹ currency sign
+      expect(result.phone).toBe('7990943652')
+      expect(result.staffMember.name).toBe('Nilesh')
+    })
+
+    it('formats and dispatches credit SMS when counter gives cash to staff custody', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+      globalThis.fetch = mockFetch
+
+      const result = await sendCashHandoverTransferSms({
+        transferDoc: {
+          fromAccountId: 'counter',
+          toAccountId: 'nilesh',
+          amount: 1500,
+          date: '2026-10-14T12:00:00',
+        },
+      })
+
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      const calledUrl = decodeURIComponent(mockFetch.mock.calls[0][0])
+      expect(calledUrl).toContain('phone=917990943652')
+      expect(calledUrl).toContain('Hi Nilesh, Rs. 1,500 CREDITED to cash custody')
+      expect(calledUrl).toContain('Received from Counter Cash on 14-Oct.')
+      expect(result.staffMember.name).toBe('Nilesh')
+    })
+
+    it('throws error when neither source nor destination is a custody account', async () => {
+      await expect(
+        sendCashHandoverTransferSms({
+          transferDoc: {
+            fromAccountId: 'counter',
+            toAccountId: 'bank',
+            amount: 5000,
+          },
+        })
+      ).rejects.toThrow('This transfer does not involve a staff custody account')
     })
   })
 })

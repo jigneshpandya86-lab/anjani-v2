@@ -172,7 +172,7 @@ describe('CashHandoverModal Component', () => {
     fireEvent.change(amountInput, { target: { value: '5000' } })
 
     // Click submit
-    const submitButton = screen.getByRole('button', { name: /confirm handover/i })
+    const submitButton = screen.getByRole('button', { name: /^confirm/i })
     fireEvent.click(submitButton)
 
     await waitFor(() => {
@@ -217,7 +217,7 @@ describe('CashHandoverModal Component', () => {
     fireEvent.change(amountInput, { target: { value: '2000' } })
 
     // Submit
-    const submitButton = screen.getByRole('button', { name: /confirm handover/i })
+    const submitButton = screen.getByRole('button', { name: /^confirm/i })
     fireEvent.click(submitButton)
 
     await waitFor(() => {

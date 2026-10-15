@@ -25,7 +25,9 @@ import {
   SlidersHorizontal,
   Pencil,
   Trash2,
+  MessageSquare,
 } from 'lucide-react'
+import { sendCashHandoverTransferSms } from '../services/leadSmsService'
 
 export default function AccountPassbookModal({
   isOpen,
@@ -35,10 +37,13 @@ export default function AccountPassbookModal({
   onOpenHandover,
 }) {
   const clients = useClientStore((state) => state.clients)
+  const staffList = useClientStore((state) => state.staffList) || []
+  const fetchStaff = useClientStore((state) => state.fetchStaff)
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [filterType, setFilterType] = useState('all') // 'all', 'collection', 'expense', 'transfer'
   const [editingEntry, setEditingEntry] = useState(null)
+  const [sendingSmsId, setSendingSmsId] = useState(null)
 
   const {
     updateAccountBalanceDirect,
@@ -238,6 +243,25 @@ export default function AccountPassbookModal({
     }
   }
 
+  const handleSendTransferSms = async (item) => {
+    try {
+      setSendingSmsId(item.id)
+      const res = await sendCashHandoverTransferSms({
+        transferDoc: item,
+        staffList,
+      })
+      toast.success(
+        `Khatabook SMS dispatched to ${res.staffMember?.name || 'Staff'} (${res.phone})!`,
+        { duration: 4500 }
+      )
+    } catch (err) {
+      console.error('Transfer SMS failed:', err)
+      toast.error(`SMS failed: ${err.message}`)
+    } finally {
+      setSendingSmsId(null)
+    }
+  }
+
   const filteredEntries = useMemo(() => {
     if (filterType === 'all') return entries
     return entries.filter((item) => item.type === filterType)
@@ -433,6 +457,21 @@ export default function AccountPassbookModal({
                     </div>
 
                     <div className="flex items-center gap-0.5 border-l border-gray-100 pl-1.5">
+                      {item.type === 'transfer' && (
+                        <button
+                          type="button"
+                          onClick={() => handleSendTransferSms(item)}
+                          disabled={sendingSmsId === item.id}
+                          className="p-1 rounded-lg text-gray-400 hover:text-orange-600 hover:bg-orange-50 transition-all cursor-pointer disabled:opacity-50"
+                          title="Send Khatabook SMS to Staff"
+                        >
+                          {sendingSmsId === item.id ? (
+                            <Loader2 size={12} className="animate-spin text-orange-500" />
+                          ) : (
+                            <MessageSquare size={12} />
+                          )}
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setEditingEntry(item)}
