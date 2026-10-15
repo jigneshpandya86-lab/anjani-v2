@@ -110,6 +110,39 @@ All water products are defined centrally in `src/constants/skus.js`:
 
 ---
 
+## Cash Handover, Custody Accounts & MacroDroid SMS Automation
+
+1. **Staff Custody Accounts Registry (`src/constants/accounts.js` & `src/constants/staff.js`):**
+   - **Custody accounts:** `nilesh` (Delivery Staff Cash Custody, Blue `#2563eb`), `hiteshbhai` (Purple `#7c3aed`), `counter` (Primary Drawer, Emerald `#059669`), `bank` (Bank / UPI, Orange `#ea580c`).
+   - **Mobile numbers:** Nilesh (`7990943652`), Hiteshbhai (`7778077617`).
+   - Static staff array is defined in `src/constants/staff.js` (re-exported by `src/services/staffSalaryService.js`) to decouple static data from Firebase Auth and enable zero-overhead unit testing.
+
+2. **Khatabook-Style SMS Formatting (`src/utils/calculatorUtils.js` -> `buildCashHandoverSms`):**
+   - **GSM 7-Bit ASCII Standard:** Always use `Rs.` instead of the Unicode `₹` (`\u20B9`) symbol. Indian telecom operators and TRAI DLT spam filters drop UCS-2 messages or limit them to 70 chars, and MacroDroid string splitting corrupts Unicode rupee symbols.
+   - **Debit Format (Handover from staff to Counter/Bank):**
+     `Annapurna Foods: Hi Nilesh, Rs. 2,100 DEBITED from cash custody. Handed over to Bank on 14-Oct. Thank you!`
+   - **Credit Format (Cash received into staff custody):**
+     `Annapurna Foods: Hi Nilesh, Rs. 2,000 CREDITED to cash custody. Received from Counter Cash on 14-Oct. Thank you!`
+
+3. **MacroDroid Webhook Integration (`src/services/leadSmsService.js`):**
+   - **Webhook URL:** `https://trigger.macrodroid.com/25efcbac-eb13-4461-ae90-3158ba6c5b90/anjani_sms`
+   - **Universal Parameter Compatibility:** The webhook query string sends all standard parameters simultaneously:
+     `?data=${packet}&phone=${normalizedPhone}&mobile=${clean10}&number=${clean10}&message=${message}&msg=${message}`
+     Where `packet = 917990943652@@@<msg>`, `normalizedPhone = 917990943652`, and `clean10 = 7990943652`. This ensures 100% compatibility whether the user's MacroDroid action splits `data` or references named variables (`phone`, `mobile`, `message`, `msg`).
+   - `sendCashHandoverTransferSms({ transferDoc, staffList })`: Dispatches or re-dispatches Khatabook SMS for any transfer document.
+
+4. **Cash Handover Modal UX (`src/components/CashHandoverModal.jsx`):**
+   - When a staff custody account is selected (`nilesh` or `hiteshbhai`), `sendSms` automatically defaults to `true` and the recipient mobile is pre-filled.
+   - The MacroDroid menu header displays a live `SMS: Nilesh` badge.
+   - The submit button dynamically updates to `Confirm & Send SMS to Nilesh (₹...)`.
+   - The expandable menu features a direct "Send Test SMS" button for quick verification.
+
+5. **1-Click Send / Resend SMS for Historical Entries:**
+   - Both **Accounts Dashboard** (`src/components/AccountsDashboard.jsx`) and **Account Passbook** (`src/components/AccountPassbookModal.jsx`) display a `MessageSquare` icon button on every transfer row involving staff.
+   - Clicking this button immediately dispatches the Khatabook SMS to the staff member with toast confirmation.
+
+---
+
 ## Commands & Verification Workflow
 - **Unit Tests:** `npm test` (`vitest run`)
 - **Lint Check:** `npm run lint` (`eslint .`)
