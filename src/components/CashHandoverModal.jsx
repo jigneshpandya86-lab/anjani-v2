@@ -44,6 +44,7 @@ export default function CashHandoverModal({
   const [sendSms, setSendSms] = useState(false)
   const [smsPhone, setSmsPhone] = useState('')
   const [showMacroDroidMenu, setShowMacroDroidMenu] = useState(false)
+  const [testingSms, setTestingSms] = useState(false)
 
   // Helper to identify if an account belongs to staff (custody)
   const isStaffAccount = useCallback(
@@ -134,24 +135,27 @@ export default function CashHandoverModal({
           setSendSms(true)
         } else {
           setSmsPhone('')
-          setSendSms(false)
+          setSendSms(true)
         }
       } else {
         setSmsPhone('')
         setSendSms(false)
       }
     }
-  }, [isOpen, initialSource, fetchStaff, isStaffAccount, lookupAccountPhone])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initialSource])
 
   // Keep phone updated if staffList finishes loading after mount
   useEffect(() => {
     if (isOpen && targetStaff) {
       const found = (staffList || []).find((s) => s.id === targetStaff.id)
-      if (found?.mobile && (!smsPhone || smsPhone !== found.mobile)) {
-        setSmsPhone(found.mobile)
+      const phoneToUse = found?.mobile || targetStaff.mobile || lookupAccountPhone(targetStaff.id)
+      if (phoneToUse && !smsPhone) {
+        setSmsPhone(phoneToUse)
+        setSendSms(true)
       }
     }
-  }, [isOpen, staffList, targetStaff, smsPhone])
+  }, [isOpen, staffList, targetStaff, smsPhone, lookupAccountPhone])
 
   // Update SMS phone and entry routing when accounts change
   const handleFromAccountChange = (newFrom) => {
@@ -277,6 +281,28 @@ export default function CashHandoverModal({
     staffName: targetStaff?.name || '',
   })
 
+  // Test SMS trigger directly from the MacroDroid menu
+  const handleSendTestSms = async () => {
+    if (!smsPhone) {
+      toast.error('Please enter a recipient phone number first')
+      return
+    }
+    setTestingSms(true)
+    const testMsg = `Annapurna Foods: Test SMS via MacroDroid for ${targetStaff?.name || 'Staff'}. Webhook is working properly!`
+    try {
+      await sendBackgroundSms({
+        phone: smsPhone,
+        message: testMsg,
+      })
+      toast.success(`Test SMS dispatched to ${smsPhone}! Check recipient phone.`, { duration: 4000 })
+    } catch (err) {
+      console.error('Test SMS failed:', err)
+      toast.error(`Test SMS failed: ${err.message}`)
+    } finally {
+      setTestingSms(false)
+    }
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
 
@@ -326,9 +352,17 @@ export default function CashHandoverModal({
       if (smsSentSuccessfully) {
         const staffLabel = targetStaff?.name || fromMeta.shortLabel
         const actionVerb = entryType === 'debit' ? 'handed over' : 'transferred'
-        const entryLabel = entryType ? ` (${entryType.toUpperCase()} SMS to ${staffLabel})` : ` & SMS sent to ${staffLabel}`
+        const entryLabel = entryType ? ` (${entryType.toUpperCase()} SMS sent to ${staffLabel})` : ` & SMS sent to ${staffLabel}`
         toast.success(
           `₹${enteredAmount.toLocaleString('en-IN')} ${actionVerb}${entryLabel}!`,
+        )
+      } else if (sendSms && !smsPhone) {
+        toast.success(
+          `₹${enteredAmount.toLocaleString('en-IN')} recorded (SMS skipped: no mobile number)`,
+        )
+      } else if (!sendSms) {
+        toast.success(
+          `₹${enteredAmount.toLocaleString('en-IN')} handed over from ${fromMeta.shortLabel} to ${toMeta.shortLabel} (SMS disabled)`,
         )
       } else {
         toast.success(
@@ -863,6 +897,21 @@ export default function CashHandoverModal({
                       <p className="font-medium text-gray-800 italic">
                         "{smsPreviewText}"
                       </p>
+                    </div>
+
+                    {/* Direct MacroDroid Test Button */}
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[10px] text-gray-500 font-medium">
+                        Test MacroDroid Webhook:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleSendTestSms}
+                        disabled={testingSms || !smsPhone}
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-orange-100 hover:bg-orange-200 text-orange-800 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {testingSms ? 'Sending Test…' : 'Send Test SMS'}
+                      </button>
                     </div>
                   </div>
                 )}

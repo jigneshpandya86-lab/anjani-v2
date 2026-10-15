@@ -88,10 +88,37 @@ describe('CashHandoverModal Component', () => {
     expect(screen.getByDisplayValue('7990943652')).toBeInTheDocument()
     expect(screen.getByText('DEBIT ENTRY')).toBeInTheDocument()
     expect(screen.getByText(/SMS Preview \(DEBIT ENTRY\):/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /send test sms/i })).toBeInTheDocument()
 
     // Click again to collapse
     fireEvent.click(macroButton)
     expect(screen.queryByDisplayValue('7990943652')).not.toBeInTheDocument()
+  })
+
+  it('dispatches test SMS when clicking Send Test SMS button', async () => {
+    render(
+      <CashHandoverModal
+        isOpen={true}
+        onClose={vi.fn()}
+        initialSource="nilesh"
+        accountsSummary={{ nilesh: 6200, counter: 15000 }}
+      />,
+    )
+
+    const macroButton = screen.getByRole('button', { name: /macrodroid/i })
+    fireEvent.click(macroButton)
+
+    const testSmsButton = screen.getByRole('button', { name: /send test sms/i })
+    fireEvent.click(testSmsButton)
+
+    await waitFor(() => {
+      expect(mockSendBackgroundSms).toHaveBeenCalledWith(
+        expect.objectContaining({
+          phone: '7990943652',
+          message: expect.stringContaining('Test SMS via MacroDroid for Nilesh'),
+        }),
+      )
+    })
   })
 
   it('toggles Khatabook calculator keypad and evaluates formula using = button', () => {
@@ -162,7 +189,7 @@ describe('CashHandoverModal Component', () => {
       expect(mockSendBackgroundSms).toHaveBeenCalledWith(
         expect.objectContaining({
           phone: '7990943652',
-          message: expect.stringContaining('Annapurna Foods: Hi Nilesh, ₹5,000 DEBITED from your cash custody account.'),
+          message: expect.stringContaining('Annapurna Foods: Hi Nilesh, Rs. 5,000 DEBITED from cash custody.'),
         }),
       )
 
@@ -206,7 +233,7 @@ describe('CashHandoverModal Component', () => {
       expect(mockSendBackgroundSms).toHaveBeenCalledWith(
         expect.objectContaining({
           phone: '7990943652',
-          message: expect.stringContaining('Annapurna Foods: Hi Nilesh, ₹2,000 CREDITED to your cash custody account.'),
+          message: expect.stringContaining('Annapurna Foods: Hi Nilesh, Rs. 2,000 CREDITED to cash custody.'),
         }),
       )
 

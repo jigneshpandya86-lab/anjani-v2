@@ -75,7 +75,8 @@ export const sendBackgroundSms = async ({ macroUrl, phone, message }) => {
     throw new Error('Invalid phone number for SMS')
   }
   const packet = `${normalizedPhone}@@@${message}`
-  const finalUrl = `${url}?data=${encodeURIComponent(packet)}`
+  // Include data packet as well as phone and message query params for universal MacroDroid compatibility
+  const finalUrl = `${url}?data=${encodeURIComponent(packet)}&phone=${normalizedPhone}&message=${encodeURIComponent(message)}`
   const response = await fetch(finalUrl, { method: 'GET' })
 
   if (!response.ok) {

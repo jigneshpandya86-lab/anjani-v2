@@ -141,18 +141,18 @@ export function buildCashHandoverSms({
     remainingBalance !== null &&
     remainingBalance !== undefined &&
     !Number.isNaN(Number(remainingBalance))
-  const remFormatted = hasRem ? `₹${Number(remainingBalance).toLocaleString('en-IN')}` : ''
+  const remFormatted = hasRem ? `Rs. ${Number(remainingBalance).toLocaleString('en-IN')}` : ''
 
   if (entryType === 'debit') {
     const greeting = staffName ? `Hi ${staffName}, ` : ''
-    const remText = hasRem ? ` Remaining custody balance: ${remFormatted}.` : ''
-    return `Annapurna Foods: ${greeting}₹${amtStr} DEBITED from your cash custody account. Handed over to ${toName} on ${dateStr}.${remText} Thank you!`
+    const remText = hasRem ? ` Balance: ${remFormatted}.` : ''
+    return `Annapurna Foods: ${greeting}Rs. ${amtStr} DEBITED from cash custody. Handed over to ${toName} on ${dateStr}.${remText} Thank you!`
   }
 
   if (entryType === 'credit') {
     const greeting = staffName ? `Hi ${staffName}, ` : ''
-    const remText = hasRem ? ` Current custody balance: ${remFormatted}.` : ''
-    return `Annapurna Foods: ${greeting}₹${amtStr} CREDITED to your cash custody account. Received from ${fromName} on ${dateStr}.${remText} Thank you!`
+    const remText = hasRem ? ` Balance: ${remFormatted}.` : ''
+    return `Annapurna Foods: ${greeting}Rs. ${amtStr} CREDITED to cash custody. Received from ${fromName} on ${dateStr}.${remText} Thank you!`
   }
 
   let remText = ''
@@ -160,6 +160,6 @@ export function buildCashHandoverSms({
     remText = ` Remaining: ${remFormatted}.`
   }
 
-  // Short and sweet Khatabook format (general fallback)
-  return `Annapurna Foods: Received ₹${amtStr} cash from ${fromName} on ${dateStr}.${remText} Thank you!`
+  // Short and sweet Khatabook format (general fallback, standard GSM-7)
+  return `Annapurna Foods: Received Rs. ${amtStr} cash from ${fromName} on ${dateStr}.${remText} Thank you!`
 }

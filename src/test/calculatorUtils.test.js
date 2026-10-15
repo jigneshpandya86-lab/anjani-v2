@@ -65,8 +65,8 @@ describe('calculatorUtils', () => {
         remainingBalance: 1200,
       })
 
-      expect(sms).toContain('Annapurna Foods: Received ₹5,000 cash from Nilesh on 13-Oct.')
-      expect(sms).toContain('Remaining: ₹1,200.')
+      expect(sms).toContain('Annapurna Foods: Received Rs. 5,000 cash from Nilesh on 13-Oct.')
+      expect(sms).toContain('Remaining: Rs. 1,200.')
       expect(sms).toContain('Thank you!')
       expect(sms.length).toBeLessThan(110)
     })
@@ -80,7 +80,7 @@ describe('calculatorUtils', () => {
         remainingBalance: null,
       })
 
-      expect(sms).toContain('Annapurna Foods: Received ₹2,500 cash from Counter on 13-Oct.')
+      expect(sms).toContain('Annapurna Foods: Received Rs. 2,500 cash from Counter on 13-Oct.')
       expect(sms).not.toContain('Remaining:')
       expect(sms).toContain('Thank you!')
     })
@@ -96,9 +96,9 @@ describe('calculatorUtils', () => {
         staffName: 'Nilesh',
       })
 
-      expect(sms).toContain('Annapurna Foods: Hi Nilesh, ₹5,000 DEBITED from your cash custody account.')
+      expect(sms).toContain('Annapurna Foods: Hi Nilesh, Rs. 5,000 DEBITED from cash custody.')
       expect(sms).toContain('Handed over to Counter Cash on 14-Oct.')
-      expect(sms).toContain('Remaining custody balance: ₹1,200.')
+      expect(sms).toContain('Balance: Rs. 1,200.')
       expect(sms).toContain('Thank you!')
       expect(sms.length).toBeLessThan(160)
     })
@@ -114,9 +114,9 @@ describe('calculatorUtils', () => {
         staffName: 'Nilesh',
       })
 
-      expect(sms).toContain('Annapurna Foods: Hi Nilesh, ₹2,000 CREDITED to your cash custody account.')
+      expect(sms).toContain('Annapurna Foods: Hi Nilesh, Rs. 2,000 CREDITED to cash custody.')
       expect(sms).toContain('Received from Counter Cash on 14-Oct.')
-      expect(sms).toContain('Current custody balance: ₹3,200.')
+      expect(sms).toContain('Balance: Rs. 3,200.')
       expect(sms).toContain('Thank you!')
       expect(sms.length).toBeLessThan(160)
     })
