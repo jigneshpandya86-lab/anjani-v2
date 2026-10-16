@@ -78,9 +78,8 @@ export const sendBackgroundSms = async ({ macroUrl, phone, message }) => {
     throw new Error('Invalid phone number for SMS')
   }
   const packet = `${normalizedPhone}@@@${message}`
-  const clean10 = normalizedPhone.length >= 10 ? normalizedPhone.slice(-10) : normalizedPhone
-  // Include data packet as well as phone, mobile, number, and message query params for universal MacroDroid compatibility
-  const finalUrl = `${url}?data=${encodeURIComponent(packet)}&phone=${normalizedPhone}&mobile=${clean10}&number=${clean10}&message=${encodeURIComponent(message)}&msg=${encodeURIComponent(message)}`
+  // Strictly match New Order SMS format: ${baseUrl}?data=${encodeURIComponent(packet)}
+  const finalUrl = `${url}?data=${encodeURIComponent(packet)}`
   const response = await fetch(finalUrl, { method: 'GET' })
 
   if (!response.ok) {
@@ -123,7 +122,9 @@ export const sendCashHandoverTransferSms = async ({ transferDoc, staffList = [],
   const staffMember =
     (staffList || []).find((s) => s.id === staffTargetId) ||
     DEFAULT_STAFF.find((s) => s.id === staffTargetId)
-  const phone = staffMember?.mobile || '7990943652'
+  const phone =
+    staffMember?.mobile ||
+    (staffTargetId === 'nilesh' ? '7990943652' : staffTargetId === 'hiteshbhai' ? '7778077617' : '7990943652')
   const isDebit = staffTargetId === fromAcc
   const entryType = isDebit ? 'debit' : 'credit'
   const fromMeta = getAccountMeta(fromAcc)

@@ -126,9 +126,10 @@ All water products are defined centrally in `src/constants/skus.js`:
 
 3. **MacroDroid Webhook Integration (`src/services/leadSmsService.js`):**
    - **Webhook URL:** `https://trigger.macrodroid.com/25efcbac-eb13-4461-ae90-3158ba6c5b90/anjani_sms`
-   - **Universal Parameter Compatibility:** The webhook query string sends all standard parameters simultaneously:
-     `?data=${packet}&phone=${normalizedPhone}&mobile=${clean10}&number=${clean10}&message=${message}&msg=${message}`
-     Where `packet = 917990943652@@@<msg>`, `normalizedPhone = 917990943652`, and `clean10 = 7990943652`. This ensures 100% compatibility whether the user's MacroDroid action splits `data` or references named variables (`phone`, `mobile`, `message`, `msg`).
+   - **Exact Contract (Matches New Order SMS):**
+     `finalUrl = `${baseUrl}?data=${encodeURIComponent(packet)}``
+     Where `packet = `${normalizedPhone}@@@${message}`` and `normalizedPhone` is `91` + 10 digits (e.g. `917990943652`).
+     Do **NOT** append extra query parameters (`phone`, `mobile`, `number`, `message`, `msg`). MacroDroid's macro is configured to parse and split `data` by `@@@` (`[data_1]` as phone, `[data_2]` as message); extra query parameters interfere with MacroDroid's variable mapping.
    - `sendCashHandoverTransferSms({ transferDoc, staffList })`: Dispatches or re-dispatches Khatabook SMS for any transfer document.
 
 4. **Cash Handover Modal UX (`src/components/CashHandoverModal.jsx`):**

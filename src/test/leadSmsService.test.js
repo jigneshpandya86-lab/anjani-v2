@@ -136,11 +136,19 @@ describe('leadSmsService', () => {
       })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
-      const calledUrl = decodeURIComponent(mockFetch.mock.calls[0][0])
-      expect(calledUrl).toContain('phone=917990943652')
-      expect(calledUrl).toContain('mobile=7990943652')
-      expect(calledUrl).toContain('Hi Nilesh, Rs. 2,100 DEBITED from cash custody')
+      const rawUrl = mockFetch.mock.calls[0][0]
+      const calledUrl = decodeURIComponent(rawUrl)
+      expect(rawUrl.startsWith(DEFAULT_MACRO_URL)).toBe(true)
+      expect(rawUrl).toContain('?data=')
+      // Exact packet format matching New Order SMS: 91 + 10 digits followed by @@@
+      expect(calledUrl).toContain('917990943652@@@Annapurna Foods: Hi Nilesh, Rs. 2,100 DEBITED from cash custody')
       expect(calledUrl).toContain('Handed over to Bank on 14-Oct.')
+      // Ensure NO extraneous query params that break MacroDroid variable mapping
+      expect(rawUrl).not.toContain('&phone=')
+      expect(rawUrl).not.toContain('&mobile=')
+      expect(rawUrl).not.toContain('&number=')
+      expect(rawUrl).not.toContain('&message=')
+      expect(rawUrl).not.toContain('&msg=')
       expect(calledUrl).not.toContain('₹') // Verify no non-ASCII ₹ currency sign
       expect(result.phone).toBe('7990943652')
       expect(result.staffMember.name).toBe('Nilesh')
@@ -160,10 +168,17 @@ describe('leadSmsService', () => {
       })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
-      const calledUrl = decodeURIComponent(mockFetch.mock.calls[0][0])
-      expect(calledUrl).toContain('phone=917990943652')
-      expect(calledUrl).toContain('Hi Nilesh, Rs. 1,500 CREDITED to cash custody')
+      const rawUrl = mockFetch.mock.calls[0][0]
+      const calledUrl = decodeURIComponent(rawUrl)
+      expect(rawUrl.startsWith(DEFAULT_MACRO_URL)).toBe(true)
+      expect(rawUrl).toContain('?data=')
+      expect(calledUrl).toContain('917990943652@@@Annapurna Foods: Hi Nilesh, Rs. 1,500 CREDITED to cash custody')
       expect(calledUrl).toContain('Received from Counter Cash on 14-Oct.')
+      expect(rawUrl).not.toContain('&phone=')
+      expect(rawUrl).not.toContain('&mobile=')
+      expect(rawUrl).not.toContain('&number=')
+      expect(rawUrl).not.toContain('&message=')
+      expect(rawUrl).not.toContain('&msg=')
       expect(result.staffMember.name).toBe('Nilesh')
     })
 

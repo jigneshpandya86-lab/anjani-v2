@@ -67,6 +67,8 @@ export default function CashHandoverModal({
       if (fromStaffList?.mobile) return fromStaffList.mobile
       const fromDefault = DEFAULT_STAFF.find((s) => s.id === accId)
       if (fromDefault?.mobile) return fromDefault.mobile
+      if (accId === 'nilesh') return '7990943652'
+      if (accId === 'hiteshbhai') return '7778077617'
       return ''
     },
     [staffList],
@@ -275,7 +277,13 @@ export default function CashHandoverModal({
 
   // Test SMS trigger directly from the MacroDroid menu
   const handleSendTestSms = async () => {
-    if (!smsPhone) {
+    const targetPhone =
+      smsPhone ||
+      targetStaff?.mobile ||
+      lookupAccountPhone(targetStaff?.id) ||
+      (targetStaff?.id === 'nilesh' ? '7990943652' : targetStaff?.id === 'hiteshbhai' ? '7778077617' : '')
+
+    if (!targetPhone) {
       toast.error('Please enter a recipient phone number first')
       return
     }
@@ -283,10 +291,10 @@ export default function CashHandoverModal({
     const testMsg = `Annapurna Foods: Test SMS via MacroDroid for ${targetStaff?.name || 'Staff'}. Webhook is working properly!`
     try {
       await sendBackgroundSms({
-        phone: smsPhone,
+        phone: targetPhone,
         message: testMsg,
       })
-      toast.success(`Test SMS dispatched to ${smsPhone}! Check recipient phone.`, { duration: 4000 })
+      toast.success(`Test SMS dispatched to ${targetPhone}! Check recipient phone.`, { duration: 4000 })
     } catch (err) {
       console.error('Test SMS failed:', err)
       toast.error(`Test SMS failed: ${err.message}`)
@@ -328,10 +336,16 @@ export default function CashHandoverModal({
 
       // 2. Send SMS via MacroDroid if enabled
       let smsSentSuccessfully = false
-      if (sendSms && smsPhone) {
+      const recipientPhone =
+        smsPhone ||
+        targetStaff?.mobile ||
+        lookupAccountPhone(targetStaff?.id) ||
+        (targetStaff?.id === 'nilesh' ? '7990943652' : targetStaff?.id === 'hiteshbhai' ? '7778077617' : '')
+
+      if (sendSms && recipientPhone) {
         try {
           await sendBackgroundSms({
-            phone: smsPhone,
+            phone: recipientPhone,
             message: smsPreviewText,
           })
           smsSentSuccessfully = true
@@ -348,7 +362,7 @@ export default function CashHandoverModal({
         toast.success(
           `₹${enteredAmount.toLocaleString('en-IN')} ${actionVerb}${entryLabel}!`,
         )
-      } else if (sendSms && !smsPhone) {
+      } else if (sendSms && !recipientPhone) {
         toast.success(
           `₹${enteredAmount.toLocaleString('en-IN')} recorded (SMS skipped: no mobile number)`,
         )
@@ -905,7 +919,19 @@ export default function CashHandoverModal({
                       <button
                         type="button"
                         onClick={handleSendTestSms}
-                        disabled={testingSms || !smsPhone}
+                        disabled={
+                          testingSms ||
+                          !(
+                            smsPhone ||
+                            targetStaff?.mobile ||
+                            lookupAccountPhone(targetStaff?.id) ||
+                            (targetStaff?.id === 'nilesh'
+                              ? '7990943652'
+                              : targetStaff?.id === 'hiteshbhai'
+                              ? '7778077617'
+                              : '')
+                          )
+                        }
                         className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-orange-100 hover:bg-orange-200 text-orange-800 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {testingSms ? 'Sending Test…' : 'Send Test SMS'}
