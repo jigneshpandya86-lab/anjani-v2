@@ -240,4 +240,30 @@ describe('CashHandoverModal Component', () => {
       expect(handleClose).toHaveBeenCalled()
     })
   })
+
+  it('renders cleanly when transitioned from closed to open without hook order violations', () => {
+    const { rerender } = render(
+      <CashHandoverModal
+        isOpen={false}
+        onClose={vi.fn()}
+        initialSource="nilesh"
+        accountsSummary={{ nilesh: 6200, counter: 15000 }}
+      />,
+    )
+
+    expect(screen.queryByRole('heading', { name: /cash handover/i })).not.toBeInTheDocument()
+
+    // Transition from closed to open (the exact user action when clicking Handover Cash)
+    rerender(
+      <CashHandoverModal
+        isOpen={true}
+        onClose={vi.fn()}
+        initialSource="nilesh"
+        accountsSummary={{ nilesh: 6200, counter: 15000 }}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { name: /cash handover/i })).toBeInTheDocument()
+    expect(screen.getByText(/From \(Payer\)/i)).toBeInTheDocument()
+  })
 })

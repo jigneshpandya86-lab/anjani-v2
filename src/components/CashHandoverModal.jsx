@@ -216,8 +216,6 @@ export default function CashHandoverModal({
     return !Number.isNaN(num) && num > 0 ? num : 0
   }, [amount])
 
-  if (!isOpen) return null
-
   const currentSourceBalance = Number(accountsSummary[fromAccountId] || 0)
   const remainingBalance = currentSourceBalance - enteredAmount
 
@@ -372,6 +370,8 @@ export default function CashHandoverModal({
       setSubmitting(false)
     }
   }
+
+  if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-150">

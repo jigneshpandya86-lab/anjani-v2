@@ -16,7 +16,8 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase-config'
 
-export { DEFAULT_STAFF } from '../constants/staff'
+import { DEFAULT_STAFF } from '../constants/staff'
+export { DEFAULT_STAFF }
 
 export const ACCOUNTS_SUMMARY_DOC = doc(db, 'accounts_summary', 'main')
 

@@ -53,10 +53,13 @@ export default function AccountsDashboard() {
 
   useEffect(() => {
     const unsub = fetchAccountsSummary()
+    if (typeof fetchStaff === 'function') {
+      fetchStaff()
+    }
     return () => {
       if (unsub) unsub()
     }
-  }, [fetchAccountsSummary])
+  }, [fetchAccountsSummary, fetchStaff])
 
   const selectedMeta = getAccountMeta(selectedAccountId)
   const currentBalance = Number(accountsSummary?.[selectedAccountId] || 0)
