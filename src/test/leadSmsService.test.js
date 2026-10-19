@@ -95,25 +95,23 @@ describe('leadSmsService', () => {
   })
 
   describe('buildLeadWhatsAppMessage', () => {
-    it('creates shortened retail-focused message mentioning owner of Anjani Water, Bailey and Bisleri', () => {
-      const msg = buildLeadWhatsAppMessage({ name: 'Rahul Patel' })
+    it('creates retail-focused message starting with Dear Sir/Madam irrespective of lead name', () => {
+      const msgWithName = buildLeadWhatsAppMessage({ name: 'Rahul Patel' })
 
-      expect(msg).toContain('Hello Rahul Patel! 👋')
-      expect(msg).toContain('owner of *Anjani Water*')
-      expect(msg).toContain('Bailey')
-      expect(msg).toContain('Bisleri')
-      expect(msg).toContain('Marriages & Family Events')
-      expect(msg).toContain('Customer Branding')
-      expect(msg).toContain('Retail & Daily Supply')
-    })
+      expect(msgWithName.startsWith('Dear Sir/Madam,')).toBe(true)
+      expect(msgWithName).not.toContain('Hello')
+      expect(msgWithName).toContain('owner of *Anjani Water*')
+      expect(msgWithName).toContain('Bailey')
+      expect(msgWithName).toContain('Bisleri')
+      expect(msgWithName).toContain('Marriages & Family Events')
+      expect(msgWithName).toContain('Customer Branding')
+      expect(msgWithName).toContain('Retail & Daily Supply')
 
-    it('handles lead without name or generic names cleanly', () => {
       const msgNoName = buildLeadWhatsAppMessage({})
-      expect(msgNoName).toContain('Hello! 👋')
-      expect(msgNoName).toContain('owner of *Anjani Water*')
+      expect(msgNoName.startsWith('Dear Sir/Madam,')).toBe(true)
 
       const msgGeneric = buildLeadWhatsAppMessage({ name: 'Call Lead' })
-      expect(msgGeneric).toContain('Hello! 👋')
+      expect(msgGeneric.startsWith('Dear Sir/Madam,')).toBe(true)
     })
   })
 

@@ -161,14 +161,9 @@ export const sendCashHandoverTransferSms = async ({ transferDoc, staffList = [],
   }
 }
 
-export const buildLeadWhatsAppMessage = (lead = {}) => {
-  const name =
-    lead?.name && !/^(call lead|shared lead|untitled|lead)$/i.test(lead.name.trim())
-      ? ` ${lead.name.trim()}`
-      : ''
-
+export const buildLeadWhatsAppMessage = (_lead = {}) => {
   return (
-    `Hello${name}! 👋\n` +
+    `Dear Sir/Madam,\n` +
     `I'm Jignesh Pandya, owner of *Anjani Water* (Vadodara). 💧\n\n` +
     `Along with *Anjani Water*, we provide *Bailey* and *Bisleri* as well at direct wholesale rates!\n\n` +
     `Looking for packaged water for:\n` +
