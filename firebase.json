@@ -55,11 +55,11 @@
         ]
       },
       {
-        "source": "/index.html",
+        "source": "@(sw.js|registerSW.js|manifest.webmanifest|index.html)",
         "headers": [
           {
             "key": "Cache-Control",
-            "value": "no-cache"
+            "value": "no-cache, no-store, must-revalidate"
           }
         ]
       }

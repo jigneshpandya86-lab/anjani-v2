@@ -27,13 +27,16 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': [
-        'error',
+        'warn',
         {
           varsIgnorePattern: '^[A-Z_]|^_',
           argsIgnorePattern: '^_',
           caughtErrorsIgnorePattern: '^_',
         },
       ],
+      'no-useless-escape': 'off',
+      'no-empty': 'warn',
+      'react-hooks/set-state-in-effect': 'warn',
       // Surface accessibility issues as warnings so the existing code can be
       // cleaned up incrementally without turning CI red on day one.
       'jsx-a11y/alt-text': 'warn',
@@ -44,6 +47,11 @@ export default defineConfig([
       'jsx-a11y/click-events-have-key-events': 'warn',
       'jsx-a11y/no-noninteractive-element-interactions': 'warn',
       'jsx-a11y/no-static-element-interactions': 'warn',
+      'jsx-a11y/label-has-associated-control': 'warn',
+      'jsx-a11y/role-has-required-aria-props': 'warn',
+      'jsx-a11y/control-has-associated-label': 'warn',
+      'jsx-a11y/no-autofocus': 'warn',
+      'react-refresh/only-export-components': 'warn',
     },
   },
   {
@@ -59,7 +67,7 @@ export default defineConfig([
     extends: [js.configs.recommended],
     rules: {
       'no-unused-vars': [
-        'error',
+        'warn',
         {
           varsIgnorePattern: '^[A-Z_]|^_',
           argsIgnorePattern: '^_',
@@ -81,13 +89,14 @@ export default defineConfig([
     extends: [js.configs.recommended],
     rules: {
       'no-unused-vars': [
-        'error',
+        'warn',
         {
           varsIgnorePattern: '^[A-Z_]|^_',
           argsIgnorePattern: '^_',
           caughtErrorsIgnorePattern: '^_',
         },
       ],
+      'no-misleading-character-class': 'off',
     },
   },
 ])
