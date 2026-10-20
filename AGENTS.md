@@ -53,6 +53,23 @@ All water products are defined centrally in `src/constants/skus.js`:
 
 ---
 
+## Orders Dashboard & Fulfillment Workflow (`src/components/OrdersDashboard.jsx`)
+1. **Primary & Default View (`Open / Confirm`):**
+   - Default filter initializes to `OpenConfirm` (`useState('OpenConfirm')`).
+   - The primary tab is **Open / Confirm** (with real-time pending count badge), followed by **Open**, **Confirmed**, **Delivered**, and **All**.
+   - Filters only active unfulfilled orders (`status === 'Pending' || status === 'Confirmed'`), hiding completed past delivered orders by default to keep the dispatch view focused.
+2. **Chronological Sorting (Older Date First):**
+   - Active orders are strictly sorted by delivery date **older first** (`aDate - bDate`, then `aTime - bTime`, then `aPrio - bPrio`).
+   - Allows delivery staff (Nilesh) and owner (Jignesh) to view dispatch sequence starting from yesterday's overdue/unfulfilled orders &rarr; today's scheduled deliveries &rarr; tomorrow's advance bookings.
+   - For historical `Delivered` tab, orders are sorted newest first (Recent to Past).
+   - In `All` tab, active orders appear on top (older first) followed by completed delivered orders below.
+3. **Relative Date Indicators:**
+   - Order cards render prominent relative date pills (`Yesterday`, `Today`, `Tomorrow`, `Xd Overdue`, `In Xd`) for instant visual distinction.
+4. **Dispatch Plan / WhatsApp Roster (`shareDispatchPlan`):**
+   - Automatically orders pending dispatches chronologically (older first) when generating the daily WhatsApp team roster.
+
+---
+
 ## Stock Ledger & Dispatches (Multi-SKU & Batch Inward)
 - Stock collection: `collection(db, 'stock')`.
 - Each stock movement document stores `{ qty, narration, type, sku, createdAt }`.

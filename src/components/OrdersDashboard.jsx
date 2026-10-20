@@ -42,7 +42,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
   const updateOrder = useClientStore((state) => state.updateOrder)
   const deleteOrder = useClientStore((state) => state.deleteOrder)
   const userRole = useClientStore((state) => state.userRole)
-  const [filter, setFilter] = useState('All')
+  const [filter, setFilter] = useState('OpenConfirm')
   const [dateFilter, setDateFilter] = useState('All')
   const [skuFilter, setSkuFilter] = useState('All')
   const [searchQuery, setSearchQuery] = useState('')
@@ -98,6 +98,42 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
     }
     return null
   }, [])
+
+  const getRelativeDateLabel = useCallback(
+    (order) => {
+      const orderDate = getOrderDate(order)
+      if (!orderDate) return null
+      const now = new Date()
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const diffMs = orderDate.getTime() - today.getTime()
+      const diffDays = Math.round(diffMs / (24 * 60 * 60 * 1000))
+
+      if (diffDays === 0) {
+        return { label: 'Today', badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200' }
+      }
+      if (diffDays === -1) {
+        return { label: 'Yesterday', badgeClass: 'bg-rose-50 text-rose-800 border-rose-200' }
+      }
+      if (diffDays < -1) {
+        return { label: `${Math.abs(diffDays)}d Overdue`, badgeClass: 'bg-rose-50 text-rose-800 border-rose-200' }
+      }
+      if (diffDays === 1) {
+        return { label: 'Tomorrow', badgeClass: 'bg-blue-50 text-blue-800 border-blue-200' }
+      }
+      if (diffDays > 1 && diffDays <= 7) {
+        return { label: `In ${diffDays}d`, badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200' }
+      }
+      return null
+    },
+    [getOrderDate],
+  )
+
+  const openConfirmCount = useMemo(() => {
+    return (orders || []).filter((o) => {
+      const s = getNormalizedOrderStatus(o.status)
+      return s === 'Pending' || s === 'Confirmed'
+    }).length
+  }, [orders])
 
   const getDisplayName = useCallback(
     (order) => {
@@ -266,7 +302,12 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
           const name = getDisplayName(o)
           const mobile = getDisplayMobile(o)
           const normStatus = getNormalizedOrderStatus(o.status)
-          const matchesStatus = filter === 'All' || normStatus === filter
+          const matchesStatus =
+            filter === 'All'
+              ? true
+              : filter === 'OpenConfirm'
+              ? normStatus === 'Pending' || normStatus === 'Confirmed'
+              : normStatus === filter
           const matchesDate = doesMatchDateFilter(o)
           const orderItems = o.items || []
           const matchesSku =
@@ -290,19 +331,44 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
           const [aPrio, aDate, aTime] = getOrderSortKey(a)
           const [bPrio, bDate, bTime] = getOrderSortKey(b)
 
-          // When showing All or Delivered, use "Recent to Past" (Descending)
-          if (filter === 'All' || filter === 'Delivered') {
+          // When explicitly viewing Delivered history tab, show newest first (Recent to Past)
+          if (filter === 'Delivered') {
             const valA = aDate === Number.MAX_VALUE ? 0 : aDate
             const valB = bDate === Number.MAX_VALUE ? 0 : bDate
             if (valA !== valB) return valB - valA
             if (aTime !== bTime) return bTime - aTime
+            return 0
+          }
+
+          // For Open / Confirm orders (OpenConfirm, Pending, Confirmed):
+          // Date order MUST be older first (ascending: yesterday -> today -> tomorrow)
+          if (filter === 'OpenConfirm' || filter === 'Pending' || filter === 'Confirmed') {
+            if (aDate !== bDate) return aDate - bDate
+            if (aTime !== bTime) return aTime - bTime
             return aPrio - bPrio
           }
 
-          // For Pending/Confirmed, keep Status Priority + Ascending Date (Earliest First)
-          if (aPrio !== bPrio) return aPrio - bPrio
-          if (aDate !== bDate) return aDate - bDate
-          return aTime - bTime
+          // For 'All' tab:
+          // Keep active orders (Pending & Confirmed) on top, sorted older first (yesterday -> today -> tomorrow).
+          // Delivered orders follow below, sorted newest first.
+          const aIsActive = aPrio < 2
+          const bIsActive = bPrio < 2
+          if (aIsActive && !bIsActive) return -1
+          if (!aIsActive && bIsActive) return 1
+
+          if (aIsActive && bIsActive) {
+            // Both active: older date first (yesterday -> today -> tomorrow)
+            if (aDate !== bDate) return aDate - bDate
+            if (aTime !== bTime) return aTime - bTime
+            return aPrio - bPrio
+          }
+
+          // Both delivered: newest date first (Recent to Past)
+          const valA = aDate === Number.MAX_VALUE ? 0 : aDate
+          const valB = bDate === Number.MAX_VALUE ? 0 : bDate
+          if (valA !== valB) return valB - valA
+          if (aTime !== bTime) return bTime - aTime
+          return 0
         }),
     [
       orders,
@@ -368,7 +434,18 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
   )
 
   const shareDispatchPlan = useCallback(() => {
-    const pending = orders.filter((o) => o.status !== 'Delivered')
+    const pending = (orders || [])
+      .filter((o) => {
+        const s = getNormalizedOrderStatus(o.status)
+        return s === 'Pending' || s === 'Confirmed'
+      })
+      .sort((a, b) => {
+        const [, aDate, aTime] = getOrderSortKey(a)
+        const [, bDate, bTime] = getOrderSortKey(b)
+        if (aDate !== bDate) return aDate - bDate
+        if (aTime !== bTime) return aTime - bTime
+        return 0
+      })
     let msg = `📋 *UPCOMING DISPATCH PLAN*\n\n`
     pending.forEach((o, i) => {
       const addr = getDisplayAddress(o)
@@ -381,7 +458,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
       msg += `${i + 1}. ${getDisplayName(o)} - ${itemsSummary} - ${o.date} ${o.time}${addrStr}\n`
     })
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
-  }, [orders, getDisplayName, getDisplayAddress])
+  }, [orders, getDisplayName, getDisplayAddress, getOrderSortKey])
 
   const callClient = useCallback(
     (order) => {
@@ -488,21 +565,33 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
 
       <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-hide px-1 items-center">
         {[
-          { key: 'All', label: 'All' },
+          { key: 'OpenConfirm', label: 'Open / Confirm', count: openConfirmCount },
           { key: 'Pending', label: 'Open' },
           { key: 'Confirmed', label: 'Confirmed' },
           { key: 'Delivered', label: 'Delivered' },
-        ].map(({ key, label }) => (
+          { key: 'All', label: 'All' },
+        ].map(({ key, label, count }) => (
           <button
             key={key}
             onClick={() => setFilter(key)}
-            className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.18em] whitespace-nowrap transition-all ${
+            className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.18em] whitespace-nowrap transition-all inline-flex items-center gap-1.5 ${
               filter === key
                 ? 'bg-[#131921] text-[#ff9900]'
                 : 'bg-white text-gray-400 border border-gray-200'
             }`}
           >
-            {label}
+            <span>{label}</span>
+            {count !== undefined && count > 0 && (
+              <span
+                className={`px-1.5 py-0.5 rounded-full text-[8px] font-black leading-none ${
+                  filter === key
+                    ? 'bg-[#ff9900] text-gray-900'
+                    : 'bg-amber-100 text-amber-800'
+                }`}
+              >
+                {count}
+              </span>
+            )}
           </button>
         ))}
 
@@ -725,7 +814,11 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
 
       {filteredOrders.length === 0 ? (
         <div className="bg-white p-10 rounded-3xl text-center border-2 border-dashed border-gray-100 text-gray-400 font-bold italic space-y-3">
-          <p>No orders found for current filter.</p>
+          <p>
+            {filter === 'OpenConfirm'
+              ? 'No open or confirmed orders pending.'
+              : 'No orders found for current filter.'}
+          </p>
           {hasMoreOrders && (
             <button
               type="button"
@@ -827,9 +920,22 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
             )}
 
             <div className="mb-4 flex items-center justify-between gap-2 bg-gray-50 p-2 rounded-lg">
-              <div className="flex items-center gap-2 text-xs font-bold text-gray-500">
-                <Clock size={14} className="text-blue-400" /> {order.date || 'No Date'} @{' '}
-                {order.time || '--:--'}
+              <div className="flex items-center gap-2 text-xs font-bold text-gray-500 flex-wrap">
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock size={14} className="text-blue-400 shrink-0" />
+                  <span>{order.date || 'No Date'} @ {order.time || '--:--'}</span>
+                </span>
+                {(() => {
+                  const rel = getRelativeDateLabel(order)
+                  if (!rel) return null
+                  return (
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${rel.badgeClass}`}
+                    >
+                      {rel.label}
+                    </span>
+                  )
+                })()}
               </div>
               {userRole === 'admin' && (
                 <div className="flex items-center gap-2">
