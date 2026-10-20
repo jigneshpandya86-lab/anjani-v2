@@ -1,4 +1,4 @@
-import { memo, useRef, useState, useMemo, useCallback } from 'react'
+import React, { memo, useRef, useState, useMemo, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { useClientStore } from '../store/clientStore'
 import {
@@ -22,6 +22,7 @@ import {
   Calendar,
   History,
   ArrowDownCircle,
+  Check,
   CheckCircle2,
   ChevronDown,
   X,
@@ -29,6 +30,7 @@ import {
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage'
 import { app } from '../firebase-config'
 import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
+import { getNormalizedOrderStatus } from '../utils/orderUtils'
 
 function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOpenBaileyOrder }) {
   const orders = useClientStore((state) => state.orders)
@@ -198,7 +200,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
 
   const getOrderSortKey = useCallback(
     (order) => {
-      const statusPrio = statusPriority[order.status] ?? 999
+      const statusPrio = statusPriority[getNormalizedOrderStatus(order.status)] ?? 999
       const dateObj = getOrderDate(order)
       const dateTime = dateObj?.getTime() ?? Number.MAX_VALUE
       const timeStr = order.time || '23:59'
@@ -263,7 +265,8 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
         .filter((o) => {
           const name = getDisplayName(o)
           const mobile = getDisplayMobile(o)
-          const matchesStatus = filter === 'All' || o.status === filter
+          const normStatus = getNormalizedOrderStatus(o.status)
+          const matchesStatus = filter === 'All' || normStatus === filter
           const matchesDate = doesMatchDateFilter(o)
           const orderItems = o.items || []
           const matchesSku =
@@ -412,10 +415,11 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
   )
 
   const getStatusColor = (status) => {
-    if (status === 'Pending') return 'bg-yellow-100 text-yellow-700'
-    if (status === 'Confirmed') return 'bg-blue-100 text-blue-700'
-    if (status === 'Delivered') return 'bg-green-100 text-green-700'
-    return 'bg-gray-100 text-gray-700'
+    const s = getNormalizedOrderStatus(status)
+    if (s === 'Pending') return 'bg-amber-100 text-amber-800 border-amber-300'
+    if (s === 'Confirmed') return 'bg-blue-100 text-blue-800 border-blue-300'
+    if (s === 'Delivered') return 'bg-emerald-100 text-emerald-800 border-emerald-300'
+    return 'bg-gray-100 text-gray-700 border-gray-200'
   }
 
   const attachDeliveryProof = (orderId) => {
@@ -483,17 +487,22 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
       </div>
 
       <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-hide px-1 items-center">
-        {['All', 'Pending', 'Confirmed', 'Delivered'].map((f) => (
+        {[
+          { key: 'All', label: 'All' },
+          { key: 'Pending', label: 'Open' },
+          { key: 'Confirmed', label: 'Confirmed' },
+          { key: 'Delivered', label: 'Delivered' },
+        ].map(({ key, label }) => (
           <button
-            key={f}
-            onClick={() => setFilter(f)}
+            key={key}
+            onClick={() => setFilter(key)}
             className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.18em] whitespace-nowrap transition-all ${
-              filter === f
+              filter === key
                 ? 'bg-[#131921] text-[#ff9900]'
                 : 'bg-white text-gray-400 border border-gray-200'
             }`}
           >
-            {f === 'Delivered' ? 'DEL' : f}
+            {label}
           </button>
         ))}
 
@@ -730,19 +739,43 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
           )}
         </div>
       ) : (
-        filteredOrders.map((order) => (
-          <div
-            key={order.id}
-            className="bg-white rounded-[24px] p-5 shadow-sm border border-gray-100"
-          >
-            <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-3">
-              <div>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span
-                    className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${getStatusColor(order.status)}`}
-                  >
-                    {order.status || 'LEGACY'}
-                  </span>
+        filteredOrders.map((order) => {
+          const normStatus = getNormalizedOrderStatus(order.status)
+          const isPending = normStatus === 'Pending'
+          const isConfirmed = normStatus === 'Confirmed'
+          const isDelivered = normStatus === 'Delivered'
+
+          return (
+            <div
+              key={order.id}
+              className={`bg-white rounded-[24px] p-5 shadow-sm border transition-all ${
+                isConfirmed
+                  ? 'border-blue-200 ring-1 ring-blue-100'
+                  : isPending
+                  ? 'border-amber-200 ring-1 ring-amber-100'
+                  : 'border-gray-100'
+              }`}
+            >
+              <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-3">
+                <div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span
+                      className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border inline-flex items-center gap-1 ${getStatusColor(normStatus)}`}
+                    >
+                      {isPending ? (
+                        <>
+                          <Clock size={11} /> Open
+                        </>
+                      ) : isConfirmed ? (
+                        <>
+                          <CheckCircle2 size={11} /> Confirmed
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 size={11} /> Delivered
+                        </>
+                      )}
+                    </span>
                   {order.items && order.items.length > 1 ? (
                     <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border border-purple-200 bg-purple-50 text-purple-800">
                       {order.items.length} SKUs
@@ -936,37 +969,80 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
                 )}
               </div>
 
-              {userRole === 'admin' && order.status === 'Pending' && (
-                <button
-                  onClick={() => handleStatusUpdate(order, 'Confirmed')}
-                  disabled={statusUpdatingOrderId === order.id}
-                  className="bg-blue-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-sm disabled:opacity-60"
-                >
-                  {statusUpdatingOrderId === order.id ? 'Updating...' : 'Confirm'}
-                </button>
-              )}
-              {userRole === 'admin' && order.status === 'Confirmed' && (
-                <button
-                  onClick={() => handleStatusUpdate(order, 'Delivered')}
-                  disabled={statusUpdatingOrderId === order.id}
-                  className="bg-green-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-sm disabled:opacity-60"
-                >
-                  {statusUpdatingOrderId === order.id ? 'Updating...' : 'Mark Delivered'}
-                </button>
-              )}
-              {order.proofUrl && (
-                <a
-                  href={order.proofUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[10px] font-black text-blue-500 underline"
-                >
-                  View Proof
-                </a>
-              )}
+              {/* Status Action / Indicator */}
+              <div className="flex items-center gap-2">
+                {userRole === 'admin' ? (
+                  <>
+                    {isPending && (
+                      <button
+                        type="button"
+                        onClick={() => handleStatusUpdate(order, 'Confirmed')}
+                        disabled={statusUpdatingOrderId === order.id}
+                        className="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-sm transition-all disabled:opacity-60 cursor-pointer flex items-center gap-1"
+                        title="Confirm order"
+                      >
+                        <Check size={12} />
+                        {statusUpdatingOrderId === order.id ? 'Updating...' : 'Confirm'}
+                      </button>
+                    )}
+                    {isConfirmed && (
+                      <button
+                        type="button"
+                        onClick={() => handleStatusUpdate(order, 'Delivered')}
+                        disabled={statusUpdatingOrderId === order.id}
+                        className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-sm transition-all disabled:opacity-60 cursor-pointer flex items-center gap-1"
+                        title="Mark order as delivered"
+                      >
+                        <CheckCircle2 size={12} />
+                        {statusUpdatingOrderId === order.id ? 'Updating...' : 'Mark Delivered'}
+                      </button>
+                    )}
+                    {isDelivered && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black uppercase tracking-wider">
+                        <CheckCircle2 size={12} className="text-emerald-600" />
+                        Delivered
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {/* Staff View (Nilesh & Delivery Staff): Prominent, explicit status indicators */}
+                    {isPending && (
+                      <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-black uppercase tracking-wider shadow-2xs">
+                        <Clock size={12} className="text-amber-600" />
+                        Open Order
+                      </span>
+                    )}
+                    {isConfirmed && (
+                      <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-black uppercase tracking-wider shadow-2xs">
+                        <CheckCircle2 size={12} className="text-blue-600" />
+                        Confirmed Order
+                      </span>
+                    )}
+                    {isDelivered && (
+                      <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-black uppercase tracking-wider shadow-2xs">
+                        <CheckCircle2 size={12} className="text-emerald-600" />
+                        Delivered
+                      </span>
+                    )}
+                  </>
+                )}
+
+                {order.proofUrl && (
+                  <a
+                    href={order.proofUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] font-black text-blue-500 underline"
+                  >
+                    View Proof
+                  </a>
+                )}
+              </div>
             </div>
           </div>
-        ))
+        )
+      })
       )}
 
       {/* ─── Bottom History & Pagination Strip ─── */}

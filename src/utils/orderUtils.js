@@ -61,6 +61,15 @@ export const normalizeOrderWriteData = (data = {}, isUpdate = false) => {
   return result
 }
 
+export const getNormalizedOrderStatus = (status) => {
+  if (!status) return 'Pending'
+  const s = String(status).trim().toLowerCase()
+  if (s === 'delivered') return 'Delivered'
+  if (s === 'confirmed') return 'Confirmed'
+  if (s === 'pending' || s === 'open' || s === 'legacy') return 'Pending'
+  return status
+}
+
 export const normalizeOrderDoc = (raw = {}) => {
   const hasLegacyProducedDelivered = raw.produced !== undefined || raw.delivered !== undefined
   const hasDirectQty =
@@ -120,6 +129,7 @@ export const normalizeOrderDoc = (raw = {}) => {
     totalAmount,
     qty: totalQty,
     sku: raw.sku || skuSummary,
+    status: getNormalizedOrderStatus(raw.status),
     rate:
       Number(raw.rate) ||
       (totalQty > 0 ? Math.round((totalAmount / totalQty) * 100) / 100 : 0),
