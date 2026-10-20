@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import {
   extractPhoneNumber,
   extractNameFromShare,
@@ -95,13 +95,56 @@ describe('shareTargetUtils', () => {
       expect(parsed.phone).toBe('9825012345')
       expect(parsed.name).toBe('Sunil Shop')
       expect(parsed.isShareTarget).toBe(true)
+      expect(parsed.hasMapLink).toBe(false)
+      expect(parsed.mapLink).toBe('')
     })
 
-    it('supports alternative parameter names (text and title)', () => {
+    it('supports alternative parameter names (text and title) for leads', () => {
       const parsed = parseShareTargetUrl('?text=9825012345&title=Client+X')
       expect(parsed).not.toBeNull()
       expect(parsed.phone).toBe('9825012345')
       expect(parsed.name).toBe('Client X')
+      expect(parsed.hasMapLink).toBe(false)
+    })
+
+    it('extracts Google Maps shortlink from share_url for New Order', () => {
+      const parsed = parseShareTargetUrl(
+        '?share_url=https://maps.app.goo.gl/abcdef12345&share_title=Store+Location',
+      )
+      expect(parsed).not.toBeNull()
+      expect(parsed.hasMapLink).toBe(true)
+      expect(parsed.mapLink).toBe('https://maps.app.goo.gl/abcdef12345')
+      expect(parsed.name).toBe('Store Location')
+    })
+
+    it('extracts Google Maps URL with lat/lng coordinates', () => {
+      const parsed = parseShareTargetUrl(
+        '?share_url=https://www.google.com/maps?q=22.3072,73.1812',
+      )
+      expect(parsed).not.toBeNull()
+      expect(parsed.hasMapLink).toBe(true)
+      expect(parsed.mapLink).toBe('https://www.google.com/maps?q=22.3072,73.1812')
+      expect(parsed.locationLat).toBeCloseTo(22.3072)
+      expect(parsed.locationLng).toBeCloseTo(73.1812)
+    })
+
+    it('handles mixed share text containing both client phone and map link', () => {
+      const parsed = parseShareTargetUrl(
+        '?share_text=Deliver+to+Ramesh+9825012345+at+https://maps.app.goo.gl/xyz123',
+      )
+      expect(parsed).not.toBeNull()
+      expect(parsed.phone).toBe('9825012345')
+      expect(parsed.hasMapLink).toBe(true)
+      expect(parsed.mapLink).toBe('https://maps.app.goo.gl/xyz123')
+    })
+
+    it('handles geo: scheme query param', () => {
+      const parsed = parseShareTargetUrl('?mapLink=geo:22.3072,73.1812')
+      expect(parsed).not.toBeNull()
+      expect(parsed.hasMapLink).toBe(true)
+      expect(parsed.mapLink).toBe('https://www.google.com/maps?q=22.3072,73.1812')
+      expect(parsed.locationLat).toBeCloseTo(22.3072)
+      expect(parsed.locationLng).toBeCloseTo(73.1812)
     })
 
     it('returns null if query string has no share parameters', () => {

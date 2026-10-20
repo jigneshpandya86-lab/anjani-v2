@@ -74,6 +74,12 @@ export default defineConfig({
             url: 'share_url',
           },
         },
+        protocol_handlers: [
+          {
+            protocol: 'geo',
+            url: '/?mapLink=%s',
+          },
+        ],
       },
       workbox: {
         importScripts: ['/firebase-messaging-sw.js'],

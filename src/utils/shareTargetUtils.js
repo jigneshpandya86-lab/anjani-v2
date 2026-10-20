@@ -1,7 +1,8 @@
 /**
  * Utility functions for handling Android Web Share Target payloads and
- * extracting phone numbers and contact names from call logs or shared text.
+ * extracting phone numbers, contact names, and map locations.
  */
+import { parseGoogleMapsLocation, extractGoogleMapsUrl } from './locationUtils'
 
 const INDIA_PHONE_REGEX = /(?:(?:\+?91|0)?[ -]?)?([6-9]\d{2}[ -]?\d{3}[ -]?\d{4}|[6-9]\d{4}[ -]?\d{5}|[6-9]\d{9})\b/
 
@@ -61,7 +62,8 @@ export const extractNameFromShare = ({ title = '', text = '', phone = '' } = {})
   // 1. If title is provided and doesn't look like just the phone number, use title
   if (cleanTitle) {
     const titleDigits = cleanTitle.replace(/\D/g, '')
-    if (titleDigits !== phone && !/^[0-9+ -]+$/.test(cleanTitle)) {
+    const isJustPhoneNumber = (phone && titleDigits === phone) || /^[0-9+ -]+$/.test(cleanTitle)
+    if (!isJustPhoneNumber) {
       return cleanTitle
     }
   }
@@ -93,7 +95,7 @@ export const extractNameFromShare = ({ title = '', text = '', phone = '' } = {})
 
 /**
  * Parses URL query parameters for Web Share Target GET requests.
- * Standard params: share_text, text, share_title, title, share_url, url.
+ * Standard params: share_text, text, share_title, title, share_url, url, mapLink, geo.
  *
  * @param {string} search - window.location.search or query string
  * @returns {Object|null}
@@ -109,15 +111,47 @@ export const parseShareTargetUrl = (search = '') => {
 
   const rawText = params.get('share_text') || params.get('text') || ''
   const rawTitle = params.get('share_title') || params.get('title') || ''
-  const rawUrl = params.get('share_url') || params.get('url') || ''
+  const rawUrl =
+    params.get('share_url') ||
+    params.get('url') ||
+    params.get('mapLink') ||
+    params.get('map') ||
+    params.get('location') ||
+    params.get('geo') ||
+    ''
 
   if (!rawText && !rawTitle && !rawUrl) {
     return null
   }
 
   const combined = [rawTitle, rawText, rawUrl].filter(Boolean).join(' ')
-  const phone = extractPhoneNumber(rawText) || extractPhoneNumber(rawTitle) || extractPhoneNumber(rawUrl) || extractPhoneNumber(combined)
+  const phone =
+    extractPhoneNumber(rawText) ||
+    extractPhoneNumber(rawTitle) ||
+    extractPhoneNumber(rawUrl) ||
+    extractPhoneNumber(combined)
   const name = extractNameFromShare({ title: rawTitle, text: rawText, phone })
+
+  // Extract Google Maps URL and coordinates (for New Order mapLink integration)
+  const mapLink =
+    extractGoogleMapsUrl(rawUrl) ||
+    extractGoogleMapsUrl(rawText) ||
+    extractGoogleMapsUrl(rawTitle) ||
+    extractGoogleMapsUrl(combined) ||
+    ''
+
+  let locationLat = null
+  let locationLng = null
+  if (mapLink) {
+    const locParsed =
+      parseGoogleMapsLocation(mapLink) ||
+      parseGoogleMapsLocation(rawUrl) ||
+      parseGoogleMapsLocation(rawText)
+    if (locParsed?.lat !== null && locParsed?.lat !== undefined) {
+      locationLat = locParsed.lat
+      locationLng = locParsed.lng
+    }
+  }
 
   return {
     rawText,
@@ -125,6 +159,10 @@ export const parseShareTargetUrl = (search = '') => {
     rawUrl,
     phone,
     name,
+    mapLink,
+    locationLat,
+    locationLng,
+    hasMapLink: Boolean(mapLink),
     isShareTarget: true,
   }
 }

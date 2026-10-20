@@ -64,6 +64,7 @@ import AccountsLedgerReportModal from './components/AccountsLedgerReportModal'
 import CustomerLedgerReportModal from './components/CustomerLedgerReportModal'
 import NetworkStatusBar from './components/NetworkStatusBar'
 import { parseShareTargetUrl } from './utils/shareTargetUtils'
+import { parseGoogleMapsLocation, extractGoogleMapsUrl } from './utils/locationUtils'
 import {
   isMobileOrNative,
   shareOrDownloadPdf,
@@ -213,7 +214,7 @@ function App() {
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [activeTab])
 
-  // Android Web Share Target handler (captures shared phone/text on launch)
+  // Android Web Share Target handler (captures shared phone/text/mapLink on launch)
   useEffect(() => {
     if (typeof window === 'undefined') return
 
@@ -222,18 +223,90 @@ function App() {
       if (parsedShare) {
         // Clean query search from URL so browser refresh does not re-trigger modal
         try {
-          const cleanUrl = window.location.pathname + (window.location.hash || '#leads')
+          const fallbackHash = parsedShare.hasMapLink ? '#orders' : '#leads'
+          const cleanUrl = window.location.pathname + (window.location.hash || fallbackHash)
           window.history.replaceState(null, '', cleanUrl)
-        } catch {}
+        } catch (err) {
+          void err
+        }
 
-        setActiveTab('leads')
-        setIncomingSharedLead(parsedShare)
+        if (parsedShare.hasMapLink) {
+          // MAP LINK SHARE -> Open New Order with pre-filled Map Link!
+          const currentClients = useClientStore.getState().clients || []
+          let matchedClient = null
+          if (parsedShare.phone) {
+            const clean = parsedShare.phone.replace(/\D/g, '').slice(-10)
+            matchedClient = currentClients.find((c) => {
+              const cp = String(c.mobile || c.phone || c.contact || '').replace(/\D/g, '').slice(-10)
+              return cp && cp === clean
+            })
+          }
+
+          setActiveTab('orders')
+          setEditOrder({
+            mapLink: parsedShare.mapLink,
+            locationLat: parsedShare.locationLat ?? null,
+            locationLng: parsedShare.locationLng ?? null,
+            location: parsedShare.name || '',
+            clientId: matchedClient ? matchedClient.id : '',
+            address: matchedClient?.address || '',
+          })
+
+          toast.success(
+            matchedClient
+              ? `📍 Map link loaded for ${matchedClient.name || 'client'}!`
+              : '📍 Map link loaded into New Order!',
+            { id: 'map-link-share-toast', duration: 4000 },
+          )
+        } else {
+          // EXISTING NUMBER / CONTACT SHARE -> Opens Leads tab (100% UNCHANGED)
+          setActiveTab('leads')
+          setIncomingSharedLead(parsedShare)
+        }
       }
     }
 
     checkIncomingShare()
     window.addEventListener('popstate', checkIncomingShare)
     return () => window.removeEventListener('popstate', checkIncomingShare)
+  }, [setActiveTab])
+
+  // Handle native Android deep links (e.g. opened via Open With: Anjani Water from Google Maps link)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const isNative = Boolean(window.Capacitor?.isNativePlatform?.())
+    if (!isNative) return
+
+    let cleanup = null
+    try {
+      const appPlugin = window.Capacitor?.Plugins?.App
+      if (appPlugin?.addListener) {
+        const listenerPromise = appPlugin.addListener('appUrlOpen', (event) => {
+          if (!event?.url) return
+          const parsed = parseGoogleMapsLocation(event.url) || { mapLink: extractGoogleMapsUrl(event.url) }
+          if (parsed?.mapLink) {
+            setActiveTab('orders')
+            setEditOrder({
+              mapLink: parsed.mapLink,
+              locationLat: parsed.lat ?? null,
+              locationLng: parsed.lng ?? null,
+            })
+            toast.success('📍 Map link loaded into New Order!', { id: 'map-link-native-toast', duration: 4000 })
+          }
+        })
+        if (listenerPromise?.then) {
+          listenerPromise.then((handle) => {
+            cleanup = () => handle?.remove?.()
+          })
+        }
+      }
+    } catch (err) {
+      console.warn('Capacitor deep-link listener initialization:', err)
+    }
+
+    return () => {
+      if (cleanup) cleanup()
+    }
   }, [setActiveTab])
 
   useEffect(() => {

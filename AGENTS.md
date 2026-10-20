@@ -50,6 +50,16 @@ All water products are defined centrally in `src/constants/skus.js`:
      - Delivery Date & Time
      - Full Address
      - Direct Google Maps navigation URL (`*Map Link:* https://maps.google.com/?api=1&query=...`)
+4. **Android Share Target & Map Link Interception (`src/utils/shareTargetUtils.js`, `src/App.jsx`):**
+   - **Additive Routing (Leads vs. Orders):**
+     - Sharing phone numbers / contact call logs without map links continues opening the **Leads** tab (`setActiveTab('leads')`) and launching `ImportCallLogModal` (100% intact).
+     - Sharing or opening Google Maps URLs (`maps.app.goo.gl`, `maps.google.com`, `goo.gl/maps`, `geo:` scheme, or decimal lat/lng) routes directly to the **Orders** tab (`setActiveTab('orders')`) and launches `OrderModal` with `mapLink`, `locationLat`, `locationLng`, and address pre-filled.
+     - If a phone number is included alongside the map link in WhatsApp text, Anjani automatically scans `clients` and preselects the matched client.
+   - **PWA Configuration (`vite.config.js`):**
+     - Web App Manifest registers `share_target` (GET) and `protocol_handlers: [{ protocol: "geo", url: "/?mapLink=%s" }]`.
+   - **Native Android APK (`.github/workflows/android-apk.yml`):**
+     - Injects `<intent-filter>` for `maps.google.com`, `maps.app.goo.gl`, and `geo:` into `AndroidManifest.xml` so Anjani appears in the system "Open with" chooser alongside Google Maps and Porter.
+     - `App.jsx` listens to Capacitor's `appUrlOpen` event to intercept native launches.
 
 ---
 
