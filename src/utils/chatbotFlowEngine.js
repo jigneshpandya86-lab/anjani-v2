@@ -59,10 +59,224 @@ export function getMainMenuMessage() {
 }
 
 /**
+ * Helper to get local date in standard YYYY-MM-DD format
+ */
+export function getLocalDateStr(d = new Date()) {
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+/**
+ * Helper to get local time in standard HH:mm format
+ */
+export function getLocalTimeStr(d = new Date()) {
+  const hh = String(d.getHours()).padStart(2, '0')
+  const min = String(d.getMinutes()).padStart(2, '0')
+  return `${hh}:${min}`
+}
+
+/**
+ * Ranks clients by usage frequency (order count and recency) so that the most
+ * frequently used clients populate the top clickable chips instead of alphabetical order.
+ */
+export function getMostUsedClients(clients = [], orders = [], limit = 8) {
+  if (!Array.isArray(clients) || clients.length === 0) return []
+
+  const orderCountById = new Map()
+  const orderCountByName = new Map()
+  const lastOrderTimeById = new Map()
+  const lastOrderTimeByName = new Map()
+
+  if (Array.isArray(orders)) {
+    for (const o of orders) {
+      const cId = o.clientId || o.customerId
+      const cName = (o.clientName || o.customerName || '').trim().toLowerCase()
+
+      let ts = 0
+      if (o.createdAt?.toMillis && typeof o.createdAt.toMillis === 'function') {
+        ts = o.createdAt.toMillis()
+      } else if (Number.isFinite(o.createdAt?.seconds)) {
+        ts = o.createdAt.seconds * 1000
+      } else if (o.date) {
+        ts = new Date(o.date).getTime() || 0
+      }
+
+      if (cId) {
+        orderCountById.set(cId, (orderCountById.get(cId) || 0) + 1)
+        if (ts > (lastOrderTimeById.get(cId) || 0)) {
+          lastOrderTimeById.set(cId, ts)
+        }
+      }
+
+      if (cName) {
+        orderCountByName.set(cName, (orderCountByName.get(cName) || 0) + 1)
+        if (ts > (lastOrderTimeByName.get(cName) || 0)) {
+          lastOrderTimeByName.set(cName, ts)
+        }
+      }
+    }
+  }
+
+  const scored = clients.map((c) => {
+    const idCount = c.id ? (orderCountById.get(c.id) || 0) : 0
+    const normName = (c.name || '').trim().toLowerCase()
+    const nameCount = normName ? (orderCountByName.get(normName) || 0) : 0
+    const totalOrders = Math.max(idCount, nameCount)
+
+    const idTime = c.id ? (lastOrderTimeById.get(c.id) || 0) : 0
+    const nameTime = normName ? (lastOrderTimeByName.get(normName) || 0) : 0
+    const lastTime = Math.max(idTime, nameTime)
+
+    return {
+      client: c,
+      totalOrders,
+      lastTime,
+      dues: Number(c.balance) || 0,
+    }
+  })
+
+  // Sort descending:
+  // 1. Most orders placed (highest usage)
+  // 2. Most recent order time (recency)
+  // 3. Outstanding balance (dues)
+  // 4. Alphabetical by name
+  scored.sort((a, b) => {
+    if (b.totalOrders !== a.totalOrders) return b.totalOrders - a.totalOrders
+    if (b.lastTime !== a.lastTime) return b.lastTime - a.lastTime
+    if (b.dues !== a.dues) return b.dues - a.dues
+    return (a.client.name || '').localeCompare(b.client.name || '')
+  })
+
+  return scored.slice(0, limit).map((s) => s.client)
+}
+
+/**
+ * Computes top clients for payment collection, prioritizing those with outstanding
+ * balance, followed by order usage frequency.
+ */
+export function getMostUsedPaymentClients(clients = [], orders = [], limit = 8) {
+  if (!Array.isArray(clients) || clients.length === 0) return []
+
+  const orderCounts = new Map()
+  if (Array.isArray(orders)) {
+    for (const o of orders) {
+      const cId = o.clientId || o.customerId
+      const cName = (o.clientName || o.customerName || '').trim().toLowerCase()
+      if (cId) orderCounts.set(cId, (orderCounts.get(cId) || 0) + 1)
+      if (cName) orderCounts.set(`name:${cName}`, (orderCounts.get(`name:${cName}`) || 0) + 1)
+    }
+  }
+
+  const scored = clients.map((c) => {
+    const dues = Number(c.balance) || 0
+    const count = Math.max(
+      c.id ? (orderCounts.get(c.id) || 0) : 0,
+      (c.name ? orderCounts.get(`name:${c.name.trim().toLowerCase()}`) : 0) || 0
+    )
+    return { client: c, dues, count }
+  })
+
+  scored.sort((a, b) => {
+    const aHasDues = a.dues > 0
+    const bHasDues = b.dues > 0
+    if (aHasDues && !bHasDues) return -1
+    if (!aHasDues && bHasDues) return 1
+    if (aHasDues && bHasDues) {
+      if (b.dues !== a.dues) return b.dues - a.dues
+      return b.count - a.count
+    }
+    if (b.count !== a.count) return b.count - a.count
+    return (a.client.name || '').localeCompare(b.client.name || '')
+  })
+
+  return scored.slice(0, limit).map((s) => s.client)
+}
+
+/**
+ * Computes the most frequently used price points for a specific SKU from historical orders,
+ * prioritizing the client's configured rate first, followed by top popular rates.
+ */
+export function getPopularRatesForSku(sku, orders = [], clientRate = 0, defaultRate = 120) {
+  const rateCounts = new Map()
+  const targetSku = (sku || '').trim().toLowerCase()
+
+  if (Array.isArray(orders)) {
+    for (const order of orders) {
+      if (Array.isArray(order.items)) {
+        for (const it of order.items) {
+          const itSku = (it.sku || '').trim().toLowerCase()
+          const r = Number(it.rate)
+          if (itSku === targetSku && Number.isFinite(r) && r > 0) {
+            rateCounts.set(r, (rateCounts.get(r) || 0) + 1)
+          }
+        }
+      } else {
+        const orderSku = (order.sku || '').trim().toLowerCase()
+        const r = Number(order.rate)
+        if (orderSku === targetSku && Number.isFinite(r) && r > 0) {
+          rateCounts.set(r, (rateCounts.get(r) || 0) + 1)
+        }
+      }
+    }
+  }
+
+  // Sort historical rates by frequency desc
+  const sortedPopularRates = [...rateCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([r]) => r)
+
+  const chips = []
+  const seenRates = new Set()
+
+  // 1. Client's own custom or recent rate first
+  const validClientRate = Number(clientRate)
+  if (Number.isFinite(validClientRate) && validClientRate > 0) {
+    chips.push({
+      label: `₹${validClientRate} (Client Rate)`,
+      value: validClientRate,
+      isPrimary: true,
+    })
+    seenRates.add(validClientRate)
+  }
+
+  // 2. Most frequently ordered rates for this SKU
+  for (const r of sortedPopularRates) {
+    if (!seenRates.has(r)) {
+      const count = rateCounts.get(r)
+      const countTag = count >= 5 ? ' (Popular)' : ''
+      chips.push({
+        label: `₹${r}${countTag}`,
+        value: r,
+      })
+      seenRates.add(r)
+      if (chips.length >= 4) break
+    }
+  }
+
+  // 3. Fallback rates around default / client rate if history is scarce
+  const base = validClientRate > 0 ? validClientRate : defaultRate
+  const fallbacks = [base, base - 5, base + 5, base - 10, base + 10, 100, 110, 120, 130, 140]
+  for (const f of fallbacks) {
+    if (f > 0 && !seenRates.has(f)) {
+      chips.push({
+        label: `₹${f}`,
+        value: f,
+      })
+      seenRates.add(f)
+      if (chips.length >= 4) break
+    }
+  }
+
+  return chips
+}
+
+/**
  * Starts a specific flow and returns the first bot prompt + chips
  */
 export function startChatbotFlow(flowType, context = {}) {
-  const { clients = [], staffList = [], accountsSummary = {} } = context
+  const { clients = [], orders = [], staffList = [], accountsSummary = {} } = context
 
   switch (flowType) {
     // ----------------------------------------------------
@@ -90,8 +304,9 @@ export function startChatbotFlow(flowType, context = {}) {
     // 2. ORDER FLOW
     // ----------------------------------------------------
     case FLOW_TYPES.ORDER: {
-      // Pick top 8 clients
-      const clientChips = (clients || []).slice(0, 8).map((c) => ({
+      // Pick top most used clients instead of alphabetical
+      const topClients = getMostUsedClients(clients, orders, 8)
+      const clientChips = topClients.map((c) => ({
         label: `👤 ${c.name}`,
         value: c.id,
         clientName: c.name,
@@ -115,11 +330,9 @@ export function startChatbotFlow(flowType, context = {}) {
     // 3. PAYMENT FLOW
     // ----------------------------------------------------
     case FLOW_TYPES.PAYMENT: {
-      // Pick top clients, prioritizing those with outstanding balance
-      const sortedClients = [...(clients || [])].sort(
-        (a, b) => (Number(b.balance) || 0) - (Number(a.balance) || 0)
-      )
-      const clientChips = sortedClients.slice(0, 8).map((c) => {
+      // Pick top clients, prioritizing those with outstanding balance, followed by most used
+      const topPaymentClients = getMostUsedPaymentClients(clients, orders, 8)
+      const clientChips = topPaymentClients.map((c) => {
         const dues = Number(c.balance) || 0
         const duesLabel = dues > 0 ? ` (Dues: ₹${dues.toLocaleString('en-IN')})` : ''
         return {
@@ -409,33 +622,32 @@ export function advanceChatbotFlow(currentFlowState, inputPayload, context = {})
 
       // Determine price
       const client = data.clientObj
-      let rate = 0
+      let clientRate = 0
       if (client) {
-        rate = Number(client.skuRates?.[data.sku] ?? client.rate ?? 0)
+        clientRate = Number(client.skuRates?.[data.sku] ?? client.rate ?? 0)
       }
-      if (rate <= 0) {
-        rate = getRecentSkuPrice(data.sku, orders, client?.id)
-      }
-      if (rate <= 0) {
-        const meta = getSkuMeta(data.sku)
-        rate = meta.defaultPrice || 120
+      if (clientRate <= 0) {
+        clientRate = getRecentSkuPrice(data.sku, orders, client?.id)
       }
 
-      const updatedData = { ...data, qty, suggestedRate: rate }
+      const meta = getSkuMeta(data.sku)
+      const defaultRate = meta.defaultPrice || 120
+      const suggestedRate = clientRate > 0 ? clientRate : defaultRate
+
+      const updatedData = { ...data, qty, suggestedRate }
+
+      const popularChips = getPopularRatesForSku(data.sku, orders, clientRate, defaultRate)
 
       return {
         flow,
         step: 'rate',
         data: updatedData,
-        text: `💰 **Step 4/5: Rate per Unit**\n\nStandard rate for **${data.clientName}** is **₹${rate}**. Select or type custom rate:`,
+        text: `💰 **Step 4/5: Rate per Unit**\n\n${clientRate > 0 ? `Standard rate for **${data.clientName}** is **₹${clientRate}**.` : `Standard rate for **${data.sku}** is **₹${defaultRate}**.`} Select from most used rates or type custom rate:`,
         chips: [
-          { label: `₹${rate} (Standard Rate)`, value: rate },
-          { label: `₹${rate - 5}`, value: rate - 5 },
-          { label: `₹${rate + 5}`, value: rate + 5 },
-          { label: `₹${rate - 10}`, value: Math.max(10, rate - 10) },
+          ...popularChips,
           { label: '❌ Cancel', action: 'cancel', isDestructive: true },
         ],
-        inputPrompt: `Enter rate (e.g. ${rate})...`,
+        inputPrompt: `Enter rate (e.g. ${suggestedRate})...`,
       }
     }
 
@@ -465,11 +677,16 @@ export function advanceChatbotFlow(currentFlowState, inputPayload, context = {})
     if (step === 'address') {
       const address = typeof inputPayload === 'object' ? inputPayload.value : String(inputPayload).trim()
       const totalAmount = (data.qty || 1) * (data.rate || 0)
+      const now = new Date()
+      const localDate = getLocalDateStr(now)
+      const localTime = getLocalTimeStr(now)
+
       const updatedData = {
         ...data,
         address: address || data.clientObj?.address || 'Standard Delivery',
         totalAmount,
-        date: new Date().toISOString(),
+        date: localDate,
+        time: localTime,
       }
 
       return {
@@ -477,7 +694,7 @@ export function advanceChatbotFlow(currentFlowState, inputPayload, context = {})
         step: 'confirm',
         data: updatedData,
         isConfirmation: true,
-        text: `📦 **Confirm Order Booking**\n\n• **Customer**: ${updatedData.clientName}\n• **Product**: ${updatedData.qty} × ${updatedData.sku}\n• **Rate**: ₹${updatedData.rate} / unit\n• **Total Amount**: ₹${totalAmount.toLocaleString('en-IN')}\n• **Delivery**: ${updatedData.address}\n• **Status**: Pending Delivery\n\nTap **Confirm Order** to book now:`,
+        text: `📦 **Confirm Order Booking**\n\n• **Customer**: ${updatedData.clientName}\n• **Product**: ${updatedData.qty} × ${updatedData.sku}\n• **Rate**: ₹${updatedData.rate} / unit\n• **Total Amount**: ₹${totalAmount.toLocaleString('en-IN')}\n• **Date**: Today (${localDate} @ ${localTime})\n• **Delivery**: ${updatedData.address}\n• **Status**: Pending Delivery\n\nTap **Confirm Order** to book now:`,
         chips: [
           { label: '✅ Confirm & Book Order', action: 'save', isPrimary: true },
           { label: '❌ Cancel', action: 'cancel', isDestructive: true },
@@ -846,8 +1063,12 @@ export async function executeFlowSave(flowType, flowData, store = {}) {
     }
 
     case FLOW_TYPES.ORDER: {
-      const { clientId, clientName, sku, qty, rate, address, totalAmount } = flowData
+      const { clientId, clientName, sku, qty, rate, address, totalAmount, date, time } = flowData
       if (!store.addOrder) throw new Error('addOrder store method not found')
+      const now = new Date()
+      const localDate = date || getLocalDateStr(now)
+      const localTime = time || getLocalTimeStr(now)
+
       const result = await store.addOrder({
         clientId,
         clientName,
@@ -856,20 +1077,24 @@ export async function executeFlowSave(flowType, flowData, store = {}) {
             sku: sku || DEFAULT_SKU,
             qty: Number(qty) || 1,
             rate: Number(rate) || 0,
-            amount: totalAmount,
+            amount: Number(totalAmount) || (Number(qty) || 1) * (Number(rate) || 0),
           },
         ],
         totalQty: Number(qty) || 1,
-        totalAmount: Number(totalAmount) || 0,
+        totalAmount: Number(totalAmount) || (Number(qty) || 1) * (Number(rate) || 0),
+        qty: Number(qty) || 1,
+        rate: Number(rate) || 0,
+        sku: sku || DEFAULT_SKU,
         address: address || '',
         location: address || '',
         status: 'Pending',
-        date: new Date().toISOString(),
+        date: localDate,
+        time: localTime,
       })
       return {
         success: true,
         result,
-        text: `✅ **Order Placed Successfully!**\n\n• Customer: ${clientName}\n• Order: ${qty} × ${sku} (@ ₹${rate})\n• Total: ₹${totalAmount.toLocaleString('en-IN')}\n• Delivery: ${address}`,
+        text: `✅ **Order Placed Successfully!**\n\n• Customer: ${clientName}\n• Order: ${qty} × ${sku} (@ ₹${rate})\n• Total: ₹${Number(totalAmount).toLocaleString('en-IN')}\n• Date: ${localDate} @ ${localTime}\n• Delivery: ${address}`,
       }
     }
 

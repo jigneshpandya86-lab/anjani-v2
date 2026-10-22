@@ -34,6 +34,29 @@ export const normalizeOrderWriteData = (data = {}, isUpdate = false) => {
     result.locationLng = Number.isFinite(Number(data.locationLng)) ? Number(data.locationLng) : null
   }
 
+  if (data.date !== undefined) {
+    if (typeof data.date === 'string' && data.date.includes('T')) {
+      const parsed = new Date(data.date)
+      if (!Number.isNaN(parsed.getTime())) {
+        const yyyy = parsed.getFullYear()
+        const mm = String(parsed.getMonth() + 1).padStart(2, '0')
+        const dd = String(parsed.getDate()).padStart(2, '0')
+        result.date = `${yyyy}-${mm}-${dd}`
+        if (!result.time) {
+          result.time = `${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`
+        }
+      }
+    } else if (data.date instanceof Date) {
+      const yyyy = data.date.getFullYear()
+      const mm = String(data.date.getMonth() + 1).padStart(2, '0')
+      const dd = String(data.date.getDate()).padStart(2, '0')
+      result.date = `${yyyy}-${mm}-${dd}`
+      if (!result.time) {
+        result.time = `${String(data.date.getHours()).padStart(2, '0')}:${String(data.date.getMinutes()).padStart(2, '0')}`
+      }
+    }
+  }
+
   if (Array.isArray(data.items) && data.items.length > 0) {
     result.items = data.items.map((it) => {
       const itQty = Number(it.qty) || 0

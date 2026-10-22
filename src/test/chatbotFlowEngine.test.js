@@ -4,6 +4,11 @@ import {
   startChatbotFlow,
   advanceChatbotFlow,
   executeFlowSave,
+  getLocalDateStr,
+  getLocalTimeStr,
+  getMostUsedClients,
+  getMostUsedPaymentClients,
+  getPopularRatesForSku,
   FLOW_TYPES,
   MAIN_MENU_CHIPS,
 } from '../utils/chatbotFlowEngine'
@@ -113,6 +118,8 @@ describe('WhatsApp-Style Chatbot Flow Engine', () => {
       const s4 = advanceChatbotFlow(s3, { value: 20 }, mockContext)
       expect(s4.step).toBe('rate')
       expect(s4.data.qty).toBe(20)
+      // Popular price chips generated for SKU
+      expect(s4.chips.some((c) => c.value === 115)).toBe(true)
 
       // Step 5: Rate selected (115)
       const s5 = advanceChatbotFlow(s4, { value: 115 }, mockContext)
@@ -124,6 +131,8 @@ describe('WhatsApp-Style Chatbot Flow Engine', () => {
       expect(s6.step).toBe('confirm')
       expect(s6.isConfirmation).toBe(true)
       expect(s6.data.totalAmount).toBe(2300) // 20 * 115
+      expect(s6.data.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      expect(s6.data.time).toMatch(/^\d{2}:\d{2}$/)
 
       // Save execution
       const mockAddOrder = vi.fn().mockResolvedValue({ id: 'ord_1' })
@@ -138,6 +147,8 @@ describe('WhatsApp-Style Chatbot Flow Engine', () => {
           totalQty: 20,
           totalAmount: 2300,
           address: 'Ajwa Road, Vadodara',
+          date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          time: expect.stringMatching(/^\d{2}:\d{2}$/),
         })
       )
     })
@@ -283,6 +294,118 @@ describe('WhatsApp-Style Chatbot Flow Engine', () => {
       expect(cancelRes.cancelled).toBe(true)
       expect(cancelRes.text).toContain('cancelled')
       expect(cancelRes.chips).toHaveLength(MAIN_MENU_CHIPS.length)
+    })
+  })
+
+  describe('Most Used Clients Frequency Ranking', () => {
+    it('ranks clients with highest order counts at the top of client chips', () => {
+      const clients = [
+        { id: 'c_a', name: 'Alka Restaurant', balance: 0 },
+        { id: 'c_b', name: 'Bombay Snacks', balance: 0 },
+        { id: 'c_z', name: 'Zodiac Hotel', balance: 0 },
+      ]
+      // Zodiac Hotel has 10 orders, Bombay Snacks has 3 orders, Alka has 0
+      const orders = [
+        ...Array(10).fill({ clientId: 'c_z' }),
+        ...Array(3).fill({ clientId: 'c_b' }),
+      ]
+
+      const ranked = getMostUsedClients(clients, orders, 8)
+      expect(ranked[0].name).toBe('Zodiac Hotel')
+      expect(ranked[1].name).toBe('Bombay Snacks')
+      expect(ranked[2].name).toBe('Alka Restaurant')
+    })
+
+    it('breaks ties using most recent order time', () => {
+      const clients = [
+        { id: 'c_1', name: 'Client One' },
+        { id: 'c_2', name: 'Client Two' },
+      ]
+      // Both have 2 orders, but c_2 has a more recent order
+      const orders = [
+        { clientId: 'c_1', date: '2026-09-01' },
+        { clientId: 'c_1', date: '2026-09-02' },
+        { clientId: 'c_2', date: '2026-09-01' },
+        { clientId: 'c_2', date: '2026-10-20' },
+      ]
+
+      const ranked = getMostUsedClients(clients, orders, 8)
+      expect(ranked[0].id).toBe('c_2')
+      expect(ranked[1].id).toBe('c_1')
+    })
+
+    it('falls back to alphabetical order when no orders exist', () => {
+      const clients = [
+        { id: 'c_z', name: 'Zaveri Sweets' },
+        { id: 'c_a', name: 'Aakash Food' },
+      ]
+      const ranked = getMostUsedClients(clients, [], 8)
+      expect(ranked[0].name).toBe('Aakash Food')
+      expect(ranked[1].name).toBe('Zaveri Sweets')
+    })
+
+    it('populates top most used clients in startChatbotFlow for ORDER flow', () => {
+      const clients = [
+        { id: 'c_a', name: 'AAA Walk-in' },
+        { id: 'c_f', name: 'Frequent Client' },
+      ]
+      const orders = [
+        { clientId: 'c_f' },
+        { clientId: 'c_f' },
+        { clientId: 'c_f' },
+      ]
+
+      const flow = startChatbotFlow(FLOW_TYPES.ORDER, { clients, orders })
+      expect(flow.chips[0].clientName).toBe('Frequent Client')
+      expect(flow.chips[1].clientName).toBe('AAA Walk-in')
+    })
+  })
+
+  describe('Most Used Pricing per SKU', () => {
+    it('prioritizes client custom rate first, followed by top popular price points for that SKU', () => {
+      const sku = '200ml Box (48 pcs)'
+      const orders = [
+        { items: [{ sku, rate: 110 }] },
+        { items: [{ sku, rate: 110 }] },
+        { items: [{ sku, rate: 110 }] },
+        { items: [{ sku, rate: 110 }] },
+        { items: [{ sku, rate: 110 }] }, // 110 used 5 times -> (Popular)
+        { items: [{ sku, rate: 120 }] },
+        { items: [{ sku, rate: 120 }] }, // 120 used 2 times
+        { items: [{ sku: '500ml (24 pcs)', rate: 140 }] }, // different SKU ignored
+      ]
+
+      const chips = getPopularRatesForSku(sku, orders, 105, 120)
+      // Client rate 105 must be first
+      expect(chips[0].value).toBe(105)
+      expect(chips[0].label).toContain('Client Rate')
+      expect(chips[0].isPrimary).toBe(true)
+
+      // Most used 110 must be next
+      expect(chips[1].value).toBe(110)
+      expect(chips[1].label).toContain('Popular')
+
+      // 120 next
+      expect(chips[2].value).toBe(120)
+
+      // Deduplication: no duplicate rates
+      const values = chips.map((c) => c.value)
+      const uniqueValues = new Set(values)
+      expect(uniqueValues.size).toBe(values.length)
+    })
+
+    it('provides smart fallback price points when historical order data is empty', () => {
+      const chips = getPopularRatesForSku('200ml Box (48 pcs)', [], 0, 120)
+      expect(chips.length).toBeGreaterThanOrEqual(4)
+      expect(chips.some((c) => c.value === 120)).toBe(true)
+    })
+  })
+
+  describe('Date and Time Format Standardization', () => {
+    it('formats local date as YYYY-MM-DD and local time as HH:mm', () => {
+      const d = new Date(2026, 9, 22, 15, 30) // 22 Oct 2026 15:30
+      expect(getLocalDateStr(d)).toBe('2026-10-22')
+      expect(getLocalTimeStr(d)).toBe('15:30')
     })
   })
 })
