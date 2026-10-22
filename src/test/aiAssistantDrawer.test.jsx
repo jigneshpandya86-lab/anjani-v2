@@ -39,6 +39,11 @@ vi.mock('../store/clientStore', () => ({
       addClient: vi.fn(),
       addPayment: vi.fn(),
       addOrder: vi.fn(),
+      addExpense: vi.fn(),
+      recordAccountTransfer: vi.fn(),
+      recordStaffAdvance: vi.fn(),
+      staffList: [],
+      accountsSummary: { balances: {} },
       aiSettings: {},
       aiPrefillPrompt: null,
       aiMemories: [
@@ -231,6 +236,32 @@ describe('AiAssistantDrawer', () => {
     fireEvent.click(toggleBtn)
     expect(toggleBtn).toHaveTextContent(/tap to open/i)
     expect(screen.queryByText('Auto-enforced to prevent mistakes')).not.toBeInTheDocument()
+
+    unmount()
+  })
+
+  it('renders WhatsApp-style bot action menu chips and initiates guided flow on click', () => {
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    expect(screen.getByText('Anjani WhatsApp-Style Assistant')).toBeInTheDocument()
+    expect(screen.getByText('💸 Record Expense')).toBeInTheDocument()
+    expect(screen.getByText('📦 Book Order')).toBeInTheDocument()
+    expect(screen.getByText('💰 Receive Payment (Jama)')).toBeInTheDocument()
+    expect(screen.getByText('🤝 Cash Handover')).toBeInTheDocument()
+    expect(screen.getByText('🚚 Staff Advance')).toBeInTheDocument()
+
+    // Click Record Expense chip
+    fireEvent.click(screen.getByText('💸 Record Expense'))
+
+    // Should prompt for Step 1 Expense Amount
+    expect(screen.getByText(/Step 1\/4: Expense Amount/i)).toBeInTheDocument()
+    expect(screen.getByText('₹500')).toBeInTheDocument()
 
     unmount()
   })

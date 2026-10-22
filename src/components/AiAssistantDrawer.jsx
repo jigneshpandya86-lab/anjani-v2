@@ -43,6 +43,14 @@ import { consolidateRetailSales } from '../utils/salesBatchUtils'
 import { ensureEnglishText, sanitizeClientForEnglish } from '../utils/textUtils'
 import { getRecentSkuPrice, formatPaymentNarration } from '../utils/orderUtils'
 import { detectMemoryIntent, isQueryingMemories, formatMemoriesForPrompt, extractStructuredRuleData } from '../utils/aiMemoryUtils'
+import {
+  getMainMenuMessage,
+  startChatbotFlow,
+  advanceChatbotFlow,
+  executeFlowSave,
+  FLOW_TYPES,
+  MAIN_MENU_CHIPS,
+} from '../utils/chatbotFlowEngine'
 
 export const SPEECH_LANGUAGES = [
   { code: 'en-IN', label: 'English', short: 'EN', hint: 'English (India)' },
@@ -75,6 +83,11 @@ export default function AiAssistantDrawer({
   const addClient = useClientStore((state) => state.addClient)
   const addPayment = useClientStore((state) => state.addPayment)
   const addOrder = useClientStore((state) => state.addOrder)
+  const addExpense = useClientStore((state) => state.addExpense)
+  const recordAccountTransfer = useClientStore((state) => state.recordAccountTransfer)
+  const recordStaffAdvance = useClientStore((state) => state.recordStaffAdvance)
+  const staffList = useClientStore((state) => state.staffList)
+  const accountsSummary = useClientStore((state) => state.accountsSummary)
   const aiSettings = useClientStore((state) => state.aiSettings)
   const aiPrefillPrompt = useClientStore((state) => state.aiPrefillPrompt)
   const aiMemories = useClientStore((state) => state.aiMemories)
@@ -83,6 +96,7 @@ export default function AiAssistantDrawer({
   const toggleAiMemory = useClientStore((state) => state.toggleAiMemory)
   const deleteAiMemory = useClientStore((state) => state.deleteAiMemory)
 
+  const [activeChatbotFlow, setActiveChatbotFlow] = useState(null)
   const [showMemoryModal, setShowMemoryModal] = useState(false)
   const [newMemoryInput, setNewMemoryInput] = useState('')
   const [newMemoryCategory, setNewMemoryCategory] = useState('general_rule')
@@ -445,6 +459,189 @@ export default function AiAssistantDrawer({
     inputRef.current?.focus()
   }
 
+  const handleChipClick = async (chip) => {
+    // 1. If starting a flow from Main Menu
+    if (chip.flow) {
+      const initialStep = startChatbotFlow(chip.flow, {
+        clients,
+        orders,
+        staffList,
+        accountsSummary,
+      })
+      if (!initialStep) return
+
+      setActiveChatbotFlow(initialStep)
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: 'usr-' + Date.now(),
+          sender: 'user',
+          text: chip.label,
+          timestamp: new Date(),
+        },
+        {
+          id: 'asst-' + (Date.now() + 1),
+          sender: 'assistant',
+          text: initialStep.text,
+          chips: initialStep.chips,
+          flowState: initialStep,
+          timestamp: new Date(),
+        },
+      ])
+      return
+    }
+
+    // 2. If quick action query (Stock / Dues / Menu)
+    if (chip.action === 'query_stock') {
+      handleSend('Current stock')
+      return
+    }
+    if (chip.action === 'query_dues') {
+      handleSend('Outstanding balances')
+      return
+    }
+    if (chip.action === 'main_menu') {
+      setActiveChatbotFlow(null)
+      const menu = getMainMenuMessage()
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: 'asst-' + Date.now(),
+          sender: 'assistant',
+          text: menu.text,
+          chips: menu.chips,
+          isMainMenu: true,
+          timestamp: new Date(),
+        },
+      ])
+      return
+    }
+
+    // 3. If cancelling active flow
+    if (chip.action === 'cancel') {
+      setActiveChatbotFlow(null)
+      const menu = getMainMenuMessage()
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: 'usr-' + Date.now(),
+          sender: 'user',
+          text: '❌ Cancelled',
+          timestamp: new Date(),
+        },
+        {
+          id: 'asst-' + (Date.now() + 1),
+          sender: 'assistant',
+          text: `❌ Action cancelled.\n\n${menu.text}`,
+          chips: menu.chips,
+          isMainMenu: true,
+          timestamp: new Date(),
+        },
+      ])
+      return
+    }
+
+    // 4. If confirming save
+    if (chip.action === 'save' && activeChatbotFlow) {
+      setLoading(true)
+      try {
+        const storeMethods = {
+          addExpense,
+          addOrder,
+          addPayment,
+          recordAccountTransfer,
+          recordStaffAdvance,
+        }
+        const saveRes = await executeFlowSave(
+          activeChatbotFlow.flow,
+          activeChatbotFlow.data,
+          storeMethods
+        )
+
+        setActiveChatbotFlow(null)
+        const menu = getMainMenuMessage()
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'usr-' + Date.now(),
+            sender: 'user',
+            text: '✅ Confirmed',
+            timestamp: new Date(),
+          },
+          {
+            id: 'asst-' + (Date.now() + 1),
+            sender: 'assistant',
+            text: `${saveRes.text}\n\n---\n${menu.text}`,
+            chips: menu.chips,
+            isMainMenu: true,
+            timestamp: new Date(),
+          },
+        ])
+        toast.success('Saved to business records!', { icon: '✅' })
+      } catch (err) {
+        console.error('Flow save error:', err)
+        toast.error('Failed to save: ' + err.message)
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+
+    // 5. Advancing active flow with selected chip
+    if (activeChatbotFlow) {
+      const nextStep = advanceChatbotFlow(activeChatbotFlow, chip, {
+        clients,
+        orders,
+        staffList,
+        accountsSummary,
+      })
+
+      if (nextStep?.cancelled) {
+        setActiveChatbotFlow(null)
+        const menu = getMainMenuMessage()
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'usr-' + Date.now(),
+            sender: 'user',
+            text: chip.label || 'Cancel',
+            timestamp: new Date(),
+          },
+          {
+            id: 'asst-' + (Date.now() + 1),
+            sender: 'assistant',
+            text: `${nextStep.text}\n\n${menu.text}`,
+            chips: menu.chips,
+            isMainMenu: true,
+            timestamp: new Date(),
+          },
+        ])
+        return
+      }
+
+      if (nextStep) {
+        setActiveChatbotFlow(nextStep)
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'usr-' + Date.now(),
+            sender: 'user',
+            text: chip.label || String(chip.value || ''),
+            timestamp: new Date(),
+          },
+          {
+            id: 'asst-' + (Date.now() + 1),
+            sender: 'assistant',
+            text: nextStep.text,
+            chips: nextStep.chips,
+            flowState: nextStep,
+            timestamp: new Date(),
+          },
+        ])
+      }
+    }
+  }
+
   const handleSend = async (customPrompt = null) => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       toast.error('AI Assistant requires an active internet connection. Manual entry is available offline.')
@@ -459,6 +656,80 @@ export default function AiAssistantDrawer({
     const isAccounts = isAccountsMode
 
     if (!query && !filePayload) return
+
+    // 1. Intercept active chatbot flow input if user typed
+    if (activeChatbotFlow && !filePayload && query) {
+      const nextStep = advanceChatbotFlow(activeChatbotFlow, query, {
+        clients,
+        orders,
+        staffList,
+        accountsSummary,
+      })
+
+      if (nextStep?.cancelled) {
+        setActiveChatbotFlow(null)
+        const menu = getMainMenuMessage()
+        setMessages((prev) => [
+          ...prev,
+          { id: 'usr-' + Date.now(), sender: 'user', text: query, timestamp: new Date() },
+          { id: 'asst-' + (Date.now() + 1), sender: 'assistant', text: `${nextStep.text}\n\n${menu.text}`, chips: menu.chips, isMainMenu: true, timestamp: new Date() },
+        ])
+        setInputMessage('')
+        return
+      }
+
+      if (nextStep) {
+        setActiveChatbotFlow(nextStep)
+        setMessages((prev) => [
+          ...prev,
+          { id: 'usr-' + Date.now(), sender: 'user', text: query, timestamp: new Date() },
+          { id: 'asst-' + (Date.now() + 1), sender: 'assistant', text: nextStep.text, chips: nextStep.chips, flowState: nextStep, timestamp: new Date() },
+        ])
+        setInputMessage('')
+        return
+      }
+    }
+
+    // 2. Intercept quick text triggers for chatbot flows
+    if (!filePayload && query) {
+      const lowerQ = query.toLowerCase().trim()
+      if (/^(menu|bot|help|main menu)$/i.test(lowerQ)) {
+        setActiveChatbotFlow(null)
+        const menu = getMainMenuMessage()
+        setMessages((prev) => [
+          ...prev,
+          { id: 'usr-' + Date.now(), sender: 'user', text: query, timestamp: new Date() },
+          { id: 'asst-' + (Date.now() + 1), sender: 'assistant', text: menu.text, chips: menu.chips, isMainMenu: true, timestamp: new Date() },
+        ])
+        setInputMessage('')
+        return
+      }
+      if (/^(expense|kharch|record expense|new expense)$/i.test(lowerQ)) {
+        setInputMessage('')
+        handleChipClick({ flow: FLOW_TYPES.EXPENSE, label: '💸 Record Expense' })
+        return
+      }
+      if (/^(new order|book order|order)$/i.test(lowerQ)) {
+        setInputMessage('')
+        handleChipClick({ flow: FLOW_TYPES.ORDER, label: '📦 Book Order' })
+        return
+      }
+      if (/^(payment|receive payment|jama|record payment)$/i.test(lowerQ)) {
+        setInputMessage('')
+        handleChipClick({ flow: FLOW_TYPES.PAYMENT, label: '💰 Receive Payment (Jama)' })
+        return
+      }
+      if (/^(cash handover|handover|cash transfer)$/i.test(lowerQ)) {
+        setInputMessage('')
+        handleChipClick({ flow: FLOW_TYPES.CASH_HANDOVER, label: '🤝 Cash Handover' })
+        return
+      }
+      if (/^(staff advance|advance|salary advance)$/i.test(lowerQ)) {
+        setInputMessage('')
+        handleChipClick({ flow: FLOW_TYPES.STAFF_ADVANCE, label: '🚚 Staff Advance' })
+        return
+      }
+    }
 
     const userMessageId = 'msg-' + Date.now()
     const newMessages = [
@@ -1226,8 +1497,34 @@ export default function AiAssistantDrawer({
         )}
       </div>
 
-        {/* Quick Action Icon Buttons (Compact, Icon-Only, Strict Sequence: Order -> Payment -> Client -> Remaining) */}
+        {/* Quick Action Icon Buttons */}
         <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-1 shrink-0">
+          {/* 0. WhatsApp Bot Menu */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveChatbotFlow(null)
+              const menu = getMainMenuMessage()
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: menu.text,
+                  chips: menu.chips,
+                  isMainMenu: true,
+                  timestamp: new Date(),
+                },
+              ])
+            }}
+            className="h-9 px-2.5 rounded-xl border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-950 font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+            title="WhatsApp Bot Menu (Expense, Order, Payment, Cash, Staff)"
+            aria-label="Bot Menu"
+          >
+            <Bot className="w-4 h-4 text-[#ff9900]" />
+            <span className="hidden sm:inline">Bot</span>
+          </button>
+
           {/* 1. Order Creation & Sales */}
           <button
             type="button"
@@ -1380,9 +1677,31 @@ export default function AiAssistantDrawer({
         {/* Message Thread */}
         <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50/50">
           {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center p-6 text-gray-400 select-none">
-              <div className="w-12 h-12 rounded-2xl bg-orange-50 border border-orange-200/70 text-amz-orange flex items-center justify-center shadow-xs">
-                <Sparkles className="w-6 h-6" />
+            <div className="h-full flex flex-col items-center justify-center text-center p-4 text-gray-700 select-none space-y-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#131921] to-gray-800 text-[#ff9900] flex items-center justify-center shadow-md">
+                <Bot className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-gray-900">Anjani WhatsApp-Style Assistant</h3>
+                <p className="text-xs text-gray-500 mt-0.5 max-w-xs mx-auto">
+                  1-Tap guided workflows for daily factory & route operations. Zero typing required!
+                </p>
+              </div>
+
+              {/* Main Menu Action Chips */}
+              <div className="w-full max-w-sm grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 text-left">
+                {MAIN_MENU_CHIPS.map((chip) => (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    onClick={() => handleChipClick(chip)}
+                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-2xs hover:scale-[1.02] active:scale-95 ${
+                      chip.color || 'bg-white text-gray-800 border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span>{chip.label}</span>
+                  </button>
+                ))}
               </div>
             </div>
           ) : (
@@ -1419,6 +1738,31 @@ export default function AiAssistantDrawer({
                 <div className="whitespace-pre-wrap leading-relaxed text-xs sm:text-sm">
                   {msg.text}
                 </div>
+
+                {/* WhatsApp-Style Interactive Selection Chips */}
+                {msg.chips && msg.chips.length > 0 && (
+                  <div className="mt-3 pt-2.5 border-t border-gray-100 flex flex-wrap gap-1.5">
+                    {msg.chips.map((chip, cIdx) => (
+                      <button
+                        key={chip.id || cIdx}
+                        type="button"
+                        disabled={loading}
+                        onClick={() => handleChipClick(chip)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-2xs active:scale-95 text-left flex items-center gap-1.5 ${
+                          chip.isPrimary
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 font-black shadow-xs'
+                            : chip.isDestructive
+                              ? 'bg-red-50 hover:bg-red-100 text-red-600 border-red-200'
+                              : chip.color
+                                ? chip.color
+                                : 'bg-gray-50 hover:bg-orange-50 text-gray-800 hover:text-black border-gray-200 hover:border-orange-300'
+                        }`}
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {/* Local vs Cloud tag */}
                 {msg.isLocal && (
@@ -2809,23 +3153,25 @@ export default function AiAssistantDrawer({
                 }
               }}
               placeholder={
-                isListening
-                  ? speechLang === 'gu-IN'
-                    ? 'સાંભળી રહ્યું છે... ગુજરાતીમાં બોલો'
-                    : speechLang === 'hi-IN'
-                      ? 'सुन रहे हैं... हिंदी में बोलें'
-                      : 'Listening in English... Speak now'
-                  : isPaymentMode
-                    ? 'Payment (e.g. Received 2000 from @Royal...)'
-                    : isClientMode
-                      ? 'New client (e.g. Shiv Dhaba, Manjalpur, 98250...)'
-                      : isSalesMode
-                        ? 'Sales order (e.g. @Client /SKU or voice...)'
-                        : isAccountsMode
-                          ? 'Cash handover / custody entry...'
-                          : filePreview
-                            ? 'Add notes or send...'
-                            : 'Type @client, /sku, voice mic, or query...'
+                activeChatbotFlow?.inputPrompt
+                  ? activeChatbotFlow.inputPrompt
+                  : isListening
+                    ? speechLang === 'gu-IN'
+                      ? 'સાંભળી રહ્યું છે... ગુજરાતીમાં બોલો'
+                      : speechLang === 'hi-IN'
+                        ? 'सुन रहे हैं... हिंदी में बोलें'
+                        : 'Listening in English... Speak now'
+                    : isPaymentMode
+                      ? 'Payment (e.g. Received 2000 from @Royal...)'
+                      : isClientMode
+                        ? 'New client (e.g. Shiv Dhaba, Manjalpur, 98250...)'
+                        : isSalesMode
+                          ? 'Sales order (e.g. @Client /SKU or voice...)'
+                          : isAccountsMode
+                            ? 'Cash handover / custody entry...'
+                            : filePreview
+                              ? 'Add notes or send...'
+                              : 'Ask bot above, type @client, /sku, or speech...'
               }
               style={{ minHeight: '42px', height: 'auto' }}
               className={`flex-1 py-2.5 px-3 border rounded-xl text-xs sm:text-sm outline-none transition-all resize-none max-h-36 overflow-y-auto leading-relaxed ${

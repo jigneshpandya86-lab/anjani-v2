@@ -466,6 +466,24 @@ export const useClientStore = create((set, get) => ({
     return transferPayload
   },
 
+  addExpense: async ({ amount, category, accountId, note, date }) => {
+    const numAmount = Number(amount)
+    if (!numAmount || numAmount <= 0) throw new Error('Valid expense amount is required')
+    const targetAccountId = accountId || 'counter'
+    const entryDate = date instanceof Date ? date : (date ? new Date(date) : new Date())
+    const payload = {
+      amount: numAmount,
+      category: category || 'Miscellaneous',
+      accountId: targetAccountId,
+      date: Timestamp.fromDate(entryDate),
+      note: note ? String(note).trim() : '',
+      createdAt: serverTimestamp(),
+    }
+    const ref = await addDoc(collection(db, 'expenses'), payload)
+    await get().recordExpenseAccountDebit(targetAccountId, numAmount)
+    return { id: ref.id, ...payload }
+  },
+
   recordExpenseAccountDebit: async (accountId, amount) => {
     const numAmount = Number(amount)
     if (!accountId || !numAmount || numAmount <= 0) return

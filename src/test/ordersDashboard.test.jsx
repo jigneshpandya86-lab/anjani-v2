@@ -201,12 +201,19 @@ describe('OrdersDashboard Staff Visibility vs Admin Visibility', () => {
   })
 
   it('sorts open/confirm orders by date older first (yesterday -> today -> tomorrow)', () => {
+    const now = new Date()
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const yesterdayStr = fmt(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))
+    const todayStr = fmt(now)
+    const tomorrowStr = fmt(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))
+    const oldStr = fmt(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 3))
+
     mockOrders = [
       {
         id: 'ord-tomorrow',
         clientName: 'Tomorrow Client',
         status: 'Pending',
-        date: '2026-10-21',
+        date: tomorrowStr,
         time: '11:00',
         qty: 15,
         sku: '200ml',
@@ -215,7 +222,7 @@ describe('OrdersDashboard Staff Visibility vs Admin Visibility', () => {
         id: 'ord-yesterday',
         clientName: 'Yesterday Client',
         status: 'Confirmed',
-        date: '2026-10-19',
+        date: yesterdayStr,
         time: '09:00',
         qty: 25,
         sku: '250ml',
@@ -224,7 +231,7 @@ describe('OrdersDashboard Staff Visibility vs Admin Visibility', () => {
         id: 'ord-today',
         clientName: 'Today Client',
         status: 'Pending',
-        date: '2026-10-20',
+        date: todayStr,
         time: '14:00',
         qty: 10,
         sku: '500ml',
@@ -233,7 +240,7 @@ describe('OrdersDashboard Staff Visibility vs Admin Visibility', () => {
         id: 'ord-delivered-old',
         clientName: 'Delivered Old Client',
         status: 'Delivered',
-        date: '2026-10-18',
+        date: oldStr,
         qty: 50,
       },
     ]
