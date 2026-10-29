@@ -1,4 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
+
+vi.mock('../firebase-config', () => ({
+  app: {},
+  db: {},
+  auth: {},
+}))
+
 import {
   getMainMenuMessage,
   startChatbotFlow,
@@ -406,6 +413,77 @@ describe('WhatsApp-Style Chatbot Flow Engine', () => {
       const d = new Date(2026, 9, 22, 15, 30) // 22 Oct 2026 15:30
       expect(getLocalDateStr(d)).toBe('2026-10-22')
       expect(getLocalTimeStr(d)).toBe('15:30')
+    })
+  })
+
+  describe('6. Staff Task Assignment Flow', () => {
+    it('guides step-by-step through staff selection, task type, description, due date, and confirmation', async () => {
+      // Step 1: Start
+      const s1 = startChatbotFlow(FLOW_TYPES.STAFF_TASK, mockContext)
+      expect(s1.step).toBe('staff')
+      expect(s1.chips.some((c) => c.value === 'nilesh')).toBe(true)
+
+      // Step 2: Select Nilesh
+      const s2 = advanceChatbotFlow(
+        s1,
+        { value: 'nilesh', staffName: 'Nilesh', staffPhone: '7990943652' },
+        mockContext,
+      )
+      expect(s2.step).toBe('taskType')
+      expect(s2.data.assignedTo).toBe('nilesh')
+      expect(s2.data.assignedStaffName).toBe('Nilesh')
+
+      // Step 3: Select Follow-up Task
+      const s3 = advanceChatbotFlow(
+        s2,
+        { value: true, isFollowUp: true },
+        mockContext,
+      )
+      expect(s3.step).toBe('taskText')
+      expect(s3.data.isFollowUp).toBe(true)
+      expect(s3.chips.some((c) => c.label.includes('Collect Empty Jars'))).toBe(true)
+
+      // Step 4: Enter Task Description
+      const s4 = advanceChatbotFlow(
+        s3,
+        'Collect 15 empty petli from Royal Hotel',
+        mockContext,
+      )
+      expect(s4.step).toBe('dueDate')
+      expect(s4.data.text).toBe('Collect 15 empty petli from Royal Hotel')
+
+      // Step 5: Select Due Date (Tomorrow)
+      const s5 = advanceChatbotFlow(
+        s4,
+        { value: 'tomorrow', days: 1 },
+        mockContext,
+      )
+      expect(s5.step).toBe('confirm')
+      expect(s5.isConfirmation).toBe(true)
+      expect(s5.text).toContain('Nilesh')
+      expect(s5.text).toContain('Collect 15 empty petli from Royal Hotel')
+      expect(s5.text).toContain('Humanized SMS Preview')
+      expect(s5.chips.some((c) => c.label.includes('Create Task Only'))).toBe(true)
+      expect(s5.chips.some((c) => c.label.includes('Send SMS to Staff'))).toBe(true)
+
+      // Save flow
+      const mockAddJob = vi.fn().mockResolvedValue({ id: 'job-999', smsSent: true })
+      const saveRes = await executeFlowSave(
+        FLOW_TYPES.STAFF_TASK,
+        { ...s5.data, sendSms: true },
+        { addStaffJob: mockAddJob },
+      )
+      expect(saveRes.success).toBe(true)
+      expect(mockAddJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: 'Collect 15 empty petli from Royal Hotel',
+          assignedTo: 'nilesh',
+          isFollowUp: true,
+          sendNotificationSms: true,
+        }),
+      )
+      expect(saveRes.text).toContain('Task Assigned Successfully')
+      expect(saveRes.text).toContain('Nilesh')
     })
   })
 })

@@ -14,6 +14,7 @@ import { ensureEnglishText, normalizeDigits } from './textUtils'
 import { getRecentSkuPrice } from './orderUtils'
 import { findMatchingClient } from './clientMatchingUtils'
 import { findMatchingSku } from './skuAliasUtils'
+import { resolveStaffMember, checkIsDayTime } from '../services/taskService'
 
 // Helper: Match SKU from text
 function matchSkuFromText(text) {
@@ -523,7 +524,10 @@ export function tryLocalIntentRoute(query, store = {}) {
     /^accounts$/i,
   ]
 
-  if (cashCustodyPatterns.some((pattern) => pattern.test(q))) {
+  if (
+    cashCustodyPatterns.some((pattern) => pattern.test(q)) &&
+    !/(?:task|tasks|kaam|follow\s*up|followup|assign|remind)\b/i.test(q)
+  ) {
     const summary = store.accountsSummary || {}
     const nileshBal = Number(summary.nilesh || 0)
     const hiteshBal = Number(summary.hiteshbhai || 0)
@@ -565,6 +569,127 @@ export function tryLocalIntentRoute(query, store = {}) {
         specificAccount: null,
         balances: { nilesh: nileshBal, hiteshbhai: hiteshBal, counter: counterBal, bank: bankBal },
         totalStaffCash,
+      },
+    }
+  }
+
+  // ==========================================
+  // SEQUENCE 4E: STAFF TASK ASSIGNMENT & FOLLOW-UP TASK CREATION
+  // ==========================================
+  const isTaskCreation =
+    /(?:assign\s+task|create\s+task|new\s+task|add\s+task|follow\s*up\s+task|task\s+for|kaam\s+aapo|kaam\s+sopo)\b/i.test(q) ||
+    (/(?:remind|follow\s*up\s+with)\s+(?:nilesh|hitesh|staff|driver)\b/i.test(q) && /(?:to|about|for|regarding)\b/i.test(q))
+
+  if (isTaskCreation) {
+    const isFollowUp = /(?:follow\s*up|reminder|recheck|revisit)\b/i.test(q)
+    let assignedStaff = resolveStaffMember('nilesh', store.staffList)
+    if (/hitesh/i.test(q)) {
+      assignedStaff = resolveStaffMember('hiteshbhai', store.staffList)
+    } else if (/nilesh/i.test(q)) {
+      assignedStaff = resolveStaffMember('nilesh', store.staffList)
+    }
+
+    // Determine due date
+    const now = new Date()
+    let dueDateStr = now.toISOString().slice(0, 10)
+    let targetLabel = 'Today'
+    if (/tomorrow|kal|kale\b/i.test(q)) {
+      const tomorrow = new Date(now)
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      dueDateStr = tomorrow.toISOString().slice(0, 10)
+      targetLabel = 'Tomorrow'
+    } else if (/in\s+2\s+days|parso\b/i.test(q)) {
+      const d2 = new Date(now)
+      d2.setDate(d2.getDate() + 2)
+      dueDateStr = d2.toISOString().slice(0, 10)
+      targetLabel = 'In 2 Days'
+    }
+
+    // Clean task description from input text
+    let taskText = rawQ
+      .replace(/^(?:assign\s+task\s+to|create\s+task\s+for|new\s+task\s+for|add\s+task\s+for|follow\s*up\s+task\s+for|task\s+for|kaam\s+aapo|kaam\s+sopo)\s+/i, '')
+      .replace(/^(?:remind|follow\s*up\s+with)\s+(?:nilesh|hitesh|staff|driver)\s+(?:to|about|for|regarding)\s+/i, '')
+      .replace(/^(?:nilesh|hiteshbhai|hitesh)\s*(?:ne|ko)?\s*(?:task|kaam)?\s*[:=]?\s*/i, '')
+      .replace(/\b(?:by\s+tomorrow|tomorrow|by\s+today|today|kale|kal)\b/gi, '')
+      .replace(/^[;:,-\s]+/, '')
+      .trim()
+
+    if (!taskText || taskText.length < 2) {
+      taskText = isFollowUp ? 'Follow up with customer on delivery / collection' : 'Delivery & customer service task'
+    }
+
+    const daytimeCheck = checkIsDayTime()
+    const staffName = assignedStaff?.name || 'Nilesh'
+    const staffPhone = assignedStaff?.mobile || '7990943652'
+
+    return {
+      handled: true,
+      type: 'staff_task_draft',
+      text: `📋 **${isFollowUp ? 'Follow-up Task' : 'New Staff Task'} Draft**:\nReady to assign task to **${staffName}** (📞 ${staffPhone}):\n• **Task**: "${taskText}"\n• **Target**: ${targetLabel} (${dueDateStr})\n• **Daytime Status**: ${
+        daytimeCheck.isDayTime
+          ? '☀️ Daytime (9 AM – 8 PM IST: Safe to SMS)'
+          : `🌙 Night time (${daytimeCheck.istTimeStr}: Daytime is 9 AM – 8 PM IST)`
+      }`,
+      data: {
+        text: taskText,
+        assignedTo: assignedStaff?.id || 'nilesh',
+        assignedStaffName: staffName,
+        staffPhone,
+        dueDate: dueDateStr,
+        targetLabel,
+        isFollowUp,
+        daytimeCheck,
+      },
+    }
+  }
+
+  // ==========================================
+  // SEQUENCE 4F: STAFF TASKS LIST & PENDING FOLLOW-UPS QUERY
+  // ==========================================
+  const isTaskQuery =
+    /^(?:tasks|staff\s+tasks|pending\s+tasks|open\s+tasks|follow\s*ups?|all\s+tasks)\b/i.test(q) ||
+    /(?:show\s+tasks|view\s+tasks|list\s+tasks|pending\s+tasks|follow\s*up\s+tasks|staff\s+tasks)\b/i.test(q) ||
+    /(?:nilesh|hitesh)\s*(?:na|ke|'s)?\s*(?:task|tasks|kaam)\b/i.test(q)
+
+  if (isTaskQuery) {
+    const allJobs = Array.isArray(store.jobs) ? store.jobs : []
+    const isNileshFilter = /nilesh/i.test(q)
+    const isHiteshFilter = /hitesh/i.test(q)
+    const staffFilter = isNileshFilter ? 'nilesh' : isHiteshFilter ? 'hiteshbhai' : null
+
+    const activeJobs = allJobs.filter((job) => {
+      const isComplete = job.stage === 'complete' || job.stage === 'archived'
+      if (isComplete) return false
+      if (staffFilter && job.assignedTo && job.assignedTo !== staffFilter) return false
+      return true
+    })
+
+    const daytimeCheck = checkIsDayTime()
+    const filterName = isNileshFilter ? 'Nilesh' : isHiteshFilter ? 'Hiteshbhai' : 'All Staff'
+
+    if (activeJobs.length === 0) {
+      return {
+        handled: true,
+        type: 'staff_tasks_list',
+        text: `📋 **Staff Tasks for ${filterName}**: All assigned tasks are currently completed! To assign a new task or follow-up, type: *"Assign task to Nilesh: collect empty jars from Krishna Hotel"*`,
+        data: {
+          tasks: [],
+          staffFilter,
+          filterName,
+          daytimeCheck,
+        },
+      }
+    }
+
+    return {
+      handled: true,
+      type: 'staff_tasks_list',
+      text: `📋 **Active Staff Tasks & Follow-ups for ${filterName}** (Found **${activeJobs.length}** open task${activeJobs.length > 1 ? 's' : ''}):\nYou can take follow-up via SMS or update stage directly from each card below:`,
+      data: {
+        tasks: activeJobs,
+        staffFilter,
+        filterName,
+        daytimeCheck,
       },
     }
   }

@@ -1,39 +1,102 @@
-import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, Timestamp, addDoc } from 'firebase/firestore';
-import { Plus, Edit2, Clock, CheckCircle, Archive } from 'lucide-react';
-import { db } from './firebase-config'; // Ensure you have this configured in your project
-import './TasksPage.css'; // Optional CSS for styling
+import React, { useState, useEffect } from 'react'
+import {
+  collection,
+  query,
+  orderBy,
+  onSnapshot,
+  doc,
+  updateDoc,
+  Timestamp,
+  addDoc,
+  serverTimestamp,
+} from 'firebase/firestore'
+import {
+  Plus,
+  Edit2,
+  Clock,
+  CheckCircle,
+  Archive,
+  Send,
+  Sparkles,
+  User,
+  Sun,
+  Moon,
+  Bot,
+} from 'lucide-react'
+import toast from 'react-hot-toast'
+import { db } from './firebase-config'
+import { DEFAULT_STAFF } from './constants/staff'
+import {
+  checkIsDayTime,
+  sendTaskFollowUpSms,
+  resolveStaffMember,
+  createStaffTaskInDb,
+} from './services/taskService'
+import './TasksPage.css'
 
-interface Job {
+export interface Job {
   id: string
   text: string
   stage: 'new' | 'due' | 'complete' | 'archived'
-  dueDate: Timestamp
+  dueDate: any
   leadId?: string
   assignedTo?: string
+  assignedStaffName?: string
+  staffPhone?: string
+  isFollowUp?: boolean
+  parentTaskId?: string
+  priority?: string
+  followUpCount?: number
+  lastFollowUpAt?: any
+  followUpHistory?: any[]
+  createdAt?: any
+  updatedAt?: any
 }
 
-const TasksPage: React.FC = () => {
+interface TasksPageProps {
+  onOpenAiAssistant?: () => void
+}
+
+const TasksPage: React.FC<TasksPageProps> = ({ onOpenAiAssistant }) => {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editForm, setEditForm] = useState({ text: '', dueDate: '' })
+  const [editForm, setEditForm] = useState({
+    text: '',
+    dueDate: '',
+    assignedTo: 'nilesh',
+    isFollowUp: false,
+  })
   const [showNewTaskForm, setShowNewTaskForm] = useState(false)
-  const [newTaskForm, setNewTaskForm] = useState({ text: '', dueDate: '' })
+  const [newTaskForm, setNewTaskForm] = useState({
+    text: '',
+    dueDate: '',
+    assignedTo: 'nilesh',
+    isFollowUp: false,
+    sendSmsNotification: false,
+  })
+  const [sendingSmsTaskId, setSendingSmsTaskId] = useState<string | null>(null)
 
   // Real-time listener for tasks
   useEffect(() => {
     const q = query(collection(db, 'Jobs'), orderBy('dueDate', 'asc'))
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedJobs = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Job[]
-      // Filter out archived tasks
-      const activeJobs = fetchedJobs.filter((job) => job.stage !== 'archived')
-      setJobs(activeJobs)
-      setLoading(false)
-    })
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const fetchedJobs = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as Job[]
+        // Filter out archived tasks
+        const activeJobs = fetchedJobs.filter((job) => job.stage !== 'archived')
+        setJobs(activeJobs)
+        setLoading(false)
+      },
+      (err) => {
+        console.error('Jobs listener error:', err)
+        setLoading(false)
+      }
+    )
 
     return () => unsubscribe()
   }, [])
@@ -41,58 +104,138 @@ const TasksPage: React.FC = () => {
   const handleStageChange = async (id: string, newStage: Job['stage']) => {
     try {
       const jobRef = doc(db, 'Jobs', id)
-      await updateDoc(jobRef, { stage: newStage, updatedAt: Timestamp.now() })
-    } catch (error) {
+      await updateDoc(jobRef, { stage: newStage, updatedAt: serverTimestamp() })
+      toast.success(
+        newStage === 'complete' ? 'Task marked completed!' : `Stage updated to ${newStage}`
+      )
+    } catch (error: any) {
       console.error('Error updating stage:', error)
+      toast.error('Error updating stage: ' + error.message)
     }
   }
 
   const startEditing = (job: Job) => {
     setEditingId(job.id)
-    const dateStr = job.dueDate ? job.dueDate.toDate().toISOString().split('T')[0] : ''
-    setEditForm({ text: job.text, dueDate: dateStr })
+    let dateStr = ''
+    if (job.dueDate?.toDate) {
+      dateStr = job.dueDate.toDate().toISOString().split('T')[0]
+    } else if (job.dueDate) {
+      try {
+        dateStr = new Date(job.dueDate).toISOString().split('T')[0]
+      } catch {
+        dateStr = ''
+      }
+    }
+    setEditForm({
+      text: job.text || '',
+      dueDate: dateStr,
+      assignedTo: job.assignedTo || 'nilesh',
+      isFollowUp: Boolean(job.isFollowUp),
+    })
   }
 
   const saveEdit = async (id: string) => {
     try {
       const jobRef = doc(db, 'Jobs', id)
-      const newDate = new Date(editForm.dueDate)
+      const newDate = editForm.dueDate ? new Date(editForm.dueDate) : new Date()
+      const staff = resolveStaffMember(editForm.assignedTo, DEFAULT_STAFF)
 
       await updateDoc(jobRef, {
         text: editForm.text,
         dueDate: Timestamp.fromDate(newDate),
-        updatedAt: Timestamp.now(),
+        assignedTo: staff?.id || editForm.assignedTo,
+        assignedStaffName: staff?.name || 'Nilesh',
+        staffPhone: staff?.mobile || '7990943652',
+        isFollowUp: Boolean(editForm.isFollowUp),
+        updatedAt: serverTimestamp(),
       })
       setEditingId(null)
-    } catch (error) {
+      toast.success('Task updated successfully!')
+    } catch (error: any) {
       console.error('Error saving task:', error)
+      toast.error('Failed to save task: ' + error.message)
     }
   }
 
   const createNewTask = async () => {
     if (!newTaskForm.text.trim()) {
-      alert('Please enter a task description')
+      toast.error('Please enter a task description')
       return
     }
 
     try {
-      const dueDate = newTaskForm.dueDate
-        ? Timestamp.fromDate(new Date(newTaskForm.dueDate))
-        : Timestamp.now()
+      const staff = resolveStaffMember(newTaskForm.assignedTo, DEFAULT_STAFF)
+      const daytime = checkIsDayTime()
+      let forceOutsideDaytime = false
 
-      await addDoc(collection(db, 'Jobs'), {
+      if (newTaskForm.sendSmsNotification && !daytime.isDayTime) {
+        const confirmSend = window.confirm(
+          `⚠️ Outside Daytime (${daytime.istTimeStr})\nDaytime working hours are 9:00 AM – 8:00 PM IST to avoid disturbing staff at night.\n\nDo you want to send assignment SMS anyway?`
+        )
+        if (!confirmSend) {
+          toast('SMS notification held. Task created for daytime.', { icon: '🌙' })
+        } else {
+          forceOutsideDaytime = true
+        }
+      }
+
+      await createStaffTaskInDb({
         text: newTaskForm.text,
-        dueDate: dueDate,
-        stage: 'new',
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
+        assignedTo: staff?.id || newTaskForm.assignedTo,
+        assignedStaffName: staff?.name || 'Nilesh',
+        staffPhone: staff?.mobile || '7990943652',
+        dueDate: newTaskForm.dueDate || new Date(),
+        isFollowUp: newTaskForm.isFollowUp,
+        sendNotificationSms: newTaskForm.sendSmsNotification,
+        forceOutsideDaytime,
       })
 
-      setNewTaskForm({ text: '', dueDate: '' })
+      toast.success(`Task assigned to ${staff?.name || 'Staff'}!`, { icon: '📋' })
+      setNewTaskForm({
+        text: '',
+        dueDate: '',
+        assignedTo: 'nilesh',
+        isFollowUp: false,
+        sendSmsNotification: false,
+      })
       setShowNewTaskForm(false)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating task:', error)
-      alert('Failed to create task')
+      toast.error('Failed to create task: ' + error.message)
+    }
+  }
+
+  const handleSendFollowUpSms = async (job: Job) => {
+    const staffName = job.assignedStaffName || (job.assignedTo === 'hiteshbhai' ? 'Hiteshbhai' : 'Nilesh')
+    const staffPhone = job.staffPhone || (job.assignedTo === 'hiteshbhai' ? '7778077617' : '7990943652')
+    const followCount = Number(job.followUpCount || 0)
+
+    const daytime = checkIsDayTime()
+    let force = false
+    if (!daytime.isDayTime) {
+      const confirmSend = window.confirm(
+        `⚠️ Outside Daytime Hours (${daytime.istTimeStr})\n\nDaytime working hours are 9:00 AM – 8:00 PM IST to avoid disturbing staff at night.\n\nDo you want to send follow-up SMS to ${staffName} anyway?`
+      )
+      if (!confirmSend) return
+      force = true
+    }
+
+    setSendingSmsTaskId(job.id)
+    try {
+      const res = await sendTaskFollowUpSms({
+        taskId: job.id,
+        staffName,
+        staffPhone,
+        taskText: job.text,
+        followUpCount: followCount,
+        forceOutsideDaytime: force,
+      })
+      toast.success(`📲 Follow-up SMS #${res.followUpCount} sent to ${staffName}!`, { icon: '✅' })
+    } catch (err: any) {
+      console.error('Follow-up SMS error:', err)
+      toast.error('Failed to send SMS: ' + err.message)
+    } finally {
+      setSendingSmsTaskId(null)
     }
   }
 
@@ -101,22 +244,25 @@ const TasksPage: React.FC = () => {
       const jobRef = doc(db, 'Jobs', id)
       await updateDoc(jobRef, {
         stage: 'archived',
-        updatedAt: Timestamp.now(),
+        updatedAt: serverTimestamp(),
       })
-    } catch (error) {
+      toast.success('Task archived')
+    } catch (error: any) {
       console.error('Error archiving task:', error)
+      toast.error('Failed to archive: ' + error.message)
     }
   }
 
-  const isOverdue = (dueDate: Timestamp): boolean => {
+  const isOverdue = (dueDate: any): boolean => {
+    if (!dueDate) return false
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    const taskDate = dueDate.toDate()
+    const taskDate = dueDate.toDate ? dueDate.toDate() : new Date(dueDate)
     taskDate.setHours(0, 0, 0, 0)
     return taskDate < today
   }
 
-  if (loading) return <div>Loading tasks...</div>
+  if (loading) return <div className="p-6 text-center text-gray-500 font-bold">Loading tasks...</div>
 
   const renderTaskColumn = (stage: Job['stage'], title: string) => {
     const columnJobs = jobs.filter((job) => job.stage === stage)
@@ -128,6 +274,10 @@ const TasksPage: React.FC = () => {
         </h3>
         {columnJobs.map((job) => {
           const overdue = isOverdue(job.dueDate)
+          const staffName = job.assignedStaffName || (job.assignedTo === 'hiteshbhai' ? 'Hiteshbhai' : 'Nilesh')
+          const staffPhone = job.staffPhone || (job.assignedTo === 'hiteshbhai' ? '7778077617' : '7990943652')
+          const followCount = Number(job.followUpCount || 0)
+
           return (
             <div key={job.id} className={`task-card ${overdue ? 'overdue' : ''}`}>
               {editingId === job.id ? (
@@ -135,39 +285,112 @@ const TasksPage: React.FC = () => {
                   <textarea
                     value={editForm.text}
                     onChange={(e) => setEditForm({ ...editForm, text: e.target.value })}
+                    placeholder="Task details"
                   />
-                  <input
-                    type="date"
-                    value={editForm.dueDate}
-                    onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })}
-                  />
-                  <button onClick={() => saveEdit(job.id)}>Save</button>
-                  <button onClick={() => setEditingId(null)}>Cancel</button>
+                  <div className="flex gap-2">
+                    <select
+                      value={editForm.assignedTo}
+                      onChange={(e) => setEditForm({ ...editForm, assignedTo: e.target.value })}
+                      className="p-1 border rounded text-xs flex-1"
+                    >
+                      {DEFAULT_STAFF.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          👤 {s.name} ({s.mobile})
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="date"
+                      value={editForm.dueDate}
+                      onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })}
+                      className="p-1 border rounded text-xs"
+                    />
+                  </div>
+                  <label className="text-xs flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editForm.isFollowUp}
+                      onChange={(e) => setEditForm({ ...editForm, isFollowUp: e.target.checked })}
+                    />
+                    <span>Follow-up task</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <button onClick={() => saveEdit(job.id)}>Save</button>
+                    <button onClick={() => setEditingId(null)}>Cancel</button>
+                  </div>
                 </div>
               ) : (
                 <>
+                  {/* Staff & Follow-up Badges */}
+                  <div className="flex items-center justify-between gap-1 mb-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                          job.assignedTo === 'hiteshbhai'
+                            ? 'bg-purple-100 text-purple-800'
+                            : 'bg-blue-100 text-blue-800'
+                        }`}
+                      >
+                        👤 {staffName}
+                      </span>
+                      {job.isFollowUp && (
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                          🔄 Follow-up
+                        </span>
+                      )}
+                      {followCount > 0 && (
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-teal-100 text-teal-800">
+                          🔔 Follow-ups: {followCount}
+                        </span>
+                      )}
+                    </div>
+                    {overdue && (
+                      <span className="text-[10px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-200 text-amber-900">
+                        Overdue
+                      </span>
+                    )}
+                  </div>
+
                   <p className="task-text">
                     <strong>{job.text}</strong>
                   </p>
+
                   <div className="task-footer">
                     <p className="task-date">
-                      {job.dueDate ? job.dueDate.toDate().toLocaleDateString() : 'No date'}
+                      {job.dueDate?.toDate
+                        ? job.dueDate.toDate().toLocaleDateString('en-IN')
+                        : job.dueDate
+                        ? new Date(job.dueDate).toLocaleDateString('en-IN')
+                        : 'No date'}
                     </p>
                     <div className="task-actions">
+                      {/* One-click Humanized Daytime SMS Follow-up */}
+                      {stage !== 'complete' && (
+                        <button
+                          onClick={() => handleSendFollowUpSms(job)}
+                          disabled={sendingSmsTaskId === job.id}
+                          title={`Send Follow-up SMS to ${staffName} (📞 ${staffPhone})`}
+                          className="icon-btn text-teal-700 hover:bg-teal-600 hover:text-white"
+                          style={{ borderColor: '#2dd4bf' }}
+                        >
+                          <Send size={15} />
+                        </button>
+                      )}
+
                       <button
                         onClick={() => startEditing(job)}
                         title="Edit task"
                         className="icon-btn"
                       >
-                        <Edit2 size={18} />
+                        <Edit2 size={16} />
                       </button>
                       {stage !== 'due' && (
                         <button
                           onClick={() => handleStageChange(job.id, 'due')}
-                          title="Set due"
+                          title="Set due / in-progress"
                           className="icon-btn"
                         >
-                          <Clock size={18} />
+                          <Clock size={16} />
                         </button>
                       )}
                       {stage !== 'complete' && (
@@ -176,7 +399,7 @@ const TasksPage: React.FC = () => {
                           title="Mark complete"
                           className="icon-btn"
                         >
-                          <CheckCircle size={18} />
+                          <CheckCircle size={16} />
                         </button>
                       )}
                       <button
@@ -184,7 +407,7 @@ const TasksPage: React.FC = () => {
                         title="Archive task"
                         className="icon-btn archive-btn"
                       >
-                        <Archive size={18} />
+                        <Archive size={16} />
                       </button>
                     </div>
                   </div>
@@ -199,31 +422,96 @@ const TasksPage: React.FC = () => {
 
   return (
     <div className="tasks-page">
-      <div className="tasks-header">
-        <h2>Staff Tasks Assignment</h2>
-      </div>
+      <div className="tasks-header flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <h2>Staff Tasks Assignment</h2>
+          <p className="text-xs text-gray-500 font-medium mt-0.5">
+            AI-powered task tracking, daytime SMS follow-up, and assignments for delivery staff
+          </p>
+        </div>
 
-      <button
-        onClick={() => setShowNewTaskForm(!showNewTaskForm)}
-        className="new-task-btn"
-        title="Create new task"
-      >
-        <Plus size={24} />
-      </button>
+        <div className="flex items-center gap-2">
+          {onOpenAiAssistant && (
+            <button
+              onClick={onOpenAiAssistant}
+              className="bg-[#131921] hover:bg-black text-[#ff9900] px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+              title="Open AI Chatbot for Staff Tasks"
+            >
+              <Sparkles className="w-4 h-4 text-[#ff9900]" />
+              <span>AI Chatbot</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setShowNewTaskForm(!showNewTaskForm)}
+            className="new-task-btn"
+            title="Create new task"
+          >
+            <Plus size={24} />
+          </button>
+        </div>
+      </div>
 
       {showNewTaskForm && (
         <div className="new-task-form">
-          <h3>Create New Task</h3>
+          <h3>Create New Staff Task</h3>
           <textarea
-            placeholder="Task description"
+            placeholder="Task description (e.g. Collect 20 empty jars from Krishna Hotel)"
             value={newTaskForm.text}
             onChange={(e) => setNewTaskForm({ ...newTaskForm, text: e.target.value })}
           />
-          <input
-            type="date"
-            value={newTaskForm.dueDate}
-            onChange={(e) => setNewTaskForm({ ...newTaskForm, dueDate: e.target.value })}
-          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 my-2">
+            <div>
+              <label className="text-xs font-bold text-gray-700 block mb-1">
+                Assign To Staff Member:
+              </label>
+              <select
+                value={newTaskForm.assignedTo}
+                onChange={(e) => setNewTaskForm({ ...newTaskForm, assignedTo: e.target.value })}
+                className="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold outline-none"
+              >
+                {DEFAULT_STAFF.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    👤 {s.name} ({s.role} • 📞 {s.mobile})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-700 block mb-1">Target Due Date:</label>
+              <input
+                type="date"
+                value={newTaskForm.dueDate}
+                onChange={(e) => setNewTaskForm({ ...newTaskForm, dueDate: e.target.value })}
+                className="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 my-2 text-xs font-semibold">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={newTaskForm.isFollowUp}
+                onChange={(e) => setNewTaskForm({ ...newTaskForm, isFollowUp: e.target.checked })}
+              />
+              <span>Is Follow-up Task?</span>
+            </label>
+
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={newTaskForm.sendSmsNotification}
+                onChange={(e) =>
+                  setNewTaskForm({ ...newTaskForm, sendSmsNotification: e.target.checked })
+                }
+              />
+              <span>Send SMS Notification to Staff (Daytime)</span>
+            </label>
+          </div>
+
           <div className="form-actions">
             <button onClick={createNewTask} className="save-btn">
               Create Task
@@ -231,7 +519,13 @@ const TasksPage: React.FC = () => {
             <button
               onClick={() => {
                 setShowNewTaskForm(false)
-                setNewTaskForm({ text: '', dueDate: '' })
+                setNewTaskForm({
+                  text: '',
+                  dueDate: '',
+                  assignedTo: 'nilesh',
+                  isFollowUp: false,
+                  sendSmsNotification: false,
+                })
               }}
               className="cancel-btn"
             >

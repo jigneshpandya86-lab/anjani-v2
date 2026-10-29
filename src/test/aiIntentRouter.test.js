@@ -1,4 +1,11 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+vi.mock('../firebase-config', () => ({
+  app: {},
+  db: {},
+  auth: {},
+}))
+
 import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
 
 describe('aiIntentRouter', () => {
@@ -177,6 +184,56 @@ describe('aiIntentRouter', () => {
     expect(result.type).toBe('create_client')
     expect(result.type).not.toBe('order_draft')
     expect(result.data.mobile).toBe('9825012345')
+  })
+
+  it('handles staff task assignment intent for Nilesh with target date', () => {
+    const fakeStore = {
+      staffList: [{ id: 'nilesh', name: 'Nilesh', mobile: '7990943652' }],
+    }
+    const result = tryLocalIntentRoute('Assign task to Nilesh: collect empty jars from Krishna Hotel by tomorrow', fakeStore)
+    expect(result).not.toBeNull()
+    expect(result.handled).toBe(true)
+    expect(result.type).toBe('staff_task_draft')
+    expect(result.data.assignedTo).toBe('nilesh')
+    expect(result.data.assignedStaffName).toBe('Nilesh')
+    expect(result.data.staffPhone).toBe('7990943652')
+    expect(result.data.targetLabel).toBe('Tomorrow')
+    expect(result.data.text).toContain('collect empty jars from Krishna Hotel')
+  })
+
+  it('handles follow-up task creation for Hitesh', () => {
+    const fakeStore = {
+      staffList: [{ id: 'hiteshbhai', name: 'Hiteshbhai', mobile: '7778077617' }],
+    }
+    const result = tryLocalIntentRoute('Create follow up task for Hitesh regarding payment collection from Radhe Store', fakeStore)
+    expect(result).not.toBeNull()
+    expect(result.handled).toBe(true)
+    expect(result.type).toBe('staff_task_draft')
+    expect(result.data.isFollowUp).toBe(true)
+    expect(result.data.assignedTo).toBe('hiteshbhai')
+    expect(result.data.assignedStaffName).toBe('Hiteshbhai')
+    expect(result.data.text).toContain('payment collection from Radhe Store')
+  })
+
+  it('handles staff tasks query intent and filters active jobs', () => {
+    const fakeStore = {
+      jobs: [
+        { id: 'j1', text: 'Deliver 15 boxes to Royal Hotel', assignedTo: 'nilesh', stage: 'new' },
+        { id: 'j2', text: 'Vehicle servicing', assignedTo: 'hiteshbhai', stage: 'due' },
+        { id: 'j3', text: 'Old done task', assignedTo: 'nilesh', stage: 'complete' },
+      ],
+    }
+
+    const allResult = tryLocalIntentRoute('show staff tasks', fakeStore)
+    expect(allResult).not.toBeNull()
+    expect(allResult.type).toBe('staff_tasks_list')
+    expect(allResult.data.tasks).toHaveLength(2)
+
+    const nileshResult = tryLocalIntentRoute('nilesh na task', fakeStore)
+    expect(nileshResult).not.toBeNull()
+    expect(nileshResult.type).toBe('staff_tasks_list')
+    expect(nileshResult.data.tasks).toHaveLength(1)
+    expect(nileshResult.data.tasks[0].id).toBe('j1')
   })
 })
 

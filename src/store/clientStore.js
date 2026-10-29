@@ -47,6 +47,11 @@ import {
   deleteSalarySettlement as deleteSalarySettlementApi,
   restoreExcessAdvance as restoreExcessAdvanceApi,
 } from '../services/staffSalaryService'
+import {
+  createStaffTaskInDb,
+  sendTaskFollowUpSms,
+  checkIsDayTime,
+} from '../services/taskService'
 
 let stockUnsubscribe = null
 let stockSubscriberCount = 0
@@ -63,6 +68,8 @@ let staffTransactionsUnsubscribe = null
 let staffTransactionsSubscriberCount = 0
 let salarySettlementsUnsubscribe = null
 let salarySettlementsSubscriberCount = 0
+let jobsUnsubscribe = null
+let jobsSubscriberCount = 0
 const STOCK_SUMMARY_DOC = doc(db, 'meta', 'stockSummary')
 const ACCOUNTS_SUMMARY_DOC = doc(db, 'meta', 'accountsSummary')
 const RECENT_STOCK_ENTRIES_LIMIT = 50
@@ -162,6 +169,8 @@ export const useClientStore = create((set, get) => ({
   staffTransactionsLoading: false,
   salarySettlements: [],
   salarySettlementsLoading: false,
+  jobs: [],
+  jobsLoading: false,
 
   fetchUserRole: async (uid) => {
     if (!uid) {
@@ -1223,6 +1232,51 @@ export const useClientStore = create((set, get) => ({
 
   restoreExcessAdvance: async (payload) => {
     return await restoreExcessAdvanceApi(payload)
+  },
+
+  fetchJobs: () => {
+    jobsSubscriberCount += 1
+    if (!jobsUnsubscribe) {
+      set({ jobsLoading: true })
+      const q = query(collection(db, 'Jobs'), orderBy('dueDate', 'asc'))
+      jobsUnsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const list = snapshot.docs
+            .map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+            }))
+            .filter((j) => j.stage !== 'archived')
+          set({ jobs: list, jobsLoading: false })
+        },
+        (err) => {
+          console.error('[Jobs] subscription error:', err)
+          set({ jobsLoading: false })
+        },
+      )
+    }
+
+    return () => {
+      jobsSubscriberCount = Math.max(0, jobsSubscriberCount - 1)
+      if (jobsSubscriberCount === 0 && jobsUnsubscribe) {
+        jobsUnsubscribe()
+        jobsUnsubscribe = null
+      }
+    }
+  },
+
+  addStaffJob: async (taskData) => {
+    return await createStaffTaskInDb(taskData)
+  },
+
+  updateStaffJobStage: async (id, newStage) => {
+    const jobRef = doc(db, 'Jobs', id)
+    await updateDoc(jobRef, { stage: newStage, updatedAt: serverTimestamp() })
+  },
+
+  sendStaffJobFollowUp: async (params) => {
+    return await sendTaskFollowUpSms(params)
   },
 
   updateStaffProfile: async (employeeId, data) => {

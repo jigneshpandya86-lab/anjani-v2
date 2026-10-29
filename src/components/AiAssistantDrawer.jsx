@@ -30,6 +30,8 @@ import {
   ArrowLeft,
   ChevronDown,
   Brain,
+  Sun,
+  Moon,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
@@ -51,6 +53,12 @@ import {
   FLOW_TYPES,
   MAIN_MENU_CHIPS,
 } from '../utils/chatbotFlowEngine'
+import {
+  checkIsDayTime,
+  buildHumanLikeFollowUpMessage,
+  buildNewTaskAssignmentMessage,
+  sendTaskFollowUpSms,
+} from '../services/taskService'
 
 export const SPEECH_LANGUAGES = [
   { code: 'en-IN', label: 'English', short: 'EN', hint: 'English (India)' },
@@ -88,6 +96,11 @@ export default function AiAssistantDrawer({
   const recordStaffAdvance = useClientStore((state) => state.recordStaffAdvance)
   const staffList = useClientStore((state) => state.staffList)
   const accountsSummary = useClientStore((state) => state.accountsSummary)
+  const jobs = useClientStore((state) => state.jobs || [])
+  const fetchJobs = useClientStore((state) => state.fetchJobs)
+  const addStaffJob = useClientStore((state) => state.addStaffJob)
+  const updateStaffJobStage = useClientStore((state) => state.updateStaffJobStage)
+  const sendStaffJobFollowUp = useClientStore((state) => state.sendStaffJobFollowUp)
   const aiSettings = useClientStore((state) => state.aiSettings)
   const aiPrefillPrompt = useClientStore((state) => state.aiPrefillPrompt)
   const aiMemories = useClientStore((state) => state.aiMemories)
@@ -115,6 +128,9 @@ export default function AiAssistantDrawer({
   const [createdClients, setCreatedClients] = useState({})
   const [recordedPayments, setRecordedPayments] = useState({})
   const [placedOrders, setPlacedOrders] = useState({})
+  const [createdTasks, setCreatedTasks] = useState({})
+  const [sentFollowUps, setSentFollowUps] = useState({})
+  const [sendingFollowUpId, setSendingFollowUpId] = useState(null)
 
   const [messages, setMessages] = useState([])
 
@@ -166,6 +182,11 @@ export default function AiAssistantDrawer({
     const unsub = fetchAiMemories?.()
     return () => unsub?.()
   }, [fetchAiMemories])
+
+  useEffect(() => {
+    const unsub = fetchJobs?.()
+    return () => unsub?.()
+  }, [fetchJobs])
 
   const handleAddNewMemoryManual = async (e) => {
     e?.preventDefault()
@@ -500,6 +521,10 @@ export default function AiAssistantDrawer({
       handleSend('Outstanding balances')
       return
     }
+    if (chip.action === 'query_tasks') {
+      handleSend('show staff tasks')
+      return
+    }
     if (chip.action === 'main_menu') {
       setActiveChatbotFlow(null)
       const menu = getMainMenuMessage()
@@ -545,16 +570,23 @@ export default function AiAssistantDrawer({
     if (chip.action === 'save' && activeChatbotFlow) {
       setLoading(true)
       try {
+        const flowDataWithAction = {
+          ...activeChatbotFlow.data,
+          ...(chip.sendSms !== undefined ? { sendSms: chip.sendSms } : {}),
+        }
         const storeMethods = {
           addExpense,
           addOrder,
           addPayment,
           recordAccountTransfer,
           recordStaffAdvance,
+          addStaffJob,
+          sendStaffJobFollowUp,
+          jobs,
         }
         const saveRes = await executeFlowSave(
           activeChatbotFlow.flow,
-          activeChatbotFlow.data,
+          flowDataWithAction,
           storeMethods
         )
 
@@ -594,6 +626,7 @@ export default function AiAssistantDrawer({
         orders,
         staffList,
         accountsSummary,
+        jobs,
       })
 
       if (nextStep?.cancelled) {
@@ -845,6 +878,9 @@ export default function AiAssistantDrawer({
         stockEntries,
         orders,
         clients,
+        staffList,
+        accountsSummary,
+        jobs,
         isClientMode: isClient,
         isPaymentMode: isPayment,
         isSalesMode: isSales,
@@ -1497,8 +1533,8 @@ export default function AiAssistantDrawer({
         )}
       </div>
 
-        {/* Quick Action Icon Buttons */}
-        <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-1 shrink-0">
+        {/* Clutter-Free Quick Action Navigation Strip */}
+        <div className="px-2.5 py-1.5 bg-gray-50/90 border-b border-gray-200 flex items-center gap-1.5 overflow-x-auto scrollbar-hide shrink-0 text-xs select-none">
           {/* 0. WhatsApp Bot Menu */}
           <button
             type="button"
@@ -1517,15 +1553,32 @@ export default function AiAssistantDrawer({
                 },
               ])
             }}
-            className="h-9 px-2.5 rounded-xl border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-950 font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
-            title="WhatsApp Bot Menu (Expense, Order, Payment, Cash, Staff)"
+            className="h-8 px-2.5 rounded-full border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-950 font-black text-[11px] flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs"
+            title="WhatsApp Bot Menu"
             aria-label="Bot Menu"
           >
-            <Bot className="w-4 h-4 text-[#ff9900]" />
-            <span className="hidden sm:inline">Bot</span>
+            <Bot className="w-3.5 h-3.5 text-[#ff9900]" />
+            <span>Bot Menu</span>
           </button>
 
-          {/* 1. Order Creation & Sales */}
+          {/* 1. Staff Tasks (AI Powered & SMS Follow-up) */}
+          <button
+            type="button"
+            onClick={() => handleSend('show staff tasks')}
+            className="h-8 px-2.5 rounded-full border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-900 font-bold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs"
+            title="Staff Tasks Assignment & SMS Follow-ups"
+            aria-label="Staff Tasks"
+          >
+            <span className="text-xs">📋</span>
+            <span>Staff Tasks</span>
+            {jobs.filter((j) => j && j.stage !== 'complete' && j.stage !== 'archived').length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-teal-200 text-teal-900 font-black text-[9px]">
+                {jobs.filter((j) => j && j.stage !== 'complete' && j.stage !== 'archived').length}
+              </span>
+            )}
+          </button>
+
+          {/* 2. Order Creation & Sales */}
           <button
             type="button"
             onClick={() => {
@@ -1540,18 +1593,19 @@ export default function AiAssistantDrawer({
                 return next
               })
             }}
-            className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer shadow-2xs ${
+            className={`h-8 px-2.5 rounded-full border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs text-[11px] font-bold ${
               isSalesMode
                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                : 'bg-white text-gray-700 border-gray-200 hover:border-emerald-600 hover:text-emerald-600 hover:bg-emerald-50/50'
+                : 'bg-white text-gray-700 border-gray-200 hover:border-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50'
             }`}
-            title="1. Order Creation & Daily Sales (Camera / Text)"
+            title="1. Order Creation & Daily Sales"
             aria-label="Order Creation"
           >
-            <ClipboardList className={`w-4 h-4 ${isSalesMode ? 'text-white' : 'text-emerald-600'}`} />
+            <ClipboardList className={`w-3.5 h-3.5 ${isSalesMode ? 'text-white' : 'text-emerald-600'}`} />
+            <span>Orders</span>
           </button>
 
-          {/* 2. Receive Payment */}
+          {/* 3. Receive Payment */}
           <button
             type="button"
             onClick={() => {
@@ -1566,18 +1620,19 @@ export default function AiAssistantDrawer({
                 return next
               })
             }}
-            className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer shadow-2xs ${
+            className={`h-8 px-2.5 rounded-full border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs text-[11px] font-bold ${
               isPaymentMode
                 ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
-                : 'bg-white text-gray-700 border-gray-200 hover:border-emerald-700 hover:text-emerald-700 hover:bg-emerald-50/50'
+                : 'bg-white text-gray-700 border-gray-200 hover:border-emerald-700 hover:text-emerald-800 hover:bg-emerald-50/50'
             }`}
-            title="2. Receive Payment / Scan UPI Slip (Camera / Text)"
+            title="2. Receive Payment / Scan UPI"
             aria-label="Receive Payment"
           >
-            <IndianRupee className={`w-4 h-4 ${isPaymentMode ? 'text-white' : 'text-emerald-700'}`} />
+            <IndianRupee className={`w-3.5 h-3.5 ${isPaymentMode ? 'text-white' : 'text-emerald-700'}`} />
+            <span>Payment</span>
           </button>
 
-          {/* 3. Add Client */}
+          {/* 4. Add Client */}
           <button
             type="button"
             onClick={() => {
@@ -1592,29 +1647,31 @@ export default function AiAssistantDrawer({
                 return next
               })
             }}
-            className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer shadow-2xs ${
+            className={`h-8 px-2.5 rounded-full border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs text-[11px] font-bold ${
               isClientMode
                 ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
                 : 'bg-white text-gray-700 border-gray-200 hover:border-amz-orange hover:text-amz-orange hover:bg-orange-50/50'
             }`}
-            title="3. Add New Client / Visiting Card Scan (Camera / Text)"
+            title="3. Add New Client"
             aria-label="Add Client"
           >
-            <UserPlus className={`w-4 h-4 ${isClientMode ? 'text-white' : 'text-amz-orange'}`} />
+            <UserPlus className={`w-3.5 h-3.5 ${isClientMode ? 'text-white' : 'text-amz-orange'}`} />
+            <span>New Client</span>
           </button>
 
-          {/* 4. Camera OCR: Scan Photo / Slip */}
+          {/* 5. Camera OCR: Scan Photo */}
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="w-9 h-9 bg-white border border-gray-200 hover:border-amz-orange hover:bg-orange-50/50 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-2xs"
-            title="Scan Photo (Vendor Bill / UPI Screenshot / Visiting Card / Sales Slip)"
+            className="h-8 px-2.5 bg-white border border-gray-200 hover:border-amz-orange hover:bg-orange-50/50 rounded-full flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs text-[11px] font-bold text-gray-700"
+            title="Scan Photo (Vendor Bill / UPI Screenshot / Visiting Card)"
             aria-label="Scan Photo"
           >
-            <Camera className="w-4 h-4 text-gray-700" />
+            <Camera className="w-3.5 h-3.5 text-gray-700" />
+            <span>Scan</span>
           </button>
 
-          {/* 5. Accounts & Staff Cash */}
+          {/* 6. Accounts & Staff Cash */}
           <button
             type="button"
             onClick={() => {
@@ -1629,48 +1686,52 @@ export default function AiAssistantDrawer({
                 return next
               })
             }}
-            className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer shadow-2xs ${
+            className={`h-8 px-2.5 rounded-full border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs text-[11px] font-bold ${
               isAccountsMode
                 ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                 : 'bg-white text-gray-700 border-gray-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50/50'
             }`}
-            title="Accounts & Staff Cash (Handovers, Collections, Expenses)"
+            title="Accounts & Staff Cash (Nilesh, Hiteshbhai, Counter, Bank)"
             aria-label="Accounts & Staff Cash"
           >
-            <ArrowRightLeft className={`w-4 h-4 ${isAccountsMode ? 'text-white' : 'text-blue-600'}`} />
+            <ArrowRightLeft className={`w-3.5 h-3.5 ${isAccountsMode ? 'text-white' : 'text-blue-600'}`} />
+            <span>Staff Cash</span>
           </button>
 
-          {/* 6. Current Stock */}
+          {/* 7. Current Stock */}
           <button
             type="button"
             onClick={() => handleSend('Current stock')}
-            className="w-9 h-9 bg-white border border-gray-200 hover:border-indigo-500 hover:bg-indigo-50/50 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+            className="h-8 px-2.5 bg-white border border-gray-200 hover:border-indigo-500 hover:bg-indigo-50/50 rounded-full flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs text-[11px] font-bold text-gray-700"
             title="Check Warehouse Stock"
             aria-label="Current Stock"
           >
-            <Package className="w-4 h-4 text-indigo-600" />
+            <Package className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Stock</span>
           </button>
 
-          {/* 7. Today Deliveries */}
+          {/* 8. Today Deliveries */}
           <button
             type="button"
             onClick={() => handleSend('Pending orders today')}
-            className="w-9 h-9 bg-white border border-gray-200 hover:border-cyan-600 hover:bg-cyan-50/50 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+            className="h-8 px-2.5 bg-white border border-gray-200 hover:border-cyan-600 hover:bg-cyan-50/50 rounded-full flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs text-[11px] font-bold text-gray-700"
             title="Today's Pending Deliveries"
             aria-label="Today Deliveries"
           >
-            <Truck className="w-4 h-4 text-cyan-600" />
+            <Truck className="w-3.5 h-3.5 text-cyan-600" />
+            <span>Dispatch</span>
           </button>
 
-          {/* 8. Outstanding Dues */}
+          {/* 9. Outstanding Dues */}
           <button
             type="button"
             onClick={() => handleSend('Outstanding balances')}
-            className="w-9 h-9 bg-white border border-gray-200 hover:border-purple-500 hover:bg-purple-50/50 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+            className="h-8 px-2.5 bg-white border border-gray-200 hover:border-purple-500 hover:bg-purple-50/50 rounded-full flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs text-[11px] font-bold text-gray-700"
             title="Customer Outstanding Dues"
             aria-label="Outstanding Balances"
           >
-            <CreditCard className="w-4 h-4 text-purple-600" />
+            <CreditCard className="w-3.5 h-3.5 text-purple-600" />
+            <span>Dues</span>
           </button>
         </div>
 
@@ -2833,6 +2894,308 @@ export default function AiAssistantDrawer({
                         Manage Accounts & Handovers ➔
                       </button>
                     </div>
+                  </div>
+                )}
+
+                {/* 6. Interactive Staff Task Assignment Draft Card */}
+                {msg.type === 'staff_task_draft' && msg.data && (
+                  <div className="mt-3 bg-white border border-teal-200 rounded-xl p-3.5 space-y-3 text-xs text-gray-800 shadow-sm">
+                    <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center font-bold text-sm">
+                          📋
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-extrabold text-gray-900 text-sm">
+                              {msg.data.isFollowUp ? 'Follow-up Task' : 'Staff Task'}
+                            </span>
+                            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black uppercase bg-teal-100 text-teal-800">
+                              {msg.data.assignedStaffName}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-gray-500">
+                            Target: <strong>{msg.data.targetLabel || 'Today'}</strong> ({msg.data.dueDate}) • 📞 {msg.data.staffPhone}
+                          </p>
+                        </div>
+                      </div>
+                      {createdTasks[msg.id] && (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-700 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Assigned
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Task Description */}
+                    <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-200 text-gray-900 font-semibold text-xs leading-relaxed">
+                      "{msg.data.text}"
+                    </div>
+
+                    {/* Daytime status notice */}
+                    <div className={`p-2 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 ${
+                      msg.data.daytimeCheck?.isDayTime
+                        ? 'bg-amber-50/80 border border-amber-200 text-amber-900'
+                        : 'bg-indigo-50/80 border border-indigo-200 text-indigo-900'
+                    }`}>
+                      {msg.data.daytimeCheck?.isDayTime ? (
+                        <>
+                          <Sun className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>☀️ <strong>Daytime Hours ({msg.data.daytimeCheck?.istTimeStr || 'IST'})</strong>: Safe to notify staff via SMS</span>
+                        </>
+                      ) : (
+                        <>
+                          <Moon className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                          <span>🌙 <strong>Night Hours ({msg.data.daytimeCheck?.istTimeStr || 'IST'})</strong>: SMS held to avoid disturbing staff (9 AM–8 PM)</span>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    {!createdTasks[msg.id] ? (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await addStaffJob({
+                                text: msg.data.text,
+                                assignedTo: msg.data.assignedTo,
+                                assignedStaffName: msg.data.assignedStaffName,
+                                staffPhone: msg.data.staffPhone,
+                                dueDate: msg.data.dueDate,
+                                isFollowUp: msg.data.isFollowUp,
+                                sendNotificationSms: false,
+                              })
+                              setCreatedTasks((prev) => ({ ...prev, [msg.id]: true }))
+                              toast.success(`Task assigned to ${msg.data.assignedStaffName}!`, { icon: '📋' })
+                            } catch (err) {
+                              toast.error('Failed to create task: ' + err.message)
+                            }
+                          }}
+                          className="flex-1 bg-gray-900 hover:bg-black text-white font-bold py-2 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                        >
+                          <Check className="w-3.5 h-3.5 text-teal-400" />
+                          <span>Create Task</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const daytime = checkIsDayTime()
+                            let force = false
+                            if (!daytime.isDayTime) {
+                              const confirmSend = window.confirm(
+                                `⚠️ Outside Daytime Hours (${daytime.istTimeStr})\n\nDaytime is 9:00 AM – 8:00 PM IST to avoid disturbing staff at night.\n\nDo you want to send SMS to ${msg.data.assignedStaffName} anyway?`
+                              )
+                              if (!confirmSend) return
+                              force = true
+                            }
+                            try {
+                              await addStaffJob({
+                                text: msg.data.text,
+                                assignedTo: msg.data.assignedTo,
+                                assignedStaffName: msg.data.assignedStaffName,
+                                staffPhone: msg.data.staffPhone,
+                                dueDate: msg.data.dueDate,
+                                isFollowUp: msg.data.isFollowUp,
+                                sendNotificationSms: true,
+                                forceOutsideDaytime: force,
+                              })
+                              setCreatedTasks((prev) => ({ ...prev, [msg.id]: true }))
+                              toast.success(
+                                `Task assigned & SMS dispatched to ${msg.data.assignedStaffName}!`,
+                                { icon: '📲' }
+                              )
+                            } catch (err) {
+                              toast.error('Failed to assign task: ' + err.message)
+                            }
+                          }}
+                          className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Create & SMS Staff</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-center py-1 text-teal-800 font-bold text-[11px] bg-teal-50 rounded-lg">
+                        ✓ Task active on Staff Tasks Board
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 7. Interactive Staff Tasks List & Follow-ups Card */}
+                {msg.type === 'staff_tasks_list' && msg.data && (
+                  <div className="mt-3 bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-2.5 text-xs">
+                    <div className="flex items-center justify-between border-b border-gray-200/80 pb-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-extrabold text-gray-900 text-sm">
+                          📋 Staff Tasks ({msg.data.tasks?.length || 0})
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-cyan-100 text-cyan-800">
+                          {msg.data.filterName || 'All'}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onNavigateTab?.('tasks')
+                          onClose()
+                        }}
+                        className="text-[11px] font-bold text-cyan-700 hover:text-cyan-900 flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Open Board</span> ➔
+                      </button>
+                    </div>
+
+                    {msg.data.tasks?.length === 0 ? (
+                      <div className="text-center py-4 text-gray-500 text-xs italic bg-white rounded-lg border border-dashed border-gray-200">
+                        No active tasks. Tap below to assign a new task.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {msg.data.tasks.map((task) => {
+                          const staffName = task.assignedStaffName || (task.assignedTo === 'hiteshbhai' ? 'Hiteshbhai' : 'Nilesh')
+                          const staffPhone = task.staffPhone || (task.assignedTo === 'hiteshbhai' ? '7778077617' : '7990943652')
+                          const followCount = Number(task.followUpCount || 0)
+                          const isDone = task.stage === 'complete' || task.stage === 'archived'
+
+                          return (
+                            <div
+                              key={task.id}
+                              className={`p-2.5 rounded-lg border transition-all ${
+                                isDone
+                                  ? 'bg-gray-100 border-gray-200 opacity-60'
+                                  : 'bg-white border-gray-200 shadow-2xs hover:border-teal-300'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-1.5 mb-1.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-black uppercase ${
+                                    task.assignedTo === 'hiteshbhai'
+                                      ? 'bg-purple-100 text-purple-800'
+                                      : 'bg-blue-100 text-blue-800'
+                                  }`}>
+                                    👤 {staffName}
+                                  </span>
+                                  {task.isFollowUp && (
+                                    <span className="px-1.5 py-0.2 rounded text-[10px] font-black uppercase bg-amber-100 text-amber-800">
+                                      🔄 Follow-up
+                                    </span>
+                                  )}
+                                  {followCount > 0 && (
+                                    <span className="px-1.5 py-0.2 rounded text-[10px] font-black bg-teal-100 text-teal-800">
+                                      🔔 Follow-ups: {followCount}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-gray-400 font-semibold shrink-0">
+                                  {task.dueDate?.toDate ? task.dueDate.toDate().toLocaleDateString('en-IN') : 'Active'}
+                                </span>
+                              </div>
+
+                              <p className="font-bold text-gray-900 text-xs mb-2 leading-snug">
+                                {task.text}
+                              </p>
+
+                              {/* Action Buttons for each task */}
+                              <div className="flex items-center gap-1.5 pt-1 border-t border-gray-100 flex-wrap">
+                                {/* 1. Take Follow-up via SMS */}
+                                <button
+                                  type="button"
+                                  disabled={isDone || sendingFollowUpId === task.id}
+                                  onClick={async () => {
+                                    const daytime = checkIsDayTime()
+                                    let force = false
+                                    if (!daytime.isDayTime) {
+                                      const confirmSend = window.confirm(
+                                        `⚠️ Outside Daytime Hours (${daytime.istTimeStr})\n\nDaytime working hours are 9:00 AM – 8:00 PM IST to avoid disturbing staff at night.\n\nDo you want to send follow-up SMS to ${staffName} anyway?`
+                                      )
+                                      if (!confirmSend) return
+                                      force = true
+                                    }
+
+                                    setSendingFollowUpId(task.id)
+                                    try {
+                                      const res = await sendStaffJobFollowUp({
+                                        taskId: task.id,
+                                        staffName,
+                                        staffPhone,
+                                        taskText: task.text,
+                                        followUpCount: followCount,
+                                        forceOutsideDaytime: force,
+                                      })
+                                      setSentFollowUps((prev) => ({
+                                        ...prev,
+                                        [task.id]: (prev[task.id] || followCount) + 1,
+                                      }))
+                                      toast.success(
+                                        `📲 Follow-up SMS #${res.followUpCount} sent to ${staffName}!`,
+                                        { icon: '✅' }
+                                      )
+                                      setMessages((prev) => [
+                                        ...prev,
+                                        {
+                                          id: 'asst-' + Date.now(),
+                                          sender: 'assistant',
+                                          text: `📲 **Follow-up SMS Sent to ${staffName}** (📞 ${staffPhone}):\n_"${res.message}"_\n\n• **Follow-up Count**: #${res.followUpCount}\n• **Time**: ${res.istTime} (${daytime.isDayTime ? '☀️ Daytime' : '🌙 Night (Overridden)'})`,
+                                          timestamp: new Date(),
+                                        },
+                                      ])
+                                    } catch (err) {
+                                      toast.error('Failed to send follow-up SMS: ' + err.message)
+                                    } finally {
+                                      setSendingFollowUpId(null)
+                                    }
+                                  }}
+                                  className="px-2 py-1 rounded bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+                                  title="Send human-like follow-up SMS to staff"
+                                >
+                                  <Send className="w-3 h-3 text-teal-600" />
+                                  <span>
+                                    {sendingFollowUpId === task.id
+                                      ? 'Sending...'
+                                      : `SMS Follow-up${followCount > 0 ? ` (#${followCount + 1})` : ''}`}
+                                  </span>
+                                </button>
+
+                                {/* 2. Mark Complete */}
+                                <button
+                                  type="button"
+                                  disabled={isDone}
+                                  onClick={async () => {
+                                    try {
+                                      await updateStaffJobStage(task.id, 'complete')
+                                      toast.success('Task marked completed!')
+                                    } catch (err) {
+                                      toast.error('Failed to update: ' + err.message)
+                                    }
+                                  }}
+                                  className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                                >
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                  <span>Mark Done</span>
+                                </button>
+
+                                {/* 3. Add Follow-up Task */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setInputMessage(`Follow up task for ${staffName}: ${task.text}`)
+                                    inputRef.current?.focus()
+                                  }}
+                                  className="px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                                  title="Create a new follow-up task based on this task"
+                                >
+                                  <Plus className="w-3 h-3 text-amber-600" />
+                                  <span>+ Follow-up</span>
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

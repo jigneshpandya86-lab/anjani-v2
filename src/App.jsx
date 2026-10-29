@@ -1241,7 +1241,9 @@ function App() {
               {userRole === 'admin' && <DefaulterReminderSettings />}
             </div>
           )}
-          {activeTab === 'tasks' && <TasksPage />}
+          {activeTab === 'tasks' && (
+            <TasksPage onOpenAiAssistant={() => setAiDrawerOpen(true)} />
+          )}
           {activeTab === 'intelligence' && <IntelligenceDashboard />}
           {activeTab === 'celebrations' && <CelebrationsTab />}
           {activeTab === 'expenses' && userRole === 'admin' && (

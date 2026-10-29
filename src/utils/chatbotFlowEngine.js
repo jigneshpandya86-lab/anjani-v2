@@ -17,6 +17,14 @@ import { WATER_SKUS, getSkuMeta, DEFAULT_SKU } from '../constants/skus'
 import { findMatchingClient } from './clientMatchingUtils'
 import { getRecentSkuPrice } from './orderUtils'
 import { DEFAULT_ACCOUNTS } from '../constants/accounts'
+import { DEFAULT_STAFF } from '../constants/staff'
+import {
+  checkIsDayTime,
+  buildHumanLikeFollowUpMessage,
+  buildNewTaskAssignmentMessage,
+  resolveStaffMember,
+  createStaffTaskInDb,
+} from '../services/taskService'
 
 export const FLOW_TYPES = {
   EXPENSE: 'expense',
@@ -24,9 +32,12 @@ export const FLOW_TYPES = {
   PAYMENT: 'payment',
   CASH_HANDOVER: 'cash_handover',
   STAFF_ADVANCE: 'staff_advance',
+  STAFF_TASK: 'staff_task',
 }
 
 export const MAIN_MENU_CHIPS = [
+  { id: 'flow_task', label: '📋 Assign Staff Task', flow: FLOW_TYPES.STAFF_TASK, color: 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100' },
+  { id: 'quick_tasks', label: '⏰ Staff Tasks & Follow-up', action: 'query_tasks', color: 'bg-cyan-50 text-cyan-700 border-cyan-200 hover:bg-cyan-100' },
   { id: 'flow_expense', label: '💸 Record Expense', flow: FLOW_TYPES.EXPENSE, color: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100' },
   { id: 'flow_order', label: '📦 Book Order', flow: FLOW_TYPES.ORDER, color: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' },
   { id: 'flow_payment', label: '💰 Receive Payment (Jama)', flow: FLOW_TYPES.PAYMENT, color: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' },
@@ -415,6 +426,34 @@ export function startChatbotFlow(flowType, context = {}) {
         step: 'staff',
         data: {},
         text: `🚚 **Step 1/4: Select Staff Member**\n\nWho are you giving advance to?`,
+        chips: [
+          ...staffChips,
+          { label: '❌ Cancel', action: 'cancel', isDestructive: true },
+        ],
+        inputPrompt: 'Select staff member...',
+      }
+    }
+
+    // ----------------------------------------------------
+    // 6. STAFF TASK ASSIGNMENT FLOW
+    // ----------------------------------------------------
+    case FLOW_TYPES.STAFF_TASK: {
+      const staffMembers = (staffList && staffList.length > 0)
+        ? staffList
+        : DEFAULT_STAFF
+
+      const staffChips = staffMembers.map((s) => ({
+        label: `👤 ${s.name}`,
+        value: s.id,
+        staffName: s.name,
+        staffPhone: s.mobile || '7990943652',
+      }))
+
+      return {
+        flow: FLOW_TYPES.STAFF_TASK,
+        step: 'staff',
+        data: {},
+        text: `📋 **Step 1/4: Select Staff Member**\n\nAssign task to which staff member?`,
         chips: [
           ...staffChips,
           { label: '❌ Cancel', action: 'cancel', isDestructive: true },
@@ -1037,6 +1076,152 @@ export function advanceChatbotFlow(currentFlowState, inputPayload, context = {})
     }
   }
 
+  // ====================================================
+  // 6. STAFF TASK ASSIGNMENT FLOW STEPS
+  // ====================================================
+  if (flow === FLOW_TYPES.STAFF_TASK) {
+    if (step === 'staff') {
+      let staffId = typeof inputPayload === 'object' ? inputPayload.value : String(inputPayload).trim()
+      let staffName = typeof inputPayload === 'object' ? inputPayload.staffName : ''
+      let staffPhone = typeof inputPayload === 'object' ? inputPayload.staffPhone : ''
+
+      if (!staffName || !staffPhone) {
+        const staffObj = resolveStaffMember(staffId, staffList)
+        if (staffObj) {
+          staffId = staffObj.id
+          staffName = staffObj.name
+          staffPhone = staffObj.mobile || '7990943652'
+        } else {
+          staffName = staffId
+          staffPhone = '7990943652'
+        }
+      }
+
+      const updatedData = {
+        ...data,
+        assignedTo: staffId,
+        assignedStaffName: staffName,
+        staffPhone,
+      }
+
+      return {
+        flow,
+        step: 'taskType',
+        data: updatedData,
+        text: `📋 **Step 2/4: Task Type for ${staffName}**\n\nIs this a new task or a follow-up task?`,
+        chips: [
+          { label: '🆕 New Task', value: false, isFollowUp: false },
+          { label: '🔄 Follow-up Task', value: true, isFollowUp: true },
+          { label: '❌ Cancel', action: 'cancel', isDestructive: true },
+        ],
+        inputPrompt: 'Select task type...',
+      }
+    }
+
+    if (step === 'taskType') {
+      const isFollowUp = typeof inputPayload === 'object' ? Boolean(inputPayload.isFollowUp ?? inputPayload.value) : /follow/i.test(String(inputPayload))
+      const updatedData = { ...data, isFollowUp }
+
+      return {
+        flow,
+        step: 'taskText',
+        data: updatedData,
+        text: `📝 **Step 3/4: Task Description**\n\nWhat should **${data.assignedStaffName}** do? Tap a common task or type custom instructions:`,
+        chips: [
+          { label: '🫙 Collect Empty Jars', value: 'Collect empty jars & petli from market' },
+          { label: '💰 Collect Payment', value: 'Collect pending customer payments & issue receipt' },
+          { label: '📦 Deliver Water Stock', value: 'Deliver scheduled water boxes to customers' },
+          { label: '🚗 Vehicle Maintenance', value: 'Check delivery vehicle diesel, tyre air & maintenance' },
+          { label: '🏢 Godown Unloading', value: 'Assist in truck unloading and stock stacking at godown' },
+          { label: '❌ Cancel', action: 'cancel', isDestructive: true },
+        ],
+        inputPrompt: 'Type task details or select preset...',
+      }
+    }
+
+    if (step === 'taskText') {
+      const textVal = typeof inputPayload === 'object' ? (inputPayload.value || inputPayload.label) : String(inputPayload).trim()
+      if (!textVal || textVal.length < 2) {
+        return {
+          ...currentFlowState,
+          text: `⚠️ Please enter or select a task description for **${data.assignedStaffName}**:`,
+        }
+      }
+      const updatedData = { ...data, text: textVal }
+
+      return {
+        flow,
+        step: 'dueDate',
+        data: updatedData,
+        text: `📅 **Step 4/4: Target Due Date**\n\nWhen should **${data.assignedStaffName}** complete this?`,
+        chips: [
+          { label: '📅 Today', value: 'today', days: 0 },
+          { label: '📅 Tomorrow', value: 'tomorrow', days: 1 },
+          { label: '📅 In 2 Days', value: 'in_2_days', days: 2 },
+          { label: '❌ Cancel', action: 'cancel', isDestructive: true },
+        ],
+        inputPrompt: 'Select due date or type date (YYYY-MM-DD)...',
+      }
+    }
+
+    if (step === 'dueDate') {
+      const rawDateInput = typeof inputPayload === 'object' ? (inputPayload.value || inputPayload.days) : String(inputPayload).trim()
+      const now = new Date()
+      let dueDateStr = now.toISOString().slice(0, 10)
+      let targetLabel = 'Today'
+
+      if (rawDateInput === 'tomorrow' || rawDateInput === 1 || /tomorrow|kal/i.test(String(rawDateInput))) {
+        const tom = new Date(now)
+        tom.setDate(tom.getDate() + 1)
+        dueDateStr = tom.toISOString().slice(0, 10)
+        targetLabel = 'Tomorrow'
+      } else if (rawDateInput === 'in_2_days' || rawDateInput === 2 || /2\s*day/i.test(String(rawDateInput))) {
+        const d2 = new Date(now)
+        d2.setDate(d2.getDate() + 2)
+        dueDateStr = d2.toISOString().slice(0, 10)
+        targetLabel = 'In 2 Days'
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(String(rawDateInput))) {
+        dueDateStr = String(rawDateInput)
+        targetLabel = dueDateStr
+      }
+
+      const daytimeCheck = checkIsDayTime()
+      const updatedData = {
+        ...data,
+        dueDate: dueDateStr,
+        targetLabel,
+        daytimeCheck,
+      }
+
+      const smsPreview = data.isFollowUp
+        ? buildHumanLikeFollowUpMessage({
+            staffName: data.assignedStaffName,
+            taskText: data.text,
+            followUpCount: 0,
+            dueDateStr: targetLabel,
+          })
+        : buildNewTaskAssignmentMessage({
+            staffName: data.assignedStaffName,
+            taskText: data.text,
+            dueDateStr: targetLabel,
+            isFollowUp: false,
+          })
+
+      return {
+        flow,
+        step: 'confirm',
+        data: updatedData,
+        isConfirmation: true,
+        text: `📋 **Confirm Staff Task Assignment**\n\n• **Assigned To**: ${data.assignedStaffName} (📞 ${data.staffPhone})\n• **Type**: ${data.isFollowUp ? '🔄 Follow-up Task' : '🆕 New Task'}\n• **Task**: "${data.text}"\n• **Target**: ${targetLabel} (${dueDateStr})\n• **Daytime Window**: ${daytimeCheck.isDayTime ? `☀️ Daytime (${daytimeCheck.istTimeStr}: Safe to notify)` : `🌙 Night time (${daytimeCheck.istTimeStr}: Safe daytime starts 9 AM IST)`}\n• **Humanized SMS Preview**:\n_"${smsPreview}"_\n\nChoose how to save:`,
+        chips: [
+          { label: '✅ Create Task Only', action: 'save', sendSms: false, isPrimary: true },
+          { label: '📲 Create & Send SMS to Staff', action: 'save', sendSms: true, isPrimary: true },
+          { label: '❌ Cancel', action: 'cancel', isDestructive: true },
+        ],
+      }
+    }
+  }
+
   return null
 }
 
@@ -1149,6 +1334,34 @@ export async function executeFlowSave(flowType, flowData, store = {}) {
         success: true,
         result,
         text: `✅ **Advance of ₹${Number(amount).toLocaleString('en-IN')} Disbursed!**\n\n• Staff: ${employeeName}\n• Paid From: ${sourceAccountId}\n• Total Active Advance: ₹${(newAdvanceTotal || 0).toLocaleString('en-IN')}`,
+      }
+    }
+
+    case FLOW_TYPES.STAFF_TASK: {
+      const { text, assignedTo, assignedStaffName, staffPhone, dueDate, isFollowUp, sendSms } = flowData
+      const payload = {
+        text,
+        assignedTo,
+        assignedStaffName,
+        staffPhone,
+        dueDate,
+        isFollowUp: Boolean(isFollowUp),
+        sendNotificationSms: Boolean(sendSms),
+      }
+      const result = store.addStaffJob
+        ? await store.addStaffJob(payload)
+        : await createStaffTaskInDb(payload)
+
+      const smsNotice = sendSms
+        ? (result?.smsSent
+            ? `\n• 📲 **Notification SMS dispatched to ${assignedStaffName}!**`
+            : `\n• 🌙 SMS held (outside daytime). Task created for morning.`)
+        : '\n• Task recorded on Staff Tasks assignment board.'
+
+      return {
+        success: true,
+        result,
+        text: `✅ **${isFollowUp ? 'Follow-up Task' : 'Staff Task'} Assigned Successfully!**\n\n• **Staff**: ${assignedStaffName} (📞 ${staffPhone})\n• **Task**: "${text}"\n• **Target**: ${dueDate}${smsNotice}`,
       }
     }
 
