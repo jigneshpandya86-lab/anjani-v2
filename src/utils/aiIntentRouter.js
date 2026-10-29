@@ -625,9 +625,7 @@ export function tryLocalIntentRoute(query, store = {}) {
     return {
       handled: true,
       type: 'staff_task_draft',
-      text: `📋 **${staffName}** • 🎯 ${targetLabel} (${dueDateStr}) ${
-        daytimeCheck.isDayTime ? '☀️ 9AM–8PM' : '🌙 Night'
-      }\n• "${taskText}"`,
+      text: '',
       data: {
         text: taskText,
         assignedTo: assignedStaff?.id || 'nilesh',
@@ -669,7 +667,7 @@ export function tryLocalIntentRoute(query, store = {}) {
       return {
         handled: true,
         type: 'staff_tasks_list',
-        text: `📋 **Staff Tasks for ${filterName}**: All assigned tasks are currently completed! To assign a new task or follow-up, type: *"Assign task to Nilesh: collect empty jars from Krishna Hotel"*`,
+        text: '',
         data: {
           tasks: [],
           staffFilter,
@@ -682,7 +680,7 @@ export function tryLocalIntentRoute(query, store = {}) {
     return {
       handled: true,
       type: 'staff_tasks_list',
-      text: `📋 **Active Staff Tasks & Follow-ups for ${filterName}** (Found **${activeJobs.length}** open task${activeJobs.length > 1 ? 's' : ''}):\nYou can take follow-up via SMS or update stage directly from each card below:`,
+      text: '',
       data: {
         tasks: activeJobs,
         staffFilter,

@@ -1571,8 +1571,8 @@ export default function AiAssistantDrawer({
         )}
       </div>
 
-        {/* Clutter-Free Quick Action Navigation Strip */}
-        <div className="px-2.5 py-1.5 bg-gray-50/90 border-b border-gray-200 flex items-center gap-1.5 overflow-x-auto scrollbar-hide shrink-0 text-xs select-none">
+        {/* Clutter-Free Quick Action Navigation Strip (Single line, strictly icon-only, no scrolling needed) */}
+        <div className="px-2 py-1.5 bg-gray-50/90 border-b border-gray-200 flex items-center justify-between gap-1 overflow-x-hidden shrink-0 text-xs select-none">
           {/* 0. WhatsApp Bot Menu */}
           <button
             type="button"
@@ -1591,26 +1591,24 @@ export default function AiAssistantDrawer({
                 },
               ])
             }}
-            className="h-8 px-2.5 rounded-full border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-950 font-black text-[11px] flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs"
+            className="h-7 w-7 rounded-lg border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-950 flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs"
             title="WhatsApp Bot Menu"
             aria-label="Bot Menu"
           >
-            <Bot className="w-3.5 h-3.5 text-[#ff9900]" />
-            <span>Bot Menu</span>
+            <Bot className="w-4 h-4 text-[#ff9900]" />
           </button>
 
           {/* 1. Staff Tasks (AI Powered & SMS Follow-up) */}
           <button
             type="button"
             onClick={() => handleSend('show staff tasks')}
-            className="h-8 px-2.5 rounded-full border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-900 font-bold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs"
+            className="h-7 w-7 rounded-lg border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-900 flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs relative"
             title="Staff Tasks Assignment & SMS Follow-ups"
             aria-label="Staff Tasks"
           >
             <span className="text-xs">📋</span>
-            <span>Staff Tasks</span>
             {jobs.filter((j) => j && j.stage !== 'complete' && j.stage !== 'archived').length > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-teal-200 text-teal-900 font-black text-[9px]">
+              <span className="absolute -top-1 -right-1 px-1 h-3.5 min-w-[14px] rounded-full bg-teal-600 text-white font-black text-[9px] flex items-center justify-center">
                 {jobs.filter((j) => j && j.stage !== 'complete' && j.stage !== 'archived').length}
               </span>
             )}
@@ -1631,7 +1629,7 @@ export default function AiAssistantDrawer({
                 return next
               })
             }}
-            className={`h-8 px-2.5 rounded-full border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs text-[11px] font-bold ${
+            className={`h-7 w-7 rounded-lg border flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs ${
               isSalesMode
                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                 : 'bg-white text-gray-700 border-gray-200 hover:border-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50'
@@ -1639,8 +1637,7 @@ export default function AiAssistantDrawer({
             title="1. Order Creation & Daily Sales"
             aria-label="Order Creation"
           >
-            <ClipboardList className={`w-3.5 h-3.5 ${isSalesMode ? 'text-white' : 'text-emerald-600'}`} />
-            <span>Orders</span>
+            <ClipboardList className={`w-4 h-4 ${isSalesMode ? 'text-white' : 'text-emerald-600'}`} />
           </button>
 
           {/* 3. Receive Payment */}
@@ -1658,7 +1655,7 @@ export default function AiAssistantDrawer({
                 return next
               })
             }}
-            className={`h-8 px-2.5 rounded-full border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs text-[11px] font-bold ${
+            className={`h-7 w-7 rounded-lg border flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs ${
               isPaymentMode
                 ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
                 : 'bg-white text-gray-700 border-gray-200 hover:border-emerald-700 hover:text-emerald-800 hover:bg-emerald-50/50'
@@ -1666,8 +1663,7 @@ export default function AiAssistantDrawer({
             title="2. Receive Payment / Scan UPI"
             aria-label="Receive Payment"
           >
-            <IndianRupee className={`w-3.5 h-3.5 ${isPaymentMode ? 'text-white' : 'text-emerald-700'}`} />
-            <span>Payment</span>
+            <IndianRupee className={`w-4 h-4 ${isPaymentMode ? 'text-white' : 'text-emerald-700'}`} />
           </button>
 
           {/* 4. Add Client */}
@@ -1685,7 +1681,7 @@ export default function AiAssistantDrawer({
                 return next
               })
             }}
-            className={`h-8 px-2.5 rounded-full border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs text-[11px] font-bold ${
+            className={`h-7 w-7 rounded-lg border flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs ${
               isClientMode
                 ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
                 : 'bg-white text-gray-700 border-gray-200 hover:border-amz-orange hover:text-amz-orange hover:bg-orange-50/50'
@@ -1693,20 +1689,18 @@ export default function AiAssistantDrawer({
             title="3. Add New Client"
             aria-label="Add Client"
           >
-            <UserPlus className={`w-3.5 h-3.5 ${isClientMode ? 'text-white' : 'text-amz-orange'}`} />
-            <span>New Client</span>
+            <UserPlus className={`w-4 h-4 ${isClientMode ? 'text-white' : 'text-amz-orange'}`} />
           </button>
 
           {/* 5. Camera OCR: Scan Photo */}
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="h-8 px-2.5 bg-white border border-gray-200 hover:border-amz-orange hover:bg-orange-50/50 rounded-full flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs text-[11px] font-bold text-gray-700"
+            className="h-7 w-7 bg-white border border-gray-200 hover:border-amz-orange hover:bg-orange-50/50 rounded-lg flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs text-gray-700"
             title="Scan Photo (Vendor Bill / UPI Screenshot / Visiting Card)"
             aria-label="Scan Photo"
           >
-            <Camera className="w-3.5 h-3.5 text-gray-700" />
-            <span>Scan</span>
+            <Camera className="w-4 h-4 text-gray-700" />
           </button>
 
           {/* 6. Accounts & Staff Cash */}
@@ -1724,7 +1718,7 @@ export default function AiAssistantDrawer({
                 return next
               })
             }}
-            className={`h-8 px-2.5 rounded-full border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs text-[11px] font-bold ${
+            className={`h-7 w-7 rounded-lg border flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs ${
               isAccountsMode
                 ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                 : 'bg-white text-gray-700 border-gray-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50/50'
@@ -1732,44 +1726,40 @@ export default function AiAssistantDrawer({
             title="Accounts & Staff Cash (Nilesh, Hiteshbhai, Counter, Bank)"
             aria-label="Accounts & Staff Cash"
           >
-            <ArrowRightLeft className={`w-3.5 h-3.5 ${isAccountsMode ? 'text-white' : 'text-blue-600'}`} />
-            <span>Staff Cash</span>
+            <ArrowRightLeft className={`w-4 h-4 ${isAccountsMode ? 'text-white' : 'text-blue-600'}`} />
           </button>
 
           {/* 7. Current Stock */}
           <button
             type="button"
             onClick={() => handleSend('Current stock')}
-            className="h-8 px-2.5 bg-white border border-gray-200 hover:border-indigo-500 hover:bg-indigo-50/50 rounded-full flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs text-[11px] font-bold text-gray-700"
+            className="h-7 w-7 bg-white border border-gray-200 hover:border-indigo-500 hover:bg-indigo-50/50 rounded-lg flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs text-gray-700"
             title="Check Warehouse Stock"
             aria-label="Current Stock"
           >
-            <Package className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Stock</span>
+            <Package className="w-4 h-4 text-indigo-600" />
           </button>
 
           {/* 8. Today Deliveries */}
           <button
             type="button"
             onClick={() => handleSend('Pending orders today')}
-            className="h-8 px-2.5 bg-white border border-gray-200 hover:border-cyan-600 hover:bg-cyan-50/50 rounded-full flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs text-[11px] font-bold text-gray-700"
+            className="h-7 w-7 bg-white border border-gray-200 hover:border-cyan-600 hover:bg-cyan-50/50 rounded-lg flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs text-gray-700"
             title="Today's Pending Deliveries"
             aria-label="Today Deliveries"
           >
-            <Truck className="w-3.5 h-3.5 text-cyan-600" />
-            <span>Dispatch</span>
+            <Truck className="w-4 h-4 text-cyan-600" />
           </button>
 
           {/* 9. Outstanding Dues */}
           <button
             type="button"
             onClick={() => handleSend('Outstanding balances')}
-            className="h-8 px-2.5 bg-white border border-gray-200 hover:border-purple-500 hover:bg-purple-50/50 rounded-full flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs text-[11px] font-bold text-gray-700"
+            className="h-7 w-7 bg-white border border-gray-200 hover:border-purple-500 hover:bg-purple-50/50 rounded-lg flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs text-gray-700"
             title="Customer Outstanding Dues"
             aria-label="Outstanding Balances"
           >
-            <CreditCard className="w-3.5 h-3.5 text-purple-600" />
-            <span>Dues</span>
+            <CreditCard className="w-4 h-4 text-purple-600" />
           </button>
         </div>
 
@@ -1834,20 +1824,22 @@ export default function AiAssistantDrawer({
                 )}
 
                 {/* Plain Text Message */}
-                <div className="whitespace-pre-wrap leading-relaxed text-xs sm:text-sm">
-                  {msg.text}
-                </div>
+                {Boolean(msg.text) && (
+                  <div className="whitespace-pre-wrap leading-relaxed text-xs sm:text-sm">
+                    {msg.text}
+                  </div>
+                )}
 
                 {/* WhatsApp-Style Interactive Selection Chips */}
                 {msg.chips && msg.chips.length > 0 && (
-                  <div className="mt-3 pt-2.5 border-t border-gray-100 flex flex-wrap gap-1.5">
+                  <div className="mt-2.5 pt-2 border-t border-gray-100 flex flex-wrap gap-1.5 items-center">
                     {msg.chips.map((chip, cIdx) => (
                       <button
                         key={chip.id || cIdx}
                         type="button"
                         disabled={loading}
                         onClick={() => handleChipClick(chip)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-2xs active:scale-95 text-left flex items-center gap-1.5 ${
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer shadow-2xs active:scale-95 text-left flex items-center gap-1 ${
                           chip.isPrimary
                             ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 font-black shadow-xs'
                             : chip.isDestructive
@@ -1861,13 +1853,6 @@ export default function AiAssistantDrawer({
                       </button>
                     ))}
                   </div>
-                )}
-
-                {/* Local vs Cloud tag */}
-                {msg.isLocal && (
-                  <span className="inline-block mt-1 text-[10px] text-emerald-600 font-semibold">
-                    ⚡ Instant Local Cache (0 Tokens)
-                  </span>
                 )}
 
                 {/* 1. Interactive Order Draft Card */}
@@ -2783,59 +2768,60 @@ export default function AiAssistantDrawer({
                   </div>
                 )}
 
-                {/* 3. Interactive Pending Orders Card */}
+                {/* 3. Interactive Pending Orders Card (Compact 2-line layout, icon-only) */}
                 {msg.type === 'orders_list' && msg.data?.orders?.length > 0 && (
-                  <div className="mt-3 space-y-2">
+                  <div className="mt-2 space-y-1.5">
                     {msg.data.orders.map((ord) => (
                       <div
                         key={ord.id}
-                        className="bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs space-y-1.5"
+                        className="bg-white border border-gray-200 rounded-lg p-2 text-xs space-y-1 shadow-2xs"
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-gray-900">
+                        <div className="flex items-center justify-between gap-1 min-w-0">
+                          <span className="font-bold text-gray-900 truncate">
                             {ord.clientName || ord.name || 'Customer'}
                           </span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-800 uppercase">
-                            {ord.status || 'Pending'}
+                          <span className="text-[10px] px-1.5 py-0.2 rounded font-bold bg-amber-100 text-amber-800 uppercase shrink-0">
+                            {ord.qty}x {ord.sku || ord.product || '200ml'}
                           </span>
                         </div>
-                        <p className="text-[11px] text-gray-600">
-                          📦 {ord.qty}x {ord.sku || ord.product || 'Anjani 200ml'} • ⏰{' '}
-                          {ord.time || 'Today'}
-                        </p>
-                        {ord.address && (
-                          <p className="text-[10px] text-gray-500 truncate">📍 {ord.address}</p>
-                        )}
-                        <div className="flex items-center gap-2 pt-1 border-t border-gray-200">
-                          <button
-                            type="button"
-                            onClick={() => handleDeliverOrder(ord)}
-                            className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold py-1 px-2 rounded text-[11px] transition-colors"
-                          >
-                            Mark Delivered
-                          </button>
-                          {onOpenOrderModal && (
+                        <div className="flex items-center justify-between gap-1 pt-0.5">
+                          <span className="text-[10px] text-gray-500 truncate flex-1">
+                            {ord.address ? `📍 ${ord.address}` : `⏰ ${ord.time || 'Today'}`}
+                          </span>
+                          <div className="flex items-center gap-1 shrink-0">
                             <button
                               type="button"
-                              onClick={() => {
-                                onOpenOrderModal(ord)
-                                onClose()
-                              }}
-                              className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded font-bold text-[11px] transition-colors"
-                              title="View or edit order"
+                              onClick={() => handleDeliverOrder(ord)}
+                              aria-label="Mark Delivered"
+                              title="Mark Delivered"
+                              className="h-6 w-6 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center justify-center transition-colors cursor-pointer"
                             >
-                              Edit
+                              <Check className="w-3.5 h-3.5" />
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleShareOrderWhatsApp(ord)}
-                            className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded font-bold text-[11px] flex items-center gap-1 transition-colors"
-                            title="Send WhatsApp update"
-                          >
-                            <MessageSquare className="w-3 h-3" />
-                            <span>WhatsApp</span>
-                          </button>
+                            {onOpenOrderModal && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onOpenOrderModal(ord)
+                                  onClose()
+                                }}
+                                aria-label="Edit Order"
+                                title="View or edit order"
+                                className="h-6 w-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center transition-colors cursor-pointer"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleShareOrderWhatsApp(ord)}
+                              aria-label="WhatsApp"
+                              title="Send WhatsApp update"
+                              className="h-6 w-6 rounded bg-green-600 hover:bg-green-700 text-white flex items-center justify-center transition-colors cursor-pointer"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -2935,7 +2921,7 @@ export default function AiAssistantDrawer({
                   </div>
                 )}
 
-                {/* 6. Interactive Staff Task Assignment Draft Card */}
+                {/* 6. Interactive Staff Task Assignment Draft Card (Ultra-compact 2-line card) */}
                 {msg.type === 'staff_task_draft' && msg.data && (() => {
                   const currentDraftText =
                     editingDraftTexts[msg.id] !== undefined
@@ -2949,60 +2935,173 @@ export default function AiAssistantDrawer({
                   })
 
                   return (
-                    <div className="mt-3 bg-white border border-teal-200 rounded-xl p-3 space-y-2.5 text-xs text-gray-800 shadow-sm">
-                      <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center font-bold text-xs">
-                            📋
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-extrabold text-gray-900 text-xs">
-                                {msg.data.isFollowUp ? '🔄 Follow-up Task' : '🆕 Staff Task'}
-                              </span>
-                              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black uppercase bg-teal-100 text-teal-800">
-                                👤 {msg.data.assignedStaffName}
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-gray-500">
-                              🎯 <strong>{msg.data.targetLabel || 'Today'}</strong> ({msg.data.dueDate}) • 📞 {msg.data.staffPhone}
-                            </p>
-                          </div>
+                    <div className="mt-2 bg-white border border-teal-200 rounded-xl p-2 space-y-1 text-xs text-gray-800 shadow-2xs">
+                      {/* Line 1: Staff, Target, Day/Night & Icon-Only Action Buttons */}
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="shrink-0 px-1.5 py-0.2 rounded text-[10px] font-black uppercase bg-teal-100 text-teal-800">
+                            👤 {msg.data.assignedStaffName}
+                          </span>
+                          <span className="shrink-0 text-[10px] text-gray-500 font-semibold">
+                            🎯 {msg.data.targetLabel || 'Today'}
+                          </span>
+                          <span
+                            className="shrink-0 text-[10px] cursor-help"
+                            title={
+                              msg.data.daytimeCheck?.isDayTime
+                                ? `☀️ Safe to SMS (${msg.data.daytimeCheck?.istTimeStr || 'IST'})`
+                                : `🌙 Night - SMS held (${msg.data.daytimeCheck?.istTimeStr || 'IST'})`
+                            }
+                          >
+                            {msg.data.daytimeCheck?.isDayTime ? '☀️' : '🌙'}
+                          </span>
                         </div>
-                        {createdTasks[msg.id] && (
-                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-700 flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Assigned
+
+                        {!createdTasks[msg.id] ? (
+                          <div className="flex items-center gap-1 shrink-0">
+                            {/* WhatsApp */}
+                            <button
+                              type="button"
+                              aria-label="WhatsApp"
+                              title="Save & WhatsApp"
+                              onClick={async () => {
+                                try {
+                                  const created = await addStaffJob({
+                                    text: currentDraftText,
+                                    assignedTo: msg.data.assignedTo,
+                                    assignedStaffName: msg.data.assignedStaffName,
+                                    staffPhone: msg.data.staffPhone,
+                                    dueDate: msg.data.dueDate,
+                                    isFollowUp: msg.data.isFollowUp,
+                                    sendNotificationSms: false,
+                                  })
+                                  const waUrl = buildTaskWhatsAppUrl({
+                                    staffPhone: msg.data.staffPhone,
+                                    message: draftPreviewMsg,
+                                  })
+                                  if (waUrl) {
+                                    window.open(waUrl, '_blank')
+                                  }
+                                  if (created?.id) {
+                                    await recordTaskFollowUpHistory({
+                                      taskId: created.id,
+                                      staffName: msg.data.assignedStaffName,
+                                      message: draftPreviewMsg,
+                                      channel: 'whatsapp',
+                                      followUpCount: 0,
+                                    })
+                                  }
+                                  setCreatedTasks((prev) => ({ ...prev, [msg.id]: true }))
+                                  toast.success(`Task saved & WhatsApp opened for ${msg.data.assignedStaffName}!`, { icon: '💬' })
+                                } catch (err) {
+                                  toast.error('Failed to assign task: ' + err.message)
+                                }
+                              }}
+                              className="h-6 w-6 rounded bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-colors cursor-pointer shadow-2xs"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* SMS */}
+                            <button
+                              type="button"
+                              aria-label="SMS"
+                              title="Save & Send SMS"
+                              onClick={async () => {
+                                const daytime = checkIsDayTime()
+                                let force = false
+                                if (!daytime.isDayTime) {
+                                  const confirmSend = window.confirm(
+                                    `⚠️ Outside Daytime Hours (${daytime.istTimeStr})\n\nDaytime is 9:00 AM – 8:00 PM IST to avoid disturbing staff at night.\n\nDo you want to send SMS to ${msg.data.assignedStaffName} anyway?`
+                                  )
+                                  if (!confirmSend) return
+                                  force = true
+                                }
+                                try {
+                                  await addStaffJob({
+                                    text: currentDraftText,
+                                    assignedTo: msg.data.assignedTo,
+                                    assignedStaffName: msg.data.assignedStaffName,
+                                    staffPhone: msg.data.staffPhone,
+                                    dueDate: msg.data.dueDate,
+                                    isFollowUp: msg.data.isFollowUp,
+                                    sendNotificationSms: true,
+                                    forceOutsideDaytime: force,
+                                  })
+                                  setCreatedTasks((prev) => ({ ...prev, [msg.id]: true }))
+                                  toast.success(
+                                    `Task assigned & SMS sent to ${msg.data.assignedStaffName}!`,
+                                    { icon: '📲' }
+                                  )
+                                } catch (err) {
+                                  toast.error('Failed to assign task: ' + err.message)
+                                }
+                              }}
+                              className="h-6 w-6 rounded bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center transition-colors cursor-pointer shadow-2xs"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Save Only */}
+                            <button
+                              type="button"
+                              aria-label="Save"
+                              title="Save to Board"
+                              onClick={async () => {
+                                try {
+                                  await addStaffJob({
+                                    text: currentDraftText,
+                                    assignedTo: msg.data.assignedTo,
+                                    assignedStaffName: msg.data.assignedStaffName,
+                                    staffPhone: msg.data.staffPhone,
+                                    dueDate: msg.data.dueDate,
+                                    isFollowUp: msg.data.isFollowUp,
+                                    sendNotificationSms: false,
+                                  })
+                                  setCreatedTasks((prev) => ({ ...prev, [msg.id]: true }))
+                                  toast.success(`Task assigned to ${msg.data.assignedStaffName}!`, { icon: '📋' })
+                                } catch (err) {
+                                  toast.error('Failed to create task: ' + err.message)
+                                }
+                              }}
+                              className="h-6 w-6 rounded bg-gray-900 hover:bg-black text-white flex items-center justify-center transition-colors cursor-pointer shadow-2xs"
+                            >
+                              <Check className="w-3.5 h-3.5 text-teal-400" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> Saved
                           </span>
                         )}
                       </div>
 
-                      {/* Editable Task Description */}
+                      {/* Line 2: Editable Task Text with Inline Edit Toggle */}
                       {isEditingDraft ? (
-                        <div className="space-y-1.5">
-                          <textarea
+                        <div className="flex items-center gap-1.5 pt-0.5">
+                          <input
+                            type="text"
                             value={currentDraftText}
                             onChange={(e) =>
                               setEditingDraftTexts((prev) => ({ ...prev, [msg.id]: e.target.value }))
                             }
                             placeholder="Enter task text..."
-                            className="w-full p-2 bg-gray-50 rounded-lg border border-teal-300 text-gray-900 font-semibold text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-teal-500"
-                            rows={2}
+                            className="flex-1 px-2 py-0.5 bg-gray-50 rounded border border-teal-300 text-gray-900 font-semibold text-xs focus:outline-none focus:ring-1 focus:ring-teal-500"
+                            autoFocus
                           />
-                          <div className="flex justify-end">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setEditingDraftIds((prev) => ({ ...prev, [msg.id]: false }))
-                              }
-                              className="px-2 py-0.5 bg-teal-100 hover:bg-teal-200 text-teal-900 text-[10px] font-bold rounded cursor-pointer transition-colors"
-                            >
-                              ✓ Done
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingDraftIds((prev) => ({ ...prev, [msg.id]: false }))
+                            }
+                            className="px-2 py-0.5 bg-teal-600 text-white text-[10px] font-bold rounded cursor-pointer transition-colors shrink-0"
+                          >
+                            ✓ Done
+                          </button>
                         </div>
                       ) : (
-                        <div className="p-2 bg-gray-50 rounded-lg border border-gray-200 text-gray-900 font-semibold text-xs leading-relaxed flex items-start justify-between gap-2">
-                          <span className="flex-1">"{currentDraftText}"</span>
+                        <div className="flex items-center justify-between gap-1.5 pt-0.5 text-gray-900 font-semibold text-xs">
+                          <span className="truncate flex-1">"{currentDraftText}"</span>
                           {!createdTasks[msg.id] && (
                             <button
                               type="button"
@@ -3012,170 +3111,24 @@ export default function AiAssistantDrawer({
                               className="text-gray-400 hover:text-teal-600 p-0.5 rounded cursor-pointer shrink-0 transition-colors"
                               title="Edit task text"
                             >
-                              <Edit2 className="w-3.5 h-3.5" />
+                              <Edit2 className="w-3 h-3" />
                             </button>
                           )}
-                        </div>
-                      )}
-
-                      {/* Message Preview */}
-                      <div className="p-2 bg-slate-50 rounded-lg border border-slate-200 text-[11px] text-slate-700">
-                        <span className="text-[10px] font-bold text-slate-400 block mb-0.5">💬 PREVIEW</span>
-                        <p className="italic font-medium text-slate-800 leading-snug">"{draftPreviewMsg}"</p>
-                      </div>
-
-                      {/* Daytime status notice */}
-                      <div className={`px-2 py-1 rounded-md text-[10px] font-semibold flex items-center justify-between ${
-                        msg.data.daytimeCheck?.isDayTime
-                          ? 'bg-amber-50 text-amber-900 border border-amber-200/70'
-                          : 'bg-indigo-50 text-indigo-900 border border-indigo-200/70'
-                      }`}>
-                        <span className="flex items-center gap-1.5">
-                          {msg.data.daytimeCheck?.isDayTime ? (
-                            <>
-                              <Sun className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                              <span>☀️ <strong>{msg.data.daytimeCheck?.istTimeStr || 'IST'}</strong> • Safe to SMS</span>
-                            </>
-                          ) : (
-                            <>
-                              <Moon className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                              <span>🌙 <strong>{msg.data.daytimeCheck?.istTimeStr || 'IST'}</strong> • Night (SMS held)</span>
-                            </>
-                          )}
-                        </span>
-                      </div>
-
-                      {/* Actions */}
-                      {!createdTasks[msg.id] ? (
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                          {/* Create Only */}
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                await addStaffJob({
-                                  text: currentDraftText,
-                                  assignedTo: msg.data.assignedTo,
-                                  assignedStaffName: msg.data.assignedStaffName,
-                                  staffPhone: msg.data.staffPhone,
-                                  dueDate: msg.data.dueDate,
-                                  isFollowUp: msg.data.isFollowUp,
-                                  sendNotificationSms: false,
-                                })
-                                setCreatedTasks((prev) => ({ ...prev, [msg.id]: true }))
-                                toast.success(`Task assigned to ${msg.data.assignedStaffName}!`, { icon: '📋' })
-                              } catch (err) {
-                                toast.error('Failed to create task: ' + err.message)
-                              }
-                            }}
-                            className="flex-1 bg-gray-900 hover:bg-black text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer shadow-sm"
-                            title="Create task on board"
-                          >
-                            <Check className="w-3.5 h-3.5 text-teal-400" />
-                            <span>Save</span>
-                          </button>
-
-                          {/* SMS Staff */}
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const daytime = checkIsDayTime()
-                              let force = false
-                              if (!daytime.isDayTime) {
-                                const confirmSend = window.confirm(
-                                  `⚠️ Outside Daytime Hours (${daytime.istTimeStr})\n\nDaytime is 9:00 AM – 8:00 PM IST to avoid disturbing staff at night.\n\nDo you want to send SMS to ${msg.data.assignedStaffName} anyway?`
-                                )
-                                if (!confirmSend) return
-                                force = true
-                              }
-                              try {
-                                await addStaffJob({
-                                  text: currentDraftText,
-                                  assignedTo: msg.data.assignedTo,
-                                  assignedStaffName: msg.data.assignedStaffName,
-                                  staffPhone: msg.data.staffPhone,
-                                  dueDate: msg.data.dueDate,
-                                  isFollowUp: msg.data.isFollowUp,
-                                  sendNotificationSms: true,
-                                  forceOutsideDaytime: force,
-                                })
-                                setCreatedTasks((prev) => ({ ...prev, [msg.id]: true }))
-                                toast.success(
-                                  `Task assigned & SMS sent to ${msg.data.assignedStaffName}!`,
-                                  { icon: '📲' }
-                                )
-                              } catch (err) {
-                                toast.error('Failed to assign task: ' + err.message)
-                              }
-                            }}
-                            className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer shadow-sm"
-                            title="Assign and send SMS to staff"
-                          >
-                            <Send className="w-3.5 h-3.5" />
-                            <span>SMS</span>
-                          </button>
-
-                          {/* WhatsApp Staff */}
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                const created = await addStaffJob({
-                                  text: currentDraftText,
-                                  assignedTo: msg.data.assignedTo,
-                                  assignedStaffName: msg.data.assignedStaffName,
-                                  staffPhone: msg.data.staffPhone,
-                                  dueDate: msg.data.dueDate,
-                                  isFollowUp: msg.data.isFollowUp,
-                                  sendNotificationSms: false,
-                                })
-                                const waUrl = buildTaskWhatsAppUrl({
-                                  staffPhone: msg.data.staffPhone,
-                                  message: draftPreviewMsg,
-                                })
-                                if (waUrl) {
-                                  window.open(waUrl, '_blank')
-                                }
-                                if (created?.id) {
-                                  await recordTaskFollowUpHistory({
-                                    taskId: created.id,
-                                    staffName: msg.data.assignedStaffName,
-                                    message: draftPreviewMsg,
-                                    channel: 'whatsapp',
-                                    followUpCount: 0,
-                                  })
-                                }
-                                setCreatedTasks((prev) => ({ ...prev, [msg.id]: true }))
-                                toast.success(`Task saved & WhatsApp opened for ${msg.data.assignedStaffName}!`, { icon: '💬' })
-                              } catch (err) {
-                                toast.error('Failed to assign task: ' + err.message)
-                              }
-                            }}
-                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer shadow-sm"
-                            title="Save task and open WhatsApp chat with staff"
-                          >
-                            <MessageCircle className="w-3.5 h-3.5" />
-                            <span>WhatsApp</span>
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="text-center py-1 text-teal-800 font-bold text-[11px] bg-teal-50 rounded-lg">
-                          ✓ Task active on Staff Tasks Board
                         </div>
                       )}
                     </div>
                   )
                 })()}
 
-                {/* 7. Interactive Staff Tasks List & Follow-ups Card */}
+                {/* 7. Interactive Staff Tasks List & Follow-ups Card (Ultra-compact 2-line cards, icon-only) */}
                 {msg.type === 'staff_tasks_list' && msg.data && (
-                  <div className="mt-3 bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-2.5 text-xs">
-                    <div className="flex items-center justify-between border-b border-gray-200/80 pb-2">
+                  <div className="mt-2 bg-gray-50 border border-gray-200 rounded-xl p-2 space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between border-b border-gray-200/80 pb-1 px-0.5">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-extrabold text-gray-900 text-sm">
+                        <span className="font-extrabold text-gray-900 text-xs">
                           📋 Staff Tasks ({msg.data.tasks?.length || 0})
                         </span>
-                        <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-cyan-100 text-cyan-800">
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-cyan-100 text-cyan-800">
                           {msg.data.filterName || 'All'}
                         </span>
                       </div>
@@ -3185,18 +3138,18 @@ export default function AiAssistantDrawer({
                           onNavigateTab?.('tasks')
                           onClose()
                         }}
-                        className="text-[11px] font-bold text-cyan-700 hover:text-cyan-900 flex items-center gap-1 cursor-pointer"
+                        className="text-[10px] font-bold text-cyan-700 hover:text-cyan-900 flex items-center gap-0.5 cursor-pointer"
                       >
-                        <span>Open Board</span> ➔
+                        <span>Board</span> ➔
                       </button>
                     </div>
 
                     {msg.data.tasks?.length === 0 ? (
-                      <div className="text-center py-4 text-gray-500 text-xs italic bg-white rounded-lg border border-dashed border-gray-200">
+                      <div className="text-center py-2 text-gray-500 text-xs italic bg-white rounded-lg border border-dashed border-gray-200">
                         No active tasks. Tap below to assign a new task.
                       </div>
                     ) : (
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         {msg.data.tasks.map((task) => {
                           const staffName = task.assignedStaffName || (task.assignedTo === 'hiteshbhai' ? 'Hiteshbhai' : 'Nilesh')
                           const staffPhone = task.staffPhone || (task.assignedTo === 'hiteshbhai' ? '7778077617' : '7990943652')
@@ -3206,47 +3159,92 @@ export default function AiAssistantDrawer({
                           return (
                             <div
                               key={task.id}
-                              className={`p-2.5 rounded-lg border transition-all ${
+                              className={`p-1.5 rounded-lg border transition-all ${
                                 isDone
                                   ? 'bg-gray-100 border-gray-200 opacity-60'
                                   : 'bg-white border-gray-200 shadow-2xs hover:border-teal-300'
                               }`}
                             >
-                              <div className="flex items-start justify-between gap-1.5 mb-1.5">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-black uppercase ${
-                                    task.assignedTo === 'hiteshbhai'
-                                      ? 'bg-purple-100 text-purple-800'
-                                      : 'bg-blue-100 text-blue-800'
-                                  }`}>
-                                    👤 {staffName}
-                                  </span>
-                                  {task.isFollowUp && (
-                                    <span className="px-1.5 py-0.2 rounded text-[10px] font-black uppercase bg-amber-100 text-amber-800">
-                                      🔄 Follow-up
-                                    </span>
-                                  )}
-                                  {followCount > 0 && (
-                                    <span className="px-1.5 py-0.2 rounded text-[10px] font-black bg-teal-100 text-teal-800">
-                                      🔔 Follow-ups: {followCount}
-                                    </span>
-                                  )}
-                                </div>
-                                <span className="text-[10px] text-gray-400 font-semibold shrink-0">
-                                  {task.dueDate?.toDate ? task.dueDate.toDate().toLocaleDateString('en-IN') : 'Active'}
+                              {/* Line 1: Staff Badge, Truncated Task Text, Due Date & Follow-up Count */}
+                              <div className="flex items-center justify-between gap-1.5 min-w-0">
+                                <span className={`shrink-0 px-1.5 py-0.2 rounded text-[9px] font-black uppercase ${
+                                  task.assignedTo === 'hiteshbhai'
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : 'bg-blue-100 text-blue-800'
+                                }`}>
+                                  👤 {staffName}
                                 </span>
+                                <span className="truncate flex-1 font-bold text-xs text-gray-900" title={task.text}>
+                                  {task.text}
+                                </span>
+                                <span className="shrink-0 text-[10px] text-gray-400 font-medium">
+                                  🎯 {task.dueDate?.toDate ? task.dueDate.toDate().toLocaleDateString('en-IN') : 'Active'}
+                                </span>
+                                {followCount > 0 && (
+                                  <span className="shrink-0 px-1 py-0.2 rounded text-[9px] font-black bg-teal-100 text-teal-800" title={`Follow-ups: ${followCount}`}>
+                                    🔔{followCount}
+                                  </span>
+                                )}
                               </div>
 
-                              <p className="font-bold text-gray-900 text-xs mb-2 leading-snug">
-                                {task.text}
-                              </p>
+                              {/* Line 2: Icon-Only Action Buttons in One Horizontal Line */}
+                              <div className="flex items-center justify-end gap-1.5 pt-1">
+                                {/* 1. WhatsApp Follow-up */}
+                                <button
+                                  type="button"
+                                  disabled={isDone}
+                                  aria-label="WhatsApp"
+                                  title={`WhatsApp ${staffName}`}
+                                  onClick={async () => {
+                                    const waMsg = buildHumanLikeFollowUpMessage({
+                                      staffName,
+                                      taskText: task.text,
+                                      followUpCount: followCount,
+                                    })
+                                    const waUrl = buildTaskWhatsAppUrl({
+                                      staffPhone,
+                                      message: waMsg,
+                                    })
+                                    if (waUrl) {
+                                      window.open(waUrl, '_blank')
+                                    }
+                                    await recordTaskFollowUpHistory({
+                                      taskId: task.id,
+                                      staffName,
+                                      message: waMsg,
+                                      channel: 'whatsapp',
+                                      followUpCount: followCount,
+                                    })
+                                    setSentFollowUps((prev) => ({
+                                      ...prev,
+                                      [task.id]: (prev[task.id] || followCount) + 1,
+                                    }))
+                                    toast.success(`💬 WhatsApp opened for ${staffName}!`, { icon: '✅' })
+                                    setMessages((prev) => [
+                                      ...prev,
+                                      {
+                                        id: 'asst-' + Date.now(),
+                                        sender: 'assistant',
+                                        text: `💬 **WhatsApp to ${staffName}** (📞 ${staffPhone}):\n_"${waMsg}"_`,
+                                        timestamp: new Date(),
+                                      },
+                                    ])
+                                  }}
+                                  className="h-6 w-6 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 flex items-center justify-center transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                </button>
 
-                              {/* Action Buttons for each task */}
-                              <div className="flex items-center gap-1.5 pt-1 border-t border-gray-100 flex-wrap">
-                                {/* 1. Take Follow-up via SMS */}
+                                {/* 2. SMS Follow-up */}
                                 <button
                                   type="button"
                                   disabled={isDone || sendingFollowUpId === task.id}
+                                  aria-label="SMS Follow-up"
+                                  title={
+                                    sendingFollowUpId === task.id
+                                      ? 'Sending...'
+                                      : `SMS Follow-up${followCount > 0 ? ` (#${followCount + 1})` : ''}`
+                                  }
                                   onClick={async () => {
                                     const daytime = checkIsDayTime()
                                     let force = false
@@ -3291,67 +3289,17 @@ export default function AiAssistantDrawer({
                                       setSendingFollowUpId(null)
                                     }
                                   }}
-                                  className="px-2 py-1 rounded bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
-                                  title="Send human-like follow-up SMS to staff"
+                                  className="h-6 w-6 rounded bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 flex items-center justify-center transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
                                 >
-                                  <Send className="w-3 h-3 text-teal-600" />
-                                  <span>
-                                    {sendingFollowUpId === task.id
-                                      ? 'Sending...'
-                                      : `SMS Follow-up${followCount > 0 ? ` (#${followCount + 1})` : ''}`}
-                                  </span>
+                                  <Send className="w-3.5 h-3.5" />
                                 </button>
 
-                                {/* WhatsApp Follow-up */}
+                                {/* 3. Mark Complete */}
                                 <button
                                   type="button"
                                   disabled={isDone}
-                                  onClick={async () => {
-                                    const waMsg = buildHumanLikeFollowUpMessage({
-                                      staffName,
-                                      taskText: task.text,
-                                      followUpCount: followCount,
-                                    })
-                                    const waUrl = buildTaskWhatsAppUrl({
-                                      staffPhone,
-                                      message: waMsg,
-                                    })
-                                    if (waUrl) {
-                                      window.open(waUrl, '_blank')
-                                    }
-                                    await recordTaskFollowUpHistory({
-                                      taskId: task.id,
-                                      staffName,
-                                      message: waMsg,
-                                      channel: 'whatsapp',
-                                      followUpCount: followCount,
-                                    })
-                                    setSentFollowUps((prev) => ({
-                                      ...prev,
-                                      [task.id]: (prev[task.id] || followCount) + 1,
-                                    }))
-                                    toast.success(`💬 WhatsApp opened for ${staffName}!`, { icon: '✅' })
-                                    setMessages((prev) => [
-                                      ...prev,
-                                      {
-                                        id: 'asst-' + Date.now(),
-                                        sender: 'assistant',
-                                        text: `💬 **WhatsApp to ${staffName}** (📞 ${staffPhone}):\n_"${waMsg}"_`,
-                                        timestamp: new Date(),
-                                      },
-                                    ])
-                                  }}
-                                  className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
-                                  title="Open WhatsApp chat with prefilled follow-up message"
-                                >
-                                  <MessageCircle className="w-3 h-3 text-emerald-600" />
-                                  <span>WhatsApp</span>
-                                </button>
-
-                                {/* 2. Mark Complete */}
-                                <button
-                                  type="button"
-                                  disabled={isDone}
+                                  aria-label="Mark Done"
+                                  title="Mark Completed"
                                   onClick={async () => {
                                     try {
                                       await updateStaffJobStage(task.id, 'complete')
@@ -3360,24 +3308,23 @@ export default function AiAssistantDrawer({
                                       toast.error('Failed to update: ' + err.message)
                                     }
                                   }}
-                                  className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                                  className="h-6 w-6 rounded bg-gray-100 hover:bg-green-100 border border-gray-200 hover:border-green-300 text-gray-700 hover:text-green-700 flex items-center justify-center transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
                                 >
-                                  <Check className="w-3 h-3 text-emerald-600" />
-                                  <span>Mark Done</span>
+                                  <Check className="w-3.5 h-3.5" />
                                 </button>
 
-                                {/* 3. Add Follow-up Task */}
+                                {/* 4. Add Follow-up Task */}
                                 <button
                                   type="button"
+                                  aria-label="Add Follow-up"
+                                  title="Add Follow-up Task"
                                   onClick={() => {
                                     setInputMessage(`Follow up task for ${staffName}: ${task.text}`)
                                     inputRef.current?.focus()
                                   }}
-                                  className="px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                                  title="Create a new follow-up task based on this task"
+                                  className="h-6 w-6 rounded bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 flex items-center justify-center transition-colors cursor-pointer shadow-2xs"
                                 >
-                                  <Plus className="w-3 h-3 text-amber-600" />
-                                  <span>+ Follow-up</span>
+                                  <Plus className="w-3.5 h-3.5" />
                                 </button>
                               </div>
                             </div>
