@@ -1832,7 +1832,7 @@ export default function AiAssistantDrawer({
 
                 {/* WhatsApp-Style Interactive Selection Chips */}
                 {msg.chips && msg.chips.length > 0 && (
-                  <div className="mt-2.5 pt-2 border-t border-gray-100 flex flex-wrap gap-1.5 items-center">
+                  <div className={`${Boolean(msg.text) ? 'mt-2.5 pt-2 border-t border-gray-100' : ''} flex flex-wrap gap-1.5 items-center`}>
                     {msg.chips.map((chip, cIdx) => (
                       <button
                         key={chip.id || cIdx}

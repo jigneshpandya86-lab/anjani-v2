@@ -63,7 +63,7 @@ export const EXPENSE_CATEGORIES = [
  */
 export function getMainMenuMessage() {
   return {
-    text: `🤖 **Anjani WhatsApp-Style Assistant**\n\nNamaste Jigneshbhai! Please choose what you would like to do from the menu below:`,
+    text: '',
     chips: MAIN_MENU_CHIPS,
     isMainMenu: true,
   }

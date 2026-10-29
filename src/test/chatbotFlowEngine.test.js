@@ -43,9 +43,9 @@ describe('WhatsApp-Style Chatbot Flow Engine', () => {
     },
   }
 
-  it('provides the main menu message with all 5 flows and quick checks', () => {
+  it('provides the clutter-free main menu message with all 5 flows and quick checks', () => {
     const menu = getMainMenuMessage()
-    expect(menu.text).toContain('Anjani WhatsApp-Style Assistant')
+    expect(menu.text).toBe('')
     expect(menu.chips).toHaveLength(MAIN_MENU_CHIPS.length)
     expect(menu.chips.some((c) => c.flow === FLOW_TYPES.EXPENSE)).toBe(true)
     expect(menu.chips.some((c) => c.flow === FLOW_TYPES.ORDER)).toBe(true)
