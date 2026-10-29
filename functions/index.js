@@ -2766,6 +2766,140 @@ async function processDefaulterPaymentReminders(db, currentHour, currentDayOfWee
 }
 
 /**
+ * Helper to process automated background daytime follow-ups for staff tasks.
+ * Evaluates pending/due tasks twice daily (e.g. at 11:00 AM and 4:00 PM / 16:00 IST),
+ * strictly within safe daytime hours (9:00 AM – 8:00 PM IST).
+ */
+async function processStaffTasksBackgroundFollowUp(db, currentHour) {
+  try {
+    // 1. Daytime safety check (9 AM to 8 PM IST)
+    if (currentHour < 9 || currentHour >= 20) {
+      logger.info(`Staff Tasks Follow-Up: Current hour ${currentHour}:00 is outside daytime (9 AM - 8 PM IST). Skipping.`);
+      return;
+    }
+
+    const configRef = db.collection('config').doc('staffTasksFollowUp');
+    const configDoc = await configRef.get();
+    const configData = configDoc.exists ? configDoc.data() : { enabled: true, hours: [11, 16], maxFollowUps: 3 };
+
+    if (configData.enabled === false) {
+      logger.info("Staff tasks automated follow-up is disabled in config. Skipping.");
+      return;
+    }
+
+    const scheduledHours = Array.isArray(configData.hours) ? configData.hours : [11, 16];
+    if (!scheduledHours.includes(currentHour)) {
+      logger.info(`Staff Tasks Follow-Up: Current hour (${currentHour}) not in scheduled hours [${scheduledHours.join(', ')}]. Skipping.`);
+      return;
+    }
+
+    const maxFollowUps = Number(configData.maxFollowUps || 3);
+
+    // 2. Fetch active tasks in 'Jobs'
+    const jobsSnap = await db.collection('Jobs')
+      .where('stage', 'in', ['new', 'due'])
+      .get();
+
+    if (jobsSnap.empty) {
+      logger.info("Staff Tasks Follow-Up: No pending/due tasks found. Skipping.");
+      return;
+    }
+
+    const now = new Date();
+    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now);
+
+    let followedUpCount = 0;
+
+    for (const jobDoc of jobsSnap.docs) {
+      const job = jobDoc.data();
+      const followUpCount = Number(job.followUpCount || 0);
+
+      if (followUpCount >= maxFollowUps) continue;
+
+      if (job.lastFollowUpAt) {
+        const lastDate = job.lastFollowUpAt.toDate ? job.lastFollowUpAt.toDate() : new Date(job.lastFollowUpAt);
+        const lastFollowUpDayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(lastDate);
+        if (lastFollowUpDayStr === todayStr) {
+          continue;
+        }
+      }
+
+      let isEligible = true;
+      let dueDateStr = '';
+      if (job.dueDate) {
+        const due = job.dueDate.toDate ? job.dueDate.toDate() : new Date(job.dueDate);
+        dueDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(due);
+        if (dueDateStr > todayStr && !job.isFollowUp) {
+          isEligible = false;
+        }
+      }
+
+      if (!isEligible) continue;
+
+      const staffName = job.assignedStaffName || (job.assignedTo === 'hiteshbhai' ? 'Hiteshbhai' : 'Nilesh');
+      const staffPhone = job.staffPhone || (job.assignedTo === 'hiteshbhai' ? '7778077617' : '7990943652');
+      const cleanStaff = staffName.trim();
+      const salutationName = /bhai/i.test(cleanStaff) ? cleanStaff : `${cleanStaff}bhai`;
+      const cleanTask = String(job.text || '').trim().replace(/[\r\n]+/g, ' ');
+      const core = cleanTask.replace(/[?.!]+$/, '').trim();
+
+      let message = '';
+      if (followUpCount >= 2) {
+        message = `${salutationName}, ${core} thayu ke nahi? Jaldi patavjo ane keje mane...`;
+      } else if (followUpCount === 1) {
+        message = `${salutationName}, ${core} ketle pahochyu? Keje mane update...`;
+      } else {
+        const coreLower = core.toLowerCase();
+        let body = `${core} kari dejo, ane thay aetle keje mane...`;
+        if (/(?:karjo|dejo|aavjo|levjo|mokljo|aapjo|rakhjo)$/i.test(coreLower)) {
+          body = `${core}, ane thay aetle keje mane...`;
+        } else if (
+          cleanTask.endsWith('?') ||
+          /(?:aapyu|apiyu|didhu|lidhu|thayu|patavyu|pataavyu|moklyu|lidho|pahochyu|avyu|gayu)$/i.test(coreLower)
+        ) {
+          body = `${core} ke nahi, keje mane...`;
+        }
+        message = `${salutationName}, ${body}${dueDateStr ? ` (Target: ${dueDateStr})` : ''}`;
+      }
+
+      try {
+        await sendBackgroundSms({
+          macroUrl: MACRODROID_URL,
+          phone: staffPhone,
+          message,
+        });
+
+        const newFollowCount = followUpCount + 1;
+        await jobDoc.ref.update({
+          followUpCount: admin.firestore.FieldValue.increment(1),
+          lastFollowUpAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastFollowUpMessage: message,
+          followUpHistory: admin.firestore.FieldValue.arrayUnion({
+            timestamp: new Date().toISOString(),
+            message,
+            channel: 'system_background_sms',
+            followUpNumber: newFollowCount,
+            sentAt: `${currentHour}:00 IST`,
+            sender: 'System Background Scheduler',
+          }),
+          stage: 'due',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        followedUpCount++;
+        logger.info(`Staff task follow-up #${newFollowCount} sent to ${staffName} (${staffPhone}): "${message}"`);
+      } catch (err) {
+        logger.error(`Error sending staff task follow-up for job ${jobDoc.id}:`, err);
+      }
+    }
+
+    logger.info(`Staff Tasks Follow-Up completed: Sent ${followedUpCount} follow-up(s).`);
+  } catch (error) {
+    logger.error("Error in processStaffTasksBackgroundFollowUp:", error);
+  }
+}
+
+/**
  * Unified Hourly SMS Scheduler
  * Runs hourly from 9 AM to 10 PM India Time (0 9-22 * * *).
  * Centralizes all background scheduled SMS notifications.
@@ -2810,7 +2944,8 @@ exports.hourlySmsScheduler = onSchedule(
         processDailyGreetings(db, currentHour),
         processDailyExpenseReport(db, currentHour),
         processRecurringExpenses(db, currentHour),
-        processDynamicLeadDiscovery(db, currentHour, currentDayOfWeek)
+        processDynamicLeadDiscovery(db, currentHour, currentDayOfWeek),
+        processStaffTasksBackgroundFollowUp(db, currentHour)
       ]);
 
       logger.info("Unified hourly SMS scheduler completed.");

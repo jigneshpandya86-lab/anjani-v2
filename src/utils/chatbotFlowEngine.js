@@ -1212,10 +1212,11 @@ export function advanceChatbotFlow(currentFlowState, inputPayload, context = {})
         step: 'confirm',
         data: updatedData,
         isConfirmation: true,
-        text: `📋 **Confirm Staff Task Assignment**\n\n• **Assigned To**: ${data.assignedStaffName} (📞 ${data.staffPhone})\n• **Type**: ${data.isFollowUp ? '🔄 Follow-up Task' : '🆕 New Task'}\n• **Task**: "${data.text}"\n• **Target**: ${targetLabel} (${dueDateStr})\n• **Daytime Window**: ${daytimeCheck.isDayTime ? `☀️ Daytime (${daytimeCheck.istTimeStr}: Safe to notify)` : `🌙 Night time (${daytimeCheck.istTimeStr}: Safe daytime starts 9 AM IST)`}\n• **Humanized SMS Preview**:\n_"${smsPreview}"_\n\nChoose how to save:`,
+        text: `📋 **${data.assignedStaffName}** • 🎯 ${targetLabel} (${dueDateStr}) ${daytimeCheck.isDayTime ? '☀️ 9AM–8PM' : '🌙 Night'}\n💬 _"${smsPreview}"_`,
         chips: [
-          { label: '✅ Create Task Only', action: 'save', sendSms: false, isPrimary: true },
-          { label: '📲 Create & Send SMS to Staff', action: 'save', sendSms: true, isPrimary: true },
+          { label: '💾 Save Task', action: 'save', sendSms: false, isPrimary: true },
+          { label: '📲 SMS Staff', action: 'save', sendSms: true, isPrimary: true },
+          { label: '💬 WhatsApp Staff', action: 'save_and_whatsapp', isPrimary: true },
           { label: '❌ Cancel', action: 'cancel', isDestructive: true },
         ],
       }
@@ -1354,14 +1355,14 @@ export async function executeFlowSave(flowType, flowData, store = {}) {
 
       const smsNotice = sendSms
         ? (result?.smsSent
-            ? `\n• 📲 **Notification SMS dispatched to ${assignedStaffName}!**`
-            : `\n• 🌙 SMS held (outside daytime). Task created for morning.`)
-        : '\n• Task recorded on Staff Tasks assignment board.'
+            ? ` • 📲 SMS sent!`
+            : ` • 🌙 SMS held (outside daytime)`)
+        : ''
 
       return {
         success: true,
         result,
-        text: `✅ **${isFollowUp ? 'Follow-up Task' : 'Staff Task'} Assigned Successfully!**\n\n• **Staff**: ${assignedStaffName} (📞 ${staffPhone})\n• **Task**: "${text}"\n• **Target**: ${dueDate}${smsNotice}`,
+        text: `✅ **${isFollowUp ? 'Follow-up' : 'Task'} Assigned to ${assignedStaffName}**\n• 🎯 ${dueDate}${smsNotice}\n• "${text}"`,
       }
     }
 

@@ -625,11 +625,9 @@ export function tryLocalIntentRoute(query, store = {}) {
     return {
       handled: true,
       type: 'staff_task_draft',
-      text: `📋 **${isFollowUp ? 'Follow-up Task' : 'New Staff Task'} Draft**:\nReady to assign task to **${staffName}** (📞 ${staffPhone}):\n• **Task**: "${taskText}"\n• **Target**: ${targetLabel} (${dueDateStr})\n• **Daytime Status**: ${
-        daytimeCheck.isDayTime
-          ? '☀️ Daytime (9 AM – 8 PM IST: Safe to SMS)'
-          : `🌙 Night time (${daytimeCheck.istTimeStr}: Daytime is 9 AM – 8 PM IST)`
-      }`,
+      text: `📋 **${staffName}** • 🎯 ${targetLabel} (${dueDateStr}) ${
+        daytimeCheck.isDayTime ? '☀️ 9AM–8PM' : '🌙 Night'
+      }\n• "${taskText}"`,
       data: {
         text: taskText,
         assignedTo: assignedStaff?.id || 'nilesh',

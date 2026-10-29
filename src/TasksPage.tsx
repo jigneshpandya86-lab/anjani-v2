@@ -17,6 +17,7 @@ import {
   CheckCircle,
   Archive,
   Send,
+  MessageCircle,
   Sparkles,
   User,
   Sun,
@@ -31,6 +32,9 @@ import {
   sendTaskFollowUpSms,
   resolveStaffMember,
   createStaffTaskInDb,
+  buildHumanLikeFollowUpMessage,
+  buildTaskWhatsAppUrl,
+  recordTaskFollowUpHistory,
 } from './services/taskService'
 import './TasksPage.css'
 
@@ -239,6 +243,38 @@ const TasksPage: React.FC<TasksPageProps> = ({ onOpenAiAssistant }) => {
     }
   }
 
+  const handleSendFollowUpWhatsApp = async (job: Job) => {
+    const staffName = job.assignedStaffName || (job.assignedTo === 'hiteshbhai' ? 'Hiteshbhai' : 'Nilesh')
+    const staffPhone = job.staffPhone || (job.assignedTo === 'hiteshbhai' ? '7778077617' : '7990943652')
+    const followCount = Number(job.followUpCount || 0)
+
+    try {
+      const message = buildHumanLikeFollowUpMessage({
+        staffName,
+        taskText: job.text,
+        followUpCount: followCount,
+      })
+      const waUrl = buildTaskWhatsAppUrl({
+        staffPhone,
+        message,
+      })
+      if (waUrl) {
+        window.open(waUrl, '_blank')
+      }
+      await recordTaskFollowUpHistory({
+        taskId: job.id,
+        staffName,
+        message,
+        channel: 'whatsapp',
+        followUpCount: followCount,
+      })
+      toast.success(`💬 WhatsApp opened for ${staffName}!`, { icon: '✅' })
+    } catch (err: any) {
+      console.error('Follow-up WhatsApp error:', err)
+      toast.error('Failed to open WhatsApp: ' + err.message)
+    }
+  }
+
   const archiveTask = async (id: string) => {
     try {
       const jobRef = doc(db, 'Jobs', id)
@@ -366,15 +402,25 @@ const TasksPage: React.FC<TasksPageProps> = ({ onOpenAiAssistant }) => {
                     <div className="task-actions">
                       {/* One-click Humanized Daytime SMS Follow-up */}
                       {stage !== 'complete' && (
-                        <button
-                          onClick={() => handleSendFollowUpSms(job)}
-                          disabled={sendingSmsTaskId === job.id}
-                          title={`Send Follow-up SMS to ${staffName} (📞 ${staffPhone})`}
-                          className="icon-btn text-teal-700 hover:bg-teal-600 hover:text-white"
-                          style={{ borderColor: '#2dd4bf' }}
-                        >
-                          <Send size={15} />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handleSendFollowUpSms(job)}
+                            disabled={sendingSmsTaskId === job.id}
+                            title={`Send Follow-up SMS to ${staffName} (📞 ${staffPhone})`}
+                            className="icon-btn text-teal-700 hover:bg-teal-600 hover:text-white"
+                            style={{ borderColor: '#2dd4bf' }}
+                          >
+                            <Send size={15} />
+                          </button>
+                          <button
+                            onClick={() => handleSendFollowUpWhatsApp(job)}
+                            title={`WhatsApp Follow-up to ${staffName} (📞 ${staffPhone})`}
+                            className="icon-btn text-emerald-600 hover:bg-emerald-600 hover:text-white"
+                            style={{ borderColor: '#10b981' }}
+                          >
+                            <MessageCircle size={15} />
+                          </button>
+                        </>
                       )}
 
                       <button

@@ -273,6 +273,9 @@ export default function SettingsTab() {
   const [baileyTargeting, setBaileyTargeting] = useState(true)
   const [selectedCorridors, setSelectedCorridors] = useState(ALL_BAILEY_CORRIDORS)
   const [selectedCategories, setSelectedCategories] = useState(ALL_BAILEY_CATEGORIES)
+
+  // Staff Tasks Background Follow-Up State
+  const [staffTaskFollowUpEnabled, setStaffTaskFollowUpEnabled] = useState(true)
   const [isSearchingLeads, setIsSearchingLeads] = useState(false)
   const [leadDiscoveryStats, setLeadDiscoveryStats] = useState(null)
 
@@ -364,6 +367,15 @@ export default function SettingsTab() {
           setSelectedCorridors(ALL_BAILEY_CORRIDORS)
           setSelectedCategories(ALL_BAILEY_CATEGORIES)
         }
+
+        const taskFollowUpSnap = await getDoc(doc(db, 'config', 'staffTasksFollowUp'))
+        if (taskFollowUpSnap.exists()) {
+          const data = taskFollowUpSnap.data()
+          setStaffTaskFollowUpEnabled(data.enabled !== undefined ? !!data.enabled : true)
+        } else {
+          setStaffTaskFollowUpEnabled(true)
+        }
+
         await fetchPaymentSettings()
         const currentPay = useClientStore.getState().paymentSettings
         if (currentPay) {
@@ -620,6 +632,17 @@ export default function SettingsTab() {
           categories: selectedCategories,
           targetProduct: 'Bailey Packaged Drinking Water',
           minute: 0,
+        },
+        { merge: true },
+      )
+
+      // 7. Save Staff Tasks Background Follow-Up settings
+      await setDoc(
+        doc(db, 'config', 'staffTasksFollowUp'),
+        {
+          enabled: staffTaskFollowUpEnabled,
+          hours: [11, 16],
+          maxFollowUps: 3,
         },
         { merge: true },
       )
@@ -1193,6 +1216,45 @@ export default function SettingsTab() {
                 </div>
               )}
             </SchedulerCard>
+
+            {/* Staff Tasks Background Follow-Up */}
+            <div className="rounded-xl border border-teal-200 bg-white p-4 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-100 text-teal-700">
+                    <Clock size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900">Staff Tasks Background Follow-Up</h3>
+                    <p className="text-[11px] text-gray-500">Twice daily daytime follow-up check (11:00 AM & 4:00 PM IST)</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex cursor-pointer items-center">
+                  <input
+                    type="checkbox"
+                    checked={staffTaskFollowUpEnabled}
+                    onChange={(e) => setStaffTaskFollowUpEnabled(e.target.checked)}
+                    className="peer sr-only"
+                  />
+                  <div className="peer h-6 w-11 rounded-full bg-gray-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-teal-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none"></div>
+                </label>
+              </div>
+
+              {staffTaskFollowUpEnabled ? (
+                <div className="rounded-lg border border-teal-100 bg-teal-50/50 p-2.5 text-xs text-teal-900 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <span>☀️ Safe Daytime Auto Follow-Up (11 AM & 4 PM IST)</span>
+                  </div>
+                  <p className="text-[11px] text-gray-600 leading-relaxed">
+                    Automatically checks pending and overdue tasks for assigned staff (Nileshbhai & Hiteshbhai) twice daily. Dispatches respectful Gujlish follow-ups with daytime safety (9:00 AM – 8:00 PM IST).
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 italic">
+                  Background follow-up for staff tasks is currently disabled.
+                </p>
+              )}
+            </div>
 
             <div className="flex justify-end border-t pt-2">
               <button

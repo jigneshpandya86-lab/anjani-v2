@@ -311,4 +311,27 @@ describe('AiAssistantDrawer', () => {
 
     unmount()
   })
+
+  it('renders Staff Tasks card with 1-tap WhatsApp and SMS follow-up buttons', () => {
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    // Click Staff Tasks chip
+    fireEvent.click(screen.getByText('⏰ Staff Tasks & Follow-up'))
+
+    // Staff tasks list card appears with tasks
+    expect(screen.getByText(/Staff Tasks \(1\)/i)).toBeInTheDocument()
+    expect(screen.getByText('Collect empty jars from Krishna Hotel')).toBeInTheDocument()
+
+    // 1-tap WhatsApp and SMS follow-up buttons exist
+    expect(screen.getByRole('button', { name: /^WhatsApp$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /SMS Follow-up/i })).toBeInTheDocument()
+
+    unmount()
+  })
 })

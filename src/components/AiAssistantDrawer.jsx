@@ -32,6 +32,8 @@ import {
   Brain,
   Sun,
   Moon,
+  Edit2,
+  MessageCircle,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
@@ -58,6 +60,8 @@ import {
   buildHumanLikeFollowUpMessage,
   buildNewTaskAssignmentMessage,
   sendTaskFollowUpSms,
+  buildTaskWhatsAppUrl,
+  recordTaskFollowUpHistory,
 } from '../services/taskService'
 
 export const SPEECH_LANGUAGES = [
@@ -131,6 +135,8 @@ export default function AiAssistantDrawer({
   const [createdTasks, setCreatedTasks] = useState({})
   const [sentFollowUps, setSentFollowUps] = useState({})
   const [sendingFollowUpId, setSendingFollowUpId] = useState(null)
+  const [editingDraftTexts, setEditingDraftTexts] = useState({})
+  const [editingDraftIds, setEditingDraftIds] = useState({})
 
   const [messages, setMessages] = useState([])
 
@@ -567,7 +573,7 @@ export default function AiAssistantDrawer({
     }
 
     // 4. If confirming save
-    if (chip.action === 'save' && activeChatbotFlow) {
+    if ((chip.action === 'save' || chip.action === 'save_and_whatsapp') && activeChatbotFlow) {
       setLoading(true)
       try {
         const flowDataWithAction = {
@@ -590,6 +596,33 @@ export default function AiAssistantDrawer({
           storeMethods
         )
 
+        // If WhatsApp requested for staff task
+        if (chip.action === 'save_and_whatsapp' && activeChatbotFlow.flow === FLOW_TYPES.STAFF_TASK) {
+          const staffName = activeChatbotFlow.data.assignedStaffName || 'Staff'
+          const staffPhone = activeChatbotFlow.data.staffPhone
+          const taskMsg = buildNewTaskAssignmentMessage({
+            staffName,
+            taskText: activeChatbotFlow.data.text,
+            dueDateStr: activeChatbotFlow.data.targetLabel || 'Today',
+          })
+          const waUrl = buildTaskWhatsAppUrl({
+            staffPhone,
+            message: taskMsg,
+          })
+          if (waUrl) {
+            window.open(waUrl, '_blank')
+          }
+          if (saveRes.result?.id) {
+            await recordTaskFollowUpHistory({
+              taskId: saveRes.result.id,
+              staffName,
+              message: taskMsg,
+              channel: 'whatsapp',
+              followUpCount: 0,
+            })
+          }
+        }
+
         setActiveChatbotFlow(null)
         const menu = getMainMenuMessage()
         setMessages((prev) => [
@@ -597,7 +630,7 @@ export default function AiAssistantDrawer({
           {
             id: 'usr-' + Date.now(),
             sender: 'user',
-            text: '✅ Confirmed',
+            text: chip.action === 'save_and_whatsapp' ? '💬 WhatsApp & Save' : '✅ Confirmed',
             timestamp: new Date(),
           },
           {
@@ -609,7 +642,12 @@ export default function AiAssistantDrawer({
             timestamp: new Date(),
           },
         ])
-        toast.success('Saved to business records!', { icon: '✅' })
+        toast.success(
+          chip.action === 'save_and_whatsapp'
+            ? 'Task saved & WhatsApp opened!'
+            : 'Saved to business records!',
+          { icon: '✅' }
+        )
       } catch (err) {
         console.error('Flow save error:', err)
         toast.error('Failed to save: ' + err.message)
@@ -2898,131 +2936,236 @@ export default function AiAssistantDrawer({
                 )}
 
                 {/* 6. Interactive Staff Task Assignment Draft Card */}
-                {msg.type === 'staff_task_draft' && msg.data && (
-                  <div className="mt-3 bg-white border border-teal-200 rounded-xl p-3.5 space-y-3 text-xs text-gray-800 shadow-sm">
-                    <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center font-bold text-sm">
-                          📋
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-extrabold text-gray-900 text-sm">
-                              {msg.data.isFollowUp ? 'Follow-up Task' : 'Staff Task'}
-                            </span>
-                            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black uppercase bg-teal-100 text-teal-800">
-                              {msg.data.assignedStaffName}
-                            </span>
+                {msg.type === 'staff_task_draft' && msg.data && (() => {
+                  const currentDraftText =
+                    editingDraftTexts[msg.id] !== undefined
+                      ? editingDraftTexts[msg.id]
+                      : (msg.data.text || '')
+                  const isEditingDraft = Boolean(editingDraftIds[msg.id])
+                  const draftPreviewMsg = buildNewTaskAssignmentMessage({
+                    staffName: msg.data.assignedStaffName,
+                    taskText: currentDraftText,
+                    dueDateStr: msg.data.targetLabel || 'Today',
+                  })
+
+                  return (
+                    <div className="mt-3 bg-white border border-teal-200 rounded-xl p-3 space-y-2.5 text-xs text-gray-800 shadow-sm">
+                      <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center font-bold text-xs">
+                            📋
                           </div>
-                          <p className="text-[11px] text-gray-500">
-                            Target: <strong>{msg.data.targetLabel || 'Today'}</strong> ({msg.data.dueDate}) • 📞 {msg.data.staffPhone}
-                          </p>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-extrabold text-gray-900 text-xs">
+                                {msg.data.isFollowUp ? '🔄 Follow-up Task' : '🆕 Staff Task'}
+                              </span>
+                              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black uppercase bg-teal-100 text-teal-800">
+                                👤 {msg.data.assignedStaffName}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-gray-500">
+                              🎯 <strong>{msg.data.targetLabel || 'Today'}</strong> ({msg.data.dueDate}) • 📞 {msg.data.staffPhone}
+                            </p>
+                          </div>
                         </div>
+                        {createdTasks[msg.id] && (
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-700 flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Assigned
+                          </span>
+                        )}
                       </div>
-                      {createdTasks[msg.id] && (
-                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-700 flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Assigned
-                        </span>
-                      )}
-                    </div>
 
-                    {/* Task Description */}
-                    <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-200 text-gray-900 font-semibold text-xs leading-relaxed">
-                      "{msg.data.text}"
-                    </div>
-
-                    {/* Daytime status notice */}
-                    <div className={`p-2 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 ${
-                      msg.data.daytimeCheck?.isDayTime
-                        ? 'bg-amber-50/80 border border-amber-200 text-amber-900'
-                        : 'bg-indigo-50/80 border border-indigo-200 text-indigo-900'
-                    }`}>
-                      {msg.data.daytimeCheck?.isDayTime ? (
-                        <>
-                          <Sun className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                          <span>☀️ <strong>Daytime Hours ({msg.data.daytimeCheck?.istTimeStr || 'IST'})</strong>: Safe to notify staff via SMS</span>
-                        </>
+                      {/* Editable Task Description */}
+                      {isEditingDraft ? (
+                        <div className="space-y-1.5">
+                          <textarea
+                            value={currentDraftText}
+                            onChange={(e) =>
+                              setEditingDraftTexts((prev) => ({ ...prev, [msg.id]: e.target.value }))
+                            }
+                            placeholder="Enter task text..."
+                            className="w-full p-2 bg-gray-50 rounded-lg border border-teal-300 text-gray-900 font-semibold text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-teal-500"
+                            rows={2}
+                          />
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditingDraftIds((prev) => ({ ...prev, [msg.id]: false }))
+                              }
+                              className="px-2 py-0.5 bg-teal-100 hover:bg-teal-200 text-teal-900 text-[10px] font-bold rounded cursor-pointer transition-colors"
+                            >
+                              ✓ Done
+                            </button>
+                          </div>
+                        </div>
                       ) : (
-                        <>
-                          <Moon className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                          <span>🌙 <strong>Night Hours ({msg.data.daytimeCheck?.istTimeStr || 'IST'})</strong>: SMS held to avoid disturbing staff (9 AM–8 PM)</span>
-                        </>
+                        <div className="p-2 bg-gray-50 rounded-lg border border-gray-200 text-gray-900 font-semibold text-xs leading-relaxed flex items-start justify-between gap-2">
+                          <span className="flex-1">"{currentDraftText}"</span>
+                          {!createdTasks[msg.id] && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditingDraftIds((prev) => ({ ...prev, [msg.id]: true }))
+                              }
+                              className="text-gray-400 hover:text-teal-600 p-0.5 rounded cursor-pointer shrink-0 transition-colors"
+                              title="Edit task text"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Message Preview */}
+                      <div className="p-2 bg-slate-50 rounded-lg border border-slate-200 text-[11px] text-slate-700">
+                        <span className="text-[10px] font-bold text-slate-400 block mb-0.5">💬 PREVIEW</span>
+                        <p className="italic font-medium text-slate-800 leading-snug">"{draftPreviewMsg}"</p>
+                      </div>
+
+                      {/* Daytime status notice */}
+                      <div className={`px-2 py-1 rounded-md text-[10px] font-semibold flex items-center justify-between ${
+                        msg.data.daytimeCheck?.isDayTime
+                          ? 'bg-amber-50 text-amber-900 border border-amber-200/70'
+                          : 'bg-indigo-50 text-indigo-900 border border-indigo-200/70'
+                      }`}>
+                        <span className="flex items-center gap-1.5">
+                          {msg.data.daytimeCheck?.isDayTime ? (
+                            <>
+                              <Sun className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span>☀️ <strong>{msg.data.daytimeCheck?.istTimeStr || 'IST'}</strong> • Safe to SMS</span>
+                            </>
+                          ) : (
+                            <>
+                              <Moon className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                              <span>🌙 <strong>{msg.data.daytimeCheck?.istTimeStr || 'IST'}</strong> • Night (SMS held)</span>
+                            </>
+                          )}
+                        </span>
+                      </div>
+
+                      {/* Actions */}
+                      {!createdTasks[msg.id] ? (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          {/* Create Only */}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await addStaffJob({
+                                  text: currentDraftText,
+                                  assignedTo: msg.data.assignedTo,
+                                  assignedStaffName: msg.data.assignedStaffName,
+                                  staffPhone: msg.data.staffPhone,
+                                  dueDate: msg.data.dueDate,
+                                  isFollowUp: msg.data.isFollowUp,
+                                  sendNotificationSms: false,
+                                })
+                                setCreatedTasks((prev) => ({ ...prev, [msg.id]: true }))
+                                toast.success(`Task assigned to ${msg.data.assignedStaffName}!`, { icon: '📋' })
+                              } catch (err) {
+                                toast.error('Failed to create task: ' + err.message)
+                              }
+                            }}
+                            className="flex-1 bg-gray-900 hover:bg-black text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer shadow-sm"
+                            title="Create task on board"
+                          >
+                            <Check className="w-3.5 h-3.5 text-teal-400" />
+                            <span>Save</span>
+                          </button>
+
+                          {/* SMS Staff */}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const daytime = checkIsDayTime()
+                              let force = false
+                              if (!daytime.isDayTime) {
+                                const confirmSend = window.confirm(
+                                  `⚠️ Outside Daytime Hours (${daytime.istTimeStr})\n\nDaytime is 9:00 AM – 8:00 PM IST to avoid disturbing staff at night.\n\nDo you want to send SMS to ${msg.data.assignedStaffName} anyway?`
+                                )
+                                if (!confirmSend) return
+                                force = true
+                              }
+                              try {
+                                await addStaffJob({
+                                  text: currentDraftText,
+                                  assignedTo: msg.data.assignedTo,
+                                  assignedStaffName: msg.data.assignedStaffName,
+                                  staffPhone: msg.data.staffPhone,
+                                  dueDate: msg.data.dueDate,
+                                  isFollowUp: msg.data.isFollowUp,
+                                  sendNotificationSms: true,
+                                  forceOutsideDaytime: force,
+                                })
+                                setCreatedTasks((prev) => ({ ...prev, [msg.id]: true }))
+                                toast.success(
+                                  `Task assigned & SMS sent to ${msg.data.assignedStaffName}!`,
+                                  { icon: '📲' }
+                                )
+                              } catch (err) {
+                                toast.error('Failed to assign task: ' + err.message)
+                              }
+                            }}
+                            className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer shadow-sm"
+                            title="Assign and send SMS to staff"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            <span>SMS</span>
+                          </button>
+
+                          {/* WhatsApp Staff */}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const created = await addStaffJob({
+                                  text: currentDraftText,
+                                  assignedTo: msg.data.assignedTo,
+                                  assignedStaffName: msg.data.assignedStaffName,
+                                  staffPhone: msg.data.staffPhone,
+                                  dueDate: msg.data.dueDate,
+                                  isFollowUp: msg.data.isFollowUp,
+                                  sendNotificationSms: false,
+                                })
+                                const waUrl = buildTaskWhatsAppUrl({
+                                  staffPhone: msg.data.staffPhone,
+                                  message: draftPreviewMsg,
+                                })
+                                if (waUrl) {
+                                  window.open(waUrl, '_blank')
+                                }
+                                if (created?.id) {
+                                  await recordTaskFollowUpHistory({
+                                    taskId: created.id,
+                                    staffName: msg.data.assignedStaffName,
+                                    message: draftPreviewMsg,
+                                    channel: 'whatsapp',
+                                    followUpCount: 0,
+                                  })
+                                }
+                                setCreatedTasks((prev) => ({ ...prev, [msg.id]: true }))
+                                toast.success(`Task saved & WhatsApp opened for ${msg.data.assignedStaffName}!`, { icon: '💬' })
+                              } catch (err) {
+                                toast.error('Failed to assign task: ' + err.message)
+                              }
+                            }}
+                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer shadow-sm"
+                            title="Save task and open WhatsApp chat with staff"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>WhatsApp</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-center py-1 text-teal-800 font-bold text-[11px] bg-teal-50 rounded-lg">
+                          ✓ Task active on Staff Tasks Board
+                        </div>
                       )}
                     </div>
-
-                    {/* Actions */}
-                    {!createdTasks[msg.id] ? (
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await addStaffJob({
-                                text: msg.data.text,
-                                assignedTo: msg.data.assignedTo,
-                                assignedStaffName: msg.data.assignedStaffName,
-                                staffPhone: msg.data.staffPhone,
-                                dueDate: msg.data.dueDate,
-                                isFollowUp: msg.data.isFollowUp,
-                                sendNotificationSms: false,
-                              })
-                              setCreatedTasks((prev) => ({ ...prev, [msg.id]: true }))
-                              toast.success(`Task assigned to ${msg.data.assignedStaffName}!`, { icon: '📋' })
-                            } catch (err) {
-                              toast.error('Failed to create task: ' + err.message)
-                            }
-                          }}
-                          className="flex-1 bg-gray-900 hover:bg-black text-white font-bold py-2 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                        >
-                          <Check className="w-3.5 h-3.5 text-teal-400" />
-                          <span>Create Task</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const daytime = checkIsDayTime()
-                            let force = false
-                            if (!daytime.isDayTime) {
-                              const confirmSend = window.confirm(
-                                `⚠️ Outside Daytime Hours (${daytime.istTimeStr})\n\nDaytime is 9:00 AM – 8:00 PM IST to avoid disturbing staff at night.\n\nDo you want to send SMS to ${msg.data.assignedStaffName} anyway?`
-                              )
-                              if (!confirmSend) return
-                              force = true
-                            }
-                            try {
-                              await addStaffJob({
-                                text: msg.data.text,
-                                assignedTo: msg.data.assignedTo,
-                                assignedStaffName: msg.data.assignedStaffName,
-                                staffPhone: msg.data.staffPhone,
-                                dueDate: msg.data.dueDate,
-                                isFollowUp: msg.data.isFollowUp,
-                                sendNotificationSms: true,
-                                forceOutsideDaytime: force,
-                              })
-                              setCreatedTasks((prev) => ({ ...prev, [msg.id]: true }))
-                              toast.success(
-                                `Task assigned & SMS dispatched to ${msg.data.assignedStaffName}!`,
-                                { icon: '📲' }
-                              )
-                            } catch (err) {
-                              toast.error('Failed to assign task: ' + err.message)
-                            }
-                          }}
-                          className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                        >
-                          <Send className="w-3.5 h-3.5" />
-                          <span>Create & SMS Staff</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="text-center py-1 text-teal-800 font-bold text-[11px] bg-teal-50 rounded-lg">
-                        ✓ Task active on Staff Tasks Board
-                      </div>
-                    )}
-                  </div>
-                )}
+                  )
+                })()}
 
                 {/* 7. Interactive Staff Tasks List & Follow-ups Card */}
                 {msg.type === 'staff_tasks_list' && msg.data && (
@@ -3157,6 +3300,52 @@ export default function AiAssistantDrawer({
                                       ? 'Sending...'
                                       : `SMS Follow-up${followCount > 0 ? ` (#${followCount + 1})` : ''}`}
                                   </span>
+                                </button>
+
+                                {/* WhatsApp Follow-up */}
+                                <button
+                                  type="button"
+                                  disabled={isDone}
+                                  onClick={async () => {
+                                    const waMsg = buildHumanLikeFollowUpMessage({
+                                      staffName,
+                                      taskText: task.text,
+                                      followUpCount: followCount,
+                                    })
+                                    const waUrl = buildTaskWhatsAppUrl({
+                                      staffPhone,
+                                      message: waMsg,
+                                    })
+                                    if (waUrl) {
+                                      window.open(waUrl, '_blank')
+                                    }
+                                    await recordTaskFollowUpHistory({
+                                      taskId: task.id,
+                                      staffName,
+                                      message: waMsg,
+                                      channel: 'whatsapp',
+                                      followUpCount: followCount,
+                                    })
+                                    setSentFollowUps((prev) => ({
+                                      ...prev,
+                                      [task.id]: (prev[task.id] || followCount) + 1,
+                                    }))
+                                    toast.success(`💬 WhatsApp opened for ${staffName}!`, { icon: '✅' })
+                                    setMessages((prev) => [
+                                      ...prev,
+                                      {
+                                        id: 'asst-' + Date.now(),
+                                        sender: 'assistant',
+                                        text: `💬 **WhatsApp to ${staffName}** (📞 ${staffPhone}):\n_"${waMsg}"_`,
+                                        timestamp: new Date(),
+                                      },
+                                    ])
+                                  }}
+                                  className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+                                  title="Open WhatsApp chat with prefilled follow-up message"
+                                >
+                                  <MessageCircle className="w-3 h-3 text-emerald-600" />
+                                  <span>WhatsApp</span>
                                 </button>
 
                                 {/* 2. Mark Complete */}

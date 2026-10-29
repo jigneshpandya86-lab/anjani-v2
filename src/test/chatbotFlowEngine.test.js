@@ -462,9 +462,10 @@ describe('WhatsApp-Style Chatbot Flow Engine', () => {
       expect(s5.isConfirmation).toBe(true)
       expect(s5.text).toContain('Nilesh')
       expect(s5.text).toContain('Collect 15 empty petli from Royal Hotel')
-      expect(s5.text).toContain('Humanized SMS Preview')
-      expect(s5.chips.some((c) => c.label.includes('Create Task Only'))).toBe(true)
-      expect(s5.chips.some((c) => c.label.includes('Send SMS to Staff'))).toBe(true)
+      expect(s5.text).toContain('💬')
+      expect(s5.chips.some((c) => c.label.includes('Save Task'))).toBe(true)
+      expect(s5.chips.some((c) => c.label.includes('SMS Staff'))).toBe(true)
+      expect(s5.chips.some((c) => c.label.includes('WhatsApp Staff'))).toBe(true)
 
       // Save flow
       const mockAddJob = vi.fn().mockResolvedValue({ id: 'job-999', smsSent: true })
@@ -482,7 +483,7 @@ describe('WhatsApp-Style Chatbot Flow Engine', () => {
           sendNotificationSms: true,
         }),
       )
-      expect(saveRes.text).toContain('Task Assigned Successfully')
+      expect(saveRes.text).toContain('Assigned to Nilesh')
       expect(saveRes.text).toContain('Nilesh')
     })
   })

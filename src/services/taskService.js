@@ -7,7 +7,6 @@ import {
   query,
   orderBy,
   getDocs,
-  onSnapshot,
   serverTimestamp,
   arrayUnion,
   increment,
@@ -63,7 +62,39 @@ export function checkIsDayTime(targetDate = new Date()) {
 }
 
 /**
- * Builds a natural, respectful, human-like follow-up SMS message for delivery staff.
+ * Formats a task description into natural direct Gujlish style:
+ * e.g., "Oxira Sample aapyu?" -> "Oxira Sample aapyu ke nahi, keje mane..."
+ * e.g., "Collect payment" -> "Collect payment kari dejo, ane thay aetle keje mane..."
+ */
+export function formatGujlishTaskText(taskText) {
+  let clean = String(taskText || '').trim().replace(/[\r\n]+/g, ' ')
+  if (!clean) return 'kaam kari dejo, ane thay aetle keje mane...'
+
+  const lower = clean.toLowerCase()
+  if (lower.includes('ke nahi') || lower.includes('ke nai') || lower.includes('keje mane')) {
+    return clean.replace(/[?.!]+$/, '') + '...'
+  }
+
+  const hasQuestion = clean.endsWith('?')
+  const core = clean.replace(/[?.!]+$/, '').trim()
+  const coreLower = core.toLowerCase()
+
+  if (/(?:karjo|dejo|aavjo|levjo|mokljo|aapjo|rakhjo)$/i.test(coreLower)) {
+    return `${core}, ane thay aetle keje mane...`
+  }
+
+  if (
+    hasQuestion ||
+    /(?:aapyu|apiyu|didhu|lidhu|thayu|patavyu|pataavyu|moklyu|lidho|pahochyu|avyu|gayu)$/i.test(coreLower)
+  ) {
+    return `${core} ke nahi, keje mane...`
+  }
+
+  return `${core} kari dejo, ane thay aetle keje mane...`
+}
+
+/**
+ * Builds a natural, respectful, direct Gujlish follow-up SMS message for delivery staff.
  * Varies phrasing progressively based on follow-up iteration (1st gentle -> 2nd reminder -> 3rd urgent).
  *
  * @param {Object} params
@@ -72,6 +103,7 @@ export function checkIsDayTime(targetDate = new Date()) {
  * @param {number} [params.followUpCount=0] - Number of previous follow-ups
  * @param {string} [params.dueDateStr] - Due date or target time
  * @param {boolean} [params.isUrgent=false]
+ * @param {'direct_gujlish'|'formal'} [params.style='direct_gujlish']
  * @returns {string}
  */
 export function buildHumanLikeFollowUpMessage({
@@ -80,44 +112,118 @@ export function buildHumanLikeFollowUpMessage({
   followUpCount = 0,
   dueDateStr = '',
   isUrgent = false,
+  style = 'direct_gujlish',
 }) {
   const cleanStaff = staffName.trim()
   const cleanTask = taskText.trim().replace(/[\r\n]+/g, ' ')
-  // Ensure polite honorific "bhai" in Gujarati business culture
   const salutationName = /bhai/i.test(cleanStaff) ? cleanStaff : `${cleanStaff}bhai`
 
+  if (style === 'formal') {
+    if (isUrgent || followUpCount >= 2) {
+      return `Jay Shree Krishna ${salutationName}, pending follow-up on urgent task: "${cleanTask}". Kindly complete and confirm back to Jigneshbhai as soon as possible. Thank you!`
+    }
+    if (followUpCount === 1) {
+      return `Jay Shree Krishna ${salutationName}, gentle reminder regarding task: "${cleanTask}". Has this been completed? Pls update status to Jigneshbhai. Thanks!`
+    }
+    const dueInfo = dueDateStr ? ` (Target: ${dueDateStr})` : ''
+    return `Jay Shree Krishna ${salutationName}, kindly update on this task: "${cleanTask}"${dueInfo}. When will it be completed? Thank you, Jigneshbhai`
+  }
+
+  const core = cleanTask.replace(/[?.!]+$/, '').trim()
+  const targetSuffix = dueDateStr ? ` (Target: ${dueDateStr})` : ''
+
   if (isUrgent || followUpCount >= 2) {
-    // 3rd+ or urgent repeated follow-up
-    return `Jay Shree Krishna ${salutationName}, pending follow-up on urgent task: "${cleanTask}". Kindly complete and confirm back to Jigneshbhai as soon as possible. Thank you!`
+    return `${salutationName}, ${core} thayu ke nahi? Jaldi patavjo ane keje mane...`
   }
 
   if (followUpCount === 1) {
-    // 2nd friendly follow-up
-    return `Jay Shree Krishna ${salutationName}, gentle reminder regarding task: "${cleanTask}". Has this been completed? Pls update status to Jigneshbhai. Thanks!`
+    return `${salutationName}, ${core} ketle pahochyu? Keje mane update...`
   }
 
-  // 1st initial follow-up (gentle inquiry)
-  const dueInfo = dueDateStr ? ` (Target: ${dueDateStr})` : ''
-  return `Jay Shree Krishna ${salutationName}, kindly update on this task: "${cleanTask}"${dueInfo}. When will it be completed? Thank you, Jigneshbhai`
+  // 1st initial follow-up
+  const gujlishBody = formatGujlishTaskText(cleanTask)
+  return `${salutationName}, ${gujlishBody}${targetSuffix}`
 }
 
 /**
- * Builds a natural, human-like assignment SMS message when a new task is created.
+ * Builds a natural, direct Gujlish assignment message when a new task is created.
  */
 export function buildNewTaskAssignmentMessage({
   staffName = 'Staff',
   taskText = '',
   dueDateStr = 'Today',
   isFollowUp = false,
+  style = 'direct_gujlish',
 }) {
   const cleanStaff = staffName.trim()
   const cleanTask = taskText.trim().replace(/[\r\n]+/g, ' ')
   const salutationName = /bhai/i.test(cleanStaff) ? cleanStaff : `${cleanStaff}bhai`
 
-  if (isFollowUp) {
-    return `Jay Shree Krishna ${salutationName}, a follow-up task is assigned to you: "${cleanTask}". Target: ${dueDateStr}. Pls update Jigneshbhai once done. Thank you!`
+  if (style === 'formal') {
+    if (isFollowUp) {
+      return `Jay Shree Krishna ${salutationName}, a follow-up task is assigned to you: "${cleanTask}". Target: ${dueDateStr}. Pls update Jigneshbhai once done. Thank you!`
+    }
+    return `Jay Shree Krishna ${salutationName}, new task assigned to you: "${cleanTask}". Target: ${dueDateStr}. Pls update Jigneshbhai once completed. Thank you!`
   }
-  return `Jay Shree Krishna ${salutationName}, new task assigned to you: "${cleanTask}". Target: ${dueDateStr}. Pls update Jigneshbhai once completed. Thank you!`
+
+  const targetSuffix = dueDateStr ? ` (Target: ${dueDateStr})` : ''
+  const gujlishBody = formatGujlishTaskText(cleanTask)
+  return `${salutationName}, ${gujlishBody}${targetSuffix}`
+}
+
+/**
+ * Constructs a 1-tap WhatsApp chat URL for staff with pre-filled message.
+ *
+ * @param {Object} params
+ * @param {string} params.staffPhone
+ * @param {string} params.message
+ * @returns {string}
+ */
+export function buildTaskWhatsAppUrl({ staffPhone, message = '' }) {
+  const phone = normalizeIndianPhone(staffPhone)
+  if (!phone) return ''
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+}
+
+/**
+ * Records a task follow-up entry in Firestore 'Jobs' (e.g. for WhatsApp or Background SMS).
+ */
+export async function recordTaskFollowUpHistory({
+  taskId,
+  staffName = 'Staff',
+  message = '',
+  channel = 'whatsapp',
+  followUpCount = 0,
+  dbInstance = db,
+}) {
+  if (!taskId || !dbInstance) return null
+
+  const daytimeCheck = checkIsDayTime()
+  const newCount = (Number(followUpCount) || 0) + 1
+  const entry = {
+    timestamp: new Date().toISOString(),
+    message,
+    channel,
+    staffName,
+    followUpNumber: newCount,
+    sentAt: daytimeCheck.istTimeStr,
+    sender: 'Jigneshbhai',
+  }
+
+  try {
+    const taskRef = doc(dbInstance, 'Jobs', taskId)
+    await updateDoc(taskRef, {
+      followUpCount: increment(1),
+      lastFollowUpAt: serverTimestamp(),
+      lastFollowUpMessage: message,
+      followUpHistory: arrayUnion(entry),
+      updatedAt: serverTimestamp(),
+    })
+    return { success: true, followUpCount: newCount, entry }
+  } catch (err) {
+    console.warn('Could not record follow-up history in Firestore:', err)
+    return { success: false, error: err.message }
+  }
 }
 
 /**
