@@ -63,7 +63,8 @@ import BaileyOrderPage from './components/BaileyOrderPage'
 import AccountsLedgerReportModal from './components/AccountsLedgerReportModal'
 import CustomerLedgerReportModal from './components/CustomerLedgerReportModal'
 import NetworkStatusBar from './components/NetworkStatusBar'
-import { parseShareTargetUrl } from './utils/shareTargetUtils'
+import { parseShareTargetUrl, getLatestSharedRecord } from './utils/shareTargetUtils'
+import { processAiBillImage } from './utils/aiImageHelper'
 import { parseGoogleMapsLocation, extractGoogleMapsUrl } from './utils/locationUtils'
 import {
   isMobileOrNative,
@@ -168,9 +169,9 @@ function App() {
   } = useClientStore()
   const [aiInitialMode, setAiInitialMode] = useState(null)
 
-  const openAiWithMode = (mode = 'auto') => {
+  const openAiWithMode = (mode = 'auto', initialPrompt = '', initialFile = null) => {
     setAiInitialMode(mode)
-    setAiDrawerOpen(true)
+    setAiDrawerOpen(true, initialPrompt, initialFile)
     if (typeof window !== 'undefined' && window.history?.pushState) {
       window.history.pushState({ modal: 'ai-drawer' }, '')
     }
@@ -214,61 +215,129 @@ function App() {
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [activeTab])
 
-  // Android Web Share Target handler (captures shared phone/text/mapLink on launch)
+  // Android Web Share Target handler (captures shared phone/text/mapLink and GPay receipts on launch)
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    const checkIncomingShare = () => {
-      const parsedShare = parseShareTargetUrl(window.location.search)
-      if (parsedShare) {
-        // Clean query search from URL so browser refresh does not re-trigger modal
-        try {
-          const fallbackHash = parsedShare.hasMapLink ? '#orders' : '#leads'
-          const cleanUrl = window.location.pathname + (window.location.hash || fallbackHash)
-          window.history.replaceState(null, '', cleanUrl)
-        } catch (err) {
-          void err
+    const handleParsedShare = (parsedShare) => {
+      // Clean query search from URL so browser refresh does not re-trigger modal
+      try {
+        const fallbackHash = parsedShare.hasMapLink ? '#orders' : '#leads'
+        const cleanUrl = window.location.pathname + (window.location.hash || fallbackHash)
+        window.history.replaceState(null, '', cleanUrl)
+      } catch (err) {
+        void err
+      }
+
+      if (parsedShare.hasMapLink) {
+        // MAP LINK SHARE -> Open New Order with pre-filled Map Link!
+        const currentClients = useClientStore.getState().clients || []
+        let matchedClient = null
+        if (parsedShare.phone) {
+          const clean = parsedShare.phone.replace(/\D/g, '').slice(-10)
+          matchedClient = currentClients.find((c) => {
+            const cp = String(c.mobile || c.phone || c.contact || '').replace(/\D/g, '').slice(-10)
+            return cp && cp === clean
+          })
         }
 
-        if (parsedShare.hasMapLink) {
-          // MAP LINK SHARE -> Open New Order with pre-filled Map Link!
-          const currentClients = useClientStore.getState().clients || []
-          let matchedClient = null
-          if (parsedShare.phone) {
-            const clean = parsedShare.phone.replace(/\D/g, '').slice(-10)
-            matchedClient = currentClients.find((c) => {
-              const cp = String(c.mobile || c.phone || c.contact || '').replace(/\D/g, '').slice(-10)
-              return cp && cp === clean
-            })
+        setActiveTab('orders')
+        setEditOrder({
+          mapLink: parsedShare.mapLink,
+          locationLat: parsedShare.locationLat ?? null,
+          locationLng: parsedShare.locationLng ?? null,
+          location: parsedShare.name || '',
+          clientId: matchedClient ? matchedClient.id : '',
+          address: matchedClient?.address || '',
+        })
+
+        toast.success(
+          matchedClient
+            ? `📍 Map link loaded for ${matchedClient.name || 'client'}!`
+            : '📍 Map link loaded into New Order!',
+          { id: 'map-link-share-toast', duration: 4000 },
+        )
+      } else {
+        // EXISTING NUMBER / CONTACT SHARE -> Opens Leads tab (100% UNCHANGED)
+        setActiveTab('leads')
+        setIncomingSharedLead(parsedShare)
+      }
+    }
+
+    const checkIncomingShare = async () => {
+      // 1. Check for POST Web Share Target Level 2 in IndexedDB (GPay payment receipt or PDF)
+      try {
+        const sharedRecord = await getLatestSharedRecord()
+        if (sharedRecord) {
+          // Clean search params if ?shared=media was in URL
+          if (window.location.search.includes('shared=')) {
+            try {
+              const cleanUrl = window.location.pathname + (window.location.hash || '#orders')
+              window.history.replaceState(null, '', cleanUrl)
+            } catch {}
           }
 
-          setActiveTab('orders')
-          setEditOrder({
-            mapLink: parsedShare.mapLink,
-            locationLat: parsedShare.locationLat ?? null,
-            locationLng: parsedShare.locationLng ?? null,
-            location: parsedShare.name || '',
-            clientId: matchedClient ? matchedClient.id : '',
-            address: matchedClient?.address || '',
-          })
+          if (sharedRecord.hasFile && (sharedRecord.file || sharedRecord.blob)) {
+            const rawFile = sharedRecord.file || sharedRecord.blob
+            const fileObj =
+              rawFile instanceof File
+                ? rawFile
+                : new File([rawFile], sharedRecord.fileName || 'gpay_receipt.jpg', {
+                    type: sharedRecord.fileType || rawFile.type || 'image/jpeg',
+                  })
 
-          toast.success(
-            matchedClient
-              ? `📍 Map link loaded for ${matchedClient.name || 'client'}!`
-              : '📍 Map link loaded into New Order!',
-            { id: 'map-link-share-toast', duration: 4000 },
-          )
-        } else {
-          // EXISTING NUMBER / CONTACT SHARE -> Opens Leads tab (100% UNCHANGED)
-          setActiveTab('leads')
-          setIncomingSharedLead(parsedShare)
+            const processed = await processAiBillImage(fileObj)
+            const prompt = sharedRecord.text
+              ? `client plus order plus payment: ${sharedRecord.text}`
+              : 'client plus order plus payment'
+
+            openAiWithMode('compound_action', prompt, processed)
+            toast.success('🧾 GPay Receipt attached to AI Assistant!', {
+              id: 'gpay-share-toast',
+              duration: 4000,
+            })
+            return
+          }
+
+          if (sharedRecord.text || sharedRecord.url || sharedRecord.title) {
+            const queryStr = `?share_text=${encodeURIComponent(sharedRecord.text)}&share_title=${encodeURIComponent(sharedRecord.title)}&share_url=${encodeURIComponent(sharedRecord.url)}`
+            const parsedShare = parseShareTargetUrl(queryStr)
+            if (parsedShare) {
+              handleParsedShare(parsedShare)
+              return
+            }
+          }
         }
+      } catch (dbErr) {
+        console.warn('Error reading shared record:', dbErr)
+      }
+
+      // 2. Check for traditional GET query share (?share_text=... or ?mapLink=...)
+      const parsedShare = parseShareTargetUrl(window.location.search)
+      if (parsedShare) {
+        handleParsedShare(parsedShare)
       }
     }
 
     checkIncomingShare()
     window.addEventListener('popstate', checkIncomingShare)
-    return () => window.removeEventListener('popstate', checkIncomingShare)
+
+    // Listen for Service Worker postMessage wakeup when app is already open
+    const handleSwMessage = (event) => {
+      if (event.data?.type === 'ANJANI_SHARE_TARGET_RECEIVED') {
+        checkIncomingShare()
+      }
+    }
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleSwMessage)
+    }
+
+    return () => {
+      window.removeEventListener('popstate', checkIncomingShare)
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleSwMessage)
+      }
+    }
   }, [setActiveTab])
 
   // Handle native Android deep links (e.g. opened via Open With: Anjani Water from Google Maps link)

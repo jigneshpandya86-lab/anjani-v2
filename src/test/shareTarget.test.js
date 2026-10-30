@@ -4,7 +4,13 @@ import {
   extractNameFromShare,
   parseShareTargetUrl,
   checkNumberCollisions,
+  getLatestSharedRecord,
+  saveSharedRecord,
+  SHARE_DB_NAME,
+  SHARE_STORE_NAME,
+  SHARE_RECORD_KEY,
 } from '../utils/shareTargetUtils'
+import { processAiBillImage } from '../utils/aiImageHelper'
 
 describe('shareTargetUtils', () => {
   describe('extractPhoneNumber', () => {
@@ -181,6 +187,91 @@ describe('shareTargetUtils', () => {
       const result = checkNumberCollisions('9000000000', { clients, leads })
       expect(result.isClient).toBe(false)
       expect(result.isLead).toBe(false)
+    })
+  })
+
+  describe('Web Share Target Level 2 (POST files & GPay receipts)', () => {
+    it('defines share target IndexedDB constants properly', () => {
+      expect(SHARE_DB_NAME).toBe('anjani-share-store')
+      expect(SHARE_STORE_NAME).toBe('shared-items')
+      expect(SHARE_RECORD_KEY).toBe('latest-share')
+    })
+
+    it('processes PDF receipts cleanly via processAiBillImage', async () => {
+      const mockPdf = new File(['%PDF-1.4 mock content'], 'gpay_receipt.pdf', {
+        type: 'application/pdf',
+      })
+      const result = await processAiBillImage(mockPdf)
+      expect(result.mimeType).toBe('application/pdf')
+      expect(result.fileName).toBe('gpay_receipt.pdf')
+      expect(result.isAudio).toBe(false)
+      expect(typeof result.base64).toBe('string')
+    })
+
+    it('stores and retrieves shared records in IndexedDB', async () => {
+      // Mock indexedDB if not present in jsdom
+      const storeMap = new Map()
+      const mockDb = {
+        transaction: () => ({
+          objectStore: () => ({
+            put: (data, key) => {
+              storeMap.set(key, data)
+              const req = { onsuccess: null, onerror: null }
+              setTimeout(() => req.onsuccess && req.onsuccess({ target: { result: key } }), 0)
+              return req
+            },
+            get: (key) => {
+              const val = storeMap.get(key)
+              const req = { onsuccess: null, onerror: null, result: val }
+              setTimeout(() => req.onsuccess && req.onsuccess({ target: { result: val } }), 0)
+              return req
+            },
+            delete: (key) => {
+              storeMap.delete(key)
+              const req = { onsuccess: null, onerror: null }
+              setTimeout(() => req.onsuccess && req.onsuccess({ target: { result: true } }), 0)
+              return req
+            },
+          }),
+        }),
+      }
+
+      const origIndexedDb = globalThis.indexedDB
+      globalThis.indexedDB = {
+        open: () => {
+          const req = { onsuccess: null, onerror: null, onupgradeneeded: null, result: mockDb }
+          setTimeout(() => req.onsuccess && req.onsuccess({ target: { result: mockDb } }), 0)
+          return req
+        },
+      }
+
+      try {
+        const testFile = new File(['image-bytes'], 'gpay_receipt_1300.jpg', { type: 'image/jpeg' })
+        const record = {
+          hasFile: true,
+          file: testFile,
+          fileName: 'gpay_receipt_1300.jpg',
+          fileType: 'image/jpeg',
+          text: 'Payment of ₹1,300 received via GPay',
+          title: 'Google Pay Receipt',
+          timestamp: Date.now(),
+        }
+
+        const saved = await saveSharedRecord(record)
+        expect(saved).toBe(true)
+
+        const retrieved = await getLatestSharedRecord()
+        expect(retrieved).not.toBeNull()
+        expect(retrieved.hasFile).toBe(true)
+        expect(retrieved.fileName).toBe('gpay_receipt_1300.jpg')
+        expect(retrieved.text).toBe('Payment of ₹1,300 received via GPay')
+
+        // Second retrieval returns null because it was consumed and deleted
+        const secondRetrieved = await getLatestSharedRecord()
+        expect(secondRetrieved).toBeNull()
+      } finally {
+        globalThis.indexedDB = origIndexedDb
+      }
     })
   })
 })

@@ -55,7 +55,7 @@
         ]
       },
       {
-        "source": "@(sw.js|registerSW.js|manifest.webmanifest|index.html)",
+        "source": "@(sw.js|registerSW.js|manifest.webmanifest|index.html|sw-share-target.js)",
         "headers": [
           {
             "key": "Cache-Control",

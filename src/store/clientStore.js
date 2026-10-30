@@ -148,6 +148,7 @@ export const useClientStore = create((set, get) => ({
   },
   aiDrawerOpen: false,
   aiPrefillPrompt: '',
+  aiPrefillFile: null,
   aiSettings: {
     activeModel: 'gemini-2.5-flash-lite',
     fallbackModel: 'gemini-2.5-flash',
@@ -907,8 +908,8 @@ export const useClientStore = create((set, get) => ({
     }
   },
 
-  setAiDrawerOpen: (open, initialPrompt = '') => {
-    set({ aiDrawerOpen: open, aiPrefillPrompt: initialPrompt })
+  setAiDrawerOpen: (open, initialPrompt = '', initialFile = null) => {
+    set({ aiDrawerOpen: open, aiPrefillPrompt: initialPrompt, aiPrefillFile: initialFile })
   },
 
   fetchAiSettings: async () => {

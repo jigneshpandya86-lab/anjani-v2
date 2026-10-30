@@ -215,3 +215,83 @@ export const checkNumberCollisions = (phone, { clients = [], leads = [] } = {}) 
     lead: matchedLead,
   }
 }
+
+/**
+ * IndexedDB storage utilities for Web Share Target Level 2 (POST file/image transfers from Android Share Sheet).
+ */
+export const SHARE_DB_NAME = 'anjani-share-store'
+export const SHARE_STORE_NAME = 'shared-items'
+export const SHARE_RECORD_KEY = 'latest-share'
+
+export const openShareDb = () => {
+  return new Promise((resolve) => {
+    if (typeof indexedDB === 'undefined') {
+      return resolve(null)
+    }
+    try {
+      const request = indexedDB.open(SHARE_DB_NAME, 1)
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result
+        if (!db.objectStoreNames.contains(SHARE_STORE_NAME)) {
+          db.createObjectStore(SHARE_STORE_NAME)
+        }
+      }
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => resolve(null)
+    } catch {
+      resolve(null)
+    }
+  })
+}
+
+/**
+ * Retrieves the latest shared record (file/text from GPay or Android Share) and removes it from IndexedDB.
+ *
+ * @returns {Promise<Object|null>}
+ */
+export const getLatestSharedRecord = async () => {
+  try {
+    const db = await openShareDb()
+    if (!db) return null
+    return new Promise((resolve) => {
+      const tx = db.transaction(SHARE_STORE_NAME, 'readwrite')
+      const store = tx.objectStore(SHARE_STORE_NAME)
+      const req = store.get(SHARE_RECORD_KEY)
+      req.onsuccess = () => {
+        const result = req.result
+        if (result) {
+          // Immediately delete so page reloads do not re-trigger
+          store.delete(SHARE_RECORD_KEY)
+        }
+        resolve(result || null)
+      }
+      req.onerror = () => resolve(null)
+    })
+  } catch (err) {
+    console.warn('Could not read shared record from DB:', err)
+    return null
+  }
+}
+
+/**
+ * Saves a shared record to IndexedDB (used by tests and Service Worker).
+ *
+ * @param {Object} data
+ * @returns {Promise<boolean>}
+ */
+export const saveSharedRecord = async (data) => {
+  try {
+    const db = await openShareDb()
+    if (!db) return false
+    return new Promise((resolve) => {
+      const tx = db.transaction(SHARE_STORE_NAME, 'readwrite')
+      const store = tx.objectStore(SHARE_STORE_NAME)
+      const req = store.put(data, SHARE_RECORD_KEY)
+      req.onsuccess = () => resolve(true)
+      req.onerror = () => resolve(false)
+    })
+  } catch (err) {
+    console.warn('Could not save shared record to DB:', err)
+    return false
+  }
+}

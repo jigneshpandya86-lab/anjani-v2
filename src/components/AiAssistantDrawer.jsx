@@ -107,6 +107,7 @@ export default function AiAssistantDrawer({
   const sendStaffJobFollowUp = useClientStore((state) => state.sendStaffJobFollowUp)
   const aiSettings = useClientStore((state) => state.aiSettings)
   const aiPrefillPrompt = useClientStore((state) => state.aiPrefillPrompt)
+  const aiPrefillFile = useClientStore((state) => state.aiPrefillFile)
   const aiMemories = useClientStore((state) => state.aiMemories)
   const fetchAiMemories = useClientStore((state) => state.fetchAiMemories)
   const addAiMemory = useClientStore((state) => state.addAiMemory)
@@ -348,6 +349,17 @@ export default function AiAssistantDrawer({
       setInputMessage(aiPrefillPrompt)
     }
   }, [aiPrefillPrompt])
+
+  useEffect(() => {
+    if (aiPrefillFile) {
+      setSelectedFile(aiPrefillFile)
+      setFilePreview(aiPrefillFile.dataUrl)
+      // For shared GPay receipts, pre-select Client + Order + Payment
+      setIsClientMode(true)
+      setIsSalesMode(true)
+      setIsPaymentMode(true)
+    }
+  }, [aiPrefillFile])
 
   useEffect(() => {
     if (typeof messagesEndRef.current?.scrollIntoView === 'function') {

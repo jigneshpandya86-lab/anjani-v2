@@ -20,6 +20,7 @@ export default defineConfig({
         'pwa-512x512.png',
         'pwa-maskable-192x192.png',
         'pwa-maskable-512x512.png',
+        'sw-share-target.js',
       ],
       manifest: {
         id: '/',
@@ -65,13 +66,19 @@ export default defineConfig({
           },
         ],
         share_target: {
-          action: '/',
-          method: 'GET',
-          enctype: 'application/x-www-form-urlencoded',
+          action: '/share-target',
+          method: 'POST',
+          enctype: 'multipart/form-data',
           params: {
             title: 'share_title',
             text: 'share_text',
             url: 'share_url',
+            files: [
+              {
+                name: 'share_file',
+                accept: ['image/*', 'application/pdf'],
+              },
+            ],
           },
         },
         protocol_handlers: [
@@ -82,13 +89,13 @@ export default defineConfig({
         ],
       },
       workbox: {
-        importScripts: ['/firebase-messaging-sw.js'],
+        importScripts: ['/firebase-messaging-sw.js', '/sw-share-target.js'],
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/__/, /firebase-messaging-sw\.js/],
+        navigateFallbackDenylist: [/^\/__/, /firebase-messaging-sw\.js/, /sw-share-target\.js/, /^\/share-target/],
       },
     }),
   ],
