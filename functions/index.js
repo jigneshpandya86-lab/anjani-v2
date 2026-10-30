@@ -1821,8 +1821,8 @@ Return strict JSON:
   },
   "order": {
     "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",
-    "qty": number (Calculate integer boxes from totalAmount / rate, or default to 10 if total is around 1200),
-    "rate": number (unit rate, default 120),
+    "qty": number (Calculate integer boxes from totalAmount / rate, or default to 10 if total is around 1300),
+    "rate": number (unit rate, CRITICAL: default strictly to 130 Rs per box only if not explicitly specified),
     "totalAmount": number (Total order value in INR, should match payment amount),
     "address": string
   },
@@ -1854,7 +1854,43 @@ CRITICAL REQUIREMENT: ALL CLIENT INFORMATION ("name", "contactPerson", "address"
 
       let ocrPrompt = documentOcrPrompt
 
-      if (mode === 'create_client') {
+      if (mode === 'compound_action') {
+        ocrPrompt = `You are an expert multi-entity OCR AI for Annapurna Foods, authorized water distributor in Vadodara, Gujarat (owned by Jignesh Pandya).
+The user wants to process a COMPOUND ACTION (Client + Order + Payment) from this document, photo, or payment screenshot.
+
+CRITICAL RULES:
+1. CLIENT: Look for customer/shop name and 10-digit mobile number. Look closely at UPI ID (e.g. 9825012345@okaxis, 9876543210@paytm, 9825012345@upi) to extract the 10-digit mobile number if present (digits 0-9 only). Return all client text strictly in English Title Case.
+2. ORDER: Default product SKU MUST BE "Anjani 200ml" only if nothing is provided or specified otherwise. Default unit rate MUST BE 130 Rs per box only if not explicitly specified. Calculate order qty from payment amount / 130 (e.g. 1300 Rs = 10 boxes, 2600 Rs = 20 boxes, 650 Rs = 5 boxes).
+3. PAYMENT: Extract payment amount in INR, paymentMode ("online" | "cash"), onlineProvider ("GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank"), UTR / reference number, and date.
+
+Return strict JSON:
+{
+  "docType": "compound_action",
+  "client": {
+    "name": string (Customer or shop business name in English Title Case),
+    "contactPerson": string,
+    "mobile": string (CRITICAL: Extract 10-digit mobile number from UPI ID or text, digits 0-9 only),
+    "address": string,
+    "location": string
+  },
+  "order": {
+    "sku": "Anjani 200ml" (CRITICAL: default strictly to "Anjani 200ml" only if nothing is provided),
+    "qty": number (Calculate integer boxes from totalAmount / rate, or default to 10 if total is around 1300),
+    "rate": number (unit rate, CRITICAL: default strictly to 130 Rs per box only if not explicitly specified),
+    "totalAmount": number (Total order value in INR, should match payment amount),
+    "address": string
+  },
+  "payment": {
+    "payerName": string,
+    "amount": number,
+    "paymentMode": "online" | "cash",
+    "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
+    "utr": string,
+    "date": string,
+    "notes": string
+  }
+}`
+      } else if (mode === 'create_client') {
         ocrPrompt = `You are an expert customer onboarding and OCR AI for Annapurna Foods, authorized water distributor in Vadodara, Gujarat (owned by Jignesh Pandya).
 The user wants to ONBOARD / CREATE A NEW CLIENT from this photo.
 The photo is a customer document or shop photo:
@@ -1985,15 +2021,32 @@ Return strict JSON:
       const parsedData = parseStructuredJson(rawJson)
 
       if (
+        mode === 'compound_action' ||
         parsedData.docType === 'compound_action' ||
         (parsedData.client && (parsedData.order || parsedData.payment))
       ) {
+        const payAmount = Number(parsedData.payment?.amount) || 0
+        const defaultRate = 130
+        const defaultQty = payAmount > 0 ? Math.max(1, Math.round(payAmount / defaultRate)) : 10
+        const orderData = parsedData.order || (mode === 'compound_action' || parsedData.docType === 'compound_action' ? {
+          sku: 'Anjani 200ml',
+          qty: defaultQty,
+          rate: defaultRate,
+          totalAmount: payAmount || (defaultQty * defaultRate),
+        } : null)
+
         return {
           type: 'compound_action',
           modelUsed: modelName,
           data: {
             client: ensureEnglishClient(parsedData.client || {}),
-            order: parsedData.order || null,
+            order: orderData ? {
+              sku: orderData.sku && orderData.sku.trim() ? orderData.sku : 'Anjani 200ml',
+              qty: Number(orderData.qty) || defaultQty,
+              rate: Number(orderData.rate) || defaultRate,
+              totalAmount: Number(orderData.totalAmount) || ((Number(orderData.qty) || defaultQty) * (Number(orderData.rate) || defaultRate)),
+              address: orderData.address || '',
+            } : null,
             payment: parsedData.payment || null,
           },
         }
@@ -2159,6 +2212,89 @@ ${rawText.slice(0, 3000)}`
           }
         } catch (parseErr) {
           logger.warn('Failed to parse accounts notes as JSON, falling back to chat:', parseErr.message)
+        }
+      }
+
+      // 0. Check for compound action intent in text (mode === 'compound_action' or user requested client + order + payment)
+      const isCompoundTextIntent =
+        mode === 'compound_action' ||
+        /(?:client.*order.*payment|client.*plus.*order|order.*plus.*payment|client.*plus.*payment)/i.test(rawText) ||
+        (/client/i.test(rawText) && /order/i.test(rawText) && /payment/i.test(rawText))
+
+      if (isCompoundTextIntent) {
+        const model = vertexAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            maxOutputTokens: jsonMaxTokens,
+            temperature,
+            responseMimeType: 'application/json',
+          },
+        })
+
+        const textCompoundPrompt = `You are an expert multi-entity assistant for Annapurna Foods in Vadodara, Gujarat.
+Parse the user's multi-action request (Client + Order + Payment) into strict JSON:
+{
+  "docType": "compound_action",
+  "client": {
+    "name": string (Shop or customer name in English Title Case),
+    "contactPerson": string,
+    "mobile": string (10-digit mobile number, digits 0-9 only),
+    "address": string,
+    "location": string
+  },
+  "order": {
+    "sku": "Anjani 200ml" (CRITICAL: default strictly to "Anjani 200ml" if not specified),
+    "qty": number (Calculate integer boxes from totalAmount / rate, or default to 10 if total is around 1300),
+    "rate": number (unit rate, CRITICAL: default strictly to 130 Rs per box if not specified),
+    "totalAmount": number,
+    "address": string
+  },
+  "payment": {
+    "payerName": string,
+    "amount": number,
+    "paymentMode": "online" | "cash",
+    "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
+    "utr": string,
+    "date": string,
+    "notes": string
+  }
+}
+User Text: ${rawText.slice(0, 1000)}`
+
+        try {
+          const res = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: textCompoundPrompt + contextInjections }] }],
+          })
+          const rawJson = res.response.candidates[0].content.parts[0].text.trim()
+          const parsedData = parseStructuredJson(rawJson)
+          if (parsedData.client?.name || parsedData.order?.sku || parsedData.payment?.amount) {
+            const payAmount = Number(parsedData.payment?.amount) || 0
+            const defaultRate = 130
+            const defaultQty = payAmount > 0 ? Math.max(1, Math.round(payAmount / defaultRate)) : 10
+            const orderData = parsedData.order || {
+              sku: 'Anjani 200ml',
+              qty: defaultQty,
+              rate: defaultRate,
+              totalAmount: payAmount || (defaultQty * defaultRate),
+            }
+            return {
+              type: 'compound_action',
+              modelUsed: modelName,
+              data: {
+                client: ensureEnglishClient(parsedData.client || {}),
+                order: {
+                  sku: orderData.sku && orderData.sku.trim() ? orderData.sku : 'Anjani 200ml',
+                  qty: Number(orderData.qty) || defaultQty,
+                  rate: Number(orderData.rate) || defaultRate,
+                  totalAmount: Number(orderData.totalAmount) || ((Number(orderData.qty) || defaultQty) * (Number(orderData.rate) || defaultRate)),
+                  address: orderData.address || '',
+                },
+                payment: parsedData.payment || null,
+              },
+            }
+          }
+        } catch (compErr) {
+          logger.warn('Failed to parse text compound intent as JSON:', compErr.message)
         }
       }
 

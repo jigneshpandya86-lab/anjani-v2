@@ -1,6 +1,7 @@
 import React from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 vi.mock('../firebase-config', () => ({
   app: {},
@@ -9,9 +10,22 @@ vi.mock('../firebase-config', () => ({
   storage: {},
 }))
 
+let mockHttpsCallableResponse = vi.fn(() => Promise.resolve({ data: {} }))
+
 vi.mock('firebase/functions', () => ({
   getFunctions: vi.fn(),
-  httpsCallable: vi.fn(() => vi.fn()),
+  httpsCallable: vi.fn(() => (...args) => mockHttpsCallableResponse(...args)),
+}))
+
+vi.mock('../utils/aiImageHelper', () => ({
+  processAiBillImage: vi.fn(async (file) => ({
+    base64: 'mock-base64',
+    dataUrl: 'data:image/jpeg;base64,mock',
+    mimeType: 'image/jpeg',
+    fileName: file.name,
+    sizeKb: 120,
+    isAudio: false,
+  })),
 }))
 
 vi.mock('../store/clientStore', () => ({
@@ -335,7 +349,65 @@ describe('AiAssistantDrawer', () => {
     unmount()
   })
 
-  it('renders Smart 3-in-1 Action support in AI Assistant', () => {
+  it('supports multi-selection for photo scan options (Client, Order, Payment simultaneously)', async () => {
+    const { unmount, container } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const fileInput = container.querySelector('input[type="file"]')
+    expect(fileInput).toBeInTheDocument()
+
+    // Simulate attaching a photo using userEvent.upload
+    const mockFile = new File(['photo-bytes'], 'payment_screenshot.jpg', { type: 'image/jpeg' })
+    await userEvent.upload(fileInput, mockFile)
+
+    // "Scan photo as:" bar appears asynchronously after processing
+    expect(await screen.findByText('Scan photo as:')).toBeInTheDocument()
+
+    const clientBtn = screen.getByRole('button', { name: /👤 Client/i })
+    const orderBtn = screen.getByRole('button', { name: /🛒 Order/i })
+    const paymentBtn = screen.getByRole('button', { name: /💰 Payment/i })
+
+    expect(clientBtn).toHaveAttribute('aria-pressed', 'false')
+    expect(orderBtn).toHaveAttribute('aria-pressed', 'false')
+    expect(paymentBtn).toHaveAttribute('aria-pressed', 'false')
+
+    // 1. Toggle Client -> Client becomes active
+    fireEvent.click(clientBtn)
+    expect(clientBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(orderBtn).toHaveAttribute('aria-pressed', 'false')
+    expect(paymentBtn).toHaveAttribute('aria-pressed', 'false')
+
+    // 2. Toggle Order -> BOTH Client and Order are now active simultaneously!
+    fireEvent.click(orderBtn)
+    expect(clientBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(orderBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(paymentBtn).toHaveAttribute('aria-pressed', 'false')
+
+    // 3. Toggle Payment -> ALL THREE are active simultaneously!
+    fireEvent.click(paymentBtn)
+    expect(clientBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(orderBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(paymentBtn).toHaveAttribute('aria-pressed', 'true')
+
+    unmount()
+  })
+
+  it('renders neat and clean compound action card with default Anjani 200ml and default rate Rs 130', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'compound_action',
+        data: {
+          client: { name: 'Ramesh Patel', mobile: '9825012345' },
+          payment: { amount: 1300, onlineProvider: 'GPay', utr: 'UPI98765' },
+        },
+      },
+    })
+
     const { unmount } = render(
       <AiAssistantDrawer
         isOpen={true}
@@ -344,8 +416,29 @@ describe('AiAssistantDrawer', () => {
       />
     )
 
-    // The drawer rendered and is open
-    expect(screen.getByText('Anjani AI Assistant')).toBeInTheDocument()
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'client plus order plus payment' } })
+
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    // Verify neat and clean card rendered with default SKU and Rs 130 rate
+    expect(await screen.findByText('Ramesh Patel')).toBeInTheDocument()
+    expect(screen.getByText('(9825012345)')).toBeInTheDocument()
+    expect(screen.getByText(/Anjani 200ml/i)).toBeInTheDocument()
+    expect(screen.getByText(/@ ₹130/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/₹1,300/i).length).toBeGreaterThanOrEqual(1)
+
+    // Clutter-free check: marketing banner "Smart 3-in-1 Action" should NOT be present
+    expect(screen.queryByText(/Smart 3-in-1 Action/i)).not.toBeInTheDocument()
+
+    // Neat action button exists
+    const saveBtn = screen.getByRole('button', { name: /Confirm & Save/i })
+    expect(saveBtn).toBeInTheDocument()
+
+    // Click Confirm & Save -> updates to Saved Cleanly
+    await fireEvent.click(saveBtn)
+    expect(await screen.findByText(/Saved Cleanly ✓/i)).toBeInTheDocument()
 
     unmount()
   })

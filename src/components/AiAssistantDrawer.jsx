@@ -804,6 +804,12 @@ export default function AiAssistantDrawer({
       }
     }
 
+    const activeTargets = [
+      isClient && 'Client',
+      isSales && 'Order',
+      isPayment && 'Payment',
+    ].filter(Boolean)
+
     const userMessageId = 'msg-' + Date.now()
     const newMessages = [
       ...messages,
@@ -815,15 +821,9 @@ export default function AiAssistantDrawer({
           (filePayload
             ? filePayload.isAudio
               ? 'Uploaded voice note 🎙️'
-              : isSales
-                ? 'Uploaded retail sales notepad slip 📝'
-                : isPayment
-                  ? 'Uploaded payment slip / UPI screenshot 💰'
-                  : isClient
-                    ? 'Uploaded client visiting card / bill book 👤'
-                    : isAccounts
-                      ? 'Uploaded staff cash / accounts note 💼'
-                      : 'Uploaded document for scanning 📄'
+              : activeTargets.length > 0
+                ? `Uploaded photo (${activeTargets.join(' + ')}) 📄`
+                : 'Uploaded document for scanning 📄'
             : ''),
         imagePreview: filePayload?.dataUrl || null,
         timestamp: new Date(),
@@ -949,35 +949,51 @@ export default function AiAssistantDrawer({
       const functions = getFunctions(app, 'asia-south1')
       const askAnjaniAi = httpsCallable(functions, 'askAnjaniAi')
 
+      const activeModes = [
+        isClient && 'client',
+        isSales && 'order',
+        isPayment && 'payment',
+      ].filter(Boolean)
+
+      let apiMode = 'auto'
+      if (activeModes.length >= 2) {
+        apiMode = 'compound_action'
+      } else if (isClient) {
+        apiMode = 'create_client'
+      } else if (isPayment) {
+        apiMode = 'receive_payment'
+      } else if (isSales) {
+        apiMode = 'retail_sales'
+      } else if (isAccounts) {
+        apiMode = 'accounts_cash'
+      }
+
+      let promptText = query
+      if (!promptText && filePayload) {
+        if (filePayload.isAudio) {
+          promptText = 'Transcribe and extract orders, payments, or client details from this voice note'
+        } else if (activeModes.length >= 2) {
+          promptText = `Extract and process: ${activeModes.join(' plus ')}. Default product SKU is Anjani 200ml and default unit rate is 130 Rs per box if not explicitly specified.`
+        } else if (isSales) {
+          promptText = 'Parse these daily retail customer sales orders'
+        } else if (isPayment) {
+          promptText = 'Extract payment details from this UPI screenshot or receipt'
+        } else if (isClient) {
+          promptText = 'Extract new client name, mobile, and address from this customer bill book, estimate book, or visiting card'
+        } else if (isAccounts) {
+          promptText = 'Parse these staff cash custody, handover, or route expense entries'
+        } else {
+          promptText = 'Scan this document and extract details (default SKU Anjani 200ml @ 130 Rs)'
+        }
+      }
+
       const response = await askAnjaniAi({
         memories: aiMemories.filter((m) => m && m.active !== false),
         knownClients: (clients || []).map((c) => c?.name).filter(Boolean).slice(0, 150),
-        text:
-          query ||
-          (filePayload
-            ? filePayload.isAudio
-              ? 'Transcribe and extract orders, payments, or client details from this voice note'
-              : isSales
-                ? 'Parse these daily retail customer sales orders'
-                : isPayment
-                  ? 'Extract payment details from this UPI screenshot or receipt'
-                  : isClient
-                    ? 'Extract new client name, mobile, and address from this customer bill book, estimate book, or visiting card'
-                    : isAccounts
-                      ? 'Parse these staff cash custody, handover, or route expense entries'
-                      : 'Scan this document and extract all water SKUs'
-            : ''),
+        text: promptText,
         imageBase64: filePayload?.base64 || null,
         mimeType: filePayload?.mimeType || 'image/jpeg',
-        mode: isClient
-          ? 'create_client'
-          : isPayment
-            ? 'receive_payment'
-            : isAccounts
-              ? 'accounts_cash'
-              : isSales
-                ? 'retail_sales'
-                : 'auto',
+        mode: apiMode,
         conversationHistory: messages.slice(-3).map((m) => ({
           sender: m.sender,
           text: m.text,
@@ -1016,9 +1032,9 @@ export default function AiAssistantDrawer({
         const isNewClient = !matched
 
         const paymentAmount = Number(payRaw.amount) || Number(orderRaw.totalAmount) || 0
-        const orderRate = Number(orderRaw.rate) || (matched?.rate ? Number(matched.rate) : 120) || 120
+        const orderRate = Number(orderRaw.rate) || (matched?.rate ? Number(matched.rate) : 130) || 130
+        const orderSku = orderRaw.sku && orderRaw.sku.trim() ? orderRaw.sku : 'Anjani 200ml'
         const orderQty = Number(orderRaw.qty) || (paymentAmount > 0 && orderRate > 0 ? Math.round(paymentAmount / orderRate) : 10) || 10
-        const orderSku = orderRaw.sku || 'Anjani 200ml'
         const orderAmount = Number(orderRaw.totalAmount) || (orderQty * orderRate) || paymentAmount
 
         const compoundId = 'compound-' + Date.now()
@@ -1028,7 +1044,7 @@ export default function AiAssistantDrawer({
           {
             id: 'asst-' + Date.now(),
             sender: 'assistant',
-            text: `⚡ **Smart 3-in-1 Action: Client + Order + Payment**\nCustomer details with mobile extracted, water order ready, and payment linked. Tap **Confirm & Execute All**:`,
+            text: '', // Neat and clean: no marketing copy or redundant headers!
             type: 'compound_action',
             compoundId,
             data: {
@@ -1037,20 +1053,20 @@ export default function AiAssistantDrawer({
               clientMobile: targetMobile || clientRaw.mobile || '',
               clientAddress: clientRaw.address || clientRaw.location || matched?.address || '',
               isNewClient,
-              order: {
+              order: (orderRaw && (orderRaw.sku || orderRaw.qty || orderRaw.rate || orderAmount > 0)) ? {
                 sku: orderSku,
                 qty: orderQty,
                 rate: orderRate,
                 totalAmount: orderAmount,
-              },
-              payment: {
+              } : null,
+              payment: (payRaw && (payRaw.amount || paymentAmount > 0 || payRaw.utr)) ? {
                 payerName: payRaw.payerName || clientName,
                 amount: paymentAmount || orderAmount,
                 paymentMode: payRaw.paymentMode || 'online',
                 onlineProvider: payRaw.onlineProvider || 'GPay',
                 utr: payRaw.utr || '',
                 date: payRaw.date || new Date().toISOString().slice(0, 10),
-              },
+              } : null,
               modelUsed: resData.modelUsed,
             },
             timestamp: new Date(),
@@ -2197,101 +2213,75 @@ export default function AiAssistantDrawer({
                   </div>
                 )}
 
-                {/* 2.5. Interactive Compound 3-in-1 Action Card (Client + Order + Payment) */}
+                {/* 2.5. Neat & Clean Compound Action Card (Client + Order + Payment) */}
                 {msg.type === 'compound_action' && msg.data && (
-                  <div className="mt-3 bg-white border border-emerald-300 rounded-2xl p-3.5 space-y-3 text-xs text-gray-800 shadow-sm">
-                    <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center font-bold shadow-xs">
-                          <Zap className="w-4 h-4" />
+                  <div className="mt-2.5 bg-white border border-gray-200 rounded-xl p-3 space-y-2 text-xs text-gray-800 shadow-xs">
+                    {/* Clean compact summary rows */}
+                    <div className="space-y-1.5 divide-y divide-gray-100">
+                      {/* Client row */}
+                      {msg.data.clientName && (
+                        <div className="flex items-center justify-between gap-2 pt-1 first:pt-0">
+                          <span className="text-gray-500 flex items-center gap-1.5 font-medium shrink-0">
+                            <User className="w-3.5 h-3.5 text-blue-600" /> Client
+                          </span>
+                          <span className="font-bold text-gray-900 text-right">
+                            {msg.data.clientName}
+                            {msg.data.clientMobile ? (
+                              <span className="text-gray-500 font-normal text-[11px] ml-1">
+                                ({msg.data.clientMobile})
+                              </span>
+                            ) : null}
+                            {msg.data.isNewClient ? (
+                              <span className="ml-1.5 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded font-semibold">
+                                New
+                              </span>
+                            ) : (
+                              <span className="ml-1.5 text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded font-semibold">
+                                Existing
+                              </span>
+                            )}
+                          </span>
                         </div>
-                        <div>
-                          <p className="font-extrabold text-gray-900 text-sm">Smart 3-in-1 Action</p>
-                          <p className="text-[11px] text-gray-500 font-medium">Customer · Order · Payment</p>
+                      )}
+
+                      {/* Order row */}
+                      {msg.data.order && (
+                        <div className="flex items-center justify-between gap-2 pt-1.5">
+                          <span className="text-gray-500 flex items-center gap-1.5 font-medium shrink-0">
+                            <Package className="w-3.5 h-3.5 text-emerald-600" /> Order
+                          </span>
+                          <span className="font-bold text-gray-900 text-right">
+                            {msg.data.order.qty} × {msg.data.order.sku || 'Anjani 200ml'}
+                            <span className="text-gray-500 font-normal text-[11px] ml-1">
+                              @ ₹{msg.data.order.rate || 130} = ₹{Number(msg.data.order.totalAmount || (msg.data.order.qty * (msg.data.order.rate || 130))).toLocaleString('en-IN')}
+                            </span>
+                          </span>
                         </div>
-                      </div>
-                      {executedCompounds[msg.compoundId || msg.id] ? (
-                        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-green-100 text-green-700 flex items-center gap-1 shadow-2xs">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> All 3 Executed ✓
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          Ready to Save
-                        </span>
+                      )}
+
+                      {/* Payment row */}
+                      {msg.data.payment && (
+                        <div className="flex items-center justify-between gap-2 pt-1.5">
+                          <span className="text-gray-500 flex items-center gap-1.5 font-medium shrink-0">
+                            <IndianRupee className="w-3.5 h-3.5 text-emerald-600" /> Payment
+                          </span>
+                          <span className="font-black text-emerald-700 text-right">
+                            ₹{Number(msg.data.payment.amount || 0).toLocaleString('en-IN')}
+                            <span className="text-gray-500 font-normal text-[11px] ml-1">
+                              ({msg.data.payment.onlineProvider || 'UPI'})
+                            </span>
+                            {msg.data.payment.utr && (
+                              <span className="text-[10px] text-gray-400 block font-mono font-normal">
+                                Ref: {msg.data.payment.utr}
+                              </span>
+                            )}
+                          </span>
+                        </div>
                       )}
                     </div>
 
-                    {/* Section 1: Client Details */}
-                    <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-2.5 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] uppercase font-black tracking-wider text-blue-700 flex items-center gap-1">
-                          <User className="w-3 h-3" /> 1. Customer
-                        </span>
-                        {msg.data.isNewClient ? (
-                          <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-200">
-                            + Auto-Create Client
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full border border-emerald-200">
-                            ✓ Existing Master Client
-                          </span>
-                        )}
-                      </div>
-                      <p className="font-bold text-gray-900 text-xs">
-                        {msg.data.clientName}
-                      </p>
-                      {msg.data.clientMobile ? (
-                        <p className="text-[11px] text-gray-700 flex items-center gap-1 font-semibold">
-                          <span>📱</span> {msg.data.clientMobile}
-                          <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100/70 px-1.5 py-0.2 rounded">
-                            from UPI ID
-                          </span>
-                        </p>
-                      ) : null}
-                    </div>
-
-                    {/* Section 2: Order Details */}
-                    <div className="bg-emerald-50/70 border border-emerald-100 rounded-xl p-2.5 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] uppercase font-black tracking-wider text-emerald-700 flex items-center gap-1">
-                          <Package className="w-3 h-3" /> 2. Water Order
-                        </span>
-                        <span className="text-[10px] font-bold text-gray-500">
-                          Pending Delivery
-                        </span>
-                      </div>
-                      <p className="font-bold text-gray-900 text-xs">
-                        {msg.data.order?.qty || 1} Boxes × {msg.data.order?.sku || 'Anjani 200ml'} @ ₹{msg.data.order?.rate || 120}
-                      </p>
-                      <p className="text-[11px] text-emerald-800 font-black">
-                        Total Value: ₹{Number(msg.data.order?.totalAmount || 0).toLocaleString('en-IN')}
-                      </p>
-                    </div>
-
-                    {/* Section 3: Payment Details */}
-                    <div className="bg-amber-50/70 border border-amber-100 rounded-xl p-2.5 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] uppercase font-black tracking-wider text-amber-700 flex items-center gap-1">
-                          <IndianRupee className="w-3 h-3" /> 3. Payment Received
-                        </span>
-                        <span className="text-[10px] font-bold bg-green-100 text-green-800 px-2 py-0.5 rounded-full border border-green-200">
-                          {msg.data.payment?.onlineProvider || 'GPay'} (Bank)
-                        </span>
-                      </div>
-                      <div className="flex items-baseline justify-between">
-                        <p className="font-black text-emerald-700 text-sm">
-                          ₹{Number(msg.data.payment?.amount || 0).toLocaleString('en-IN')}
-                        </p>
-                        {msg.data.payment?.utr && (
-                          <p className="text-[10px] text-gray-500 font-mono">
-                            Ref: {msg.data.payment?.utr}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Single 1-Tap Execution Button */}
-                    <div className="pt-1">
+                    {/* Single clean action button */}
+                    <div className="pt-1 border-t border-gray-100">
                       <button
                         type="button"
                         disabled={
@@ -2307,95 +2297,103 @@ export default function AiAssistantDrawer({
                             let finalClientName = d.clientName
 
                             // 1. Create client if new
-                            if (!finalClientId) {
+                            if (!finalClientId && d.clientName) {
                               finalClientId = await addClient({
                                 name: d.clientName,
                                 mobile: d.clientMobile || '',
                                 address: d.clientAddress || '',
                                 location: d.clientAddress || '',
-                                rate: Number(d.order?.rate) || 120,
+                                rate: Number(d.order?.rate) || 130,
                                 notes: `Created via ${d.payment?.onlineProvider || 'UPI'} transaction`,
                               })
                             }
 
-                            // 2. Add Order
-                            const now = new Date()
-                            const yyyy = now.getFullYear()
-                            const mm = String(now.getMonth() + 1).padStart(2, '0')
-                            const dd = String(now.getDate()).padStart(2, '0')
-                            const localDate = `${yyyy}-${mm}-${dd}`
-                            const localTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+                            // 2. Add Order if order present
+                            if (d.order) {
+                              const now = new Date()
+                              const yyyy = now.getFullYear()
+                              const mm = String(now.getMonth() + 1).padStart(2, '0')
+                              const dd = String(now.getDate()).padStart(2, '0')
+                              const localDate = `${yyyy}-${mm}-${dd}`
+                              const localTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 
-                            const qty = Number(d.order?.qty) || 1
-                            const rate = Number(d.order?.rate) || 120
-                            const sku = d.order?.sku || 'Anjani 200ml'
-                            const totalAmount = Number(d.order?.totalAmount) || qty * rate
+                              const qty = Number(d.order.qty) || 1
+                              const rate = Number(d.order.rate) || 130
+                              const sku = d.order.sku || 'Anjani 200ml'
+                              const totalAmount = Number(d.order.totalAmount) || qty * rate
 
-                            await addOrder({
-                              clientId: finalClientId,
-                              clientName: finalClientName,
-                              mobile: d.clientMobile || '',
-                              items: [
-                                {
-                                  sku,
-                                  qty,
-                                  rate,
-                                  amount: totalAmount,
-                                  unit: 'Box',
-                                },
-                              ],
-                              totalQty: qty,
-                              totalAmount,
-                              qty,
-                              rate,
-                              sku,
-                              address: d.clientAddress || '',
-                              location: d.clientAddress || '',
-                              status: 'Pending',
-                              date: localDate,
-                              time: localTime,
-                            })
+                              await addOrder({
+                                clientId: finalClientId || '',
+                                clientName: finalClientName || 'Customer',
+                                mobile: d.clientMobile || '',
+                                items: [
+                                  {
+                                    sku,
+                                    qty,
+                                    rate,
+                                    amount: totalAmount,
+                                    unit: 'Box',
+                                  },
+                                ],
+                                totalQty: qty,
+                                totalAmount,
+                                qty,
+                                rate,
+                                sku,
+                                address: d.clientAddress || '',
+                                location: d.clientAddress || '',
+                                status: 'Pending',
+                                date: localDate,
+                                time: localTime,
+                              })
+                            }
 
-                            // 3. Add Payment
-                            const paymentAmount = Number(d.payment?.amount) || totalAmount
-                            const pDate = new Date()
-                            const extraNote = d.payment?.utr ? `UPI Ref: ${d.payment.utr}` : ''
-                            const narration = formatPaymentNarration(finalClientName, pDate, extraNote)
-                            await addPayment({
-                              clientId: finalClientId,
-                              clientName: finalClientName,
-                              amount: paymentAmount,
-                              type: 'payment',
-                              method: d.payment?.paymentMode === 'cash' ? 'cash' : 'online',
-                              accountId: d.payment?.paymentMode === 'cash' ? 'counter' : 'bank',
-                              narration,
-                              note: extraNote || narration,
-                              date: pDate,
-                            })
+                            // 3. Add Payment if payment present
+                            if (d.payment && Number(d.payment.amount) > 0) {
+                              const paymentAmount = Number(d.payment.amount)
+                              const pDate = new Date()
+                              const extraNote = d.payment.utr ? `UPI Ref: ${d.payment.utr}` : ''
+                              const narration = formatPaymentNarration(finalClientName, pDate, extraNote)
+                              await addPayment({
+                                clientId: finalClientId || '',
+                                clientName: finalClientName || 'Customer',
+                                amount: paymentAmount,
+                                type: 'payment',
+                                method: d.payment.paymentMode === 'cash' ? 'cash' : 'online',
+                                accountId: d.payment.paymentMode === 'cash' ? 'counter' : 'bank',
+                                narration,
+                                note: extraNote || narration,
+                                date: pDate,
+                              })
+                            }
 
                             setExecutedCompounds((prev) => ({ ...prev, [cId]: true }))
-                            toast.success(`Success! Client, Order & Payment saved!`)
+                            toast.success('Saved successfully!')
                           } catch (err) {
                             console.error('Compound execution failed:', err)
-                            toast.error('Failed to execute: ' + err.message)
+                            toast.error('Failed to save: ' + err.message)
                           } finally {
                             setExecutingCompoundId(null)
                           }
                         }}
-                        className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black flex items-center justify-center gap-2 transition-all active:scale-98 shadow-sm cursor-pointer disabled:opacity-50 text-xs"
+                        className={`w-full py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                          executedCompounds[msg.compoundId || msg.id]
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 cursor-default'
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs active:scale-[0.99]'
+                        }`}
                       >
-                        {executingCompoundId === (msg.compoundId || msg.id) ? (
+                        {executedCompounds[msg.compoundId || msg.id] ? (
                           <>
-                            <Loader2 className="w-4 h-4 animate-spin" /> Executing 3 Actions...
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span>Saved Cleanly ✓</span>
                           </>
-                        ) : executedCompounds[msg.compoundId || msg.id] ? (
+                        ) : executingCompoundId === (msg.compoundId || msg.id) ? (
                           <>
-                            <CheckCircle2 className="w-4 h-4" /> All 3 Executed Successfully ✓
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Saving...</span>
                           </>
                         ) : (
-                          <>
-                            <Zap className="w-4 h-4" /> ⚡ Confirm & Execute All 3
-                          </>
+                          <span>Confirm & Save</span>
                         )}
                       </button>
                     </div>
@@ -3663,6 +3661,10 @@ export default function AiAssistantDrawer({
                   onClick={() => {
                     setSelectedFile(null)
                     setFilePreview(null)
+                    setIsClientMode(false)
+                    setIsSalesMode(false)
+                    setIsPaymentMode(false)
+                    setIsAccountsMode(false)
                   }}
                   className="p-1 text-gray-400 hover:text-red-600 cursor-pointer"
                   title="Remove"
@@ -3671,56 +3673,47 @@ export default function AiAssistantDrawer({
                 </button>
               </div>
 
-              {/* Quick mode selector for photo */}
+              {/* Quick multi-selection mode selector for photo */}
               <div className="flex items-center gap-1.5 pt-1 border-t border-orange-200/70">
                 <span className="text-[10px] font-semibold text-gray-500 shrink-0">Scan photo as:</span>
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsClientMode(true)
-                    setIsSalesMode(false)
-                    setIsPaymentMode(false)
-                    setIsAccountsMode(false)
-                  }}
-                  className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                  onClick={() => setIsClientMode((prev) => !prev)}
+                  className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
                     isClientMode
-                      ? 'bg-orange-600 text-white shadow-2xs'
-                      : 'bg-white border border-gray-300 text-gray-700 hover:border-amz-orange'
+                      ? 'bg-blue-600 text-white shadow-2xs'
+                      : 'bg-white border border-gray-300 text-gray-700 hover:border-blue-500'
                   }`}
+                  aria-pressed={isClientMode}
                 >
-                  👤 Add Client
+                  {isClientMode && <Check className="w-3 h-3" />}
+                  <span>👤 Client</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsSalesMode(true)
-                    setIsClientMode(false)
-                    setIsPaymentMode(false)
-                    setIsAccountsMode(false)
-                  }}
-                  className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                  onClick={() => setIsSalesMode((prev) => !prev)}
+                  className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
                     isSalesMode
                       ? 'bg-emerald-600 text-white shadow-2xs'
                       : 'bg-white border border-gray-300 text-gray-700 hover:border-emerald-600'
                   }`}
+                  aria-pressed={isSalesMode}
                 >
-                  🛒 Order
+                  {isSalesMode && <Check className="w-3 h-3" />}
+                  <span>🛒 Order</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsPaymentMode(true)
-                    setIsClientMode(false)
-                    setIsSalesMode(false)
-                    setIsAccountsMode(false)
-                  }}
-                  className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                  onClick={() => setIsPaymentMode((prev) => !prev)}
+                  className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
                     isPaymentMode
                       ? 'bg-emerald-700 text-white shadow-2xs'
                       : 'bg-white border border-gray-300 text-gray-700 hover:border-emerald-700'
                   }`}
+                  aria-pressed={isPaymentMode}
                 >
-                  💰 Payment
+                  {isPaymentMode && <Check className="w-3 h-3" />}
+                  <span>💰 Payment</span>
                 </button>
               </div>
             </div>
