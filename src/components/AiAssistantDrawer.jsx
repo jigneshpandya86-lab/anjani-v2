@@ -132,6 +132,8 @@ export default function AiAssistantDrawer({
   const [createdClients, setCreatedClients] = useState({})
   const [recordedPayments, setRecordedPayments] = useState({})
   const [placedOrders, setPlacedOrders] = useState({})
+  const [executedCompounds, setExecutedCompounds] = useState({})
+  const [executingCompoundId, setExecutingCompoundId] = useState(null)
   const [createdTasks, setCreatedTasks] = useState({})
   const [sentFollowUps, setSentFollowUps] = useState({})
   const [sendingFollowUpId, setSendingFollowUpId] = useState(null)
@@ -984,7 +986,77 @@ export default function AiAssistantDrawer({
 
       const resData = response.data || {}
 
-      if (resData.type === 'create_client') {
+      if (resData.type === 'compound_action') {
+        const compData = resData.data || {}
+        const clientRaw = compData.client || {}
+        const orderRaw = compData.order || {}
+        const payRaw = compData.payment || {}
+
+        const targetMobile = (clientRaw.mobile || '').replace(/\D/g, '')
+        const targetName = (clientRaw.name || payRaw.payerName || '').trim()
+
+        let matched = null
+        if (targetMobile && targetMobile.length >= 10) {
+          const tenDigit = targetMobile.slice(-10)
+          matched = (clients || []).find((c) => {
+            const m = (c.mobile || c.phone || '').replace(/\D/g, '')
+            return m.endsWith(tenDigit)
+          })
+        }
+        if (!matched && targetName) {
+          matched = (clients || []).find((c) => {
+            const cn = (c.name || '').toLowerCase().trim()
+            const tn = targetName.toLowerCase()
+            return cn === tn || cn.includes(tn) || tn.includes(cn)
+          })
+        }
+
+        const clientId = matched ? matched.id : ''
+        const clientName = matched ? matched.name : (targetName || 'New Customer')
+        const isNewClient = !matched
+
+        const paymentAmount = Number(payRaw.amount) || Number(orderRaw.totalAmount) || 0
+        const orderRate = Number(orderRaw.rate) || (matched?.rate ? Number(matched.rate) : 120) || 120
+        const orderQty = Number(orderRaw.qty) || (paymentAmount > 0 && orderRate > 0 ? Math.round(paymentAmount / orderRate) : 10) || 10
+        const orderSku = orderRaw.sku || 'Anjani 200ml'
+        const orderAmount = Number(orderRaw.totalAmount) || (orderQty * orderRate) || paymentAmount
+
+        const compoundId = 'compound-' + Date.now()
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `⚡ **Smart 3-in-1 Action: Client + Order + Payment**\nCustomer details with mobile extracted, water order ready, and payment linked. Tap **Confirm & Execute All**:`,
+            type: 'compound_action',
+            compoundId,
+            data: {
+              clientId,
+              clientName,
+              clientMobile: targetMobile || clientRaw.mobile || '',
+              clientAddress: clientRaw.address || clientRaw.location || matched?.address || '',
+              isNewClient,
+              order: {
+                sku: orderSku,
+                qty: orderQty,
+                rate: orderRate,
+                totalAmount: orderAmount,
+              },
+              payment: {
+                payerName: payRaw.payerName || clientName,
+                amount: paymentAmount || orderAmount,
+                paymentMode: payRaw.paymentMode || 'online',
+                onlineProvider: payRaw.onlineProvider || 'GPay',
+                utr: payRaw.utr || '',
+                date: payRaw.date || new Date().toISOString().slice(0, 10),
+              },
+              modelUsed: resData.modelUsed,
+            },
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'create_client') {
         const clientData = sanitizeClientForEnglish(resData.data || {})
         setMessages((prev) => [
           ...prev,
@@ -2121,6 +2193,211 @@ export default function AiAssistantDrawer({
                           Open Form
                         </button>
                       )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2.5. Interactive Compound 3-in-1 Action Card (Client + Order + Payment) */}
+                {msg.type === 'compound_action' && msg.data && (
+                  <div className="mt-3 bg-white border border-emerald-300 rounded-2xl p-3.5 space-y-3 text-xs text-gray-800 shadow-sm">
+                    <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center font-bold shadow-xs">
+                          <Zap className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="font-extrabold text-gray-900 text-sm">Smart 3-in-1 Action</p>
+                          <p className="text-[11px] text-gray-500 font-medium">Customer · Order · Payment</p>
+                        </div>
+                      </div>
+                      {executedCompounds[msg.compoundId || msg.id] ? (
+                        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-green-100 text-green-700 flex items-center gap-1 shadow-2xs">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> All 3 Executed ✓
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
+                          Ready to Save
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Section 1: Client Details */}
+                    <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-2.5 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] uppercase font-black tracking-wider text-blue-700 flex items-center gap-1">
+                          <User className="w-3 h-3" /> 1. Customer
+                        </span>
+                        {msg.data.isNewClient ? (
+                          <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-200">
+                            + Auto-Create Client
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full border border-emerald-200">
+                            ✓ Existing Master Client
+                          </span>
+                        )}
+                      </div>
+                      <p className="font-bold text-gray-900 text-xs">
+                        {msg.data.clientName}
+                      </p>
+                      {msg.data.clientMobile ? (
+                        <p className="text-[11px] text-gray-700 flex items-center gap-1 font-semibold">
+                          <span>📱</span> {msg.data.clientMobile}
+                          <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100/70 px-1.5 py-0.2 rounded">
+                            from UPI ID
+                          </span>
+                        </p>
+                      ) : null}
+                    </div>
+
+                    {/* Section 2: Order Details */}
+                    <div className="bg-emerald-50/70 border border-emerald-100 rounded-xl p-2.5 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] uppercase font-black tracking-wider text-emerald-700 flex items-center gap-1">
+                          <Package className="w-3 h-3" /> 2. Water Order
+                        </span>
+                        <span className="text-[10px] font-bold text-gray-500">
+                          Pending Delivery
+                        </span>
+                      </div>
+                      <p className="font-bold text-gray-900 text-xs">
+                        {msg.data.order?.qty || 1} Boxes × {msg.data.order?.sku || 'Anjani 200ml'} @ ₹{msg.data.order?.rate || 120}
+                      </p>
+                      <p className="text-[11px] text-emerald-800 font-black">
+                        Total Value: ₹{Number(msg.data.order?.totalAmount || 0).toLocaleString('en-IN')}
+                      </p>
+                    </div>
+
+                    {/* Section 3: Payment Details */}
+                    <div className="bg-amber-50/70 border border-amber-100 rounded-xl p-2.5 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] uppercase font-black tracking-wider text-amber-700 flex items-center gap-1">
+                          <IndianRupee className="w-3 h-3" /> 3. Payment Received
+                        </span>
+                        <span className="text-[10px] font-bold bg-green-100 text-green-800 px-2 py-0.5 rounded-full border border-green-200">
+                          {msg.data.payment?.onlineProvider || 'GPay'} (Bank)
+                        </span>
+                      </div>
+                      <div className="flex items-baseline justify-between">
+                        <p className="font-black text-emerald-700 text-sm">
+                          ₹{Number(msg.data.payment?.amount || 0).toLocaleString('en-IN')}
+                        </p>
+                        {msg.data.payment?.utr && (
+                          <p className="text-[10px] text-gray-500 font-mono">
+                            Ref: {msg.data.payment?.utr}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Single 1-Tap Execution Button */}
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        disabled={
+                          executedCompounds[msg.compoundId || msg.id] ||
+                          executingCompoundId === (msg.compoundId || msg.id)
+                        }
+                        onClick={async () => {
+                          const d = msg.data || {}
+                          const cId = msg.compoundId || msg.id
+                          setExecutingCompoundId(cId)
+                          try {
+                            let finalClientId = d.clientId
+                            let finalClientName = d.clientName
+
+                            // 1. Create client if new
+                            if (!finalClientId) {
+                              finalClientId = await addClient({
+                                name: d.clientName,
+                                mobile: d.clientMobile || '',
+                                address: d.clientAddress || '',
+                                location: d.clientAddress || '',
+                                rate: Number(d.order?.rate) || 120,
+                                notes: `Created via ${d.payment?.onlineProvider || 'UPI'} transaction`,
+                              })
+                            }
+
+                            // 2. Add Order
+                            const now = new Date()
+                            const yyyy = now.getFullYear()
+                            const mm = String(now.getMonth() + 1).padStart(2, '0')
+                            const dd = String(now.getDate()).padStart(2, '0')
+                            const localDate = `${yyyy}-${mm}-${dd}`
+                            const localTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+
+                            const qty = Number(d.order?.qty) || 1
+                            const rate = Number(d.order?.rate) || 120
+                            const sku = d.order?.sku || 'Anjani 200ml'
+                            const totalAmount = Number(d.order?.totalAmount) || qty * rate
+
+                            await addOrder({
+                              clientId: finalClientId,
+                              clientName: finalClientName,
+                              mobile: d.clientMobile || '',
+                              items: [
+                                {
+                                  sku,
+                                  qty,
+                                  rate,
+                                  amount: totalAmount,
+                                  unit: 'Box',
+                                },
+                              ],
+                              totalQty: qty,
+                              totalAmount,
+                              qty,
+                              rate,
+                              sku,
+                              address: d.clientAddress || '',
+                              location: d.clientAddress || '',
+                              status: 'Pending',
+                              date: localDate,
+                              time: localTime,
+                            })
+
+                            // 3. Add Payment
+                            const paymentAmount = Number(d.payment?.amount) || totalAmount
+                            const pDate = new Date()
+                            const extraNote = d.payment?.utr ? `UPI Ref: ${d.payment.utr}` : ''
+                            const narration = formatPaymentNarration(finalClientName, pDate, extraNote)
+                            await addPayment({
+                              clientId: finalClientId,
+                              clientName: finalClientName,
+                              amount: paymentAmount,
+                              type: 'payment',
+                              method: d.payment?.paymentMode === 'cash' ? 'cash' : 'online',
+                              accountId: d.payment?.paymentMode === 'cash' ? 'counter' : 'bank',
+                              narration,
+                              note: extraNote || narration,
+                              date: pDate,
+                            })
+
+                            setExecutedCompounds((prev) => ({ ...prev, [cId]: true }))
+                            toast.success(`Success! Client, Order & Payment saved!`)
+                          } catch (err) {
+                            console.error('Compound execution failed:', err)
+                            toast.error('Failed to execute: ' + err.message)
+                          } finally {
+                            setExecutingCompoundId(null)
+                          }
+                        }}
+                        className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black flex items-center justify-center gap-2 transition-all active:scale-98 shadow-sm cursor-pointer disabled:opacity-50 text-xs"
+                      >
+                        {executingCompoundId === (msg.compoundId || msg.id) ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" /> Executing 3 Actions...
+                          </>
+                        ) : executedCompounds[msg.compoundId || msg.id] ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4" /> All 3 Executed Successfully ✓
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="w-4 h-4" /> ⚡ Confirm & Execute All 3
+                          </>
+                        )}
+                      </button>
                     </div>
                   </div>
                 )}

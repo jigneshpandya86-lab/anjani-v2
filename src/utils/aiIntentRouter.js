@@ -577,7 +577,7 @@ export function tryLocalIntentRoute(query, store = {}) {
   // SEQUENCE 4E: STAFF TASK ASSIGNMENT & FOLLOW-UP TASK CREATION
   // ==========================================
   const isTaskCreation =
-    /(?:assign\s+task|create\s+task|new\s+task|add\s+task|follow\s*up\s+task|task\s+for|kaam\s+aapo|kaam\s+sopo)\b/i.test(q) ||
+    /(?:assign\s+ta[sk]k?s?|create\s+ta[sk]k?s?|new\s+ta[sk]k?s?|add\s+ta[sk]k?s?|follow\s*up\s+ta[sk]k?s?|ta[sk]k?\s+for|kaam\s+aapo|kaam\s+sopo)\b/i.test(q) ||
     (/(?:remind|follow\s*up\s+with)\s+(?:nilesh|hitesh|staff|driver)\b/i.test(q) && /(?:to|about|for|regarding)\b/i.test(q))
 
   if (isTaskCreation) {
@@ -607,9 +607,9 @@ export function tryLocalIntentRoute(query, store = {}) {
 
     // Clean task description from input text
     let taskText = rawQ
-      .replace(/^(?:assign\s+task\s+to|create\s+task\s+for|new\s+task\s+for|add\s+task\s+for|follow\s*up\s+task\s+for|task\s+for|kaam\s+aapo|kaam\s+sopo)\s+/i, '')
+      .replace(/^(?:assign\s+ta[sk]k?s?\s+to|create\s+ta[sk]k?s?\s+for|new\s+ta[sk]k?s?\s+for|add\s+ta[sk]k?s?\s+for|follow\s*up\s+ta[sk]k?s?\s+for|ta[sk]k?\s+for|kaam\s+aapo|kaam\s+sopo)\s+/i, '')
       .replace(/^(?:remind|follow\s*up\s+with)\s+(?:nilesh|hitesh|staff|driver)\s+(?:to|about|for|regarding)\s+/i, '')
-      .replace(/^(?:nilesh|hiteshbhai|hitesh)\s*(?:ne|ko)?\s*(?:task|kaam)?\s*[:=]?\s*/i, '')
+      .replace(/^(?:nilesh|hiteshbhai|hitesh)\s*(?:ne|ko)?\s*(?:ta[sk]k?s?|kaam)?\s*[:=]?\s*/i, '')
       .replace(/\b(?:by\s+tomorrow|tomorrow|by\s+today|today|kale|kal)\b/gi, '')
       .replace(/^[;:,-\s]+/, '')
       .trim()
@@ -643,9 +643,9 @@ export function tryLocalIntentRoute(query, store = {}) {
   // SEQUENCE 4F: STAFF TASKS LIST & PENDING FOLLOW-UPS QUERY
   // ==========================================
   const isTaskQuery =
-    /^(?:tasks|staff\s+tasks|pending\s+tasks|open\s+tasks|follow\s*ups?|all\s+tasks)\b/i.test(q) ||
-    /(?:show\s+tasks|view\s+tasks|list\s+tasks|pending\s+tasks|follow\s*up\s+tasks|staff\s+tasks)\b/i.test(q) ||
-    /(?:nilesh|hitesh)\s*(?:na|ke|'s)?\s*(?:task|tasks|kaam)\b/i.test(q)
+    /^(?:ta[sk]k?s?|staff\s+ta[sk]k?s?|pending\s+ta[sk]k?s?|open\s+ta[sk]k?s?|follow\s*ups?|all\s+ta[sk]k?s?|today'?s?\s+ta[sk]k?s?)\b/i.test(q) ||
+    /(?:show\s+ta[sk]k?s?|view\s+ta[sk]k?s?|list\s+ta[sk]k?s?|pending\s+ta[sk]k?s?|follow\s*up\s+ta[sk]k?s?|staff\s+ta[sk]k?s?|get\s+ta[sk]k?s?|give\s+(?:me\s+)?ta[sk]k?s?|what\s+are\s+(?:the\s+)?(?:staff\s+)?ta[sk]k?s?|aaj\s+na\s+kaam|staff\s+kaam)\b/i.test(q) ||
+    /(?:nilesh|hitesh)\s*(?:na|ke|'s)?\s*(?:ta[sk]k?s?|kaam)\b/i.test(q)
 
   if (isTaskQuery) {
     const allJobs = Array.isArray(store.jobs) ? store.jobs : []

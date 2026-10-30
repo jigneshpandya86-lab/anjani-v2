@@ -453,7 +453,7 @@ export function startChatbotFlow(flowType, context = {}) {
         flow: FLOW_TYPES.STAFF_TASK,
         step: 'staff',
         data: {},
-        text: `📋 **Step 1/4: Select Staff Member**\n\nAssign task to which staff member?`,
+        text: `📋 **Step 1/3: Select Staff Member**\n\nAssign task to which staff member?`,
         chips: [
           ...staffChips,
           { label: '❌ Cancel', action: 'cancel', isDestructive: true },
@@ -1102,31 +1102,14 @@ export function advanceChatbotFlow(currentFlowState, inputPayload, context = {})
         assignedTo: staffId,
         assignedStaffName: staffName,
         staffPhone,
+        isFollowUp: false,
       }
-
-      return {
-        flow,
-        step: 'taskType',
-        data: updatedData,
-        text: `📋 **Step 2/4: Task Type for ${staffName}**\n\nIs this a new task or a follow-up task?`,
-        chips: [
-          { label: '🆕 New Task', value: false, isFollowUp: false },
-          { label: '🔄 Follow-up Task', value: true, isFollowUp: true },
-          { label: '❌ Cancel', action: 'cancel', isDestructive: true },
-        ],
-        inputPrompt: 'Select task type...',
-      }
-    }
-
-    if (step === 'taskType') {
-      const isFollowUp = typeof inputPayload === 'object' ? Boolean(inputPayload.isFollowUp ?? inputPayload.value) : /follow/i.test(String(inputPayload))
-      const updatedData = { ...data, isFollowUp }
 
       return {
         flow,
         step: 'taskText',
         data: updatedData,
-        text: `📝 **Step 3/4: Task Description**\n\nWhat should **${data.assignedStaffName}** do? Tap a common task or type custom instructions:`,
+        text: `📝 **Step 2/3: Task Description for ${staffName}**\n\nWhat should **${staffName}** do? Tap a common task or type custom instructions:`,
         chips: [
           { label: '🫙 Collect Empty Jars', value: 'Collect empty jars & petli from market' },
           { label: '💰 Collect Payment', value: 'Collect pending customer payments & issue receipt' },
@@ -1153,7 +1136,7 @@ export function advanceChatbotFlow(currentFlowState, inputPayload, context = {})
         flow,
         step: 'dueDate',
         data: updatedData,
-        text: `📅 **Step 4/4: Target Due Date**\n\nWhen should **${data.assignedStaffName}** complete this?`,
+        text: `📅 **Step 3/3: Target Due Date**\n\nWhen should **${data.assignedStaffName}** complete this?`,
         chips: [
           { label: '📅 Today', value: 'today', days: 0 },
           { label: '📅 Tomorrow', value: 'tomorrow', days: 1 },

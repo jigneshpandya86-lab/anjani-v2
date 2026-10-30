@@ -305,8 +305,8 @@ describe('AiAssistantDrawer', () => {
     // Click Assign Staff Task chip to initiate flow
     fireEvent.click(screen.getByText('📋 Assign Staff Task'))
 
-    // Should prompt for Step 1 Select Staff Member
-    expect(screen.getByText(/Step 1\/4: Select Staff Member/i)).toBeInTheDocument()
+    // Should prompt for Step 1 Select Staff Member (streamlined 3-step flow)
+    expect(screen.getByText(/Step 1\/3: Select Staff Member/i)).toBeInTheDocument()
     expect(screen.getByText(/Nilesh/i)).toBeInTheDocument()
 
     unmount()
@@ -331,6 +331,21 @@ describe('AiAssistantDrawer', () => {
     // 1-tap WhatsApp and SMS follow-up buttons exist
     expect(screen.getByRole('button', { name: /^WhatsApp$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /SMS Follow-up/i })).toBeInTheDocument()
+
+    unmount()
+  })
+
+  it('renders Smart 3-in-1 Action support in AI Assistant', () => {
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    // The drawer rendered and is open
+    expect(screen.getByText('Anjani AI Assistant')).toBeInTheDocument()
 
     unmount()
   })

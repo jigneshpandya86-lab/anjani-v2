@@ -1403,6 +1403,55 @@ async function getKnownCustomerNames() {
   return cachedKnownCustomerNames
 }
 
+let cachedActiveStaffTasks = null
+let cachedActiveStaffTasksTime = 0
+
+async function getActiveStaffTasks() {
+  const now = Date.now()
+  if (cachedActiveStaffTasks && now - cachedActiveStaffTasksTime < 60000) {
+    return cachedActiveStaffTasks
+  }
+  try {
+    const snap = await admin
+      .firestore()
+      .collection('Jobs')
+      .where('stage', 'in', ['new', 'due'])
+      .limit(20)
+      .get()
+    cachedActiveStaffTasks = snap.docs.map((d) => {
+      const data = d.data()
+      return {
+        id: d.id,
+        text: data.text || '',
+        assignedStaffName: data.assignedStaffName || data.assignedTo || 'Staff',
+        dueDate: data.dueDate
+          ? (data.dueDate.toDate
+              ? data.dueDate.toDate().toISOString().slice(0, 10)
+              : String(data.dueDate).slice(0, 10))
+          : '',
+        stage: data.stage || 'new',
+      }
+    })
+  } catch (e) {
+    logger.warn('Failed to load active tasks in cloud function:', e.message)
+    cachedActiveStaffTasks = []
+  }
+  cachedActiveStaffTasksTime = now
+  return cachedActiveStaffTasks
+}
+
+function formatActiveTasksForPrompt(tasks = []) {
+  if (!Array.isArray(tasks) || tasks.length === 0) {
+    return '\n\n## 📋 ACTIVE STAFF TASKS & ASSIGNMENTS IN SYSTEM:\nCurrently, there are ZERO active/pending tasks assigned to staff in the Anjani Water system.\nCRITICAL RULE: If the user asks about staff tasks or what Nilesh/Hiteshbhai have to do, state clearly that there are currently no pending tasks in the system. NEVER invent or hallucinate fictional, generic, or corporate office tasks.'
+  }
+
+  let block = '\n\n## 📋 ACTIVE STAFF TASKS & ASSIGNMENTS IN SYSTEM:\n'
+  block += 'These are the ONLY actual tasks currently active in the Anjani Water system:\n'
+  block += tasks.map((t, idx) => `${idx + 1}. [${t.assignedStaffName}] "${t.text}" (Due: ${t.dueDate || 'Today'}, Stage: ${t.stage})`).join('\n') + '\n\n'
+  block += 'CRITICAL TASK RULE: When the user asks about staff tasks or what staff has to do today, ONLY report the real tasks listed above. NEVER invent or suggest hypothetical, vague, or non-existent tasks (like cleaning desks, filing papers, checking inventory, etc.).'
+  return block
+}
+
 function formatKnownClientsForPrompt(clientNames = []) {
   if (!Array.isArray(clientNames) || clientNames.length === 0) return ''
   const uniqueNames = Array.from(new Set(clientNames.filter(Boolean))).slice(0, 150)
@@ -1451,7 +1500,9 @@ exports.askAnjaniAi = onCall(async (request) => {
       ? knownClients
       : await getKnownCustomerNames()
   const knownClientsBlock = formatKnownClientsForPrompt(clientNames)
-  const contextInjections = `${memoriesBlock}${skuSlangBlock}${knownClientsBlock}`
+  const activeTasks = await getActiveStaffTasks()
+  const tasksBlock = formatActiveTasksForPrompt(activeTasks)
+  const contextInjections = `${memoriesBlock}${skuSlangBlock}${knownClientsBlock}${tasksBlock}`
   const primaryModelName = aiSettings.activeModel || 'gemini-2.5-flash-lite'
   const fallbackModelName = aiSettings.fallbackModel || 'gemini-2.5-flash'
   const chatMaxTokens = Math.min(Number(aiSettings.maxOutputTokens) || 800, 1500)
@@ -1748,12 +1799,42 @@ Return strict JSON:
 {
   "docType": "receive_payment",
   "payerName": string,
+  "mobile": string (CRITICAL: Look closely at the UPI ID, e.g. 9825012345@okaxis, 9876543210@paytm, 9998812345@ybl, or phone printed on screen; extract the 10-digit mobile number if present, digits 0-9 only),
   "amount": number,
   "paymentMode": "online" | "cash" | "cheque",
   "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
   "utr": string,
   "date": string,
   "notes": string
+}
+
+If the user specifies compound actions (such as "client plus order plus payment", "create client and order", "order and payment", or asks to onboard client and book order alongside a payment receipt/screenshot):
+Return strict JSON:
+{
+  "docType": "compound_action",
+  "client": {
+    "name": string (Customer or shop business name in English Title Case),
+    "contactPerson": string,
+    "mobile": string (CRITICAL: Look closely at the UPI ID e.g. 9825012345@okaxis, 9876543210@paytm, 9825012345@upi; extract 10-digit mobile number, digits 0-9 only),
+    "address": string,
+    "location": string
+  },
+  "order": {
+    "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",
+    "qty": number (Calculate integer boxes from totalAmount / rate, or default to 10 if total is around 1200),
+    "rate": number (unit rate, default 120),
+    "totalAmount": number (Total order value in INR, should match payment amount),
+    "address": string
+  },
+  "payment": {
+    "payerName": string,
+    "amount": number,
+    "paymentMode": "online" | "cash",
+    "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
+    "utr": string,
+    "date": string,
+    "notes": string
+  }
 }
 
 If it is a customer bill book, estimate book, cash memo header, visiting card, business card, shop signboard, contact card, or retail customer pamphlet:
@@ -1885,6 +1966,7 @@ Return strict JSON:
         }
       }
 
+      const userTextPrompt = text ? `\n\nUSER SPECIFIC INSTRUCTION: "${text}"\n` : ''
       const parts = [
         {
           inlineData: {
@@ -1892,7 +1974,7 @@ Return strict JSON:
             mimeType: mimeType || 'image/jpeg',
           },
         },
-        { text: ocrPrompt + contextInjections },
+        { text: ocrPrompt + userTextPrompt + contextInjections },
       ]
 
       const res = await model.generateContent({
@@ -1901,6 +1983,21 @@ Return strict JSON:
 
       const rawJson = res.response.candidates[0].content.parts[0].text.trim()
       const parsedData = parseStructuredJson(rawJson)
+
+      if (
+        parsedData.docType === 'compound_action' ||
+        (parsedData.client && (parsedData.order || parsedData.payment))
+      ) {
+        return {
+          type: 'compound_action',
+          modelUsed: modelName,
+          data: {
+            client: ensureEnglishClient(parsedData.client || {}),
+            order: parsedData.order || null,
+            payment: parsedData.payment || null,
+          },
+        }
+      }
 
       if (
         mode === 'create_client' ||
@@ -2277,7 +2374,8 @@ Help with water orders, stock, clients, accounts, cash custody, and inquiries in
 Keep your answer clear, polite, and under 120 words.
 Our 5 products are: Anjani 200ml (Boxes), Bailey 250ml (Cases), Bailey 500ml (Cases), Bailey 1 Liter (Cases), Bailey 2 Liter (Cases).
 NOTE: All walk-in, unnamed, or counter retail sales are always consolidated into a single master order/invoice for "Retail" to keep order logs clean.
-ACCOUNTS & CASH CUSTODY: Delivery staff Nilesh and Hiteshbhai collect cash on routes. Cash can be handed over partially or fully to Counter (Jigneshbhai) or Bank. Staff expenses (e.g. diesel, vehicle repairs) are debited from their cash custody.`
+ACCOUNTS & CASH CUSTODY: Delivery staff Nilesh and Hiteshbhai collect cash on routes. Cash can be handed over partially or fully to Counter (Jigneshbhai) or Bank. Staff expenses (e.g. diesel, vehicle repairs) are debited from their cash custody.
+STAFF TASKS: Annapurna tracks real delivery, jar collection, and customer follow-up tasks in the Jobs database. If asked about staff tasks or daily work for Nilesh or Hiteshbhai: ONLY refer to the actual registered tasks in our system shown in the ACTIVE STAFF TASKS context below. If there are no active tasks, state clearly that there are currently no pending tasks in the Anjani Water system. NEVER invent, hallucinate, or suggest general office, generic corporate, or hypothetical tasks.`
 
       const safeHistory = Array.isArray(conversationHistory)
         ? conversationHistory.slice(-3).map((m) => ({

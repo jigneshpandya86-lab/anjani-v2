@@ -540,15 +540,6 @@ const TasksPage: React.FC<TasksPageProps> = ({ onOpenAiAssistant }) => {
             <label className="flex items-center gap-1.5 cursor-pointer">
               <input
                 type="checkbox"
-                checked={newTaskForm.isFollowUp}
-                onChange={(e) => setNewTaskForm({ ...newTaskForm, isFollowUp: e.target.checked })}
-              />
-              <span>Is Follow-up Task?</span>
-            </label>
-
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="checkbox"
                 checked={newTaskForm.sendSmsNotification}
                 onChange={(e) =>
                   setNewTaskForm({ ...newTaskForm, sendSmsNotification: e.target.checked })

@@ -234,6 +234,26 @@ describe('aiIntentRouter', () => {
     expect(nileshResult.type).toBe('staff_tasks_list')
     expect(nileshResult.data.tasks).toHaveLength(1)
     expect(nileshResult.data.tasks[0].id).toBe('j1')
+
+    // Handle common typos like 'staff taks'
+    const typoResult = tryLocalIntentRoute('staff taks', fakeStore)
+    expect(typoResult).not.toBeNull()
+    expect(typoResult.type).toBe('staff_tasks_list')
+    expect(typoResult.data.tasks).toHaveLength(2)
+
+    // Handle natural questions
+    const questionResult = tryLocalIntentRoute('what are staff tasks today', fakeStore)
+    expect(questionResult).not.toBeNull()
+    expect(questionResult.type).toBe('staff_tasks_list')
+  })
+
+  it('handles task assignment even with common typos like taks', () => {
+    const fakeStore = { staffList: [{ id: 'nilesh', name: 'Nilesh', mobile: '7990943652' }] }
+    const res = tryLocalIntentRoute('assign taks to nilesh collect empty jars', fakeStore)
+    expect(res).not.toBeNull()
+    expect(res.type).toBe('staff_task_draft')
+    expect(res.data.assignedTo).toBe('nilesh')
+    expect(res.data.text).toContain('collect empty jars')
   })
 })
 
