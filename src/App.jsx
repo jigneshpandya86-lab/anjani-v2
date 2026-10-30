@@ -1679,6 +1679,10 @@ function App() {
           setAddClientOpen(true)
           setAiDrawerOpen(false)
         }}
+        onOpenEditClient={(client) => {
+          setEditClient(client || null)
+          setAiDrawerOpen(false)
+        }}
         onOpenOrderModal={(order) => {
           setEditOrder(order)
           setAiDrawerOpen(false)

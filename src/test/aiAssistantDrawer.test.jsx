@@ -408,11 +408,13 @@ describe('AiAssistantDrawer', () => {
       },
     })
 
+    const mockOpenOrder = vi.fn()
     const { unmount } = render(
       <AiAssistantDrawer
         isOpen={true}
         onClose={() => {}}
         onNavigateTab={() => {}}
+        onOpenOrderModal={mockOpenOrder}
       />
     )
 
@@ -436,9 +438,15 @@ describe('AiAssistantDrawer', () => {
     const saveBtn = screen.getByRole('button', { name: /Confirm & Save/i })
     expect(saveBtn).toBeInTheDocument()
 
-    // Click Confirm & Save -> updates to Saved Cleanly
+    // Click Confirm & Save -> updates to Saved Cleanly AND provides option to Open Record post-save
     await fireEvent.click(saveBtn)
     expect(await screen.findByText(/Saved Cleanly ✓/i)).toBeInTheDocument()
+
+    // Post-save option to open saved record is present
+    const openRecBtn = screen.getByRole('button', { name: /Open Record/i })
+    expect(openRecBtn).toBeInTheDocument()
+    fireEvent.click(openRecBtn)
+    expect(mockOpenOrder).toHaveBeenCalled()
 
     unmount()
   })

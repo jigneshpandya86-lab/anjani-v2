@@ -34,6 +34,7 @@ import {
   Moon,
   Edit2,
   MessageCircle,
+  ExternalLink,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
@@ -77,6 +78,7 @@ export default function AiAssistantDrawer({
   onOpenPaymentModal,
   onOpenOrderModal,
   onOpenAddClient,
+  onOpenEditClient,
   initialMode,
 }) {
   const fileInputRef = useRef(null)
@@ -2027,7 +2029,7 @@ export default function AiAssistantDrawer({
                         disabled={placedOrders[msg.id]}
                         onClick={async () => {
                           try {
-                            await addOrder({
+                            const savedOrder = await addOrder({
                               clientId: msg.data.clientId,
                               clientName: msg.data.clientName,
                               mobile: msg.data.mobile,
@@ -2039,7 +2041,7 @@ export default function AiAssistantDrawer({
                               status: 'Pending',
                               date: msg.data.date,
                             })
-                            setPlacedOrders((prev) => ({ ...prev, [msg.id]: true }))
+                            setPlacedOrders((prev) => ({ ...prev, [msg.id]: savedOrder || msg.data }))
                             toast.success(`Order confirmed for ${msg.data.clientName}!`)
                           } catch (err) {
                             toast.error('Failed to place order: ' + err.message)
@@ -2054,10 +2056,20 @@ export default function AiAssistantDrawer({
                       {onOpenOrderModal && (
                         <button
                           type="button"
-                          onClick={() => onOpenOrderModal(msg.data)}
-                          className="py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold transition-colors text-xs cursor-pointer"
+                          onClick={() => {
+                            const saved = placedOrders[msg.id]
+                            onOpenOrderModal(saved && typeof saved === 'object' ? saved : msg.data)
+                          }}
+                          className="py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold transition-colors text-xs cursor-pointer flex items-center gap-1"
                         >
-                          Open Form
+                          {placedOrders[msg.id] ? (
+                            <>
+                              <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Open Record</span>
+                            </>
+                          ) : (
+                            'Open Form'
+                          )}
                         </button>
                       )}
                     </div>
@@ -2202,7 +2214,7 @@ export default function AiAssistantDrawer({
                             const pDate = new Date()
                             const extraNote = msg.data.utr ? `UPI Ref: ${msg.data.utr}` : ''
                             const narration = formatPaymentNarration(resolvedName, pDate, extraNote)
-                            await addPayment({
+                            const savedPay = await addPayment({
                               clientId: msg.data.clientId,
                               clientName: resolvedName,
                               amount: Number(msg.data.amount),
@@ -2217,7 +2229,7 @@ export default function AiAssistantDrawer({
                             })
                             setRecordedPayments((prev) => ({
                               ...prev,
-                              [msg.paymentId || msg.id]: true,
+                              [msg.paymentId || msg.id]: savedPay || msg.data,
                             }))
                             toast.success(
                               `Payment of ₹${Number(msg.data.amount).toLocaleString('en-IN')} recorded successfully!`,
@@ -2237,10 +2249,20 @@ export default function AiAssistantDrawer({
                       {onOpenPaymentModal && (
                         <button
                           type="button"
-                          onClick={() => onOpenPaymentModal(msg.data)}
-                          className="py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold transition-colors text-xs cursor-pointer"
+                          onClick={() => {
+                            const saved = recordedPayments[msg.paymentId || msg.id]
+                            onOpenPaymentModal(saved && typeof saved === 'object' ? saved : msg.data)
+                          }}
+                          className="py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold transition-colors text-xs cursor-pointer flex items-center gap-1"
                         >
-                          Open Form
+                          {recordedPayments[msg.paymentId || msg.id] ? (
+                            <>
+                              <ExternalLink className="w-3.5 h-3.5 text-emerald-700" />
+                              <span>Open Record</span>
+                            </>
+                          ) : (
+                            'Open Form'
+                          )}
                         </button>
                       )}
                     </div>
@@ -2314,122 +2336,206 @@ export default function AiAssistantDrawer({
                       )}
                     </div>
 
-                    {/* Single clean action button */}
+                    {/* Action buttons (Confirm & Save or Post-Save Open Record) */}
                     <div className="pt-1 border-t border-gray-100">
-                      <button
-                        type="button"
-                        disabled={
-                          executedCompounds[msg.compoundId || msg.id] ||
-                          executingCompoundId === (msg.compoundId || msg.id)
-                        }
-                        onClick={async () => {
-                          const d = msg.data || {}
-                          const cId = msg.compoundId || msg.id
-                          setExecutingCompoundId(cId)
-                          try {
-                            let finalClientId = d.clientId
-                            let finalClientName = d.clientName
+                      {executedCompounds[msg.compoundId || msg.id] ? (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-300 cursor-default">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              <span>Saved Cleanly ✓</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const saved = executedCompounds[msg.compoundId || msg.id]
+                                if (saved && typeof saved === 'object' && saved.order && onOpenOrderModal) {
+                                  onOpenOrderModal(saved.order)
+                                } else if (saved && typeof saved === 'object' && saved.payment && onOpenPaymentModal) {
+                                  onOpenPaymentModal(saved.payment)
+                                } else if (saved && typeof saved === 'object' && saved.client && onOpenEditClient) {
+                                  onOpenEditClient(saved.client)
+                                } else if (msg.data?.order && onOpenOrderModal) {
+                                  onOpenOrderModal(msg.data.order)
+                                } else if (onNavigateTab) {
+                                  onNavigateTab('orders')
+                                }
+                              }}
+                              className="py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 bg-gray-900 hover:bg-black text-white shadow-xs transition-colors cursor-pointer shrink-0 active:scale-95"
+                              title="Open saved record"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5 text-[#ff9900]" />
+                              <span>Open Record</span>
+                            </button>
+                          </div>
 
-                            // 1. Create client if new
-                            if (!finalClientId && d.clientName) {
-                              finalClientId = await addClient({
-                                name: d.clientName,
-                                mobile: d.clientMobile || '',
-                                address: d.clientAddress || '',
-                                location: d.clientAddress || '',
-                                rate: Number(d.order?.rate) || 130,
-                                notes: `Created via ${d.payment?.onlineProvider || 'UPI'} transaction`,
-                              })
+                          {/* Quick direct links if both Order and Payment exist */}
+                          {msg.data?.order && msg.data?.payment && (
+                            <div className="flex items-center justify-end gap-2 text-[11px] text-gray-500 pt-0.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const saved = executedCompounds[msg.compoundId || msg.id]
+                                  if (saved?.order && onOpenOrderModal) {
+                                    onOpenOrderModal(saved.order)
+                                  } else if (onNavigateTab) {
+                                    onNavigateTab('orders')
+                                  }
+                                }}
+                                className="text-blue-600 hover:underline font-medium flex items-center gap-0.5 cursor-pointer"
+                              >
+                                View Order ↗
+                              </button>
+                              <span>•</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const saved = executedCompounds[msg.compoundId || msg.id]
+                                  if (saved?.payment && onOpenPaymentModal) {
+                                    onOpenPaymentModal(saved.payment)
+                                  } else if (onNavigateTab) {
+                                    onNavigateTab('payments')
+                                  }
+                                }}
+                                className="text-emerald-700 hover:underline font-medium flex items-center gap-0.5 cursor-pointer"
+                              >
+                                View Payment ↗
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={executingCompoundId === (msg.compoundId || msg.id)}
+                          onClick={async () => {
+                            const d = msg.data || {}
+                            const cId = msg.compoundId || msg.id
+                            setExecutingCompoundId(cId)
+                            try {
+                              let finalClientId = d.clientId
+                              let finalClientName = d.clientName
+                              let createdClientObj = null
+
+                              // 1. Create client if new
+                              if (!finalClientId && d.clientName) {
+                                finalClientId = await addClient({
+                                  name: d.clientName,
+                                  mobile: d.clientMobile || '',
+                                  address: d.clientAddress || '',
+                                  location: d.clientAddress || '',
+                                  rate: Number(d.order?.rate) || 130,
+                                  notes: `Created via ${d.payment?.onlineProvider || 'UPI'} transaction`,
+                                })
+                                createdClientObj = {
+                                  id: finalClientId,
+                                  name: d.clientName,
+                                  mobile: d.clientMobile || '',
+                                  address: d.clientAddress || '',
+                                  location: d.clientAddress || '',
+                                  rate: Number(d.order?.rate) || 130,
+                                }
+                              } else if (finalClientId) {
+                                createdClientObj = clients.find((c) => c.id === finalClientId) || {
+                                  id: finalClientId,
+                                  name: finalClientName,
+                                }
+                              }
+
+                              // 2. Add Order if order present
+                              let createdOrderObj = null
+                              if (d.order) {
+                                const now = new Date()
+                                const yyyy = now.getFullYear()
+                                const mm = String(now.getMonth() + 1).padStart(2, '0')
+                                const dd = String(now.getDate()).padStart(2, '0')
+                                const localDate = `${yyyy}-${mm}-${dd}`
+                                const localTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+
+                                const qty = Number(d.order.qty) || 1
+                                const rate = Number(d.order.rate) || 130
+                                const sku = d.order.sku || 'Anjani 200ml'
+                                const totalAmount = Number(d.order.totalAmount) || qty * rate
+
+                                const orderPayload = {
+                                  clientId: finalClientId || '',
+                                  clientName: finalClientName || 'Customer',
+                                  mobile: d.clientMobile || '',
+                                  items: [
+                                    {
+                                      sku,
+                                      qty,
+                                      rate,
+                                      amount: totalAmount,
+                                      unit: 'Box',
+                                    },
+                                  ],
+                                  totalQty: qty,
+                                  totalAmount,
+                                  qty,
+                                  rate,
+                                  sku,
+                                  address: d.clientAddress || '',
+                                  location: d.clientAddress || '',
+                                  status: 'Pending',
+                                  date: localDate,
+                                  time: localTime,
+                                }
+
+                                const res = await addOrder(orderPayload)
+                                createdOrderObj = res || { ...orderPayload }
+                              }
+
+                              // 3. Add Payment if payment present
+                              let createdPaymentObj = null
+                              if (d.payment && Number(d.payment.amount) > 0) {
+                                const paymentAmount = Number(d.payment.amount)
+                                const pDate = new Date()
+                                const extraNote = d.payment.utr ? `UPI Ref: ${d.payment.utr}` : ''
+                                const narration = formatPaymentNarration(finalClientName, pDate, extraNote)
+                                const payPayload = {
+                                  clientId: finalClientId || '',
+                                  clientName: finalClientName || 'Customer',
+                                  amount: paymentAmount,
+                                  type: 'payment',
+                                  method: d.payment.paymentMode === 'cash' ? 'cash' : 'online',
+                                  accountId: d.payment.paymentMode === 'cash' ? 'counter' : 'bank',
+                                  narration,
+                                  note: extraNote || narration,
+                                  date: pDate,
+                                }
+                                const res = await addPayment(payPayload)
+                                createdPaymentObj = res || { ...payPayload }
+                              }
+
+                              setExecutedCompounds((prev) => ({
+                                ...prev,
+                                [cId]: {
+                                  order: createdOrderObj,
+                                  payment: createdPaymentObj,
+                                  client: createdClientObj,
+                                },
+                              }))
+                              toast.success('Saved successfully!')
+                            } catch (err) {
+                              console.error('Compound execution failed:', err)
+                              toast.error('Failed to save: ' + err.message)
+                            } finally {
+                              setExecutingCompoundId(null)
                             }
-
-                            // 2. Add Order if order present
-                            if (d.order) {
-                              const now = new Date()
-                              const yyyy = now.getFullYear()
-                              const mm = String(now.getMonth() + 1).padStart(2, '0')
-                              const dd = String(now.getDate()).padStart(2, '0')
-                              const localDate = `${yyyy}-${mm}-${dd}`
-                              const localTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-
-                              const qty = Number(d.order.qty) || 1
-                              const rate = Number(d.order.rate) || 130
-                              const sku = d.order.sku || 'Anjani 200ml'
-                              const totalAmount = Number(d.order.totalAmount) || qty * rate
-
-                              await addOrder({
-                                clientId: finalClientId || '',
-                                clientName: finalClientName || 'Customer',
-                                mobile: d.clientMobile || '',
-                                items: [
-                                  {
-                                    sku,
-                                    qty,
-                                    rate,
-                                    amount: totalAmount,
-                                    unit: 'Box',
-                                  },
-                                ],
-                                totalQty: qty,
-                                totalAmount,
-                                qty,
-                                rate,
-                                sku,
-                                address: d.clientAddress || '',
-                                location: d.clientAddress || '',
-                                status: 'Pending',
-                                date: localDate,
-                                time: localTime,
-                              })
-                            }
-
-                            // 3. Add Payment if payment present
-                            if (d.payment && Number(d.payment.amount) > 0) {
-                              const paymentAmount = Number(d.payment.amount)
-                              const pDate = new Date()
-                              const extraNote = d.payment.utr ? `UPI Ref: ${d.payment.utr}` : ''
-                              const narration = formatPaymentNarration(finalClientName, pDate, extraNote)
-                              await addPayment({
-                                clientId: finalClientId || '',
-                                clientName: finalClientName || 'Customer',
-                                amount: paymentAmount,
-                                type: 'payment',
-                                method: d.payment.paymentMode === 'cash' ? 'cash' : 'online',
-                                accountId: d.payment.paymentMode === 'cash' ? 'counter' : 'bank',
-                                narration,
-                                note: extraNote || narration,
-                                date: pDate,
-                              })
-                            }
-
-                            setExecutedCompounds((prev) => ({ ...prev, [cId]: true }))
-                            toast.success('Saved successfully!')
-                          } catch (err) {
-                            console.error('Compound execution failed:', err)
-                            toast.error('Failed to save: ' + err.message)
-                          } finally {
-                            setExecutingCompoundId(null)
-                          }
-                        }}
-                        className={`w-full py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                          executedCompounds[msg.compoundId || msg.id]
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 cursor-default'
-                            : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs active:scale-[0.99]'
-                        }`}
-                      >
-                        {executedCompounds[msg.compoundId || msg.id] ? (
-                          <>
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                            <span>Saved Cleanly ✓</span>
-                          </>
-                        ) : executingCompoundId === (msg.compoundId || msg.id) ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            <span>Saving...</span>
-                          </>
-                        ) : (
-                          <span>Confirm & Save</span>
-                        )}
-                      </button>
+                          }}
+                          className="w-full py-2 px-3 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs active:scale-[0.99]"
+                        >
+                          {executingCompoundId === (msg.compoundId || msg.id) ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Saving...</span>
+                            </>
+                          ) : (
+                            <span>Confirm & Save</span>
+                          )}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2561,16 +2667,17 @@ export default function AiAssistantDrawer({
                         onClick={async () => {
                           try {
                             const sanitized = sanitizeClientForEnglish(msg.data)
-                            await addClient({
+                            const createdId = await addClient({
                               name: sanitized.name,
                               mobile: sanitized.mobile,
                               address: sanitized.address,
                               location: sanitized.location || sanitized.address,
                               rate: Number(sanitized.rate) || 0,
                             })
+                            const clientRecord = { id: createdId, ...sanitized }
                             setCreatedClients((prev) => ({
                               ...prev,
-                              [msg.clientId || msg.id]: true,
+                              [msg.clientId || msg.id]: clientRecord,
                             }))
                             toast.success(`Client "${sanitized.name}" created successfully!`)
                           } catch (err) {
@@ -2583,13 +2690,28 @@ export default function AiAssistantDrawer({
                         {createdClients[msg.clientId || msg.id] ? 'Client Created ✓' : 'Create Client Now'}
                       </button>
 
-                      {onOpenAddClient && (
+                      {(onOpenAddClient || onOpenEditClient) && (
                         <button
                           type="button"
-                          onClick={() => onOpenAddClient(sanitizeClientForEnglish(msg.data))}
-                          className="py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold transition-colors text-xs cursor-pointer"
+                          onClick={() => {
+                            const saved = createdClients[msg.clientId || msg.id]
+                            const sanitized = sanitizeClientForEnglish(msg.data)
+                            if (saved && onOpenEditClient) {
+                              onOpenEditClient(typeof saved === 'object' ? saved : sanitized)
+                            } else if (onOpenAddClient) {
+                              onOpenAddClient(sanitized)
+                            }
+                          }}
+                          className="py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold transition-colors text-xs cursor-pointer flex items-center gap-1"
                         >
-                          Open Form
+                          {createdClients[msg.clientId || msg.id] ? (
+                            <>
+                              <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Open Record</span>
+                            </>
+                          ) : (
+                            'Open Form'
+                          )}
                         </button>
                       )}
                     </div>

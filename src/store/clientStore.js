@@ -1380,7 +1380,7 @@ export const useClientStore = create((set, get) => ({
     const primarySku =
       items.length === 1 ? items[0].sku : items.map((it) => it.sku).join(', ')
 
-    await addDoc(collection(db, 'orders'), {
+    const orderPayload = {
       ...normalizedData,
       orderId,
       clientId: isRetail ? (selectedClient?.id || '') : (normalizedData.clientId || selectedClient?.id || ''),
@@ -1401,7 +1401,9 @@ export const useClientStore = create((set, get) => ({
       sku: primarySku,
       status: 'Pending',
       createdAt: serverTimestamp(),
-    })
+    }
+    const docRef = await addDoc(collection(db, 'orders'), orderPayload)
+    return { id: docRef.id, ...orderPayload }
   },
 
   createBatchSales: async (salesList) => {
@@ -1660,14 +1662,16 @@ export const useClientStore = create((set, get) => ({
       data.accountId ||
       (data.method === 'upi' || data.method === 'online' ? 'bank' : 'counter')
 
-    await addDoc(collection(db, 'payments'), {
+    const paymentDocPayload = {
       ...data,
       clientName: clientName || '',
       narration,
       note,
       accountId,
       createdAt: serverTimestamp(),
-    })
+    }
+
+    const docRef = await addDoc(collection(db, 'payments'), paymentDocPayload)
 
     const amount = Number(data.amount) || 0
     if (data.clientId && amount > 0) {
@@ -1692,6 +1696,8 @@ export const useClientStore = create((set, get) => ({
         console.error('Failed to update accounts summary on payment:', err)
       }
     }
+
+    return { id: docRef.id, ...paymentDocPayload }
   },
 
   deletePayment: async (paymentId) => {
