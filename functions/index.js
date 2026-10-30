@@ -1677,12 +1677,25 @@ exports.askAnjaniAi = onCall(async (request) => {
     return String(norm).replace(/\s+/g, ' ').trim()
   }
 
+  const isMerchantName = (val) => {
+    if (!val || typeof val !== 'string') return false
+    const clean = val.toLowerCase().replace(/[^a-z0-9]/g, '')
+    if (!clean) return false
+    return (
+      clean.includes('annapurna') ||
+      clean.includes('anjani') ||
+      clean.includes('jignesh')
+    )
+  }
+
   const ensureEnglishClient = (cli) => {
     if (!cli || typeof cli !== 'object') return cli
+    const rawName = toEnglish(cli.name)
+    const rawContact = toEnglish(cli.contactPerson)
     return {
       ...cli,
-      name: toEnglish(cli.name),
-      contactPerson: toEnglish(cli.contactPerson),
+      name: isMerchantName(rawName) ? '' : rawName,
+      contactPerson: isMerchantName(rawContact) ? '' : rawContact,
       address: toEnglish(cli.address),
       location: toEnglish(cli.location || cli.address),
       mobile: normalizeDigits(cli.mobile || cli.phone || '').replace(/\D/g, ''),
@@ -1795,11 +1808,20 @@ Return strict JSON:
 }
 
 If it is a customer payment receipt, UPI payment screenshot (Google Pay, PhonePe, Paytm, BHIM, Bank transfer), or cheque:
+CRITICAL SENDER VS RECEIVER (PAYEE) RULE:
+- Annapurna Foods and Jignesh Pandya are the RECEIVER / PAYEE / MERCHANT (the owner receiving the payment).
+- You MUST NEVER extract "Annapurna Foods", "Anjani Water", or "Jignesh Pandya" (or any variation) as the payerName or customer name!
+- The CUSTOMER / PAYER is the SENDER who paid the money! Look at "From:", "Debited from:", "Paid by:", or the sender's UPI handle / account name.
+- In Google Pay (GPay):
+  * "Paid to Annapurna Foods" -> Annapurna Foods is the RECEIVER. DO NOT EXTRACT AS PAYER!
+  * "From: <Customer Name>" -> This is the PAYER! Extract this customer name into "payerName".
+  * If "From:" shows a phone number or UPI ID (e.g. 9825012345@okaxis), extract the 10-digit mobile number into "mobile".
+  * If the sender's name is not shown, leave payerName empty or use the name from UPI handle, NEVER "Annapurna Foods"!
 Return strict JSON:
 {
   "docType": "receive_payment",
-  "payerName": string,
-  "mobile": string (CRITICAL: Look closely at the UPI ID, e.g. 9825012345@okaxis, 9876543210@paytm, 9998812345@ybl, or phone printed on screen; extract the 10-digit mobile number if present, digits 0-9 only),
+  "payerName": string (Customer or sender name from "From:". NEVER "Annapurna Foods"),
+  "mobile": string (CRITICAL: Extract 10-digit mobile number from sender UPI ID under "From:" e.g. 9825012345@okaxis, digits 0-9 only),
   "amount": number,
   "paymentMode": "online" | "cash" | "cheque",
   "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
@@ -1809,13 +1831,17 @@ Return strict JSON:
 }
 
 If the user specifies compound actions (such as "client plus order plus payment", "create client and order", "order and payment", or asks to onboard client and book order alongside a payment receipt/screenshot):
+CRITICAL SENDER VS RECEIVER (PAYEE) RULE:
+- Annapurna Foods and Jignesh Pandya are the RECEIVER / BENEFICIARY / MERCHANT.
+- NEVER set "client.name" or "payment.payerName" to "Annapurna Foods", "Anjani Water", or "Jignesh Pandya"!
+- The CLIENT is the SENDER who paid, found under "From:", "Debited from:", or sender UPI ID.
 Return strict JSON:
 {
   "docType": "compound_action",
   "client": {
-    "name": string (Customer or shop business name in English Title Case),
+    "name": string (Customer or shop business name from "From:" in English Title Case. NEVER "Annapurna Foods"),
     "contactPerson": string,
-    "mobile": string (CRITICAL: Look closely at the UPI ID e.g. 9825012345@okaxis, 9876543210@paytm, 9825012345@upi; extract 10-digit mobile number, digits 0-9 only),
+    "mobile": string (CRITICAL: Look closely at sender UPI ID under "From:" e.g. 9825012345@okaxis; extract 10-digit mobile number, digits 0-9 only),
     "address": string,
     "location": string
   },
@@ -1827,7 +1853,7 @@ Return strict JSON:
     "address": string
   },
   "payment": {
-    "payerName": string,
+    "payerName": string (Sender name from "From:". NEVER "Annapurna Foods"),
     "amount": number,
     "paymentMode": "online" | "cash",
     "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
@@ -1858,18 +1884,29 @@ CRITICAL REQUIREMENT: ALL CLIENT INFORMATION ("name", "contactPerson", "address"
         ocrPrompt = `You are an expert multi-entity OCR AI for Annapurna Foods, authorized water distributor in Vadodara, Gujarat (owned by Jignesh Pandya).
 The user wants to process a COMPOUND ACTION (Client + Order + Payment) from this document, photo, or payment screenshot.
 
+CRITICAL SENDER VS RECEIVER (PAYEE) RULE (MANDATORY):
+- Annapurna Foods and Jignesh Pandya are the RECEIVER / BENEFICIARY / MERCHANT (the business receiving the money).
+- You MUST NEVER, UNDER ANY CIRCUMSTANCES, extract "Annapurna Foods", "Anjani Water", or "Jignesh Pandya" as the "client.name" or "payment.payerName"!
+- The CLIENT / PAYER is the CUSTOMER / SENDER who made the payment!
+- In Google Pay (GPay), PhonePe, Paytm, or UPI receipts:
+  * "Paid to Annapurna Foods" or "To: Annapurna Foods" is the RECEIVER. COMPLETELY IGNORE this as the customer name!
+  * The actual customer/client details are under "From:", "Debited from:", "Paid by:", or the sender's account/UPI details.
+  * Look for "From: <Customer Name>" or sender UPI ID (e.g. 9825012345@okaxis, 9876543210@paytm).
+  * Extract the 10-digit mobile number from the sender's UPI ID or phone into "client.mobile".
+  * If no customer name is visible under "From:" (only UPI ID like 9825012345@okaxis), set "name" to the name in UPI handle or leave empty. NEVER set it to "Annapurna Foods"!
+
 CRITICAL RULES:
-1. CLIENT: Look for customer/shop name and 10-digit mobile number. Look closely at UPI ID (e.g. 9825012345@okaxis, 9876543210@paytm, 9825012345@upi) to extract the 10-digit mobile number if present (digits 0-9 only). Return all client text strictly in English Title Case.
+1. CLIENT: Look for customer/shop name under "From:" and 10-digit mobile number. Look closely at sender UPI ID (e.g. 9825012345@okaxis, 9876543210@paytm, 9825012345@upi) to extract the 10-digit mobile number if present (digits 0-9 only). Return all client text strictly in English Title Case. NEVER return "Annapurna Foods".
 2. ORDER: Default product SKU MUST BE "Anjani 200ml" only if nothing is provided or specified otherwise. Default unit rate MUST BE 130 Rs per box only if not explicitly specified. Calculate order qty from payment amount / 130 (e.g. 1300 Rs = 10 boxes, 2600 Rs = 20 boxes, 650 Rs = 5 boxes).
-3. PAYMENT: Extract payment amount in INR, paymentMode ("online" | "cash"), onlineProvider ("GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank"), UTR / reference number, and date.
+3. PAYMENT: Extract payment amount in INR, paymentMode ("online" | "cash"), onlineProvider ("GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank"), UTR / reference number, and date. Payer name MUST be the customer/sender ("From:"), NEVER "Annapurna Foods".
 
 Return strict JSON:
 {
   "docType": "compound_action",
   "client": {
-    "name": string (Customer or shop business name in English Title Case),
+    "name": string (Customer or shop business name from "From:" in English Title Case. NEVER "Annapurna Foods"),
     "contactPerson": string,
-    "mobile": string (CRITICAL: Extract 10-digit mobile number from UPI ID or text, digits 0-9 only),
+    "mobile": string (CRITICAL: Extract 10-digit mobile number from sender UPI ID under "From:" or text, digits 0-9 only),
     "address": string,
     "location": string
   },
@@ -1881,7 +1918,7 @@ Return strict JSON:
     "address": string
   },
   "payment": {
-    "payerName": string,
+    "payerName": string (Sender name from "From:". NEVER "Annapurna Foods"),
     "amount": number,
     "paymentMode": "online" | "cash",
     "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
@@ -1924,10 +1961,19 @@ Even if the bill book, signboard, or card is in Hindi (देवनागरी)
       } else if (mode === 'receive_payment') {
         ocrPrompt = `You are an expert payment receipt and UPI OCR AI for Annapurna Foods in Vadodara, Gujarat.
 The user wants to RECORD A PAYMENT from this photo (UPI screenshot from Google Pay, PhonePe, Paytm, BHIM, Bank transfer receipt, cash counter slip, or cheque).
+
+CRITICAL SENDER VS RECEIVER (PAYEE) RULE:
+- Annapurna Foods and Jignesh Pandya are the RECEIVER / PAYEE / MERCHANT.
+- You MUST NEVER extract "Annapurna Foods", "Anjani Water", or "Jignesh Pandya" as the payerName!
+- The PAYER is the SENDER who sent the money ("From: ...", "Debited from: ...", or sender UPI ID).
+- In Google Pay: "Paid to Annapurna Foods" is the RECEIVER. Payer is under "From: <Customer Name>".
+- If "From:" contains a 10-digit mobile number in the UPI ID (e.g. 9825012345@okaxis), extract that 10-digit number into "mobile".
+
 Return strict JSON:
 {
   "docType": "receive_payment",
-  "payerName": string (Customer or shop name who made the payment),
+  "payerName": string (Customer or sender name from "From:". NEVER "Annapurna Foods"),
+  "mobile": string (10-digit mobile from sender UPI ID if present),
   "amount": number (Total payment amount in INR),
   "paymentMode": "online" | "cash" | "cheque",
   "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
@@ -2035,11 +2081,15 @@ Return strict JSON:
           totalAmount: payAmount || (defaultQty * defaultRate),
         } : null)
 
+        const sanitizedClient = ensureEnglishClient(parsedData.client || {})
+        const rawPayer = parsedData.payment?.payerName || ''
+        const sanitizedPayer = isMerchantName(rawPayer) ? (sanitizedClient.name || '') : rawPayer
+
         return {
           type: 'compound_action',
           modelUsed: modelName,
           data: {
-            client: ensureEnglishClient(parsedData.client || {}),
+            client: sanitizedClient,
             order: orderData ? {
               sku: orderData.sku && orderData.sku.trim() ? orderData.sku : 'Anjani 200ml',
               qty: Number(orderData.qty) || defaultQty,
@@ -2047,7 +2097,10 @@ Return strict JSON:
               totalAmount: Number(orderData.totalAmount) || ((Number(orderData.qty) || defaultQty) * (Number(orderData.rate) || defaultRate)),
               address: orderData.address || '',
             } : null,
-            payment: parsedData.payment || null,
+            payment: parsedData.payment ? {
+              ...parsedData.payment,
+              payerName: sanitizedPayer,
+            } : null,
           },
         }
       }
@@ -2062,7 +2115,7 @@ Return strict JSON:
           const first = parsedData.sales[0]
           clientData = {
             docType: 'create_client',
-            name: first.clientName && first.clientName !== 'Retail' ? first.clientName : 'New Client',
+            name: first.clientName && first.clientName !== 'Retail' && !isMerchantName(first.clientName) ? first.clientName : '',
             contactPerson: '',
             mobile: first.mobile || '',
             alternateMobile: '',
@@ -2086,10 +2139,14 @@ Return strict JSON:
         parsedData.docType === 'receive_payment' ||
         (Number(parsedData.amount) > 0 && (parsedData.payerName || parsedData.utr) && !Array.isArray(parsedData.sales))
       ) {
+        const cleanPayment = { ...parsedData }
+        if (isMerchantName(cleanPayment.payerName)) {
+          cleanPayment.payerName = ''
+        }
         return {
           type: 'receive_payment',
           modelUsed: modelName,
-          data: parsedData,
+          data: cleanPayment,
         }
       }
 
@@ -2277,11 +2334,15 @@ User Text: ${rawText.slice(0, 1000)}`
               rate: defaultRate,
               totalAmount: payAmount || (defaultQty * defaultRate),
             }
+            const sanitizedClient = ensureEnglishClient(parsedData.client || {})
+            const rawPayer = parsedData.payment?.payerName || ''
+            const sanitizedPayer = isMerchantName(rawPayer) ? (sanitizedClient.name || '') : rawPayer
+
             return {
               type: 'compound_action',
               modelUsed: modelName,
               data: {
-                client: ensureEnglishClient(parsedData.client || {}),
+                client: sanitizedClient,
                 order: {
                   sku: orderData.sku && orderData.sku.trim() ? orderData.sku : 'Anjani 200ml',
                   qty: Number(orderData.qty) || defaultQty,
@@ -2289,7 +2350,10 @@ User Text: ${rawText.slice(0, 1000)}`
                   totalAmount: Number(orderData.totalAmount) || ((Number(orderData.qty) || defaultQty) * (Number(orderData.rate) || defaultRate)),
                   address: orderData.address || '',
                 },
-                payment: parsedData.payment || null,
+                payment: parsedData.payment ? {
+                  ...parsedData.payment,
+                  payerName: sanitizedPayer,
+                } : null,
               },
             }
           }
@@ -2375,10 +2439,11 @@ User Text: ${rawText.slice(0, 1000)}`
 
         const textPaymentPrompt = `You are an accounts and payment assistant for Annapurna Foods in Vadodara, Gujarat.
 The user provided a customer payment received record in English, Gujarati, or Hindi.
+CRITICAL: Payer name must be the customer who paid, NEVER "Annapurna Foods" or "Jignesh Pandya".
 Parse into strict JSON:
 {
   "docType": "receive_payment",
-  "payerName": string (Customer or shop name who paid),
+  "payerName": string (Customer or shop name who paid. NEVER "Annapurna Foods"),
   "amount": number (Payment amount in INR),
   "paymentMode": "online" | "cash" | "cheque",
   "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
@@ -2395,10 +2460,14 @@ User Text: ${rawText.slice(0, 1000)}`
           const rawJson = res.response.candidates[0].content.parts[0].text.trim()
           const parsedData = parseStructuredJson(rawJson)
           if (Number(parsedData.amount) > 0) {
+            const cleanPayment = { ...parsedData }
+            if (isMerchantName(cleanPayment.payerName)) {
+              cleanPayment.payerName = ''
+            }
             return {
               type: 'receive_payment',
               modelUsed: modelName,
-              data: parsedData,
+              data: cleanPayment,
             }
           }
         } catch (payErr) {

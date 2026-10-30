@@ -44,7 +44,7 @@ import { getAccountMeta } from '../constants/accounts'
 import { processAiBillImage } from '../utils/aiImageHelper'
 import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
-import { ensureEnglishText, sanitizeClientForEnglish } from '../utils/textUtils'
+import { ensureEnglishText, sanitizeClientForEnglish, isMerchantOrSelfName } from '../utils/textUtils'
 import { getRecentSkuPrice, formatPaymentNarration } from '../utils/orderUtils'
 import { detectMemoryIntent, isQueryingMemories, formatMemoriesForPrompt, extractStructuredRuleData } from '../utils/aiMemoryUtils'
 import {
@@ -1020,8 +1020,13 @@ export default function AiAssistantDrawer({
         const orderRaw = compData.order || {}
         const payRaw = compData.payment || {}
 
+        // Strictly filter out any merchant/self names (Annapurna Foods, Jignesh Pandya, Anjani Water)
+        const rawClientName = isMerchantOrSelfName(clientRaw.name) ? '' : (clientRaw.name || '').trim()
+        const rawPayerName = isMerchantOrSelfName(payRaw.payerName) ? '' : (payRaw.payerName || '').trim()
+        const rawContact = isMerchantOrSelfName(clientRaw.contactPerson) ? '' : (clientRaw.contactPerson || '').trim()
+
         const targetMobile = (clientRaw.mobile || '').replace(/\D/g, '')
-        const targetName = (clientRaw.name || payRaw.payerName || '').trim()
+        const targetName = rawClientName || rawPayerName || rawContact || ''
 
         let matched = null
         if (targetMobile && targetMobile.length >= 10) {
@@ -1040,7 +1045,9 @@ export default function AiAssistantDrawer({
         }
 
         const clientId = matched ? matched.id : ''
-        const clientName = matched ? matched.name : (targetName || 'New Customer')
+        const clientName = matched
+          ? matched.name
+          : (targetName || (targetMobile ? `Customer (${targetMobile.slice(-4)})` : 'New Customer'))
         const isNewClient = !matched
 
         const paymentAmount = Number(payRaw.amount) || Number(orderRaw.totalAmount) || 0
@@ -1072,7 +1079,7 @@ export default function AiAssistantDrawer({
                 totalAmount: orderAmount,
               } : null,
               payment: (payRaw && (payRaw.amount || paymentAmount > 0 || payRaw.utr)) ? {
-                payerName: payRaw.payerName || clientName,
+                payerName: (!isMerchantOrSelfName(payRaw.payerName) ? payRaw.payerName : '') || clientName,
                 amount: paymentAmount || orderAmount,
                 paymentMode: payRaw.paymentMode || 'online',
                 onlineProvider: payRaw.onlineProvider || 'GPay',
@@ -1108,11 +1115,26 @@ export default function AiAssistantDrawer({
         ])
       } else if (resData.type === 'receive_payment') {
         const payData = resData.data || {}
-        const matched = clients.find(
-          (c) =>
-            c.name?.toLowerCase().includes((payData.payerName || '').toLowerCase().trim()) ||
-            (payData.payerName || '').toLowerCase().includes(c.name?.toLowerCase().trim()),
-        )
+        if (isMerchantOrSelfName(payData.payerName)) {
+          payData.payerName = ''
+        }
+
+        const targetMobile = (payData.mobile || '').replace(/\D/g, '')
+        let matched = null
+        if (targetMobile && targetMobile.length >= 10) {
+          const tenDigit = targetMobile.slice(-10)
+          matched = (clients || []).find((c) => {
+            const m = (c.mobile || c.phone || '').replace(/\D/g, '')
+            return m.endsWith(tenDigit)
+          })
+        }
+        if (!matched && payData.payerName) {
+          matched = clients.find(
+            (c) =>
+              c.name?.toLowerCase().includes((payData.payerName || '').toLowerCase().trim()) ||
+              (payData.payerName || '').toLowerCase().includes(c.name?.toLowerCase().trim()),
+          )
+        }
         setMessages((prev) => [
           ...prev,
           {
@@ -1124,7 +1146,7 @@ export default function AiAssistantDrawer({
             data: {
               payerName: payData.payerName || '',
               clientId: matched?.id || '',
-              clientName: matched?.name || payData.payerName || 'Select Client',
+              clientName: matched?.name || payData.payerName || (targetMobile ? `Customer (${targetMobile.slice(-4)})` : 'Select Client'),
               amount: Number(payData.amount) || 0,
               method: payData.paymentMode === 'cash' ? 'cash' : 'online',
               accountId: payData.paymentMode === 'cash' ? 'counter' : 'bank',

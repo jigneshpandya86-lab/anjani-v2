@@ -321,18 +321,36 @@ export function ensureEnglishText(str) {
 }
 
 /**
+ * Detects whether a string refers to our own business (Annapurna Foods / Jignesh Pandya / Anjani Water)
+ * so it is NEVER mistakenly saved or displayed as a client or customer name.
+ */
+export function isMerchantOrSelfName(name) {
+  if (!name || typeof name !== 'string') return false
+  const clean = name.toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (!clean) return false
+  return (
+    clean.includes('annapurna') ||
+    clean.includes('anjani') ||
+    clean.includes('jignesh')
+  )
+}
+
+/**
  * Sanitizes all client fields to ensure the client is stored in English only.
+ * Strips out merchant/self names so receiver name is never stored as customer name.
  */
 export function sanitizeClientForEnglish(client) {
   if (!client || typeof client !== 'object') return client
+  const rawName = ensureEnglishText(client.name)
+  const rawContact = ensureEnglishText(client.contactPerson)
   return {
     ...client,
-    name: ensureEnglishText(client.name),
+    name: isMerchantOrSelfName(rawName) ? '' : rawName,
     mobile: normalizeDigits(client.mobile || client.phone || '').replace(/\D/g, ''),
     phone: normalizeDigits(client.phone || client.mobile || '').replace(/\D/g, ''),
     address: ensureEnglishText(client.address),
     location: ensureEnglishText(client.location || client.address),
-    contactPerson: ensureEnglishText(client.contactPerson),
+    contactPerson: isMerchantOrSelfName(rawContact) ? '' : rawContact,
     notes: ensureEnglishText(client.notes),
   }
 }

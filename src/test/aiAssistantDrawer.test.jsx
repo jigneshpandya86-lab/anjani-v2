@@ -442,4 +442,44 @@ describe('AiAssistantDrawer', () => {
 
     unmount()
   })
+
+  it('rejects Annapurna Foods as client name in GPay payment receipt and prioritizes sender or phone', async () => {
+    // Simulate Gemini incorrectly returning merchant name "Annapurna Foods" because it read "Paid to Annapurna Foods"
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'compound_action',
+        data: {
+          client: { name: 'Annapurna Foods', mobile: '9988776655' },
+          payment: { payerName: 'Annapurna Foods', amount: 2600, onlineProvider: 'GPay', utr: 'GPAY12345' },
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'client plus order plus payment' } })
+
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    // Verify "Annapurna Foods" is NEVER used as the client name!
+    expect(screen.queryByText(/^Annapurna Foods$/i)).not.toBeInTheDocument()
+
+    // Since mobile 9988776655 does not match an existing client, it should fall back to Customer (6655)
+    expect(await screen.findByText('Customer (6655)')).toBeInTheDocument()
+    expect(screen.getByText('(9988776655)')).toBeInTheDocument()
+
+    // Order calculated correctly: 2600 / 130 = 20 boxes @ 130
+    expect(screen.getByText(/20 × Anjani 200ml/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/₹2,600/i).length).toBeGreaterThanOrEqual(1)
+
+    unmount()
+  })
 })

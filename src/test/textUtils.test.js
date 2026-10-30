@@ -5,6 +5,7 @@ import {
   transliterateIndicToEnglish,
   ensureEnglishText,
   sanitizeClientForEnglish,
+  isMerchantOrSelfName,
 } from '../utils/textUtils'
 
 describe('textUtils - English Enforcement & Indic Transliteration', () => {
@@ -65,5 +66,27 @@ describe('textUtils - English Enforcement & Indic Transliteration', () => {
     expect(hasIndicScript(sanitized.name)).toBe(false)
     expect(hasIndicScript(sanitized.address)).toBe(false)
     expect(hasIndicScript(sanitized.notes)).toBe(false)
+  })
+
+  it('identifies and strips merchant/self names so receiver is never saved as customer', () => {
+    expect(isMerchantOrSelfName('Annapurna Foods')).toBe(true)
+    expect(isMerchantOrSelfName('annapurna food')).toBe(true)
+    expect(isMerchantOrSelfName('Anjani Water')).toBe(true)
+    expect(isMerchantOrSelfName('Jignesh Pandya')).toBe(true)
+    expect(isMerchantOrSelfName('Jigneshbhai')).toBe(true)
+    expect(isMerchantOrSelfName('Ramesh Patel')).toBe(false)
+    expect(isMerchantOrSelfName('Jay Ambe Super Market')).toBe(false)
+    expect(isMerchantOrSelfName('')).toBe(false)
+
+    // sanitizeClientForEnglish strips merchant name
+    const clientWithSelfName = {
+      name: 'Annapurna Foods',
+      contactPerson: 'Jignesh Pandya',
+      mobile: '9825012345',
+    }
+    const sanitized = sanitizeClientForEnglish(clientWithSelfName)
+    expect(sanitized.name).toBe('')
+    expect(sanitized.contactPerson).toBe('')
+    expect(sanitized.mobile).toBe('9825012345')
   })
 })
