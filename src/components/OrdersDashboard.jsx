@@ -937,28 +937,30 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
                   )
                 })()}
               </div>
-              {userRole === 'admin' && (
-                <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                {userRole === 'admin' && (
                   <button
                     type="button"
                     onClick={() => onRecordPayment?.(order)}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-200 text-[9px] font-black tracking-wide uppercase"
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-200 text-[9px] font-black tracking-wide uppercase active:scale-95 transition-all cursor-pointer shadow-2xs"
                     title="Record payment"
                   >
                     <HandCoins size={12} />
                     Pay
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onShareInvoice?.(order)}
-                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-black tracking-wide uppercase"
-                    title="Invoice PDF / WhatsApp"
-                  >
-                    <FileText size={14} />
-                    PDF
-                  </button>
-                </div>
-              )}
+                )}
+                {/* Allow Nilesh and delivery staff as well as admin to take invoice PDF copies */}
+                <button
+                  type="button"
+                  onClick={() => onShareInvoice?.(order)}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border border-indigo-200 text-[10px] font-black tracking-wide uppercase active:scale-95 transition-all cursor-pointer shadow-2xs"
+                  title="Invoice PDF / WhatsApp"
+                  aria-label="Invoice PDF"
+                >
+                  <FileText size={14} />
+                  PDF
+                </button>
+              </div>
             </div>
 
             {/* Delivery Address & Maps block */}
@@ -1026,6 +1028,16 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
                     <Phone size={16} />
                   </button>
                 )}
+                {/* 1-tap invoice PDF copy for staff and admin */}
+                <button
+                  type="button"
+                  onClick={() => onShareInvoice?.(order)}
+                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-2 rounded-xl active:scale-95 transition-all cursor-pointer shadow-2xs"
+                  title="Invoice PDF / WhatsApp"
+                  aria-label="Invoice PDF"
+                >
+                  <FileText size={16} />
+                </button>
                 {userRole === 'admin' && (
                   <>
                     <button

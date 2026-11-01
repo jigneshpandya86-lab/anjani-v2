@@ -35,6 +35,7 @@ import {
   Edit2,
   MessageCircle,
   ExternalLink,
+  FileText,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
@@ -79,6 +80,7 @@ export default function AiAssistantDrawer({
   onOpenOrderModal,
   onOpenAddClient,
   onOpenEditClient,
+  onShareInvoice,
   initialMode,
 }) {
   const fileInputRef = useRef(null)
@@ -3241,6 +3243,17 @@ export default function AiAssistantDrawer({
                                 className="h-6 w-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center transition-colors cursor-pointer"
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {onShareInvoice && (
+                              <button
+                                type="button"
+                                onClick={() => onShareInvoice(ord)}
+                                aria-label="Invoice PDF"
+                                title="Invoice PDF"
+                                className="h-6 w-6 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 flex items-center justify-center transition-colors cursor-pointer"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
                               </button>
                             )}
                             <button

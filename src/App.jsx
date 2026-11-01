@@ -836,9 +836,9 @@ function App() {
 
     // Try native share sheet (opens WhatsApp, Drive, etc. on Android)
     try {
-      if (navigator.share) {
+      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [pdfFile] }))) {
         await navigator.share({ title: invoiceTitle, text: msg, files: [pdfFile] })
-        toast.success('Invoice PDF ready — select WhatsApp to send.')
+        toast.success('Invoice PDF copy ready — select app or WhatsApp to send.')
         return
       }
     } catch (err) {
@@ -1687,6 +1687,7 @@ function App() {
           setEditOrder(order)
           setAiDrawerOpen(false)
         }}
+        onShareInvoice={handleOrderInvoiceWhatsApp}
       />
 
       {/* Floating Contextual AI Assistant Trigger Button (Uniform across all pages at bottom-40) */}

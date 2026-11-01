@@ -141,6 +141,20 @@ describe('OrdersDashboard Staff Visibility vs Admin Visibility', () => {
     expect(screen.queryByRole('button', { name: /^mark delivered$/i })).not.toBeInTheDocument()
   })
 
+  it('allows staff (Nilesh) to take invoice PDF copies from order cards', () => {
+    mockUserRole = 'staff'
+    const onShareInvoice = vi.fn()
+    render(<OrdersDashboard onShareInvoice={onShareInvoice} />)
+
+    // Staff sees PDF buttons on order cards
+    const pdfButtons = screen.getAllByRole('button', { name: /invoice pdf/i })
+    expect(pdfButtons.length).toBeGreaterThanOrEqual(1)
+
+    // Clicking PDF button triggers invoice sharing/download
+    fireEvent.click(pdfButtons[0])
+    expect(onShareInvoice).toHaveBeenCalledWith(expect.objectContaining({ id: 'ord-pending' }))
+  })
+
   it('renders action buttons for admin users', () => {
     mockUserRole = 'admin'
     render(<OrdersDashboard />)
