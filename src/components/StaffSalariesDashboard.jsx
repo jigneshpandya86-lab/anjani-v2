@@ -260,7 +260,7 @@ export default function StaffSalariesDashboard() {
   }
 
   return (
-    <div className="space-y-3 pb-24 max-w-4xl mx-auto px-1 sm:px-2">
+    <div className="space-y-3 pb-24 w-full">
       {/* ─── Header & Employee Switcher ─── */}
       <div className="bg-white rounded-3xl p-3.5 sm:p-5 shadow-xs border border-gray-100 space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

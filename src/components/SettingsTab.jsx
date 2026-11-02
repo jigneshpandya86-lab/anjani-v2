@@ -715,7 +715,7 @@ export default function SettingsTab() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl p-1.5 md:p-2 space-y-3">
+    <div className="w-full space-y-3">
       {/* Submenu Navigation */}
       <div className="flex items-center gap-1.5 p-1 bg-gray-200/80 rounded-2xl shadow-inner border border-gray-200">
         <button

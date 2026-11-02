@@ -269,7 +269,7 @@ export default function CelebrationsTab() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-2 md:p-3">
+    <div className="w-full space-y-4">
       {/* Add / Edit Contact Panel */}
       <div className="rounded-lg border border-gray-200 bg-white p-3.5 shadow-sm">
         <div className="mb-3.5 flex items-center justify-between border-b pb-2">

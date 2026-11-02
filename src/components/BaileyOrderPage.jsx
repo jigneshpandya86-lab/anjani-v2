@@ -284,7 +284,7 @@ export default function BaileyOrderPage({ onBack }) {
   }
 
   return (
-    <div className="space-y-2.5 pb-4 animate-in fade-in duration-150 max-w-5xl mx-auto">
+    <div className="space-y-2.5 pb-4 animate-in fade-in duration-150 w-full">
       {/* ─── Compact Top Banner ─── */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0f1f46] via-[#143366] to-[#1e4a88] p-3 sm:p-4 text-white shadow-sm">
         <div className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full bg-white/10" />

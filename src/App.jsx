@@ -1236,7 +1236,7 @@ function App() {
 
       {/* Main Content Area */}
       <div className="flex flex-col min-h-screen">
-        <div className="max-w-5xl mx-auto w-full pb-28">
+        <div className="max-w-5xl mx-auto w-full px-3.5 sm:px-4 pb-28">
           {activeTab === 'orders' && (
             <OrdersDashboard
               onEdit={setEditOrder}

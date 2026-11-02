@@ -551,19 +551,19 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
   }
 
   return (
-    <div className="space-y-3 pb-20">
+    <div className="space-y-3 pb-20 w-full max-w-full">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <input
           type="text"
           placeholder="Search Name, Mobile, or Order ID..."
-          className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 bg-white text-sm focus:ring-2 focus:ring-[#ff9900] outline-none font-bold text-gray-700"
+          className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:ring-2 focus:ring-[#ff9900] outline-none font-bold text-gray-700 shadow-2xs"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
       </div>
 
-      <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-hide px-1 items-center">
+      <div className="w-full max-w-full min-w-0 flex gap-1.5 overflow-x-auto pb-2 scrollbar-hide items-center">
         {[
           { key: 'OpenConfirm', label: 'Open / Confirm', count: openConfirmCount },
           { key: 'Pending', label: 'Open' },
@@ -775,7 +775,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
       )}
 
       {/* SKU Filter Bar */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-hide px-1">
+      <div className="w-full max-w-full min-w-0 flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-hide">
         <span className="text-[9px] font-black uppercase text-gray-400 tracking-wider shrink-0">
           SKU:
         </span>
@@ -841,7 +841,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
           return (
             <div
               key={order.id}
-              className={`bg-white rounded-[24px] p-5 shadow-sm border transition-all ${
+              className={`bg-white rounded-2xl p-4 sm:p-5 shadow-sm border transition-all ${
                 isConfirmed
                   ? 'border-blue-200 ring-1 ring-blue-100'
                   : isPending
@@ -849,7 +849,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
                   : 'border-gray-100'
               }`}
             >
-              <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-3">
+              <div className="flex justify-between items-start mb-2.5 border-b border-gray-50 pb-2.5">
                 <div>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span
@@ -919,7 +919,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
               </div>
             )}
 
-            <div className="mb-4 flex items-center justify-between gap-2 bg-gray-50 p-2 rounded-lg">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 bg-gray-50 p-2 rounded-xl">
               <div className="flex items-center gap-2 text-xs font-bold text-gray-500 flex-wrap">
                 <span className="inline-flex items-center gap-1.5">
                   <Clock size={14} className="text-blue-400 shrink-0" />
@@ -969,7 +969,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
               const mapsUrl = getMapsUrl(order)
               if (!address && !mapsUrl) return null
               return (
-                <div className="mb-4 bg-orange-50/40 border border-orange-100/50 px-3 py-2 rounded-2xl flex items-center justify-between gap-3 min-w-0">
+                <div className="mb-3 bg-orange-50/40 border border-orange-100/50 px-3 py-2 rounded-xl flex items-center justify-between gap-3 min-w-0">
                   <div className="flex items-center gap-1.5 min-w-0 flex-1">
                     <MapPin size={14} className="text-[#ff9900] shrink-0" />
                     <span className="text-xs font-bold text-gray-700 truncate" title={address}>
@@ -1010,8 +1010,8 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
             })()}
 
             {/* Action Bar */}
-            <div className="flex justify-between items-center gap-2">
-              <div className="flex gap-2">
+            <div className="flex flex-wrap justify-between items-center gap-2 pt-1 border-t border-gray-50">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <button
                   onClick={() => shareOrder(order)}
                   className="bg-[#25D366]/10 text-[#25D366] p-2 rounded-xl"
