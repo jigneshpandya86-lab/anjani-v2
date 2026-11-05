@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   getPhoneticKey,
   findMatchingClient,
+  findBestExistingClientMatch,
   similarityRatio,
   levenshteinDistance,
 } from '../utils/clientMatchingUtils'
@@ -124,6 +125,57 @@ describe('clientMatchingUtils', () => {
       expect(match4).not.toBeNull()
       expect(match4.client.id).toBe('c_retail')
       expect(match4.client.name).toBe('Retail')
+    })
+  })
+
+  describe('findBestExistingClientMatch', () => {
+    const clients = [
+      { id: 'c1', name: 'Sandip Patel', mobile: '9825012345', outstanding: 1200 },
+      { id: 'c2', name: 'Jay Ambe Provision Store', mobile: '9925055555', outstanding: 0 },
+      { id: 'c3', name: 'Rohitbhai Patel', mobile: '9876543210', outstanding: 4500 },
+      { id: 'c4', name: 'Pooja Cold Drinks', mobile: '9123456789', outstanding: 0 },
+    ]
+
+    it('returns exact match if present', () => {
+      const best = findBestExistingClientMatch('Sandip Patel', clients)
+      expect(best).toBeDefined()
+      expect(best.id).toBe('c1')
+    })
+
+    it('returns phonetic match (Sandeep -> Sandip Patel)', () => {
+      const best = findBestExistingClientMatch('Sandeep Patel', clients)
+      expect(best).toBeDefined()
+      expect(best.id).toBe('c1')
+    })
+
+    it('matches by 10-digit phone extracted from raw string', () => {
+      const best = findBestExistingClientMatch('UPI payment from 9876543210 via GPay', clients)
+      expect(best).toBeDefined()
+      expect(best.id).toBe('c3')
+    })
+
+    it('selects best possible match for token variations (e.g. "Rohit K Patel")', () => {
+      const best = findBestExistingClientMatch('Rohit K Patel', clients)
+      expect(best).toBeDefined()
+      expect(best.id).toBe('c3')
+    })
+
+    it('never creates new client and returns best candidate even for approximate names', () => {
+      const best = findBestExistingClientMatch('Jay Ambe Kirana Mart', clients)
+      expect(best).toBeDefined()
+      expect(best.id).toBe('c2')
+    })
+
+    it('falls back to client with outstanding balance if completely unrecognized text', () => {
+      const best = findBestExistingClientMatch('XYZ Unknown 99999', clients)
+      expect(best).toBeDefined()
+      // Rohitbhai has the highest outstanding (4500)
+      expect(best.id).toBe('c3')
+    })
+
+    it('returns null only if clients array is empty', () => {
+      expect(findBestExistingClientMatch('Sandip', [])).toBeNull()
+      expect(findBestExistingClientMatch('Sandip', null)).toBeNull()
     })
   })
 })

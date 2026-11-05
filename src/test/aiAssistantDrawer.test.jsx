@@ -1,5 +1,5 @@
 import React from 'react'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
@@ -28,6 +28,10 @@ vi.mock('../utils/aiImageHelper', () => ({
   })),
 }))
 
+const mockAddClient = vi.fn()
+const mockAddPayment = vi.fn()
+const mockAddOrder = vi.fn()
+
 vi.mock('../store/clientStore', () => ({
   useClientStore: (selector) => {
     const state = {
@@ -50,9 +54,9 @@ vi.mock('../store/clientStore', () => ({
       createBatchSales: vi.fn(),
       createBatchAccountEntries: vi.fn(),
       updateOrder: vi.fn(),
-      addClient: vi.fn(),
-      addPayment: vi.fn(),
-      addOrder: vi.fn(),
+      addClient: mockAddClient,
+      addPayment: mockAddPayment,
+      addOrder: mockAddOrder,
       addExpense: vi.fn(),
       recordAccountTransfer: vi.fn(),
       recordStaffAdvance: vi.fn(),
@@ -93,6 +97,10 @@ vi.mock('../store/clientStore', () => ({
 import AiAssistantDrawer from '../components/AiAssistantDrawer'
 
 describe('AiAssistantDrawer', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('renders without crashing when open in all modes', () => {
     const modes = [undefined, 'auto', 'retail_sales', 'receive_payment', 'create_client', 'accounts_cash']
     for (const mode of modes) {
@@ -487,6 +495,92 @@ describe('AiAssistantDrawer', () => {
     // Order calculated correctly: 2600 / 130 = 20 boxes @ 130
     expect(screen.getByText(/20 × Anjani 200ml/i)).toBeInTheDocument()
     expect(screen.getAllByText(/₹2,600/i).length).toBeGreaterThanOrEqual(1)
+
+    unmount()
+  })
+
+  it('when payment receipt is shared and only payment is selected from three tabs, matches best existing client and never creates new client', async () => {
+    // Simulate backend returning compound_action or receive_payment from a payment receipt
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'compound_action',
+        data: {
+          client: { name: 'Rohit K Patel' },
+          payment: { payerName: 'Rohit K Patel', amount: 850, onlineProvider: 'UPI', utr: 'UPI5566' },
+        },
+      },
+    })
+
+    const { container, unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    // Simulate attaching receipt photo
+    const file = new File(['mock content'], 'upi_receipt.jpg', { type: 'image/jpeg' })
+    const fileInput = container.querySelector('input[type="file"]')
+    expect(fileInput).toBeInTheDocument()
+    await userEvent.upload(fileInput, file)
+
+    // Wait for "Scan photo as:" bar to appear
+    expect(await screen.findByText('Scan photo as:')).toBeInTheDocument()
+
+    // Three scan tabs should be visible: [👤 Client], [🛒 Order], [💰 Payment]
+    const clientTab = screen.getByRole('button', { name: /👤 Client/i })
+    const orderTab = screen.getByRole('button', { name: /🛒 Order/i })
+    const paymentTab = screen.getByRole('button', { name: /💰 Payment/i })
+
+    expect(clientTab).toBeInTheDocument()
+    expect(orderTab).toBeInTheDocument()
+    expect(paymentTab).toBeInTheDocument()
+
+    // Unselect Client and Order, ensure only Payment is selected
+    if (clientTab.getAttribute('aria-pressed') === 'true') {
+      fireEvent.click(clientTab)
+    }
+    if (orderTab.getAttribute('aria-pressed') === 'true') {
+      fireEvent.click(orderTab)
+    }
+    if (paymentTab.getAttribute('aria-pressed') !== 'true') {
+      fireEvent.click(paymentTab)
+    }
+
+    expect(clientTab.getAttribute('aria-pressed')).toBe('false')
+    expect(orderTab.getAttribute('aria-pressed')).toBe('false')
+    expect(paymentTab.getAttribute('aria-pressed')).toBe('true')
+
+    // Submit form to scan payment receipt
+    const sendBtn = screen.getByRole('button', { name: /Send/i })
+    await fireEvent.click(sendBtn)
+
+    // Must render Payment Receipt Card (type: receive_payment)
+    expect(await screen.findByText('Payment Receipt')).toBeInTheDocument()
+    expect(screen.getByText(/Payment Receipt Detected: ₹850/i)).toBeInTheDocument()
+
+    // Must NOT render order row or new client banner
+    expect(screen.queryByText(/20 × Anjani 200ml/i)).not.toBeInTheDocument()
+
+    // The Customer select dropdown must have preselected the best matching existing client: Rohitbhai (c2)
+    const clientSelect = screen.getAllByRole('combobox')[0]
+    expect(clientSelect.value).toBe('c2')
+
+    // Confirm & Record Payment
+    const confirmBtn = screen.getByRole('button', { name: /Confirm & Record Payment/i })
+    expect(confirmBtn).toBeEnabled()
+
+    await fireEvent.click(confirmBtn)
+
+    // Verify addClient was NEVER called
+    expect(mockAddClient).not.toHaveBeenCalled()
+    expect(mockAddPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientId: 'c2',
+        amount: 850,
+      }),
+    )
 
     unmount()
   })

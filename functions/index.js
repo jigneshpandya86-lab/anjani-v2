@@ -2067,9 +2067,15 @@ Return strict JSON:
       const parsedData = parseStructuredJson(rawJson)
 
       if (
-        mode === 'compound_action' ||
-        parsedData.docType === 'compound_action' ||
-        (parsedData.client && (parsedData.order || parsedData.payment))
+        mode !== 'receive_payment' &&
+        mode !== 'create_client' &&
+        mode !== 'retail_sales' &&
+        mode !== 'accounts_cash' &&
+        (
+          mode === 'compound_action' ||
+          parsedData.docType === 'compound_action' ||
+          (parsedData.client && (parsedData.order || parsedData.payment))
+        )
       ) {
         const payAmount = Number(parsedData.payment?.amount) || 0
         const defaultRate = 130
@@ -2137,9 +2143,22 @@ Return strict JSON:
       if (
         mode === 'receive_payment' ||
         parsedData.docType === 'receive_payment' ||
-        (Number(parsedData.amount) > 0 && (parsedData.payerName || parsedData.utr) && !Array.isArray(parsedData.sales))
+        (Number(parsedData.amount || parsedData.payment?.amount) > 0 &&
+          (parsedData.payerName || parsedData.payment?.payerName || parsedData.utr || parsedData.payment?.utr) &&
+          !Array.isArray(parsedData.sales))
       ) {
-        const cleanPayment = { ...parsedData }
+        const rawPayment = parsedData.payment ? { ...parsedData.payment } : { ...parsedData }
+        const cleanPayment = {
+          ...rawPayment,
+          amount: Number(rawPayment.amount || parsedData.amount) || 0,
+          payerName: rawPayment.payerName || parsedData.payerName || parsedData.client?.name || '',
+          mobile: rawPayment.mobile || parsedData.mobile || parsedData.client?.mobile || '',
+          utr: rawPayment.utr || parsedData.utr || '',
+          date: rawPayment.date || parsedData.date || new Date().toISOString().slice(0, 10),
+          onlineProvider: rawPayment.onlineProvider || parsedData.onlineProvider || 'UPI',
+          paymentMode: rawPayment.paymentMode || parsedData.paymentMode || 'online',
+          notes: rawPayment.notes || parsedData.notes || '',
+        }
         if (isMerchantName(cleanPayment.payerName)) {
           cleanPayment.payerName = ''
         }

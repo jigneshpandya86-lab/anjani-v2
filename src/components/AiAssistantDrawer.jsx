@@ -46,6 +46,7 @@ import { getAccountMeta } from '../constants/accounts'
 import { processAiBillImage } from '../utils/aiImageHelper'
 import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
+import { findBestExistingClientMatch, findMatchingClient } from '../utils/clientMatchingUtils'
 import { ensureEnglishText, sanitizeClientForEnglish, isMerchantOrSelfName } from '../utils/textUtils'
 import { getRecentSkuPrice, formatPaymentNarration } from '../utils/orderUtils'
 import { detectMemoryIntent, isQueryingMemories, formatMemoriesForPrompt, extractStructuredRuleData } from '../utils/aiMemoryUtils'
@@ -743,6 +744,7 @@ export default function AiAssistantDrawer({
     const isPayment = isPaymentMode
     const isClient = isClientMode
     const isAccounts = isAccountsMode
+    const isOnlyPayment = isPayment && !isClient && !isSales && !isAccounts
 
     if (!query && !filePayload) return
 
@@ -972,7 +974,9 @@ export default function AiAssistantDrawer({
       ].filter(Boolean)
 
       let apiMode = 'auto'
-      if (activeModes.length >= 2) {
+      if (isOnlyPayment) {
+        apiMode = 'receive_payment'
+      } else if (activeModes.length >= 2) {
         apiMode = 'compound_action'
       } else if (isClient) {
         apiMode = 'create_client'
@@ -985,7 +989,14 @@ export default function AiAssistantDrawer({
       }
 
       let promptText = query
-      if (!promptText && filePayload) {
+      if (isOnlyPayment) {
+        if (promptText.toLowerCase().includes('client plus order plus payment')) {
+          promptText = promptText.replace(/client\s*plus\s*order\s*plus\s*payment:?/gi, '').trim()
+        }
+        if (!promptText) {
+          promptText = 'Extract payment details from this UPI screenshot or receipt for existing client only'
+        }
+      } else if (!promptText && filePayload) {
         if (filePayload.isAudio) {
           promptText = 'Transcribe and extract orders, payments, or client details from this voice note'
         } else if (activeModes.length >= 2) {
@@ -1018,6 +1029,80 @@ export default function AiAssistantDrawer({
 
       const resData = response.data || {}
 
+      if (isOnlyPayment) {
+        let payData = {}
+        if (resData.type === 'compound_action') {
+          const compData = resData.data || {}
+          const payRaw = compData.payment || {}
+          const clientRaw = compData.client || {}
+          payData = {
+            ...payRaw,
+            payerName: isMerchantOrSelfName(payRaw.payerName)
+              ? ''
+              : (payRaw.payerName || (!isMerchantOrSelfName(clientRaw.name) ? clientRaw.name : '') || ''),
+            mobile: clientRaw.mobile || payRaw.mobile || '',
+            amount: Number(payRaw.amount) || Number(compData.order?.totalAmount) || 0,
+            paymentMode: payRaw.paymentMode || 'online',
+            onlineProvider: payRaw.onlineProvider || 'UPI',
+            utr: payRaw.utr || '',
+            date: payRaw.date || new Date().toISOString().slice(0, 10),
+            notes: payRaw.notes || '',
+          }
+        } else if (resData.type === 'receive_payment') {
+          payData = resData.data || {}
+        } else {
+          const raw = resData.data || {}
+          payData = {
+            payerName: raw.payerName || raw.clientName || '',
+            mobile: raw.mobile || '',
+            amount: Number(raw.amount) || 0,
+            paymentMode: raw.paymentMode || 'online',
+            onlineProvider: raw.onlineProvider || 'UPI',
+            utr: raw.utr || '',
+            date: raw.date || new Date().toISOString().slice(0, 10),
+            notes: raw.notes || '',
+          }
+        }
+
+        if (isMerchantOrSelfName(payData.payerName)) {
+          payData.payerName = ''
+        }
+
+        const rawPayerName = (payData.payerName || '').trim()
+        const targetMobile = (payData.mobile || '').replace(/\D/g, '')
+
+        const matched = findBestExistingClientMatch(rawPayerName, clients, { mobile: targetMobile })
+        const clientId = matched?.id || ''
+        const clientName = matched?.name || rawPayerName || (targetMobile ? `Customer (${targetMobile.slice(-4)})` : 'Select Client')
+        const amount = Number(payData.amount) || 0
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `💰 **Payment Receipt Detected: ₹${amount.toLocaleString('en-IN')}**\nReview transaction and tap **Confirm & Record Payment**:`,
+            type: 'receive_payment',
+            paymentId: 'pay-' + Date.now(),
+            data: {
+              payerName: rawPayerName,
+              clientId,
+              clientName,
+              amount,
+              method: payData.paymentMode === 'cash' ? 'cash' : 'online',
+              accountId: payData.paymentMode === 'cash' ? 'counter' : 'bank',
+              onlineProvider: payData.onlineProvider || 'UPI',
+              utr: payData.utr || '',
+              date: payData.date || new Date().toISOString().slice(0, 10),
+              notes: payData.notes || '',
+              modelUsed: resData.modelUsed,
+            },
+            timestamp: new Date(),
+          },
+        ])
+        return
+      }
+
       if (resData.type === 'compound_action') {
         const compData = resData.data || {}
         const clientRaw = compData.client || {}
@@ -1041,11 +1126,15 @@ export default function AiAssistantDrawer({
           })
         }
         if (!matched && targetName) {
-          matched = (clients || []).find((c) => {
-            const cn = (c.name || '').toLowerCase().trim()
-            const tn = targetName.toLowerCase()
-            return cn === tn || cn.includes(tn) || tn.includes(cn)
-          })
+          const mRes = findMatchingClient(targetName, clients, { mobile: targetMobile })
+          matched = mRes?.client
+          if (!matched) {
+            matched = (clients || []).find((c) => {
+              const cn = (c.name || '').toLowerCase().trim()
+              const tn = targetName.toLowerCase()
+              return cn === tn || cn.includes(tn) || tn.includes(cn)
+            })
+          }
         }
 
         const clientId = matched ? matched.id : ''
@@ -1124,21 +1213,10 @@ export default function AiAssistantDrawer({
         }
 
         const targetMobile = (payData.mobile || '').replace(/\D/g, '')
-        let matched = null
-        if (targetMobile && targetMobile.length >= 10) {
-          const tenDigit = targetMobile.slice(-10)
-          matched = (clients || []).find((c) => {
-            const m = (c.mobile || c.phone || '').replace(/\D/g, '')
-            return m.endsWith(tenDigit)
-          })
-        }
-        if (!matched && payData.payerName) {
-          matched = clients.find(
-            (c) =>
-              c.name?.toLowerCase().includes((payData.payerName || '').toLowerCase().trim()) ||
-              (payData.payerName || '').toLowerCase().includes(c.name?.toLowerCase().trim()),
-          )
-        }
+        const rawPayerName = (payData.payerName || '').trim()
+        const matched = findBestExistingClientMatch(rawPayerName, clients, { mobile: targetMobile })
+        const clientId = matched?.id || ''
+        const clientName = matched?.name || rawPayerName || (targetMobile ? `Customer (${targetMobile.slice(-4)})` : 'Select Client')
         setMessages((prev) => [
           ...prev,
           {
@@ -1148,9 +1226,9 @@ export default function AiAssistantDrawer({
             type: 'receive_payment',
             paymentId: 'pay-' + Date.now(),
             data: {
-              payerName: payData.payerName || '',
-              clientId: matched?.id || '',
-              clientName: matched?.name || payData.payerName || (targetMobile ? `Customer (${targetMobile.slice(-4)})` : 'Select Client'),
+              payerName: rawPayerName,
+              clientId,
+              clientName,
               amount: Number(payData.amount) || 0,
               method: payData.paymentMode === 'cash' ? 'cash' : 'online',
               accountId: payData.paymentMode === 'cash' ? 'counter' : 'bank',
@@ -2420,7 +2498,7 @@ export default function AiAssistantDrawer({
                               let createdClientObj = null
 
                               // 1. Create client if new
-                              if (!finalClientId && d.clientName) {
+                              if (d.isNewClient && !finalClientId && d.clientName) {
                                 finalClientId = await addClient({
                                   name: d.clientName,
                                   mobile: d.clientMobile || '',
@@ -2441,6 +2519,13 @@ export default function AiAssistantDrawer({
                                 createdClientObj = clients.find((c) => c.id === finalClientId) || {
                                   id: finalClientId,
                                   name: finalClientName,
+                                }
+                              } else if (d.clientName) {
+                                const matchedExisting = findBestExistingClientMatch(d.clientName, clients, { mobile: d.clientMobile })
+                                if (matchedExisting) {
+                                  finalClientId = matchedExisting.id
+                                  finalClientName = matchedExisting.name
+                                  createdClientObj = matchedExisting
                                 }
                               }
 

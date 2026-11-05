@@ -261,3 +261,124 @@ export function findMatchingClient(rawName, clients = [], options = {}) {
 
   return null
 }
+
+/**
+ * Finds the single best matching client from existing clients.
+ * ALWAYS returns an existing client if the clients list is non-empty.
+ * Never returns null when clients are available, ensuring payment receipts
+ * are attributed strictly to an existing client without creating new ones.
+ *
+ * @param {string} rawName - Payer name, merchant text, or receipt note
+ * @param {Array} clients - Array of existing customer documents
+ * @param {Object} options - { mobile, upi, threshold }
+ * @returns {Object|null} The best matched existing client object
+ */
+export function findBestExistingClientMatch(rawName, clients = [], options = {}) {
+  if (!Array.isArray(clients) || clients.length === 0) return null
+  if (clients.length === 1) return clients[0]
+
+  // 1. First attempt standard multi-tier matching (exact, mobile, phonetic, substring, fuzzy)
+  const standardMatch = findMatchingClient(rawName, clients, options)
+  if (standardMatch?.client) {
+    return standardMatch.client
+  }
+
+  // 2. Extract potential 10-digit mobile from rawName string if mobile option was not provided
+  if (!options.mobile && rawName && typeof rawName === 'string') {
+    const digitsOnly = rawName.replace(/\D/g, '')
+    if (digitsOnly.length >= 10) {
+      const last10 = digitsOnly.slice(-10)
+      const foundByPhone = clients.find((c) => {
+        const cMob = String(c.mobile || c.phone || '').replace(/\D/g, '').slice(-10)
+        return cMob === last10
+      })
+      if (foundByPhone) return foundByPhone
+    }
+  }
+
+  const targetStr = String(rawName || '').trim()
+  const targetLower = targetStr.toLowerCase()
+  const targetPhonetic = getPhoneticKey(targetStr)
+
+  // Helper to extract clean word tokens
+  const extractTokens = (str) => {
+    return (str || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length >= 3 && !['bhai', 'ben', 'kumar', 'store', 'kirana', 'general', 'shree', 'om'].includes(w))
+  }
+
+  const targetTokens = extractTokens(targetStr)
+
+  let bestClient = null
+  let bestScore = -1
+
+  for (const client of clients) {
+    if (!client) continue
+    const cName = String(client.name || '').trim()
+    if (!cName) continue
+
+    const cLower = cName.toLowerCase()
+    const cPhonetic = getPhoneticKey(cName)
+    const cTokens = extractTokens(cName)
+
+    let score = 0
+
+    // Direct similarity
+    const sim = similarityRatio(targetLower, cLower)
+    score += sim * 0.4
+
+    // Phonetic similarity
+    if (targetPhonetic && cPhonetic) {
+      const phonSim = similarityRatio(targetPhonetic, cPhonetic)
+      score += phonSim * 0.35
+    }
+
+    // Token overlap
+    if (targetTokens.length > 0 && cTokens.length > 0) {
+      let matchedTokens = 0
+      for (const tt of targetTokens) {
+        if (cTokens.includes(tt)) {
+          matchedTokens++
+        } else if (cTokens.some((ct) => ct.includes(tt) || tt.includes(ct))) {
+          matchedTokens += 0.7
+        }
+      }
+      const tokenScore = (2 * matchedTokens) / (targetTokens.length + cTokens.length)
+      score += tokenScore * 0.35
+    }
+
+    // Substring containment bonus
+    if (
+      (targetLower.length >= 4 && cLower.includes(targetLower)) ||
+      (cLower.length >= 4 && targetLower.includes(cLower))
+    ) {
+      score += 0.2
+    }
+
+    // Outstanding balance bonus (a customer with outstanding balance is much more likely to make a payment)
+    const outstanding = Number(client.outstanding || client.pendingBalance || client.balance || 0)
+    if (outstanding > 0) {
+      score += 0.05
+    }
+
+    if (score > bestScore) {
+      bestScore = score
+      bestClient = client
+    }
+  }
+
+  if (bestClient && bestScore > 0.15) {
+    return bestClient
+  }
+
+  // Fallback: If no meaningful score (e.g. empty or unrecognized text),
+  // pick the client with the highest outstanding balance, or the first client
+  const clientWithDue = [...clients].sort(
+    (a, b) => Number(b.outstanding || b.pendingBalance || 0) - Number(a.outstanding || a.pendingBalance || 0),
+  )[0]
+
+  return clientWithDue || clients[0]
+}
+
