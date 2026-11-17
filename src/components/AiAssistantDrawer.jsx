@@ -237,16 +237,30 @@ export default function AiAssistantDrawer({
     }
     setIsSubmittingFeedback(true)
     try {
+      // Map recent chat messages so the feedback carries full conversation context to improve AI responses
+      const recentChat = (messages || [])
+        .slice(-6)
+        .map((m) => ({
+          sender: m.sender,
+          text: String(m.text || '').slice(0, 500),
+          type: m.type || null,
+          dataSummary: m.data ? JSON.stringify(m.data).slice(0, 300) : null,
+          timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp || null,
+        }))
+
       await addAiFeedback?.({
         type: feedbackType,
         rating: feedbackRating,
         message: feedbackText.trim(),
-        rawSnippet: feedbackSnippet || '',
+        rawSnippet: feedbackSnippet || (recentChat.length > 0 ? recentChat[recentChat.length - 1].text : ''),
+        recentChat,
+        sessionRef: 'conversation://2aca385b-885b-44b6-a062-4ffe8fbd20fb',
+        url: typeof window !== 'undefined' ? window.location.href : '',
         status: 'pending_review',
         submittedAt: new Date().toISOString(),
       })
 
-      toast.success('Feedback submitted successfully! Chatbox ready.', { icon: '📝' })
+      toast.success('Feedback submitted with chat context! Ready.', { icon: '📝' })
       setFeedbackText('')
       setFeedbackSnippet('')
       setInputMessage('')

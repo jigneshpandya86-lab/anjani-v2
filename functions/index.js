@@ -1276,7 +1276,35 @@ async function getAiMemories() {
       .limit(60)
       .get()
 
-    cachedAiMemories = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    const rawMemories = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+
+    // Also auto-map completed owner feedbacks directly into Gemini prompt memory
+    let feedbackMemories = []
+    try {
+      const fbSnap = await admin
+        .firestore()
+        .collection('ai_feedbacks')
+        .where('status', '==', 'completed')
+        .limit(20)
+        .get()
+
+      feedbackMemories = fbSnap.docs
+        .map((d) => {
+          const data = d.data()
+          if (!data?.message) return null
+          return {
+            id: 'fb-' + d.id,
+            category: 'error_correction',
+            rule: data.message,
+            active: true,
+          }
+        })
+        .filter(Boolean)
+    } catch (_fbErr) {
+      logger.warn('Failed to fetch completed ai_feedbacks for prompt memory:', _fbErr.message)
+    }
+
+    cachedAiMemories = [...rawMemories, ...feedbackMemories]
   } catch (e) {
     logger.warn('Failed to fetch aiMemories in cloud function:', e.message)
     cachedAiMemories = []
