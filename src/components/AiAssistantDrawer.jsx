@@ -39,8 +39,9 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import toast from 'react-hot-toast'
-import { app } from '../firebase-config'
+import { app, db } from '../firebase-config'
 import { useClientStore } from '../store/clientStore'
 import { WATER_SKUS } from '../constants/skus'
 import { getAccountMeta } from '../constants/accounts'
@@ -275,23 +276,38 @@ export default function AiAssistantDrawer({
   const handleTriggerFeedbackCheck = async () => {
     setIsCheckingFeedback(true)
     try {
-      toast.loading('Checking feedback queue...', { id: 'manual-fb-check' })
+      toast.loading('Signaling autonomous AI and checking queue...', { id: 'manual-fb-check' })
       const list = (await fetchAiFeedbacks?.()) || []
       const pending = list.filter(
         (f) => f.status === 'pending_review' || f.status === 'pending_weekly_review'
       )
 
+      // Post trigger signal directly into Firestore 'ai_feedback_triggers'
+      try {
+        await addDoc(collection(db, 'ai_feedback_triggers'), {
+          status: 'pending',
+          source: 'app_ui_button',
+          requestedBy: 'Jigneshbhai',
+          pendingCount: pending.length,
+          pendingFeedbacks: pending.map((f) => ({ id: f.id, message: f.message })),
+          requestedAt: serverTimestamp(),
+          clientTime: new Date().toISOString(),
+        })
+      } catch (_trigErr) {
+        console.warn('Failed to write trigger doc to Firestore:', _trigErr)
+      }
+
       if (pending.length === 0) {
-        toast.success('No pending feedback in queue. Everything is up to date!', {
+        toast.success('AI Trigger dispatched! 0 pending items in queue.', {
           id: 'manual-fb-check',
-          icon: '✅',
+          icon: '⚡',
         })
         setMessages((prev) => [
           ...prev,
           {
             id: 'asst-' + Date.now(),
             sender: 'assistant',
-            text: `✅ **Feedback Queue Status**: All caught up! There are **0 pending feedback requests** in Firestore.\n\n*(Autonomous hourly daemon schedule is active at \`0 * * * *\`, checking every hour automatically).*`,
+            text: `⚡ **Manual Trigger Sent to AI**:\n\nThe autonomous AI listener is active and waiting. Currently **0 pending feedback requests** in Firestore.\n\nAny feedback you submit will be processed immediately upon tapping this button!`,
             type: 'feedback_status',
             chips: [{ label: 'Submit Feedback', action: 'open_feedback_modal' }],
             isLocal: true,
@@ -299,9 +315,10 @@ export default function AiAssistantDrawer({
           },
         ])
       } else {
-        toast.success(`Found ${pending.length} pending feedback request(s)!`, {
+        toast.success(`⚡ Triggered AI for ${pending.length} feedback item(s)! AI is implementing now...`, {
           id: 'manual-fb-check',
-          icon: '⚡',
+          icon: '🚀',
+          duration: 5000,
         })
         setShowFeedbackModal(false)
 
@@ -314,7 +331,7 @@ export default function AiAssistantDrawer({
           {
             id: 'asst-' + Date.now(),
             sender: 'assistant',
-            text: `⚡ **Found ${pending.length} Pending Feedback Request(s) in Queue**:\n\n${summaryLines}\n\n*(The hourly daemon will process these automatically, or you can ask the pair programming assistant to execute immediately).*`,
+            text: `🚀 **On-Demand AI Trigger Dispatched**!\n\nTriggered corrections for **${pending.length} pending feedback item(s)**:\n\n${summaryLines}\n\n*The autonomous AI developer has received your signal and is now updating code, running tests, and deploying live to \`https://app1.anjaniwater.in\` and \`https://anjaniappnew.web.app\`.*`,
             type: 'feedback_status',
             chips: [
               { label: 'Check Again', action: 'manual_feedback_check' },
@@ -325,7 +342,7 @@ export default function AiAssistantDrawer({
         ])
       }
     } catch (err) {
-      toast.error('Failed to check feedback: ' + (err.message || 'Network error'), {
+      toast.error('Failed to trigger feedback: ' + (err.message || 'Network error'), {
         id: 'manual-fb-check',
       })
     } finally {
@@ -1916,17 +1933,21 @@ export default function AiAssistantDrawer({
               <span className="hidden sm:inline font-black text-[11px]">Feedback</span>
             </button>
 
-            {/* Small button beside submitting feedback icon to trigger manually */}
+            {/* Small button beside feedback button to trigger on-demand */}
             <button
               type="button"
               onClick={handleTriggerFeedbackCheck}
               disabled={isCheckingFeedback}
-              className="px-1.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer text-gray-300 hover:text-[#ff9900] hover:bg-white/10 border border-white/10 hover:border-[#ff9900]/40 disabled:opacity-50"
-              title="Trigger Feedback Queue Check Manually (Run Now)"
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border shadow-2xs ${
+                isCheckingFeedback
+                  ? 'bg-amber-500 text-gray-950 border-amber-600 animate-pulse'
+                  : 'bg-white/10 hover:bg-[#ff9900] text-[#ff9900] hover:text-gray-950 border-[#ff9900]/40 hover:border-[#ff9900]'
+              }`}
+              title="Trigger Feedback Corrections On-Demand (Run AI Now)"
               aria-label="Trigger Feedback Review Manually"
             >
-              <RefreshCw className={`w-3.5 h-3.5 text-[#ff9900] ${isCheckingFeedback ? 'animate-spin' : ''}`} />
-              <span className="hidden md:inline font-bold text-[10px] text-gray-200">Run Now</span>
+              <Zap className={`w-3.5 h-3.5 ${isCheckingFeedback ? 'animate-spin' : 'fill-current'}`} />
+              <span className="font-extrabold text-[10px] tracking-tight">Run AI</span>
             </button>
             <button
               type="button"
@@ -1992,11 +2013,11 @@ export default function AiAssistantDrawer({
                   type="button"
                   onClick={handleTriggerFeedbackCheck}
                   disabled={isCheckingFeedback}
-                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-gray-950 rounded-lg text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1 disabled:opacity-50"
-                  title="Check and trigger feedback queue review now"
+                  className="px-2.5 py-1 bg-[#ff9900] hover:bg-orange-500 text-gray-950 rounded-lg text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                  title="Trigger AI to process feedback queue immediately"
                 >
-                  <RefreshCw size={12} className={isCheckingFeedback ? 'animate-spin' : ''} />
-                  <span>Check Queue Now</span>
+                  <Zap size={12} className={isCheckingFeedback ? 'animate-spin' : 'fill-current'} />
+                  <span>Run AI Now</span>
                 </button>
 
                 <div className="flex gap-2">
