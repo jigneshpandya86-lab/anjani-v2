@@ -94,6 +94,36 @@ describe('skuAliasUtils', () => {
       expect(parsed4.sku.id).toBe('rushi_500ml')
       expect(parsed4.unit).toBe('Box')
     })
+
+    it('converts pieces (nung / pcs / bottle) to boxes using 48 pieces = 1 box for Anjani 200ml', () => {
+      // 48 pieces = 1 box
+      const p1 = parseQuantityAndSku('48 nung')
+      expect(p1.qty).toBe(1)
+      expect(p1.unit).toBe('Box')
+      expect(p1.originalPieces).toBe(48)
+      expect(p1.sku.id).toBe('anjani_200ml')
+
+      // 96 pieces = 2 boxes
+      const p2 = parseQuantityAndSku('96 nung 200ml')
+      expect(p2.qty).toBe(2)
+      expect(p2.unit).toBe('Box')
+      expect(p2.originalPieces).toBe(96)
+      expect(p2.sku.id).toBe('anjani_200ml')
+
+      // 4800 pieces = 100 boxes
+      const p3 = parseQuantityAndSku('4800 pieces anjani')
+      expect(p3.qty).toBe(100)
+      expect(p3.unit).toBe('Box')
+      expect(p3.originalPieces).toBe(4800)
+      expect(p3.sku.id).toBe('anjani_200ml')
+
+      // 1000 pieces = 20.83 boxes
+      const p4 = parseQuantityAndSku('1000 nung')
+      expect(p4.qty).toBe(20.83)
+      expect(p4.unit).toBe('Box')
+      expect(p4.originalPieces).toBe(1000)
+      expect(p4.sku.id).toBe('anjani_200ml')
+    })
   })
 
   describe('getSkuShorthandDict', () => {

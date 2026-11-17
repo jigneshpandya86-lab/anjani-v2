@@ -1103,7 +1103,12 @@ export default function AiAssistantDrawer({
         const paymentAmount = Number(payRaw.amount) || Number(orderRaw.totalAmount) || 0
         const orderRate = Number(orderRaw.rate) || (matched?.rate ? Number(matched.rate) : 130) || 130
         const orderSku = orderRaw.sku && orderRaw.sku.trim() ? orderRaw.sku : 'Anjani 200ml'
-        const orderQty = Number(orderRaw.qty) || (paymentAmount > 0 && orderRate > 0 ? Math.round(paymentAmount / orderRate) : 10) || 10
+        let orderQty = Number(orderRaw.qty) || (paymentAmount > 0 && orderRate > 0 ? Math.round(paymentAmount / orderRate) : 10) || 10
+        let originalPieces = orderRaw.originalPieces || null
+        if (!originalPieces && (orderRaw.unit === 'Piece' || orderRaw.unit === 'Bottle') && (orderSku.includes('200') || orderSku.includes('Anjani'))) {
+          originalPieces = orderQty
+          orderQty = orderQty % 48 === 0 ? orderQty / 48 : Number((orderQty / 48).toFixed(2))
+        }
         const orderAmount = Number(orderRaw.totalAmount) || (orderQty * orderRate) || paymentAmount
 
         const compoundId = 'compound-' + Date.now()

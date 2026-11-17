@@ -23,6 +23,22 @@ describe('aiIntentRouter', () => {
     expect(result.data.items[0].sku).toBe('Anjani 200ml')
   })
 
+  it('converts piece quantity (nung / bottle) to boxes in order creation intent using 48 pieces = 1 box rule', () => {
+    const fakeStore = {
+      clients: [{ id: 'c1', name: 'Jay Ambe Provision', mobile: '9825012345', rate: 130 }],
+    }
+    // 96 nung = 2 boxes
+    const result = tryLocalIntentRoute('Order 96 nung for Jay Ambe Provision', fakeStore)
+    expect(result).not.toBeNull()
+    expect(result.handled).toBe(true)
+    expect(result.type).toBe('order_draft')
+    expect(result.data.items[0].qty).toBe(2)
+    expect(result.data.items[0].originalPieces).toBe(96)
+    expect(result.data.totalQty).toBe(2)
+    expect(result.data.totalAmount).toBe(260) // 2 boxes * 130
+    expect(result.text).toContain('96 pcs = 2 Box')
+  })
+
   it('extracts delivery address/location when dictated in order creation intent', () => {
     const fakeStore = {
       clients: [{ id: 'c1', name: 'Jay Ambe Provision', mobile: '9825012345', rate: 65, address: 'Old Padra Road' }],

@@ -134,14 +134,28 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [],
         rate = getRecentSkuPrice(meta.label, orders, matched?.id)
       }
 
-      const unit = it.unit ? normalizeUnit(it.unit) : meta.unit
+      let itQty = Number(it.qty) || 1
+      let itUnit = it.unit ? normalizeUnit(it.unit) : meta.unit
+      let origPieces = it.originalPieces || null
+
+      // Check piece conversion for Anjani 200ml (48 pieces = 1 Box)
+      if (
+        !origPieces &&
+        (itUnit === 'Piece' || it.unit === 'Bottle') &&
+        (meta.id === 'anjani_200ml' || meta.label.includes('200ml'))
+      ) {
+        origPieces = itQty
+        itQty = itQty % 48 === 0 ? itQty / 48 : Number((itQty / 48).toFixed(2))
+        itUnit = 'Box'
+      }
 
       return {
         sku: meta.label,
-        qty: Math.max(1, Number(it.qty) || 1),
+        qty: Math.max(0.01, itQty),
         rate: rate > 0 ? rate : 0,
-        unit,
+        unit: itUnit,
         ruleApplied,
+        ...(origPieces ? { originalPieces: origPieces } : {}),
       }
     })
 
@@ -204,7 +218,7 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [],
       rawItems.forEach((it) => {
         const skuMatch = findMatchingSku(it.sku || DEFAULT_SKU)
         const meta = skuMatch?.sku || getSkuMeta(DEFAULT_SKU)
-        const qty = Math.max(1, Number(it.qty) || 1)
+        let qty = Math.max(0.01, Number(it.qty) || 1)
         let rate = Number(it.rate) || 0
         if (rate <= 0 && matchedRetail) {
           rate = Number(matchedRetail.skuRates?.[meta.label] ?? matchedRetail.rate ?? 0)
@@ -214,7 +228,20 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [],
         }
 
         const effectiveRate = rate > 0 ? rate : 0
-        const unit = it.unit ? normalizeUnit(it.unit) : meta.unit
+        let unit = it.unit ? normalizeUnit(it.unit) : meta.unit
+        let origPieces = it.originalPieces || null
+
+        // Check piece conversion for Anjani 200ml (48 pieces = 1 Box)
+        if (
+          !origPieces &&
+          (unit === 'Piece' || it.unit === 'Bottle') &&
+          (meta.id === 'anjani_200ml' || meta.label.includes('200ml'))
+        ) {
+          origPieces = qty
+          qty = qty % 48 === 0 ? qty / 48 : Number((qty / 48).toFixed(2))
+          unit = 'Box'
+        }
+
         // Key by both SKU and rate so distinct rates for the same SKU remain as separate lines
         const itemKey = `${meta.label}__rate__${effectiveRate}`
 
@@ -224,6 +251,7 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [],
             qty: 0,
             rate: effectiveRate,
             unit,
+            ...(origPieces ? { originalPieces: origPieces } : {}),
           }
         }
         mergedItemsMap[itemKey].qty += qty
@@ -396,10 +424,10 @@ export function parseLocalSalesText(rawText = '', clients = []) {
     }
 
     // 3. Check Quantity & SKU
-    // Handles: "1000 nung બોટલ", "4000 નંગ bottle 200ml", "4000 hajar nung bottel"
+    // Handles: "1000 nung બોટલ", "4000 નંગ bottle 200ml", "4000 hajar nung bottel", "48 nung", "4800 nung"
     const hasQty =
       /\d+/.test(rawLine) &&
-      /(?:nung|nang|નંગ|bottle|bottel|બોટલ|box|cases?|petli|hajar|હજાર|ml)/i.test(rawLine)
+      /(?:nung|nang|નંગ|bottle|bottel|બોટલ|box|cases?|petli|hajar|હજાર|ml|pieces?|pcs?)/i.test(rawLine)
 
     if (hasQty) {
       const m = rawLine.match(/(\d+)/)
@@ -426,14 +454,31 @@ export function parseLocalSalesText(rawText = '', clients = []) {
           sku = 'Bailey 2 Liter'
         }
 
+        // Detect if quantity is specified in pieces (nung, bottles)
+        const isPieces =
+          /(?:nung|nang|નંગ|bottle|bottel|બોટલ|pieces?|pcs?)\b/i.test(rawLine) &&
+          !/(?:box|boxes|petli|case|cases|kedi)\b/i.test(rawLine)
+
+        let finalQty = num
+        let originalPieces = null
+        if (isPieces && (sku === 'Anjani 200ml' || !sku || sku.includes('200ml'))) {
+          originalPieces = num
+          finalQty = num % 48 === 0 ? num / 48 : Number((num / 48).toFixed(2))
+        }
+
         if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }
         currentOrder.items = currentOrder.items || []
         currentOrder.items.push({
           sku,
-          qty: num,
+          qty: finalQty,
           rate: 0,
           unit: 'Box',
+          ...(originalPieces ? { originalPieces } : {}),
         })
+        if (originalPieces) {
+          const pieceNote = `${originalPieces} pcs (${finalQty} boxes)`
+          currentOrder.notes = currentOrder.notes ? `${currentOrder.notes} • ${pieceNote}` : pieceNote
+        }
         continue
       }
     }

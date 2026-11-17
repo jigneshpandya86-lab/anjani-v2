@@ -24,6 +24,13 @@ export const UNIT_SLANG_MAP = {
   can: 'Jar',
   dabbo: 'Jar',
   batch: 'Jar',
+  nung: 'Piece',
+  nang: 'Piece',
+  'નંગ': 'Piece',
+  piece: 'Piece',
+  pieces: 'Piece',
+  pcs: 'Piece',
+  pc: 'Piece',
 }
 
 /**
@@ -214,9 +221,9 @@ export function parseQuantityAndSku(line, skusList = WATER_SKUS) {
 
   const clean = line.trim()
 
-  // Extract quantity number (e.g. "5 petli", "10", "x 12")
+  // Extract quantity number (e.g. "5 petli", "10", "x 12", "96 nung")
   let qty = 1
-  const qtyMatch = clean.match(/(?:^|\s)(?:x\s*)?(\d+)(?:\s*(?:box|boxes|petli|kedi|case|crate|btl|bottle|jar))?/i)
+  const qtyMatch = clean.match(/(?:^|\s)(?:x\s*)?(\d+)(?:\s*(?:box|boxes|petli|kedi|case|crate|btl|bottle|bottles|jar|nung|nang|નંગ|pieces?|pcs?|બોટલ))?/i)
   if (qtyMatch && qtyMatch[1]) {
     qty = Math.max(1, parseInt(qtyMatch[1], 10))
   }
@@ -232,10 +239,33 @@ export function parseQuantityAndSku(line, skusList = WATER_SKUS) {
   }
 
   const match = findMatchingSku(clean, skusList)
+  const sku = match.sku
+
+  // Check piece conversion for Anjani 200ml (48 pieces / nung = 1 Box)
+  const isPieces =
+    unit === 'Piece' ||
+    /(?:nung|nang|નંગ|pieces?|pcs?)\b/i.test(clean) ||
+    (/(?:bottle|bottel|બોટલ)\b/i.test(clean) && !/(?:box|boxes|petli|case|cases)\b/i.test(clean) && sku?.id === 'anjani_200ml')
+
+  let originalPieces = null
+  if (isPieces && (sku?.id === 'anjani_200ml' || !sku || sku.label?.includes('200ml'))) {
+    originalPieces = qty
+    const boxQty = qty % 48 === 0 ? qty / 48 : Number((qty / 48).toFixed(2))
+    return {
+      qty: boxQty,
+      unit: 'Box',
+      originalPieces,
+      sku,
+      matchedAlias: match.matchedAlias,
+      confidence: match.confidence,
+    }
+  }
+
   return {
     qty,
     unit,
-    sku: match.sku,
+    ...(originalPieces ? { originalPieces } : {}),
+    sku,
     matchedAlias: match.matchedAlias,
     confidence: match.confidence,
   }
@@ -247,6 +277,7 @@ export function parseQuantityAndSku(line, skusList = WATER_SKUS) {
 export function getSkuShorthandDict() {
   return [
     { slang: 'petli / patli / 200 / anjani', sku: 'Anjani 200ml (Box)' },
+    { slang: 'nung / nang / નંગ / piece / pieces / pcs / bottle', sku: 'Piece / Bottle (48 Pieces = 1 Box for Anjani 200ml)' },
     { slang: 'chhota / chhoti botal / 250 / bailey 250', sku: 'Bailey 250ml (Case / Box)' },
     { slang: '500 / aadho liter / half liter / bailey 500', sku: 'Bailey 500ml (Case / Box)' },
     { slang: '1L / 1 liter / badi botal / bailey 1L', sku: 'Bailey 1 Liter (Case / Box)' },

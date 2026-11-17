@@ -6,6 +6,7 @@ export const WATER_SKUS = [
     brand: 'Anjani',
     size: '200ml',
     unit: 'Box',
+    piecesPerBox: 48,
     badgeClass: 'border-blue-200 bg-blue-50 text-blue-800',
     color: '#1e40af',
   },
@@ -170,3 +171,14 @@ export function getSkuMeta(skuLabel) {
 
   return WATER_SKUS[0]
 }
+
+export const PIECES_PER_BOX_200ML = 48
+
+export function getPiecesPerBox(skuLabel) {
+  const norm = String(skuLabel || '').toLowerCase()
+  if (norm.includes('200') || norm.includes('anjani')) {
+    return PIECES_PER_BOX_200ML
+  }
+  return PIECES_PER_BOX_200ML
+}
+

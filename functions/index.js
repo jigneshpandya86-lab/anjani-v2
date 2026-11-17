@@ -1376,8 +1376,8 @@ function formatSkuSlangForPrompt() {
 - "1 liter", "1L", "badi botal", "ek liter": Bailey 1 Liter (Case / Box).
 - "2 liter", "2L", "jumbo", "family pack": Bailey 2 Liter (Case / Box).
 - "kedi", "crate", "khokhu", "case", "box": Box unit.
-- "nung", "nang", "નંગ", "bottle", "bottel", "બોટલ": Individual bottles/units (default to Anjani 200ml unless another size is explicitly stated).
-- "hajar", "હજાર": Thousand. CRITICAL: In vernacular Gujarati, people often say "4000 hajar nung" redundantly to mean 4,000 bottles (NOT 4,000,000). If the number is already >= 100, do not multiply by 1000! If they say "4 hajar", then it is 4,000.
+- "nung", "nang", "નંગ", "piece", "pieces", "pcs", "bottle", "bottel", "બોટલ": Individual bottle pieces. CRITICAL CONVERSION RULE: For Anjani 200ml, 48 pieces (નંગ) = 1 Box. All order quantities MUST be recorded in Boxes! When quantity is specified in pieces/nung/bottles, convert to boxes by dividing by 48 (e.g. "48 nung" = 1 box, "96 nung" = 2 boxes, "4800 nung" = 100 boxes, "2400 nung" = 50 boxes, "1000 nung" = 20.83 boxes, "4000 nung" = 83.33 boxes).
+- "hajar", "હજાર": Thousand. CRITICAL: In vernacular Gujarati, people often say "4000 hajar nung" redundantly to mean 4,000 bottles (NOT 4,000,000). If the number is already >= 100, do not multiply by 1000! If they say "4 hajar", then it is 4,000 bottles (4000 / 48 = 83.33 boxes).
 - "sanje", "સાંજે", "evening": Evening shift delivery.
 - "savare", "સવારે", "morning": Morning shift delivery.
 - "bapore", "બપોરે", "afternoon": Afternoon shift delivery.
@@ -2375,6 +2375,24 @@ User Text: ${rawText.slice(0, 1000)}`
               rate: defaultRate,
               totalAmount: payAmount || (defaultQty * defaultRate),
             }
+
+            // Piece conversion safety (48 pieces = 1 Box for Anjani 200ml)
+            if (orderData) {
+              const skuStr = String(orderData.sku || '').toLowerCase()
+              const unitStr = String(orderData.unit || '').toLowerCase()
+              if (skuStr.includes('200') || skuStr.includes('anjani') || !orderData.sku) {
+                if (
+                  unitStr === 'piece' ||
+                  unitStr === 'bottle' ||
+                  (Number(orderData.qty) > 100 && /(?:nung|nang|નંગ|pieces?|pcs?|bottle|બોટલ)/i.test(rawText))
+                ) {
+                  const rawPieces = Number(orderData.qty) || 1
+                  orderData.originalPieces = rawPieces
+                  orderData.qty = rawPieces % 48 === 0 ? rawPieces / 48 : Number((rawPieces / 48).toFixed(2))
+                  orderData.unit = 'Box'
+                }
+              }
+            }
             const sanitizedClient = ensureEnglishClient(parsedData.client || {})
             const rawPayer = parsedData.payment?.payerName || ''
             const sanitizedPayer = isMerchantName(rawPayer) ? (sanitizedClient.name || '') : rawPayer
@@ -2557,8 +2575,8 @@ CRITICAL RULES & USER INSTRUCTIONS:
    - Populate "deliveryTime": shift/time like "Evening", "Morning", "Afternoon", or time written.
    - Populate "address": venue/location in English Title Case (e.g., "Balaji Party Plot Harni Road Vadodara", "PG Party Plot Harni Baroda").
    - Understand Gujarati colloquial expressions:
-     * "nung" / "nang" / "નંગ" = pieces / units / bottles (default to "Anjani 200ml").
-     * "hajar" / "હજાર" = thousand. Note: "4000 hajar nung" is a Gujarati vernacular idiom meaning 4000 bottles/units (qty: 4000). "4 hajar" means 4000.
+     * "nung" / "nang" / "નંગ" / "bottle" / "બોટલ" = Individual bottle pieces. CRITICAL CONVERSION: 48 pieces (નંગ) = 1 Box of Anjani 200ml. All order quantities MUST be output in Boxes! (e.g. 48 nung = 1 box, 96 nung = 2 boxes, 4800 nung = 100 boxes, 2400 nung = 50 boxes, 1000 nung = 20.83 boxes, 4000 nung = 83.33 boxes).
+     * "hajar" / "હજાર" = thousand. Note: "4000 hajar nung" is a Gujarati vernacular idiom meaning 4000 bottles/pieces (qty: 83.33 boxes). "4 hajar" means 4000 bottles (83.33 boxes).
 6. USER INSTRUCTIONS: Strictly follow any explicit instructions written by the user in the prompt (such as specific pricing, dates, or payment notes).
 
 Return strict JSON:
@@ -2604,6 +2622,27 @@ ${rawText.slice(0, 3000)}`
           const parsedData = parseStructuredJson(rawJson)
 
           if (Array.isArray(parsedData.sales) && parsedData.sales.length > 0) {
+            // Piece conversion safety (48 pieces = 1 Box for Anjani 200ml)
+            for (const sale of parsedData.sales) {
+              if (Array.isArray(sale.items)) {
+                for (const it of sale.items) {
+                  const skuStr = String(it.sku || '').toLowerCase()
+                  const unitStr = String(it.unit || '').toLowerCase()
+                  if (skuStr.includes('200') || skuStr.includes('anjani') || !it.sku) {
+                    if (
+                      unitStr === 'piece' ||
+                      unitStr === 'bottle' ||
+                      (Number(it.qty) > 100 && !unitStr.includes('box') && !unitStr.includes('case'))
+                    ) {
+                      const rawPieces = Number(it.qty) || 1
+                      it.originalPieces = rawPieces
+                      it.qty = rawPieces % 48 === 0 ? rawPieces / 48 : Number((rawPieces / 48).toFixed(2))
+                      it.unit = 'Box'
+                    }
+                  }
+                }
+              }
+            }
             return {
               type: 'retail_sales',
               modelUsed: modelName,

@@ -68,7 +68,7 @@ export function tryLocalIntentRoute(query, store = {}) {
   const q = rawQ.toLowerCase()
 
   // Multi-date catering / sales orders local parsing (Zero tokens & Instant response)
-  const isSingleOrderCommand = /^(?:create\s+order|new\s+order|place\s+order|book\s+order|order\s+for)\b/i.test(q)
+  const isSingleOrderCommand = /^(?:create\s+order|new\s+order|place\s+order|book\s+order|order\s+for|order\s+\d+)\b/i.test(q)
   if (!store.isClientMode && !store.isPaymentMode && !isSingleOrderCommand) {
     const isMultiOrCatering =
       rawQ.includes('\n') ||
@@ -119,8 +119,19 @@ export function tryLocalIntentRoute(query, store = {}) {
     const skuMeta = getSkuMeta(sku)
 
     // Extract quantity
-    const qtyMatch = rawQ.match(/\b(\d+)\s*(?:boxes?|cases?|peti|bxs?|units?|bottles?|jar)?\b/i)
-    const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 10
+    const qtyMatch = rawQ.match(/\b(\d+)\s*(?:boxes?|cases?|peti|bxs?|units?|bottles?|jar|nung|nang|નંગ|pieces?|pcs?|બોટલ)?\b/i)
+    let qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 10
+
+    // Check if quantity is specified in pieces (nung, bottles)
+    const isPieces =
+      /(?:nung|nang|નંગ|pieces?|pcs?)\b/i.test(rawQ) ||
+      (/(?:bottle|bottel|બોટલ)\b/i.test(rawQ) && !/(?:box|boxes|petli|case|cases)\b/i.test(rawQ))
+
+    let originalPieces = null
+    if (isPieces && (sku === 'Anjani 200ml' || !sku || sku.includes('200ml'))) {
+      originalPieces = qty
+      qty = qty % 48 === 0 ? qty / 48 : Number((qty / 48).toFixed(2))
+    }
 
     // Extract rate
     let rate = 0
@@ -183,13 +194,16 @@ export function tryLocalIntentRoute(query, store = {}) {
         rate,
         unit: skuMeta.unit,
         amount: qty * rate,
+        ...(originalPieces ? { originalPieces } : {}),
       },
     ]
+
+    const pieceLabel = originalPieces ? ` (${originalPieces} pcs = ${qty} ${skuMeta.unit})` : ` ${skuMeta.unit}`
 
     return {
       handled: true,
       type: 'order_draft',
-      text: `🛒 **New Order Draft**: Ready to place order for **${clientName}**${effectiveAddress ? ` (📍 *${effectiveAddress}*)` : ''}:\n• **${qty} ${skuMeta.unit}** — *${sku}* @ ₹${rate}/unit = **₹${(qty * rate).toLocaleString('en-IN')}**`,
+      text: `🛒 **New Order Draft**: Ready to place order for **${clientName}**${effectiveAddress ? ` (📍 *${effectiveAddress}*)` : ''}:\n• **${qty}${pieceLabel}** — *${sku}* @ ₹${rate}/unit = **₹${(qty * rate).toLocaleString('en-IN')}**`,
       data: {
         clientId: matchedClient?.id || '',
         clientName,
