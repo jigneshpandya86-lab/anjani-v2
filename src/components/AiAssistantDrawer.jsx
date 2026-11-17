@@ -36,8 +36,6 @@ import {
   ExternalLink,
   FileText,
   MessageSquarePlus,
-  ThumbsUp,
-  ThumbsDown,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
@@ -1502,7 +1500,7 @@ export default function AiAssistantDrawer({
             <div className="w-6 h-6 rounded-md bg-[#ff9900]/20 flex items-center justify-center text-[#ff9900]">
               <Sparkles className="w-3.5 h-3.5" />
             </div>
-            <h2 className="font-bold text-sm text-white">Anjani AI Assistant</h2>
+            <h2 className="font-bold text-sm text-white">Anjani</h2>
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -1568,69 +1566,13 @@ export default function AiAssistantDrawer({
                 </div>
               )}
 
-              {/* Rating selection */}
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tight">Rating:</span>
-                <div className="flex gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setFeedbackRating('positive')}
-                    className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
-                      feedbackRating === 'positive'
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-                    }`}
-                  >
-                    <ThumbsUp size={12} />
-                    <span>Accurate</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFeedbackRating('negative')}
-                    className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
-                      feedbackRating === 'negative'
-                        ? 'bg-rose-600 text-white'
-                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-                    }`}
-                  >
-                    <ThumbsDown size={12} />
-                    <span>Needs Correction</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Category selection */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tight">Topic:</span>
-                {[
-                  { id: 'catering_sales', label: 'Catering / Multi-Date' },
-                  { id: 'retail_sales', label: 'Retail Sales' },
-                  { id: 'client_matching', label: 'Client Matching' },
-                  { id: 'payment_ocr', label: 'Payment OCR' },
-                  { id: 'general', label: 'General / Other' },
-                ].map((cat) => (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => setFeedbackType(cat.id)}
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors ${
-                      feedbackType === cat.id
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
-              </div>
-
               {/* Feedback Comment Textarea */}
               <div>
                 <textarea
-                  rows={2}
+                  rows={3}
                   value={feedbackText}
                   onChange={(e) => setFeedbackText(e.target.value)}
-                  placeholder="Enter what went well or what needs improvement..."
+                  placeholder="Enter your feedback or improvement request..."
                   className="w-full p-2 bg-white border border-blue-200 rounded-lg text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>

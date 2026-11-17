@@ -132,7 +132,7 @@ describe('AiAssistantDrawer', () => {
           onOpenAddClient={() => {}}
         />
       )
-      expect(screen.getByText('Anjani AI Assistant')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Anjani' })).toBeInTheDocument()
       unmount()
     }
   })
@@ -158,7 +158,7 @@ describe('AiAssistantDrawer', () => {
         onOpenAddClient={() => {}}
       />
     )
-    expect(screen.getByText('Anjani AI Assistant')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Anjani' })).toBeInTheDocument()
   })
 
   it('shows SKU autocomplete popup with pricing when user types /', () => {
@@ -585,6 +585,10 @@ describe('AiAssistantDrawer', () => {
 
     expect(screen.getByText('Submit AI Feedback')).toBeInTheDocument()
     expect(screen.queryByText('Weekly Review')).not.toBeInTheDocument()
+    expect(screen.queryByText('Accurate')).not.toBeInTheDocument()
+    expect(screen.queryByText('Needs Correction')).not.toBeInTheDocument()
+    expect(screen.queryByText('Catering / Multi-Date')).not.toBeInTheDocument()
+    expect(screen.queryByText('Payment OCR')).not.toBeInTheDocument()
 
     // Put text in chat input to verify it gets emptied on submit
     const chatInput = screen.getByPlaceholderText(/Ask bot above/i)
@@ -592,7 +596,7 @@ describe('AiAssistantDrawer', () => {
     expect(chatInput.value).toBe('some draft query in chatbox')
 
     // Fill submit feedback form
-    const textarea = screen.getByPlaceholderText(/Enter what went well or what needs improvement/i)
+    const textarea = screen.getByPlaceholderText(/Enter your feedback or improvement request/i)
     fireEvent.change(textarea, {
       target: { value: 'Nung is Piece of bottle, 48 Pieces are equal to one box' },
     })
@@ -602,8 +606,6 @@ describe('AiAssistantDrawer', () => {
 
     expect(mockAddAiFeedback).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: 'catering_sales',
-        rating: 'positive',
         message: 'Nung is Piece of bottle, 48 Pieces are equal to one box',
       })
     )
