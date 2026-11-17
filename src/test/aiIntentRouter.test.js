@@ -379,5 +379,26 @@ describe('aiIntentRouter', () => {
     expect(result.text).not.toContain('You can adjust quantities, change payment modes, or remove items before confirming:')
     expect(result.text).toBe('📋 **Parsed 1 Catering/Retail Order**')
   })
+
+  it('handles feedback check and review intent locally with zero tokens', () => {
+    const emptyStore = { aiFeedbacks: [] }
+    const resEmpty = tryLocalIntentRoute('check for new feedback', emptyStore)
+    expect(resEmpty).not.toBeNull()
+    expect(resEmpty.handled).toBe(true)
+    expect(resEmpty.type).toBe('feedback_status')
+    expect(resEmpty.text).toContain('0 pending feedback requests')
+
+    const pendingStore = {
+      aiFeedbacks: [
+        { id: 'f1', message: 'Improve order quantity update', status: 'pending_review' },
+      ],
+    }
+    const resPending = tryLocalIntentRoute('check for new feedback', pendingStore)
+    expect(resPending).not.toBeNull()
+    expect(resPending.handled).toBe(true)
+    expect(resPending.type).toBe('feedback_status')
+    expect(resPending.text).toContain('Found 1 Pending Feedback Request')
+    expect(resPending.text).toContain('Improve order quantity update')
+  })
 })
 

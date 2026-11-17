@@ -267,6 +267,36 @@ export function tryLocalIntentRoute(query, store = {}) {
     return qtyUpdateRoute
   }
 
+  // ==========================================
+  // SEQUENCE 0.6: FEEDBACK STATUS & QUEUE CHECK (Zero tokens & Instant response)
+  // ==========================================
+  if (/^(?:check\s+(?:for\s+)?(?:new\s+)?feedback|run\s+feedback|trigger\s+feedback|review\s+feedback|feedback\s+check)\b/i.test(q)) {
+    const list = store.aiFeedbacks || []
+    const pending = list.filter(
+      (f) => f.status === 'pending_review' || f.status === 'pending_weekly_review'
+    )
+    if (pending.length === 0) {
+      return {
+        handled: true,
+        type: 'feedback_status',
+        data: { pendingCount: 0, pending: [] },
+        text: '✅ **Feedback Queue Status**: All caught up! There are **0 pending feedback requests** in Firestore.\n\n*(Autonomous hourly daemon schedule is active at `0 * * * *`, checking every hour automatically).*',
+        chips: [{ label: 'Submit Feedback', action: 'open_feedback_modal' }],
+      }
+    } else {
+      const summaryLines = pending
+        .map((f, i) => `${i + 1}. **"${f.message}"**`)
+        .join('\n')
+      return {
+        handled: true,
+        type: 'feedback_status',
+        data: { pendingCount: pending.length, pending },
+        text: `⚡ **Found ${pending.length} Pending Feedback Request(s) in Queue**:\n\n${summaryLines}\n\n*(The hourly daemon will process these automatically, or you can ask the pair programming assistant to execute immediately).*`,
+        chips: [{ label: 'Check Again', action: 'manual_feedback_check' }],
+      }
+    }
+  }
+
   // Multi-date catering / sales orders local parsing (Zero tokens & Instant response)
   const isSingleOrderCommand = /^(?:create\s+order|new\s+order|place\s+order|book\s+order|order\s+for|order\s+\d+)\b/i.test(q)
   if (!store.isClientMode && !store.isPaymentMode && !isSingleOrderCommand) {

@@ -36,6 +36,7 @@ import {
   ExternalLink,
   FileText,
   MessageSquarePlus,
+  RefreshCw,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
@@ -115,6 +116,8 @@ export default function AiAssistantDrawer({
   const aiPrefillFile = useClientStore((state) => state.aiPrefillFile)
   const aiMemories = useClientStore((state) => state.aiMemories)
   const addAiFeedback = useClientStore((state) => state.addAiFeedback)
+  const fetchAiFeedbacks = useClientStore((state) => state.fetchAiFeedbacks)
+  const aiFeedbacks = useClientStore((state) => state.aiFeedbacks)
 
   const [activeChatbotFlow, setActiveChatbotFlow] = useState(null)
 
@@ -124,6 +127,7 @@ export default function AiAssistantDrawer({
   const [feedbackText, setFeedbackText] = useState('')
   const [feedbackSnippet, setFeedbackSnippet] = useState('')
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false)
+  const [isCheckingFeedback, setIsCheckingFeedback] = useState(false)
 
   const [inputMessage, setInputMessage] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
@@ -251,6 +255,67 @@ export default function AiAssistantDrawer({
       toast.error('Failed to submit feedback: ' + err.message)
     } finally {
       setIsSubmittingFeedback(false)
+    }
+  }
+
+  const handleTriggerFeedbackCheck = async () => {
+    setIsCheckingFeedback(true)
+    try {
+      toast.loading('Checking feedback queue...', { id: 'manual-fb-check' })
+      const list = (await fetchAiFeedbacks?.()) || []
+      const pending = list.filter(
+        (f) => f.status === 'pending_review' || f.status === 'pending_weekly_review'
+      )
+
+      if (pending.length === 0) {
+        toast.success('No pending feedback in queue. Everything is up to date!', {
+          id: 'manual-fb-check',
+          icon: '✅',
+        })
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `✅ **Feedback Queue Status**: All caught up! There are **0 pending feedback requests** in Firestore.\n\n*(Autonomous hourly daemon schedule is active at \`0 * * * *\`, checking every hour automatically).*`,
+            type: 'feedback_status',
+            chips: [{ label: 'Submit Feedback', action: 'open_feedback_modal' }],
+            isLocal: true,
+            timestamp: new Date(),
+          },
+        ])
+      } else {
+        toast.success(`Found ${pending.length} pending feedback request(s)!`, {
+          id: 'manual-fb-check',
+          icon: '⚡',
+        })
+        setShowFeedbackModal(false)
+
+        const summaryLines = pending
+          .map((f, i) => `${i + 1}. **"${f.message}"**`)
+          .join('\n')
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `⚡ **Found ${pending.length} Pending Feedback Request(s) in Queue**:\n\n${summaryLines}\n\n*(The hourly daemon will process these automatically, or you can ask the pair programming assistant to execute immediately).*`,
+            type: 'feedback_status',
+            chips: [
+              { label: 'Check Again', action: 'manual_feedback_check' },
+            ],
+            isLocal: true,
+            timestamp: new Date(),
+          },
+        ])
+      }
+    } catch (err) {
+      toast.error('Failed to check feedback: ' + (err.message || 'Network error'), {
+        id: 'manual-fb-check',
+      })
+    } finally {
+      setIsCheckingFeedback(false)
     }
   }
 
@@ -571,6 +636,14 @@ export default function AiAssistantDrawer({
     }
     if (chip.action === 'apply_qty' || chip.qty) {
       handleSend(`update qty to ${chip.qty || String(chip.label).replace(/\D/g, '')}`)
+      return
+    }
+    if (chip.action === 'manual_feedback_check') {
+      handleTriggerFeedbackCheck()
+      return
+    }
+    if (chip.action === 'open_feedback_modal') {
+      setShowFeedbackModal(true)
       return
     }
     if (chip.action === 'query_stock') {
@@ -903,6 +976,7 @@ export default function AiAssistantDrawer({
         staffList,
         accountsSummary,
         jobs,
+        aiFeedbacks,
         isClientMode: isClient,
         isPaymentMode: isPayment,
         isSalesMode: isSales,
@@ -1827,6 +1901,19 @@ export default function AiAssistantDrawer({
               <MessageSquarePlus className="w-4 h-4 text-[#ff9900]" />
               <span className="hidden sm:inline font-black text-[11px]">Feedback</span>
             </button>
+
+            {/* Small button beside submitting feedback icon to trigger manually */}
+            <button
+              type="button"
+              onClick={handleTriggerFeedbackCheck}
+              disabled={isCheckingFeedback}
+              className="px-1.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer text-gray-300 hover:text-[#ff9900] hover:bg-white/10 border border-white/10 hover:border-[#ff9900]/40 disabled:opacity-50"
+              title="Trigger Feedback Queue Check Manually (Run Now)"
+              aria-label="Trigger Feedback Review Manually"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-[#ff9900] ${isCheckingFeedback ? 'animate-spin' : ''}`} />
+              <span className="hidden md:inline font-bold text-[10px] text-gray-200">Run Now</span>
+            </button>
             <button
               type="button"
               onClick={() => setMessages([])}
@@ -1885,24 +1972,37 @@ export default function AiAssistantDrawer({
                 />
               </div>
 
-              {/* Submit button */}
-              <div className="flex justify-end gap-2 pt-1">
+              {/* Submit & Manual Trigger buttons */}
+              <div className="flex items-center justify-between pt-1">
                 <button
                   type="button"
-                  onClick={() => setShowFeedbackModal(false)}
-                  className="px-3 py-1 rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-100 cursor-pointer"
+                  onClick={handleTriggerFeedbackCheck}
+                  disabled={isCheckingFeedback}
+                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-gray-950 rounded-lg text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                  title="Check and trigger feedback queue review now"
                 >
-                  Cancel
+                  <RefreshCw size={12} className={isCheckingFeedback ? 'animate-spin' : ''} />
+                  <span>Check Queue Now</span>
                 </button>
-                <button
-                  type="submit"
-                  aria-label="Send Feedback"
-                  disabled={isSubmittingFeedback || !feedbackText.trim()}
-                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1"
-                >
-                  {isSubmittingFeedback ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-                  <span>Send Feedback</span>
-                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowFeedbackModal(false)}
+                    className="px-3 py-1 rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-100 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    aria-label="Send Feedback"
+                    disabled={isSubmittingFeedback || !feedbackText.trim()}
+                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                  >
+                    {isSubmittingFeedback ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                    <span>Send Feedback</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>

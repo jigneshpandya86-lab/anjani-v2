@@ -579,6 +579,11 @@ describe('AiAssistantDrawer', () => {
     const feedbackBtn = screen.getByRole('button', { name: /AI Feedback/i })
     expect(feedbackBtn).toBeInTheDocument()
 
+    // Manual trigger button beside feedback button
+    const runBtn = screen.getByRole('button', { name: /Trigger Feedback Review Manually/i })
+    expect(runBtn).toBeInTheDocument()
+    fireEvent.click(runBtn)
+
     // Weekly review tab should not exist
     expect(screen.queryByText('Weekly Review')).not.toBeInTheDocument()
 
