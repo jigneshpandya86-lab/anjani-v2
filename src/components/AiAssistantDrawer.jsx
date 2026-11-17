@@ -1995,10 +1995,7 @@ export default function AiAssistantDrawer({
                 <Bot className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-gray-900">Anjani WhatsApp-Style Assistant</h3>
-                <p className="text-xs text-gray-500 mt-0.5 max-w-xs mx-auto">
-                  1-Tap guided workflows for daily factory & route operations. Zero typing required!
-                </p>
+                <h3 className="text-sm font-black text-gray-900">Anjani</h3>
               </div>
 
               {/* Main Menu Action Chips */}

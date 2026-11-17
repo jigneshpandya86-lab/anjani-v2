@@ -132,7 +132,7 @@ describe('AiAssistantDrawer', () => {
           onOpenAddClient={() => {}}
         />
       )
-      expect(screen.getByRole('heading', { name: 'Anjani' })).toBeInTheDocument()
+      expect(screen.getAllByRole('heading', { name: 'Anjani' })[0]).toBeInTheDocument()
       unmount()
     }
   })
@@ -158,7 +158,7 @@ describe('AiAssistantDrawer', () => {
         onOpenAddClient={() => {}}
       />
     )
-    expect(screen.getByRole('heading', { name: 'Anjani' })).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { name: 'Anjani' })[0]).toBeInTheDocument()
   })
 
   it('shows SKU autocomplete popup with pricing when user types /', () => {
@@ -265,7 +265,9 @@ describe('AiAssistantDrawer', () => {
       />
     )
 
-    expect(screen.getByText('Anjani WhatsApp-Style Assistant')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 3, name: 'Anjani' })).toBeInTheDocument()
+    expect(screen.queryByText('Anjani WhatsApp-Style Assistant')).not.toBeInTheDocument()
+    expect(screen.queryByText(/guided workflows/i)).not.toBeInTheDocument()
     expect(screen.getByText('💸 Record Expense')).toBeInTheDocument()
     expect(screen.getByText('📦 Book Order')).toBeInTheDocument()
     expect(screen.getByText('💰 Receive Payment (Jama)')).toBeInTheDocument()
