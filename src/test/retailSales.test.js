@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { getSkuMeta } from '../constants/skus'
-import { isRetailCustomer, consolidateRetailSales } from '../utils/salesBatchUtils'
+import { isRetailCustomer, consolidateRetailSales, normalizeDateString, parseLocalSalesText } from '../utils/salesBatchUtils'
 import { getRecentSkuPrice } from '../utils/orderUtils'
 
 describe('Retail Sales Batch Normalization', () => {
@@ -280,5 +280,77 @@ describe('Retail Sales Batch Normalization', () => {
     expect(consolidated[0].items[0].rate).toBe(115)
     expect(consolidated[0].items[0].ruleApplied).toBe('Learned Rate: ₹115')
     expect(consolidated[0].totalAmount).toBe(1150)
+  })
+
+  it('normalizes various date string formats including Gujarati digits', () => {
+    expect(normalizeDateString('18/11/26')).toBe('2026-11-18')
+    expect(normalizeDateString('20/11/2026')).toBe('2026-11-20')
+    expect(normalizeDateString('2026-11-21')).toBe('2026-11-21')
+    expect(normalizeDateString('૧૮/૧૧/૨૬')).toBe('2026-11-18')
+    expect(normalizeDateString('Date: 21-11-2026')).toBe('2026-11-21')
+    expect(normalizeDateString('')).toBeNull()
+  })
+
+  it('correctly parses multi-date Gujarati catering orders into discrete individual orders', () => {
+    const rawCateringMessage = `Maruti caterers 
+
+Date 18/11/26
+
+1000 nung બોટલ 
+
+Maruti caterers 
+
+20/11/26
+
+બાલાજી પાર્ટી પ્લોટ હરણી રોડ વડોદરા 
+
+4000 નંગ bottle 200ml
+
+Maruti caterers 
+
+Date 21/11/26
+
+Sanje 
+
+4000 hajar nung bottel
+
+PG party plot harni baroda`
+
+    const parsed = parseLocalSalesText(rawCateringMessage, mockClients)
+    expect(parsed).toBeDefined()
+    expect(parsed.type).toBe('retail_sales')
+    expect(parsed.data.sales.length).toBe(3)
+
+    // Order 1: 18/11/26 -> 1000 bottles
+    const order1 = parsed.data.sales[0]
+    expect(order1.clientName).toContain('Maruti Caterers')
+    expect(order1.date).toBe('2026-11-18')
+    expect(order1.items[0].qty).toBe(1000)
+    expect(order1.items[0].sku).toBe('Anjani 200ml')
+
+    // Order 2: 20/11/26 -> Balaji Party Plot, Harni Road, Vadodara, 4000 bottles 200ml
+    const order2 = parsed.data.sales[1]
+    expect(order2.clientName).toContain('Maruti Caterers')
+    expect(order2.date).toBe('2026-11-20')
+    expect(order2.address).toMatch(/Balaji Party Plot.*Harni Road.*Vadodara/i)
+    expect(order2.items[0].qty).toBe(4000)
+    expect(order2.items[0].sku).toBe('Anjani 200ml')
+
+    // Order 3: 21/11/26 -> Evening (Sanje), 4000 hajar nung (vernacular 4000), PG party plot
+    const order3 = parsed.data.sales[2]
+    expect(order3.clientName).toContain('Maruti Caterers')
+    expect(order3.date).toBe('2026-11-21')
+    expect(order3.deliveryTime).toBe('Evening')
+    expect(order3.address).toMatch(/PG Party Plot.*Harni.*Baroda/i)
+    expect(order3.items[0].qty).toBe(4000) // NOT 4,000,000
+    expect(order3.items[0].sku).toBe('Anjani 200ml')
+
+    // Consolidation retains individual dates & venue locations
+    const enriched = consolidateRetailSales(parsed.data.sales, mockClients)
+    expect(enriched.length).toBe(3)
+    expect(enriched[0].date).toBe('2026-11-18')
+    expect(enriched[1].date).toBe('2026-11-20')
+    expect(enriched[2].date).toBe('2026-11-21')
+    expect(enriched[2].deliveryTime).toBe('Evening')
   })
 })

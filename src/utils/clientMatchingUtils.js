@@ -26,6 +26,7 @@ export function getPhoneticKey(raw) {
     'center', 'centre', 'dairy', 'farm', 'tea', 'stall', 'ice', 'cream',
     'cold', 'drink', 'drinks', 'beverage', 'beverages', 'foods', 'food',
     'bakery', 'sweets', 'farsan', 'point', 'corner',
+    'caterer', 'caterers', 'catering', 'decorators', 'decorator', 'mandap', 'party', 'plot',
     'bhai', 'ben', 'kumar', 'sinh', 'singh', 'seth', 'sheth', 'babu', 'ji',
     'shree', 'shri', 'sri', 'om', 'jay', 'jai'
   ]

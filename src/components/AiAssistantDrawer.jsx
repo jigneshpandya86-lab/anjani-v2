@@ -36,6 +36,9 @@ import {
   MessageCircle,
   ExternalLink,
   FileText,
+  MessageSquarePlus,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
@@ -118,12 +121,27 @@ export default function AiAssistantDrawer({
   const addAiMemory = useClientStore((state) => state.addAiMemory)
   const toggleAiMemory = useClientStore((state) => state.toggleAiMemory)
   const deleteAiMemory = useClientStore((state) => state.deleteAiMemory)
+  const aiFeedbacks = useClientStore((state) => state.aiFeedbacks) || []
+  const fetchAiFeedbacks = useClientStore((state) => state.fetchAiFeedbacks)
+  const addAiFeedback = useClientStore((state) => state.addAiFeedback)
+  const markAiFeedbackReviewed = useClientStore((state) => state.markAiFeedbackReviewed)
+  const deleteAiFeedback = useClientStore((state) => state.deleteAiFeedback)
 
   const [activeChatbotFlow, setActiveChatbotFlow] = useState(null)
   const [showMemoryModal, setShowMemoryModal] = useState(false)
   const [newMemoryInput, setNewMemoryInput] = useState('')
   const [newMemoryCategory, setNewMemoryCategory] = useState('general_rule')
   const [isSavingMemory, setIsSavingMemory] = useState(false)
+
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false)
+  const [feedbackTab, setFeedbackTab] = useState('submit') // 'submit' | 'weekly_review'
+  const [feedbackType, setFeedbackType] = useState('catering_sales')
+  const [feedbackRating, setFeedbackRating] = useState('positive')
+  const [feedbackText, setFeedbackText] = useState('')
+  const [feedbackSnippet, setFeedbackSnippet] = useState('')
+  const [feedbackSaveAsRule, setFeedbackSaveAsRule] = useState(false)
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false)
+  const [weeklyReviewFilter, setWeeklyReviewFilter] = useState('pending')
 
   const [inputMessage, setInputMessage] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
@@ -226,6 +244,114 @@ export default function AiAssistantDrawer({
       setIsSavingMemory(false)
     }
   }
+
+  const handleOpenFeedbackForMessage = (msg) => {
+    let snippet = ''
+    let type = 'general'
+    if (msg) {
+      if (msg.type === 'retail_sales') {
+        type = 'catering_sales'
+        const count = msg.data?.sales?.length || 0
+        const names = (msg.data?.sales || [])
+          .map((s) => s.clientName)
+          .filter(Boolean)
+          .slice(0, 3)
+          .join(', ')
+        snippet = `Retail/Catering: ${count} orders (${names})`
+      } else if (msg.type === 'order_draft') {
+        type = 'order_draft'
+        snippet = `Order: ${msg.data?.clientName || 'Customer'} - ${msg.data?.qty || 0} ${msg.data?.sku || ''}`
+      } else if (msg.type === 'receive_payment') {
+        type = 'receive_payment'
+        snippet = `Payment: ₹${msg.data?.amount || 0} from ${msg.data?.payerName || 'Client'}`
+      } else {
+        snippet = String(msg.text || '').slice(0, 120)
+      }
+    }
+    setFeedbackSnippet(snippet)
+    setFeedbackType(type)
+    setFeedbackTab('submit')
+    setShowFeedbackModal(true)
+  }
+
+  const handleSubmitFeedback = async (e) => {
+    e?.preventDefault()
+    if (!feedbackText.trim()) {
+      toast.error('Please enter your feedback comments')
+      return
+    }
+    setIsSubmittingFeedback(true)
+    try {
+      await addAiFeedback?.({
+        type: feedbackType,
+        rating: feedbackRating,
+        message: feedbackText.trim(),
+        rawSnippet: feedbackSnippet || '',
+        status: 'pending_weekly_review',
+        submittedAt: new Date().toISOString(),
+      })
+
+      // If user toggled "Save as AI Memory Rule"
+      if (feedbackSaveAsRule && feedbackText.trim()) {
+        try {
+          await addAiMemory?.({
+            rule: feedbackText.trim(),
+            category: feedbackType === 'catering_sales' ? 'sales_rule' : 'general_rule',
+          })
+          toast.success('Also saved as permanent AI Memory rule!', { icon: '🧠' })
+        } catch (_ruleErr) {
+          // ignore rule error
+        }
+      }
+
+      toast.success('Feedback submitted! Added to weekly review queue.', { icon: '📝' })
+      setFeedbackText('')
+      setFeedbackSnippet('')
+      setFeedbackSaveAsRule(false)
+      setFeedbackTab('weekly_review')
+    } catch (err) {
+      toast.error('Failed to submit feedback: ' + err.message)
+    } finally {
+      setIsSubmittingFeedback(false)
+    }
+  }
+
+  const handleMarkReviewed = async (id) => {
+    try {
+      await markAiFeedbackReviewed?.(id, 'Reviewed weekly')
+      toast.success('Marked as reviewed!', { icon: '✓' })
+    } catch (err) {
+      toast.error('Failed to update: ' + err.message)
+    }
+  }
+
+  const handleConvertToRule = async (item) => {
+    try {
+      await addAiMemory?.({
+        rule: item.message,
+        category: 'general_rule',
+      })
+      await markAiFeedbackReviewed?.(item.id, 'Converted to AI Memory rule')
+      toast.success('Converted to AI Memory rule!', { icon: '🧠' })
+    } catch (err) {
+      toast.error('Failed: ' + err.message)
+    }
+  }
+
+  const handleDeleteFeedback = async (id) => {
+    try {
+      await deleteAiFeedback?.(id)
+      toast.success('Feedback deleted')
+    } catch (err) {
+      toast.error('Failed to delete: ' + err.message)
+    }
+  }
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchAiFeedbacks?.()
+    }
+  }, [isOpen, fetchAiFeedbacks])
 
   useEffect(() => {
     if (isOpen && initialMode) {
@@ -1572,6 +1698,32 @@ export default function AiAssistantDrawer({
             </button>
             <button
               type="button"
+              onClick={() => {
+                setShowFeedbackModal((prev) => !prev)
+                if (!showFeedbackModal) fetchAiFeedbacks?.()
+              }}
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                showFeedbackModal
+                  ? 'bg-[#ff9900] text-gray-950 shadow-sm'
+                  : 'text-gray-300 hover:text-white hover:bg-white/10'
+              }`}
+              title="Submit AI Feedback & Weekly Review"
+              aria-label="AI Feedback"
+            >
+              <MessageSquarePlus className="w-4 h-4 text-[#ff9900]" />
+              <span className="hidden sm:inline font-black text-[11px]">Feedback</span>
+              {aiFeedbacks.filter((f) => f && f.status === 'pending_weekly_review').length > 0 && (
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                    showFeedbackModal ? 'bg-black text-[#ff9900]' : 'bg-rose-500 text-white'
+                  }`}
+                >
+                  {aiFeedbacks.filter((f) => f && f.status === 'pending_weekly_review').length}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={() => setMessages([])}
               className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
               title="Clear chat"
@@ -1774,6 +1926,295 @@ export default function AiAssistantDrawer({
           </div>
         )}
       </div>
+
+        {/* AI Feedback & Weekly Review Accordion Card */}
+        {showFeedbackModal && (
+          <div className="border-b border-blue-200 bg-blue-50/70 p-3 text-xs space-y-3 shrink-0 animate-in fade-in">
+            {/* Header with Tabs and Close */}
+            <div className="flex items-center justify-between border-b border-blue-200/80 pb-2">
+              <div className="flex items-center gap-1.5">
+                <MessageSquarePlus className="w-4 h-4 text-blue-700 shrink-0" />
+                <span className="font-black text-gray-900 text-xs">AI Feedback & Weekly Review</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="flex bg-blue-100 p-0.5 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setFeedbackTab('submit')}
+                    aria-label="Submit Feedback Tab"
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold cursor-pointer transition-colors ${
+                      feedbackTab === 'submit' ? 'bg-white text-blue-900 shadow-2xs' : 'text-blue-700 hover:text-blue-900'
+                    }`}
+                  >
+                    Submit Feedback
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFeedbackTab('weekly_review')}
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
+                      feedbackTab === 'weekly_review' ? 'bg-white text-blue-900 shadow-2xs' : 'text-blue-700 hover:text-blue-900'
+                    }`}
+                  >
+                    <span>Weekly Review</span>
+                    {aiFeedbacks.filter((f) => f && f.status === 'pending_weekly_review').length > 0 && (
+                      <span className="px-1 py-0.2 rounded-full bg-rose-500 text-white text-[8px] font-black">
+                        {aiFeedbacks.filter((f) => f && f.status === 'pending_weekly_review').length}
+                      </span>
+                    )}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowFeedbackModal(false)}
+                  className="p-1 text-gray-400 hover:text-gray-700 rounded cursor-pointer"
+                  title="Close Feedback"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+
+            {/* TAB 1: Submit Feedback Form */}
+            {feedbackTab === 'submit' ? (
+              <form onSubmit={handleSubmitFeedback} className="space-y-2.5">
+                {feedbackSnippet && (
+                  <div className="p-2 bg-white rounded-lg border border-blue-100 text-[11px] text-gray-600">
+                    <span className="font-bold text-gray-700 block text-[10px] uppercase tracking-wide">Referenced Context:</span>
+                    <span className="line-clamp-2 italic">{feedbackSnippet}</span>
+                  </div>
+                )}
+
+                {/* Rating selection */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tight">Rating:</span>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setFeedbackRating('positive')}
+                      className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+                        feedbackRating === 'positive'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <ThumbsUp size={12} />
+                      <span>Accurate</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFeedbackRating('negative')}
+                      className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+                        feedbackRating === 'negative'
+                          ? 'bg-rose-600 text-white'
+                          : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <ThumbsDown size={12} />
+                      <span>Needs Correction</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Category selection */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tight">Topic:</span>
+                  {[
+                    { id: 'catering_sales', label: 'Catering / Multi-Date' },
+                    { id: 'retail_sales', label: 'Retail Sales' },
+                    { id: 'client_matching', label: 'Client Matching' },
+                    { id: 'payment_ocr', label: 'Payment OCR' },
+                    { id: 'general', label: 'General / Other' },
+                  ].map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setFeedbackType(cat.id)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors ${
+                        feedbackType === cat.id
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Feedback Comment Textarea */}
+                <div>
+                  <textarea
+                    rows={2}
+                    value={feedbackText}
+                    onChange={(e) => setFeedbackText(e.target.value)}
+                    placeholder="Enter what went well or what needs improvement (e.g. 'Maruti Caterers date was 20/11' or 'Recognized slang')..."
+                    className="w-full p-2 bg-white border border-blue-200 rounded-lg text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Optional: Save as Memory Rule */}
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={feedbackSaveAsRule}
+                    onChange={(e) => setFeedbackSaveAsRule(e.target.checked)}
+                    className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 focus:ring-0"
+                  />
+                  <span className="text-[11px] text-gray-700 font-medium">
+                    Also convert and save this as a permanent AI Memory rule
+                  </span>
+                </label>
+
+                {/* Submit button */}
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowFeedbackModal(false)}
+                    className="px-3 py-1 rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-100 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    aria-label="Send Feedback"
+                    disabled={isSubmittingFeedback || !feedbackText.trim()}
+                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                  >
+                    {isSubmittingFeedback ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                    <span>Send Feedback</span>
+                  </button>
+                </div>
+              </form>
+            ) : (
+              /* TAB 2: Weekly Review Queue */
+              <div className="space-y-2">
+                {/* Filter and Summary Header */}
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-bold text-gray-700">
+                    Weekly Queue ({aiFeedbacks.filter((f) => f && f.status === 'pending_weekly_review').length} pending)
+                  </span>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setWeeklyReviewFilter('pending')}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer ${
+                        weeklyReviewFilter === 'pending' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200'
+                      }`}
+                    >
+                      Pending Only
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWeeklyReviewFilter('all')}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer ${
+                        weeklyReviewFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200'
+                      }`}
+                    >
+                      All ({aiFeedbacks.length})
+                    </button>
+                  </div>
+                </div>
+
+                {/* Feedbacks List */}
+                <div className="max-h-[260px] overflow-y-auto space-y-1.5 pr-0.5">
+                  {(() => {
+                    const filtered = aiFeedbacks.filter((f) => {
+                      if (!f) return false
+                      if (weeklyReviewFilter === 'pending') return f.status === 'pending_weekly_review'
+                      return true
+                    })
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="p-4 text-center bg-white rounded-xl border border-blue-100 text-gray-400">
+                          <CheckCircle2 className="w-6 h-6 text-emerald-500 mx-auto mb-1" />
+                          <p className="font-bold text-gray-700 text-xs">All Caught Up!</p>
+                          <p className="text-[10px]">No pending feedback items in weekly review queue.</p>
+                        </div>
+                      )
+                    }
+
+                    return filtered.map((item) => {
+                      const isPending = item.status === 'pending_weekly_review'
+                      return (
+                        <div
+                          key={item.id}
+                          className="bg-white p-2 rounded-xl border border-gray-200 shadow-2xs space-y-1 text-xs"
+                        >
+                          <div className="flex items-center justify-between gap-1">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase ${
+                                  item.rating === 'positive'
+                                    ? 'bg-emerald-50 text-emerald-700'
+                                    : 'bg-rose-50 text-rose-700'
+                                }`}
+                              >
+                                {item.rating === 'positive' ? '👍 Accurate' : '⚠️ Correction'}
+                              </span>
+                              <span className="px-1.5 py-0.2 rounded bg-gray-100 text-gray-700 text-[8px] font-bold uppercase">
+                                {item.type || 'general'}
+                              </span>
+                            </div>
+                            <span
+                              className={`text-[8px] font-black px-1.5 py-0.2 rounded uppercase ${
+                                isPending ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                              }`}
+                            >
+                              {isPending ? '⏳ Pending' : '✓ Reviewed'}
+                            </span>
+                          </div>
+
+                          <p className="text-gray-900 font-medium text-[11px]">{item.message}</p>
+                          {item.rawSnippet && (
+                            <p className="text-[9px] text-gray-400 italic truncate max-w-full">
+                              Snippet: {item.rawSnippet}
+                            </p>
+                          )}
+
+                          <div className="flex items-center justify-between pt-1 border-t border-gray-100 text-[10px]">
+                            <span className="text-[9px] text-gray-400">
+                              {item.createdAt?.toDate?.()
+                                ? item.createdAt.toDate().toLocaleDateString('en-GB')
+                                : (item.submittedAt ? item.submittedAt.slice(0, 10) : 'Recent')}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              {isPending && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkReviewed(item.id)}
+                                  className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded text-[9px] font-bold cursor-pointer"
+                                  title="Mark as reviewed"
+                                >
+                                  ✓ Reviewed
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleConvertToRule(item)}
+                                className="px-1.5 py-0.5 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded text-[9px] font-bold flex items-center gap-0.5 cursor-pointer"
+                                title="Convert to permanent AI rule"
+                              >
+                                <Brain size={10} />
+                                <span>Save Rule</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteFeedback(item.id)}
+                                className="text-gray-400 hover:text-red-500 p-0.5 rounded cursor-pointer"
+                                title="Delete"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  })()}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Clutter-Free Quick Action Navigation Strip (Single line, strictly icon-only, no scrolling needed) */}
         <div className="px-2 py-1.5 bg-gray-50/90 border-b border-gray-200 flex items-center justify-between gap-1 overflow-x-hidden shrink-0 text-xs select-none">
@@ -2988,6 +3429,27 @@ export default function AiAssistantDrawer({
                                   )}
                                 </div>
 
+                                {/* Delivery Date / Time / Address Badges */}
+                                {(sale.date || sale.deliveryDate || sale.deliveryTime || sale.address) && (
+                                  <div className="flex flex-wrap items-center gap-1 text-[10px] text-gray-700 bg-amber-50/70 p-1.5 rounded-lg border border-amber-200/60 font-semibold">
+                                    {(sale.date || sale.deliveryDate) && (
+                                      <span className="inline-flex items-center gap-1 font-black text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded">
+                                        📅 {sale.date || sale.deliveryDate}
+                                      </span>
+                                    )}
+                                    {sale.deliveryTime && (
+                                      <span className="inline-flex items-center gap-1 font-black text-blue-900 bg-blue-100 px-1.5 py-0.5 rounded">
+                                        ⏰ {sale.deliveryTime}
+                                      </span>
+                                    )}
+                                    {sale.address && (
+                                      <span className="inline-flex items-center gap-1 text-gray-800 truncate max-w-[240px]" title={sale.address}>
+                                        📍 {sale.address}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+
                                 {/* Items in this sale (Distinct lines for different rates) */}
                                 <div className="space-y-1 bg-gray-50/80 p-1.5 rounded-lg border border-gray-100">
                                   {sale.items.map((it, itIdx) => {
@@ -3108,6 +3570,20 @@ export default function AiAssistantDrawer({
                             <span>Confirm & Log Orders (₹{totalBatchAmt.toLocaleString('en-IN')})</span>
                           </button>
                         )}
+                      </div>
+
+                      {/* Small Feedback Button */}
+                      <div className="flex items-center justify-between text-[10px] text-gray-400 px-1 pt-0.5">
+                        <span className="truncate">Catering & Retail Orders</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenFeedbackForMessage(msg)}
+                          className="hover:text-amber-700 text-gray-500 flex items-center gap-1 font-bold cursor-pointer"
+                          title="Submit feedback or correction on this AI result"
+                        >
+                          <MessageSquarePlus size={12} className="text-[#ff9900]" />
+                          <span>Feedback</span>
+                        </button>
                       </div>
                     </div>
                   )
@@ -3244,6 +3720,20 @@ export default function AiAssistantDrawer({
                             <span>Confirm & Log Entries (₹{totalAmt.toLocaleString('en-IN')})</span>
                           </button>
                         )}
+                      </div>
+
+                      {/* Small Feedback Button */}
+                      <div className="flex items-center justify-between text-[10px] text-gray-400 px-1 pt-0.5">
+                        <span className="truncate">Catering & Retail Orders</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenFeedbackForMessage(msg)}
+                          className="hover:text-amber-700 text-gray-500 flex items-center gap-1 font-bold cursor-pointer"
+                          title="Submit feedback or correction on this AI result"
+                        >
+                          <MessageSquarePlus size={12} className="text-[#ff9900]" />
+                          <span>Feedback</span>
+                        </button>
                       </div>
                     </div>
                   )

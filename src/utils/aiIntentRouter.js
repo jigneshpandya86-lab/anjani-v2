@@ -15,6 +15,7 @@ import { getRecentSkuPrice } from './orderUtils'
 import { findMatchingClient } from './clientMatchingUtils'
 import { findMatchingSku } from './skuAliasUtils'
 import { resolveStaffMember, checkIsDayTime } from '../services/taskService'
+import { parseLocalSalesText, consolidateRetailSales } from './salesBatchUtils'
 
 // Helper: Match SKU from text
 function matchSkuFromText(text) {
@@ -65,6 +66,42 @@ export function tryLocalIntentRoute(query, store = {}) {
   if (!query || typeof query !== 'string') return null
   const rawQ = query.trim()
   const q = rawQ.toLowerCase()
+
+  // Multi-date catering / sales orders local parsing (Zero tokens & Instant response)
+  const isSingleOrderCommand = /^(?:create\s+order|new\s+order|place\s+order|book\s+order|order\s+for)\b/i.test(q)
+  if (!store.isClientMode && !store.isPaymentMode && !isSingleOrderCommand) {
+    const isMultiOrCatering =
+      rawQ.includes('\n') ||
+      /(?:caterer|caterers|party\s*plot|પાર્ટી\s*પ્લોટ|nung|nang|નંગ|hajar|હજાર|sanje|savare)/i.test(
+        rawQ
+      )
+    if (isMultiOrCatering) {
+      const localSales = parseLocalSalesText(rawQ, store.clients || [])
+      if (localSales && Array.isArray(localSales.data?.sales) && localSales.data.sales.length > 0) {
+        const enrichedSales = consolidateRetailSales(
+          localSales.data.sales,
+          store.clients || [],
+          store.orders || [],
+          store.aiMemories || []
+        )
+        return {
+          handled: true,
+          type: 'retail_sales',
+          text: `📋 **Parsed ${enrichedSales.length} Catering/Retail Order${enrichedSales.length !== 1 ? 's' : ''}**\n\nReview the order list below. You can adjust quantities, change payment modes, or remove items before confirming:`,
+          data: {
+            summary: {
+              totalOrders: enrichedSales.length,
+              totalQty: enrichedSales.reduce(
+                (sum, s) => sum + (s.items || []).reduce((isum, it) => isum + Number(it.qty || 0), 0),
+                0
+              ),
+            },
+            sales: enrichedSales,
+          },
+        }
+      }
+    }
+  }
 
   // ==========================================
   // SEQUENCE 1: ORDER CREATION & QUICK SALES

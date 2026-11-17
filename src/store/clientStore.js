@@ -62,6 +62,8 @@ let accountsUnsubscribe = null
 let accountsSubscriberCount = 0
 let aiMemoriesUnsubscribe = null
 let aiMemoriesSubscriberCount = 0
+let aiFeedbacksUnsubscribe = null
+let aiFeedbacksSubscriberCount = 0
 let staffUnsubscribe = null
 let staffSubscriberCount = 0
 let staffTransactionsUnsubscribe = null
@@ -156,6 +158,8 @@ export const useClientStore = create((set, get) => ({
   },
   aiMemories: [],
   aiMemoriesLoading: false,
+  aiFeedbacks: [],
+  aiFeedbacksLoading: false,
   accountsList: DEFAULT_ACCOUNTS,
   accountsSummary: {
     nilesh: 0,
@@ -1073,6 +1077,102 @@ export const useClientStore = create((set, get) => ({
     }
   },
 
+  subscribeAiFeedbacks: () => {
+    aiFeedbacksSubscriberCount++
+    if (aiFeedbacksSubscriberCount === 1) {
+      set({ aiFeedbacksLoading: true })
+      const q = query(collection(db, 'ai_feedbacks'), orderBy('createdAt', 'desc'))
+      aiFeedbacksUnsubscribe = onSnapshot(
+        q,
+        (snap) => {
+          const feedbacks = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+          set({ aiFeedbacks: feedbacks, aiFeedbacksLoading: false })
+        },
+        (err) => {
+          console.error('Failed to subscribe to ai_feedbacks:', err)
+          set({ aiFeedbacksLoading: false })
+        }
+      )
+    }
+
+    return () => {
+      aiFeedbacksSubscriberCount--
+      if (aiFeedbacksSubscriberCount <= 0) {
+        aiFeedbacksSubscriberCount = 0
+        if (aiFeedbacksUnsubscribe) {
+          aiFeedbacksUnsubscribe()
+          aiFeedbacksUnsubscribe = null
+        }
+      }
+    }
+  },
+
+  fetchAiFeedbacks: async () => {
+    set({ aiFeedbacksLoading: true })
+    try {
+      const q = query(collection(db, 'ai_feedbacks'), orderBy('createdAt', 'desc'))
+      const snap = await getDocs(q)
+      const feedbacks = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      set({ aiFeedbacks: feedbacks, aiFeedbacksLoading: false })
+      return feedbacks
+    } catch (err) {
+      console.error('Failed to fetch ai_feedbacks:', err)
+      set({ aiFeedbacksLoading: false })
+      return []
+    }
+  },
+
+  addAiFeedback: async (feedbackData) => {
+    try {
+      const payload = {
+        ...feedbackData,
+        status: feedbackData.status || 'pending_weekly_review',
+        createdAt: serverTimestamp(),
+      }
+      const docRef = await addDoc(collection(db, 'ai_feedbacks'), payload)
+      const newFeedback = { id: docRef.id, ...payload }
+      set((state) => ({
+        aiFeedbacks: [newFeedback, ...(state.aiFeedbacks || []).filter((f) => f.id !== docRef.id)],
+      }))
+      return newFeedback
+    } catch (err) {
+      console.error('Failed to add AI feedback:', err)
+      throw err
+    }
+  },
+
+  markAiFeedbackReviewed: async (feedbackId, resolutionNotes = '') => {
+    try {
+      await updateDoc(doc(db, 'ai_feedbacks', feedbackId), {
+        status: 'reviewed',
+        reviewedAt: serverTimestamp(),
+        resolutionNotes,
+      })
+      set((state) => ({
+        aiFeedbacks: (state.aiFeedbacks || []).map((f) =>
+          f.id === feedbackId
+            ? { ...f, status: 'reviewed', resolutionNotes, reviewedAt: new Date().toISOString() }
+            : f
+        ),
+      }))
+    } catch (err) {
+      console.error('Failed to mark AI feedback reviewed:', err)
+      throw err
+    }
+  },
+
+  deleteAiFeedback: async (feedbackId) => {
+    try {
+      await deleteDoc(doc(db, 'ai_feedbacks', feedbackId))
+      set((state) => ({
+        aiFeedbacks: (state.aiFeedbacks || []).filter((f) => f.id !== feedbackId),
+      }))
+    } catch (err) {
+      console.error('Failed to delete AI feedback:', err)
+      throw err
+    }
+  },
+
   fetchLeads: () => {
     leadsSubscriberCount++
     if (leadsUnsubscribe) return leadsUnsubscribe
@@ -1537,6 +1637,15 @@ export const useClientStore = create((set, get) => ({
       }
 
       // 3. Create order document in Confirmed state so edits can be made
+      const effectiveDate = sale.date || sale.deliveryDate || dateStr
+      const effectiveTime = sale.deliveryTime || sale.time || timeStr
+      const combinedNotes = [
+        sale.notes,
+        sale.deliveryTime && !sale.notes?.includes(sale.deliveryTime) ? `Time: ${sale.deliveryTime}` : '',
+      ]
+        .filter(Boolean)
+        .join(' • ')
+
       await addDoc(collection(db, 'orders'), {
         orderId,
         clientId: clientDocId || '',
@@ -1553,13 +1662,17 @@ export const useClientStore = create((set, get) => ({
         status: 'Confirmed',
         paymentMode: sale.paymentMode || 'credit',
         source: 'whatsapp_sales',
-        date: dateStr,
-        time: timeStr,
+        date: effectiveDate,
+        deliveryDate: sale.deliveryDate || effectiveDate,
+        time: effectiveTime,
+        deliveryTime: sale.deliveryTime || '',
+        notes: combinedNotes,
         createdAt: serverTimestamp(),
       })
       createdOrders.push({
         orderId,
         clientName,
+        date: effectiveDate,
         totalAmount: saleTotalAmount,
         totalQty: saleTotalQty,
       })

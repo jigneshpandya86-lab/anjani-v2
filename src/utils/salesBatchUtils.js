@@ -2,6 +2,45 @@ import { DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 import { getRecentSkuPrice } from './orderUtils'
 import { findMatchingClient } from './clientMatchingUtils'
 import { findMatchingSku, normalizeUnit } from './skuAliasUtils'
+import { normalizeDigits, transliterateIndicToEnglish, ensureEnglishText } from './textUtils'
+
+/**
+ * Normalizes various date string representations (DD/MM/YY, DD/MM/YYYY, DD-MM-YY, YYYY-MM-DD)
+ * to standard ISO YYYY-MM-DD.
+ */
+export function normalizeDateString(dateStr) {
+  if (!dateStr) return null
+  const s = normalizeDigits(String(dateStr).trim())
+  if (!s) return null
+
+  // If already standard YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return s
+  }
+
+  // DD/MM/YY or DD/MM/YYYY or DD-MM-YY or DD-MM-YYYY
+  const m = s.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b/)
+  if (m) {
+    const day = m[1].padStart(2, '0')
+    const month = m[2].padStart(2, '0')
+    let year = m[3]
+    if (year.length === 2) {
+      year = `20${year}`
+    }
+    return `${year}-${month}-${day}`
+  }
+
+  // YYYY/MM/DD
+  const mIso = s.match(/\b(\d{4})[/-](\d{1,2})[/-](\d{1,2})\b/)
+  if (mIso) {
+    const year = mIso[1]
+    const month = mIso[2].padStart(2, '0')
+    const day = mIso[3].padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  return null
+}
 
 /**
  * Checks if a customer name represents an unknown, walk-in, or retail customer.
@@ -120,6 +159,14 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [],
       isMatched: !!matched,
       matchType,
       mobile: sale.mobile || matched?.mobile || '',
+      date: sale.date ? normalizeDateString(sale.date) || sale.date : undefined,
+      deliveryDate: sale.deliveryDate
+        ? normalizeDateString(sale.deliveryDate) || sale.deliveryDate
+        : sale.date
+        ? normalizeDateString(sale.date) || sale.date
+        : undefined,
+      deliveryTime: sale.deliveryTime || sale.time || undefined,
+      time: sale.time || sale.deliveryTime || undefined,
       address: effectiveAddress,
       location: effectiveLocation,
       paymentMode: ['cash', 'online', 'credit'].includes(sale.paymentMode)
@@ -219,4 +266,244 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [],
   }
 
   return enrichedSales
+}
+
+/**
+ * Local offline parser for multi-date catering orders and sales text.
+ * Can parse structured sales notes from WhatsApp messages like:
+ * "Maruti caterers
+ *  Date 18/11/26
+ *  1000 nung બોટલ
+ *
+ *  Maruti caterers
+ *  20/11/26
+ *  બાલાજી પાર્ટી પ્લોટ હરણી રોડ વડોદરા
+ *  4000 નંગ bottle 200ml
+ *
+ *  Maruti caterers
+ *  Date 21/11/26
+ *  Sanje
+ *  4000 hajar nung bottel
+ *  PG party plot harni baroda"
+ */
+export function parseLocalSalesText(rawText = '', clients = []) {
+  if (!rawText || typeof rawText !== 'string') return null
+  const cleanInput = normalizeDigits(rawText.trim())
+  if (!cleanInput) return null
+
+  const lines = cleanInput
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+
+  if (lines.length === 0) return null
+
+  // Check if text indicates catering/sales orders
+  const isCateringOrSales =
+    /(?:caterer|caterers|mandap|decorator|party\s*plot|પાર્ટી\s*પ્લોટ|nung|nang|નંગ|botal|bottel|bottle|બોટલ|sales|box|petli)/i.test(
+      cleanInput
+    ) || lines.some((l) => /\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/.test(l))
+
+  if (!isCateringOrSales) return null
+
+  const orders = []
+  let currentOrder = null
+  let defaultClientName = 'Retail'
+
+  // Helper to commit currentOrder
+  const commitCurrentOrder = () => {
+    if (!currentOrder) return
+    if (!currentOrder.items || currentOrder.items.length === 0) {
+      if (currentOrder.pendingQty) {
+        currentOrder.items = [
+          {
+            sku: currentOrder.pendingSku || DEFAULT_SKU,
+            qty: currentOrder.pendingQty,
+            rate: 0,
+            unit: 'Box',
+          },
+        ]
+      }
+    }
+    if (currentOrder.items && currentOrder.items.length > 0) {
+      orders.push({
+        clientName: currentOrder.clientName || defaultClientName,
+        date: currentOrder.date || undefined,
+        deliveryDate: currentOrder.deliveryDate || currentOrder.date || undefined,
+        deliveryTime: currentOrder.deliveryTime || '',
+        address: currentOrder.address || '',
+        items: currentOrder.items,
+        totalAmount: 0,
+        paymentMode: 'credit',
+        notes: [
+          currentOrder.notes,
+          currentOrder.deliveryTime ? `Time: ${currentOrder.deliveryTime}` : '',
+          currentOrder.address ? `Venue: ${currentOrder.address}` : '',
+        ]
+          .filter(Boolean)
+          .join(' • '),
+      })
+    }
+    currentOrder = null
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i]
+    const lineEn = ensureEnglishText(transliterateIndicToEnglish(rawLine))
+
+    // 1. Check Date
+    const dateMatch = rawLine.match(/\b(?:Date[:\s-]*)?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/i)
+    if (dateMatch) {
+      const parsedDate = normalizeDateString(dateMatch[1])
+      if (
+        currentOrder &&
+        (currentOrder.date ||
+          (currentOrder.items && currentOrder.items.length > 0) ||
+          currentOrder.pendingQty)
+      ) {
+        commitCurrentOrder()
+      }
+      if (!currentOrder) {
+        currentOrder = {
+          clientName: defaultClientName,
+          date: parsedDate,
+          deliveryDate: parsedDate,
+          items: [],
+          notes: '',
+        }
+      } else {
+        currentOrder.date = parsedDate
+        currentOrder.deliveryDate = parsedDate
+      }
+      continue
+    }
+
+    // 2. Check Shift / Delivery Time
+    if (/\b(?:sanje|saanj|shyam|evening|સાંજે|સાંજ)\b/i.test(rawLine)) {
+      if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }
+      currentOrder.deliveryTime = 'Evening'
+      continue
+    }
+    if (/\b(?:savare|sakal|morning|સવારે|સવાર)\b/i.test(rawLine)) {
+      if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }
+      currentOrder.deliveryTime = 'Morning'
+      continue
+    }
+    if (/\b(?:bapore|dupahar|afternoon|બપોરે|બપોર)\b/i.test(rawLine)) {
+      if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }
+      currentOrder.deliveryTime = 'Afternoon'
+      continue
+    }
+
+    // 3. Check Quantity & SKU
+    // Handles: "1000 nung બોટલ", "4000 નંગ bottle 200ml", "4000 hajar nung bottel"
+    const hasQty =
+      /\d+/.test(rawLine) &&
+      /(?:nung|nang|નંગ|bottle|bottel|બોટલ|box|cases?|petli|hajar|હજાર|ml)/i.test(rawLine)
+
+    if (hasQty) {
+      const m = rawLine.match(/(\d+)/)
+      if (m) {
+        let num = parseInt(m[1], 10)
+        // Redundant colloquial "4000 hajar" vs multiplier "4 hajar"
+        if (/hajar|હજાર/i.test(rawLine)) {
+          if (num < 100) {
+            num = num * 1000
+          }
+        }
+
+        // Determine SKU
+        let sku = DEFAULT_SKU
+        if (/200\s*ml|200ml/i.test(rawLine)) {
+          sku = 'Anjani 200ml'
+        } else if (/250\s*ml|250ml/i.test(rawLine)) {
+          sku = 'Bailey 250ml'
+        } else if (/500\s*ml|500ml/i.test(rawLine)) {
+          sku = 'Bailey 500ml'
+        } else if (/1\s*l(?:iter|tr)?/i.test(rawLine)) {
+          sku = 'Bailey 1 Liter'
+        } else if (/2\s*l(?:iter|tr)?/i.test(rawLine)) {
+          sku = 'Bailey 2 Liter'
+        }
+
+        if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }
+        currentOrder.items = currentOrder.items || []
+        currentOrder.items.push({
+          sku,
+          qty: num,
+          rate: 0,
+          unit: 'Box',
+        })
+        continue
+      }
+    }
+
+    // 4. Check Venue / Party Plot / Address
+    const isVenue =
+      /(?:party\s*plot|પાર્ટી\s*પ્લોટ|road|રોડ|nagar|નગર|harni|હરણી|wadi|વાળી|વાડી|hall|હોલ|circle|circle|plot|કોમ્પ્લેક્સ)/i.test(
+        rawLine
+      )
+    if (isVenue) {
+      if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }
+      currentOrder.address = lineEn
+      continue
+    }
+
+    // 5. Check Client Name (e.g. "Maruti caterers")
+    const isClientLine =
+      /(?:caterer|caterers|catering|decorators|mandap|traders|agency|enterprise|dairy|store)/i.test(
+        rawLine
+      ) ||
+      clients.some(
+        (c) =>
+          c.name &&
+          c.name.length > 2 &&
+          rawLine.toLowerCase().includes(c.name.toLowerCase().trim())
+      )
+
+    if (isClientLine) {
+      const detectedName = lineEn
+      defaultClientName = detectedName
+      if (
+        currentOrder &&
+        ((currentOrder.items && currentOrder.items.length > 0) || currentOrder.pendingQty)
+      ) {
+        commitCurrentOrder()
+      }
+      if (!currentOrder) {
+        currentOrder = { clientName: detectedName, items: [] }
+      } else {
+        currentOrder.clientName = detectedName
+      }
+      continue
+    }
+
+    // 6. Generic single or short word line without numbers
+    if (!/\d/.test(rawLine) && rawLine.length < 35 && !currentOrder?.clientName) {
+      defaultClientName = lineEn
+      if (!currentOrder) {
+        currentOrder = { clientName: defaultClientName, items: [] }
+      } else {
+        currentOrder.clientName = defaultClientName
+      }
+    }
+  }
+
+  commitCurrentOrder()
+
+  if (orders.length === 0) return null
+
+  return {
+    type: 'retail_sales',
+    data: {
+      summary: {
+        totalOrders: orders.length,
+        totalQty: orders.reduce(
+          (sum, o) => sum + (o.items || []).reduce((isum, it) => isum + it.qty, 0),
+          0
+        ),
+      },
+      sales: orders,
+    },
+  }
 }

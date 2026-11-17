@@ -1376,6 +1376,13 @@ function formatSkuSlangForPrompt() {
 - "1 liter", "1L", "badi botal", "ek liter": Bailey 1 Liter (Case / Box).
 - "2 liter", "2L", "jumbo", "family pack": Bailey 2 Liter (Case / Box).
 - "kedi", "crate", "khokhu", "case", "box": Box unit.
+- "nung", "nang", "નંગ", "bottle", "bottel", "બોટલ": Individual bottles/units (default to Anjani 200ml unless another size is explicitly stated).
+- "hajar", "હજાર": Thousand. CRITICAL: In vernacular Gujarati, people often say "4000 hajar nung" redundantly to mean 4,000 bottles (NOT 4,000,000). If the number is already >= 100, do not multiply by 1000! If they say "4 hajar", then it is 4,000.
+- "sanje", "સાંજે", "evening": Evening shift delivery.
+- "savare", "સવારે", "morning": Morning shift delivery.
+- "bapore", "બપોરે", "afternoon": Afternoon shift delivery.
+- "party plot", "પાર્ટી પ્લોટ", "wadi", "hall": Event venue or delivery address.
+- "caterers", "કેટરર્સ", "catering": Catering business client.
 When parsing voice speech or shorthand notes containing these words, resolve them to the standard product labels above.\n`
 }
 
@@ -1555,6 +1562,9 @@ exports.askAnjaniAi = onCall(async (request) => {
       [/ચાર\s*રાસ્તા/gi, 'Char Rasta'],
       [/શાક\s*માર્કેટ|શાકભાજી\s*માર્કેટ/gi, 'Vegetable Market'],
       [/સુપર\s*માર્કેટ|સુપરમાર્કેટ/gi, 'Super Market'],
+      [/પાર્ટી\s*પ્લોટ|પાર્ટીપ્લોટ/gi, 'Party Plot'],
+      [/પાર્ટી/gi, 'Party'],
+      [/પ્લોટ/gi, 'Plot'],
       [/પ્રોવિઝન\s*સ્ટોર્સ?/gi, 'Provision Store'],
       [/જનરલ\s*સ્ટોર્સ?/gi, 'General Store'],
       [/કિરાણા\s*સ્ટોર્સ?/gi, 'Kirana Store'],
@@ -1582,6 +1592,14 @@ exports.askAnjaniAi = onCall(async (request) => {
       [/ટ્રેડર્સ|ટ્રેડિંગ/gi, 'Traders'],
       [/એજન્સી[સઝ]?/gi, 'Agency'],
       [/મેડિકલ/gi, 'Medical'],
+      [/કેટરર્સ|કેટરિંગ/gi, 'Caterers'],
+      [/હરણી/gi, 'Harni'],
+      [/સાંજે|સાંજ/gi, 'Evening'],
+      [/સવારે|સવાર/gi, 'Morning'],
+      [/બપોરે|બપોર/gi, 'Afternoon'],
+      [/નંગ/gi, 'Nung'],
+      [/બોટલ|બોતલ/gi, 'Bottle'],
+      [/હજાર/gi, 'Thousand'],
       [/સામે/gi, 'Opp.'],
       [/પાસે|નજીક/gi, 'Near'],
       [/પાછળ/gi, 'Behind'],
@@ -1734,6 +1752,7 @@ IMPORTANT RULES:
 1. RETAIL CONSOLIDATION: All walk-in, cash counter, unnamed, or retail customer sales MUST BE CONSOLIDATED INTO A SINGLE order with "clientName": "Retail". NEVER create multiple separate "Retail" sales entries. Regular named business customers (e.g., specific shop names like "Jay Ambe Provision", "Rohitbhai") each get their own separate order.
 2. DIFFERENT RATES MUST REMAIN SEPARATE LINE ITEMS: If the same SKU is sold at different rates (for example: "Bailey 1 Liter 10 @ 120" and "Bailey 1 Liter 5 @ 125"), DO NOT merge them! Keep each distinct rate as its own item in the "items" array with its exact qty and rate. Only combine items if BOTH the SKU and the unit rate are identical.
 3. EXTRACT ADDRESS / DELIVERY LOCATION: If an address, delivery location, road, area, or landmark is visible or mentioned for a customer (e.g. 'Waghodia Road', 'Manjalpur', 'Opposite Bank'), ALWAYS extract it into the 'address' field in clean English Title Case.
+4. MULTI-DATE / CATERING / EVENT ORDERS: If a document or note lists multiple dates, shifts (sanje/evening, savare/morning), or venues (e.g. Party Plots), each date/event represents a SEPARATE ORDER for that client. Generate an individual entry in the "sales" array for EACH date/event, populating "date" (YYYY-MM-DD), "deliveryTime" (e.g. "Evening", "Morning"), and "address" (e.g. "Balaji Party Plot Harni Road Vadodara").
 
 Return strict JSON:
 {
@@ -1748,6 +1767,9 @@ Return strict JSON:
       "clientName": string (customer or shop name; for unknown, walk-in, or unnamed retail buyers, use "Retail"),
       "mobile": string (if written, else ""),
       "address": string (delivery address, road, area, or landmark in English if mentioned, else ""),
+      "date": string (order or event date in YYYY-MM-DD if specified, else ""),
+      "deliveryDate": string (delivery/event date in YYYY-MM-DD if specified, else ""),
+      "deliveryTime": string (delivery shift/time such as "Evening", "Morning", etc., if specified, else ""),
       "items": [
         {
           "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",
@@ -2502,6 +2524,7 @@ User Text: ${rawText.slice(0, 1000)}`
         (mode === 'retail_sales' ||
           /(?:sales|peti|box|case|bxs|qty|cash|rokda|gpay|upi|udhar|baaki|jama)\b/i.test(rawText) ||
           /(?:200ml|250ml|500ml|1\s*l|2\s*l|anjani|bailey)/i.test(rawText) ||
+          /(?:nung|botal|bottel|bottle|બોટલ|નંગ|caterer|caterers|party\s*plot|પાર્ટી\s*પ્લોટ)\b/i.test(rawText) ||
           (rawText.includes('\n') && /\d+/.test(rawText)))
 
       if (isSalesNotes) {
@@ -2529,7 +2552,14 @@ CRITICAL RULES & USER INSTRUCTIONS:
 2. DIFFERENT RATES MUST REMAIN SEPARATE LINE ITEMS (MANDATORY): If the user writes or pastes the same SKU at different rates (for example: "Bailey 1 Liter 10 @ 120" and "Bailey 1 Liter 5 @ 125", or "10 case 120 bhav, 5 case 125 bhav"), ALWAYS output them as SEPARATE items in the "items" array with their own qty and rate. NEVER combine items that have different rates into one line! Only combine items if BOTH the product SKU AND unit rate are identical.
 3. NAMED CUSTOMERS: Regular business / named customers (e.g., "Jay Ambe Provision", "Rohitbhai") each get their own individual order in the "sales" array.
 4. EXTRACT ADDRESS / DELIVERY LOCATION: If an address, delivery location, road, area, or landmark is written or dictated for a customer (e.g. 'Waghodia Road', 'Manjalpur', 'Opposite D-Mart'), ALWAYS extract it into the 'address' field in clean English Title Case.
-5. USER INSTRUCTIONS: Strictly follow any explicit instructions written by the user in the prompt (such as specific pricing, dates, or payment notes).
+5. MULTI-DATE / CATERING / EVENT ORDERS (MANDATORY): If a note or message contains multiple dates, shifts (sanje/evening, savare/morning), or venues (e.g. Party Plots, marriage halls), each date/event represents a SEPARATE ORDER for that client. Generate an individual entry in the "sales" array for EACH date/event.
+   - Populate "date": "YYYY-MM-DD" for that specific order. Convert dates like "18/11/26" or "18/11/2026" to "2026-11-18".
+   - Populate "deliveryTime": shift/time like "Evening", "Morning", "Afternoon", or time written.
+   - Populate "address": venue/location in English Title Case (e.g., "Balaji Party Plot Harni Road Vadodara", "PG Party Plot Harni Baroda").
+   - Understand Gujarati colloquial expressions:
+     * "nung" / "nang" / "નંગ" = pieces / units / bottles (default to "Anjani 200ml").
+     * "hajar" / "હજાર" = thousand. Note: "4000 hajar nung" is a Gujarati vernacular idiom meaning 4000 bottles/units (qty: 4000). "4 hajar" means 4000.
+6. USER INSTRUCTIONS: Strictly follow any explicit instructions written by the user in the prompt (such as specific pricing, dates, or payment notes).
 
 Return strict JSON:
 {
@@ -2544,6 +2574,9 @@ Return strict JSON:
       "clientName": string (customer or shop name; for unknown, walk-in, or unnamed retail buyers, use "Retail"),
       "mobile": string (if provided, else ""),
       "address": string (delivery address, road, area, or landmark in English if mentioned, else ""),
+      "date": string (order or event date in YYYY-MM-DD, e.g. "2026-11-18", if specified; else today),
+      "deliveryDate": string (delivery/event date in YYYY-MM-DD if specified),
+      "deliveryTime": string (delivery shift/time such as "Evening", "Morning", etc., if specified, else ""),
       "items": [
         {
           "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",

@@ -51,5 +51,11 @@ service cloud.firestore {
       allow read: if request.auth != null && (isAdmin() || true);
       allow write: if isAdmin();
     }
+
+    // AI Feedbacks collection:
+    // - Authenticated users can submit feedback and review weekly
+    match /ai_feedbacks/{feedbackId} {
+      allow read, write: if request.auth != null;
+    }
   }
 }

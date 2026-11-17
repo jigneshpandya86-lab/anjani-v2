@@ -31,6 +31,9 @@ vi.mock('../utils/aiImageHelper', () => ({
 const mockAddClient = vi.fn()
 const mockAddPayment = vi.fn()
 const mockAddOrder = vi.fn()
+const mockAddAiFeedback = vi.fn(() => Promise.resolve({ id: 'fb-new', status: 'pending_weekly_review' }))
+const mockMarkAiFeedbackReviewed = vi.fn(() => Promise.resolve())
+const mockDeleteAiFeedback = vi.fn(() => Promise.resolve())
 
 vi.mock('../store/clientStore', () => ({
   useClientStore: (selector) => {
@@ -89,6 +92,20 @@ vi.mock('../store/clientStore', () => ({
       addAiMemory: vi.fn(() => Promise.resolve({ id: 'm2', rule: 'Test Rule', category: 'general_rule', active: true })),
       toggleAiMemory: vi.fn(),
       deleteAiMemory: vi.fn(),
+      aiFeedbacks: [
+        {
+          id: 'fb-1',
+          type: 'catering_sales',
+          rating: 'positive',
+          message: 'Parsed Maruti caterers perfectly with 3 separate dates and venues',
+          status: 'pending_weekly_review',
+          submittedAt: '2026-11-17T12:00:00Z',
+        },
+      ],
+      fetchAiFeedbacks: vi.fn(),
+      addAiFeedback: mockAddAiFeedback,
+      markAiFeedbackReviewed: mockMarkAiFeedbackReviewed,
+      deleteAiFeedback: mockDeleteAiFeedback,
     }
     return selector ? selector(state) : state
   },
@@ -581,6 +598,64 @@ describe('AiAssistantDrawer', () => {
         amount: 850,
       }),
     )
+
+    unmount()
+  })
+
+  it('renders Feedback button, toggles feedback modal, and supports submitting & weekly review', async () => {
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+        onOpenPaymentModal={() => {}}
+        onOpenOrderModal={() => {}}
+        onOpenAddClient={() => {}}
+      />
+    )
+
+    // Check Header Feedback button
+    const feedbackBtn = screen.getByRole('button', { name: /AI Feedback/i })
+    expect(feedbackBtn).toBeInTheDocument()
+
+    // Toggle open Feedback accordion
+    fireEvent.click(feedbackBtn)
+
+    expect(screen.getByText('AI Feedback & Weekly Review')).toBeInTheDocument()
+    expect(screen.getAllByText('Submit Feedback').length).toBeGreaterThan(0)
+    expect(screen.getByText('Weekly Review')).toBeInTheDocument()
+
+    // Fill submit feedback form
+    const textarea = screen.getByPlaceholderText(/Enter what went well or what needs improvement/i)
+    fireEvent.change(textarea, {
+      target: { value: 'Maruti caterers 3 orders recognized accurately with separate dates' },
+    })
+
+    const submitBtn = screen.getByRole('button', { name: /Send Feedback/i })
+    await fireEvent.click(submitBtn)
+
+    expect(mockAddAiFeedback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'catering_sales',
+        rating: 'positive',
+        message: 'Maruti caterers 3 orders recognized accurately with separate dates',
+        status: 'pending_weekly_review',
+      })
+    )
+
+    // Switch to Weekly Review tab
+    const weeklyTabBtn = screen.getByRole('button', { name: /Weekly Review/i })
+    fireEvent.click(weeklyTabBtn)
+
+    // Check that pending feedback item from store is visible
+    expect(
+      screen.getByText(/Parsed Maruti caterers perfectly with 3 separate dates and venues/i)
+    ).toBeInTheDocument()
+
+    // Click Reviewed button
+    const markReviewedBtn = screen.getByRole('button', { name: /✓ Reviewed/i })
+    await fireEvent.click(markReviewedBtn)
+    expect(mockMarkAiFeedbackReviewed).toHaveBeenCalledWith('fb-1', 'Reviewed weekly')
 
     unmount()
   })
