@@ -29,7 +29,6 @@ import {
   AtSign,
   ArrowLeft,
   ChevronDown,
-  Brain,
   Sun,
   Moon,
   Edit2,
@@ -52,7 +51,6 @@ import { consolidateRetailSales } from '../utils/salesBatchUtils'
 import { findBestExistingClientMatch, findMatchingClient } from '../utils/clientMatchingUtils'
 import { ensureEnglishText, sanitizeClientForEnglish, isMerchantOrSelfName } from '../utils/textUtils'
 import { getRecentSkuPrice, formatPaymentNarration } from '../utils/orderUtils'
-import { detectMemoryIntent, isQueryingMemories, formatMemoriesForPrompt, extractStructuredRuleData } from '../utils/aiMemoryUtils'
 import {
   getMainMenuMessage,
   startChatbotFlow,
@@ -117,31 +115,16 @@ export default function AiAssistantDrawer({
   const aiPrefillPrompt = useClientStore((state) => state.aiPrefillPrompt)
   const aiPrefillFile = useClientStore((state) => state.aiPrefillFile)
   const aiMemories = useClientStore((state) => state.aiMemories)
-  const fetchAiMemories = useClientStore((state) => state.fetchAiMemories)
-  const addAiMemory = useClientStore((state) => state.addAiMemory)
-  const toggleAiMemory = useClientStore((state) => state.toggleAiMemory)
-  const deleteAiMemory = useClientStore((state) => state.deleteAiMemory)
-  const aiFeedbacks = useClientStore((state) => state.aiFeedbacks) || []
-  const fetchAiFeedbacks = useClientStore((state) => state.fetchAiFeedbacks)
   const addAiFeedback = useClientStore((state) => state.addAiFeedback)
-  const markAiFeedbackReviewed = useClientStore((state) => state.markAiFeedbackReviewed)
-  const deleteAiFeedback = useClientStore((state) => state.deleteAiFeedback)
 
   const [activeChatbotFlow, setActiveChatbotFlow] = useState(null)
-  const [showMemoryModal, setShowMemoryModal] = useState(false)
-  const [newMemoryInput, setNewMemoryInput] = useState('')
-  const [newMemoryCategory, setNewMemoryCategory] = useState('general_rule')
-  const [isSavingMemory, setIsSavingMemory] = useState(false)
 
   const [showFeedbackModal, setShowFeedbackModal] = useState(false)
-  const [feedbackTab, setFeedbackTab] = useState('submit') // 'submit' | 'weekly_review'
   const [feedbackType, setFeedbackType] = useState('catering_sales')
   const [feedbackRating, setFeedbackRating] = useState('positive')
   const [feedbackText, setFeedbackText] = useState('')
   const [feedbackSnippet, setFeedbackSnippet] = useState('')
-  const [feedbackSaveAsRule, setFeedbackSaveAsRule] = useState(false)
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false)
-  const [weeklyReviewFilter, setWeeklyReviewFilter] = useState('pending')
 
   const [inputMessage, setInputMessage] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
@@ -211,39 +194,9 @@ export default function AiAssistantDrawer({
   }, [showLangMenu])
 
   useEffect(() => {
-    const unsub = fetchAiMemories?.()
-    return () => unsub?.()
-  }, [fetchAiMemories])
-
-  useEffect(() => {
     const unsub = fetchJobs?.()
     return () => unsub?.()
   }, [fetchJobs])
-
-  const handleAddNewMemoryManual = async (e) => {
-    e?.preventDefault()
-    if (!newMemoryInput.trim()) return
-    setIsSavingMemory(true)
-    try {
-      const structured = extractStructuredRuleData(newMemoryInput.trim(), clients)
-      const saved = await addAiMemory({
-        rule: newMemoryInput.trim(),
-        category: newMemoryCategory,
-        source: 'manual',
-        structured,
-      })
-      if (saved?.conflict?.hasConflict) {
-        toast.success(`Updated rule! ${saved.conflict.reason}`, { icon: '🧠', duration: 3500 })
-      } else {
-        toast.success('Learned rule saved to permanent memory!', { icon: '🧠' })
-      }
-      setNewMemoryInput('')
-    } catch (err) {
-      toast.error('Failed to save rule: ' + err.message)
-    } finally {
-      setIsSavingMemory(false)
-    }
-  }
 
   const handleOpenFeedbackForMessage = (msg) => {
     let snippet = ''
@@ -270,7 +223,6 @@ export default function AiAssistantDrawer({
     }
     setFeedbackSnippet(snippet)
     setFeedbackType(type)
-    setFeedbackTab('submit')
     setShowFeedbackModal(true)
   }
 
@@ -287,71 +239,21 @@ export default function AiAssistantDrawer({
         rating: feedbackRating,
         message: feedbackText.trim(),
         rawSnippet: feedbackSnippet || '',
-        status: 'pending_weekly_review',
+        status: 'pending_review',
         submittedAt: new Date().toISOString(),
       })
 
-      // If user toggled "Save as AI Memory Rule"
-      if (feedbackSaveAsRule && feedbackText.trim()) {
-        try {
-          await addAiMemory?.({
-            rule: feedbackText.trim(),
-            category: feedbackType === 'catering_sales' ? 'sales_rule' : 'general_rule',
-          })
-          toast.success('Also saved as permanent AI Memory rule!', { icon: '🧠' })
-        } catch (_ruleErr) {
-          // ignore rule error
-        }
-      }
-
-      toast.success('Feedback submitted! Added to weekly review queue.', { icon: '📝' })
+      toast.success('Feedback submitted successfully! Chatbox ready.', { icon: '📝' })
       setFeedbackText('')
       setFeedbackSnippet('')
-      setFeedbackSaveAsRule(false)
-      setFeedbackTab('weekly_review')
+      setInputMessage('')
+      setShowFeedbackModal(false)
     } catch (err) {
       toast.error('Failed to submit feedback: ' + err.message)
     } finally {
       setIsSubmittingFeedback(false)
     }
   }
-
-  const handleMarkReviewed = async (id) => {
-    try {
-      await markAiFeedbackReviewed?.(id, 'Reviewed weekly')
-      toast.success('Marked as reviewed!', { icon: '✓' })
-    } catch (err) {
-      toast.error('Failed to update: ' + err.message)
-    }
-  }
-
-  const handleConvertToRule = async (item) => {
-    try {
-      await addAiMemory?.({
-        rule: item.message,
-        category: 'general_rule',
-      })
-      await markAiFeedbackReviewed?.(item.id, 'Converted to AI Memory rule')
-      toast.success('Converted to AI Memory rule!', { icon: '🧠' })
-    } catch (err) {
-      toast.error('Failed: ' + err.message)
-    }
-  }
-
-  const handleDeleteFeedback = async (id) => {
-    try {
-      await deleteAiFeedback?.(id)
-      toast.success('Feedback deleted')
-    } catch (err) {
-      toast.error('Failed to delete: ' + err.message)
-    }
-  }
-
-  useEffect(() => {
-    if (isOpen) {
-      fetchAiFeedbacks?.()
-    }
-  }, [isOpen, fetchAiFeedbacks])
 
   useEffect(() => {
     if (isOpen && initialMode) {
@@ -983,77 +885,6 @@ export default function AiAssistantDrawer({
     setIsClientMode(false)
     setIsAccountsMode(false)
 
-    // Memory & Learning Check (Immediate zero-latency response & persistent memory save)
-    if (!filePayload && query) {
-      if (isQueryingMemories(query)) {
-        const activeList = aiMemories.filter((m) => m && m.active !== false)
-        let reply = ''
-        if (activeList.length === 0) {
-          reply = `🧠 I don't have any saved business memories or error learnings yet.\n\nYou can teach me anytime! For example:\n• *"Remember: Royal Hotel takes 200ml at 115"*\n• *"Rule: 1 petli means 200ml box"*\n• Or correct me by saying *"That's wrong, ... "*`
-        } else {
-          reply = `🧠 **Active Business Memories & Learned Error Rules (${activeList.length}):**\n\n`
-          activeList.forEach((m, idx) => {
-            const icon = m.category === 'error_correction' ? '⚠️' : '📌'
-            reply += `${idx + 1}. ${icon} ${m.rule}\n`
-          })
-          reply += `\n*I actively apply all these rules to prevent mistakes across your orders and calculations.*`
-        }
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: 'asst-' + Date.now(),
-            sender: 'assistant',
-            text: reply,
-            isMemoryList: true,
-            timestamp: new Date(),
-          },
-        ])
-        return
-      }
-
-      const memoryIntent = detectMemoryIntent(query, clients)
-      if (memoryIntent && memoryIntent.rule) {
-        try {
-          const saved = await addAiMemory({
-            rule: memoryIntent.rule,
-            category: memoryIntent.category,
-            source: memoryIntent.isCorrection ? 'chat_correction' : 'chat_instruction',
-            structured: memoryIntent.structured,
-          })
-          let ackText = memoryIntent.isCorrection
-            ? `🧠 **Learned from Correction!**\n\nI have saved this to my permanent memory:\n📌 *"${memoryIntent.rule}"*\n\nI will strictly enforce this rule and avoid repeating this error in future tasks.`
-            : `🧠 **Saved to Permanent Memory!**\n\nI will remember this business rule:\n📌 *"${memoryIntent.rule}"*\n\nThis is now permanently active across all orders, calculations, and AI responses.`
-
-          if (saved?.conflict?.hasConflict) {
-            ackText += `\n\n*(Note: Automatically updated prior rule: "${saved.conflict.conflictingMemory.rule}" to prevent conflicts.)*`
-          }
-
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: 'asst-' + Date.now(),
-              sender: 'assistant',
-              text: ackText,
-              isMemoryAck: true,
-              data: saved,
-              timestamp: new Date(),
-            },
-          ])
-          toast.success(
-            saved?.conflict?.hasConflict
-              ? 'Updated rule in AI Memory!'
-              : 'Saved to AI Memory!',
-            { icon: '🧠', duration: 2500 }
-          )
-          return
-        } catch (memErr) {
-          console.error('Failed to save memory from chat:', memErr)
-          toast.error('Could not save memory: ' + memErr.message)
-        }
-      }
-    }
-
     // 1. Zero-Token Local Intent Check (Only if no file is uploaded and not in explicit multi-line sales mode)
     if (!filePayload && query && !isSales && !isAccounts) {
       const localRoute = tryLocalIntentRoute(query, {
@@ -1671,56 +1502,19 @@ export default function AiAssistantDrawer({
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => setShowMemoryModal((prev) => !prev)}
-              className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                showMemoryModal
-                  ? 'bg-[#ff9900] text-gray-950 shadow-sm'
-                  : 'text-gray-300 hover:text-white hover:bg-white/10'
-              }`}
-              title="Permanent AI Memory (Click to open)"
-              aria-label="View AI Memories"
-            >
-              <Brain className="w-4 h-4 text-[#ff9900]" />
-              <span className="hidden sm:inline font-black text-[11px]">Memory</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                  showMemoryModal ? 'bg-black text-[#ff9900]' : 'bg-white/20 text-white'
-                }`}
-              >
-                {aiMemories.filter((m) => m && m.active !== false).length}
-              </span>
-              <ChevronDown
-                size={12}
-                className={`transition-transform duration-200 ${
-                  showMemoryModal ? 'rotate-180 text-gray-950' : 'text-gray-400'
-                }`}
-              />
-            </button>
-            <button
-              type="button"
               onClick={() => {
                 setShowFeedbackModal((prev) => !prev)
-                if (!showFeedbackModal) fetchAiFeedbacks?.()
               }}
               className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 showFeedbackModal
                   ? 'bg-[#ff9900] text-gray-950 shadow-sm'
                   : 'text-gray-300 hover:text-white hover:bg-white/10'
               }`}
-              title="Submit AI Feedback & Weekly Review"
+              title="Submit Feedback"
               aria-label="AI Feedback"
             >
               <MessageSquarePlus className="w-4 h-4 text-[#ff9900]" />
               <span className="hidden sm:inline font-black text-[11px]">Feedback</span>
-              {aiFeedbacks.filter((f) => f && f.status === 'pending_weekly_review').length > 0 && (
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                    showFeedbackModal ? 'bg-black text-[#ff9900]' : 'bg-rose-500 text-white'
-                  }`}
-                >
-                  {aiFeedbacks.filter((f) => f && f.status === 'pending_weekly_review').length}
-                </span>
-              )}
             </button>
             <button
               type="button"
@@ -1741,478 +1535,121 @@ export default function AiAssistantDrawer({
           </div>
         </div>
 
-        {/* Click to Open: Permanent AI Memory & Learned Rules Accordion Card */}
-        <div className="border-b border-amber-200/90 bg-amber-50/70 overflow-hidden transition-all shrink-0">
-          <button
-            type="button"
-            onClick={() => setShowMemoryModal((prev) => !prev)}
-            className="w-full px-3.5 py-1.5 flex items-center justify-between cursor-pointer select-none hover:bg-amber-100/60 transition-colors text-left"
-            aria-expanded={showMemoryModal}
-            aria-label="Toggle Permanent AI Memory"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <Brain className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-              <div className="flex items-center gap-1.5 truncate">
-                <span className="font-black text-gray-900 uppercase tracking-tight text-[11px]">
-                  Permanent AI Memory
-                </span>
-                <span className="text-[10px] font-black px-1.5 py-0.2 rounded-full bg-amber-200 text-amber-900">
-                  {aiMemories.filter((m) => m && m.active !== false).length} Active
-                </span>
-              </div>
-              <span className="text-[10px] text-gray-500 font-medium hidden sm:inline truncate">
-                • Self-learning rules & error corrections
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tight">
-                {showMemoryModal ? 'Open' : 'Tap to open'}
-              </span>
-              <ChevronDown
-                size={13}
-                className={`text-gray-400 transition-transform duration-200 ${
-                  showMemoryModal ? 'rotate-180 text-amber-700' : ''
-                }`}
-              />
-            </div>
-          </button>
-
-          {showMemoryModal && (
-            <div className="p-3 pt-2 text-xs space-y-2.5 border-t border-amber-200/80 animate-in fade-in">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-gray-500 font-semibold">
-                  Auto-enforced to prevent mistakes
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowMemoryModal(false)}
-                  className="text-[10px] font-bold text-gray-500 hover:text-gray-800 underline cursor-pointer"
-                >
-                  Collapse
-                </button>
-              </div>
-
-            {/* Quick Add Form */}
-            <form onSubmit={handleAddNewMemoryManual} className="flex gap-1.5">
-              <input
-                type="text"
-                value={newMemoryInput}
-                onChange={(e) => setNewMemoryInput(e.target.value)}
-                placeholder="Teach a rule (e.g. Royal Hotel rate is 115, petli = 200ml)..."
-                className="flex-1 bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 placeholder-gray-400 outline-none focus:ring-1 focus:ring-amber-500"
-              />
-              <select
-                value={newMemoryCategory}
-                onChange={(e) => setNewMemoryCategory(e.target.value)}
-                className="bg-white border border-amber-300 rounded-lg px-1.5 py-1 text-[11px] font-semibold text-gray-700 outline-none"
-              >
-                <option value="general_rule">📌 Rule</option>
-                <option value="error_correction">⚠️ Correction</option>
-                <option value="client_rule">👤 Client / Rate</option>
-                <option value="shorthand">📖 Shorthand</option>
-                <option value="staff_rule">🚚 Staff</option>
-                <option value="operational">⏱️ Operations</option>
-              </select>
-              <button
-                type="submit"
-                disabled={isSavingMemory || !newMemoryInput.trim()}
-                className="bg-[#131921] hover:bg-black text-[#ff9900] px-2.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide cursor-pointer transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Learn</span>
-              </button>
-            </form>
-
-            {/* Memories List */}
-            <div className="max-h-48 overflow-y-auto space-y-1.5 pr-0.5 scrollbar-thin">
-              {aiMemories.length === 0 ? (
-                <div className="text-center py-3 text-gray-400 text-xs italic bg-white/70 rounded-lg border border-dashed border-amber-200">
-                  No memories saved yet. Teach the AI in chat (e.g. "Remember: Royal rate is 115") or add above.
-                </div>
-              ) : (
-                aiMemories.map((m) => {
-                  const isCorrection = m.category === 'error_correction'
-                  const isClient = m.category === 'client_rule'
-                  const isShort = m.category === 'shorthand'
-                  const isStaff = m.category === 'staff_rule'
-                  return (
-                    <div
-                      key={m.id}
-                      className={`p-2 rounded-lg border flex items-center justify-between gap-2 transition-all ${
-                        m.active !== false
-                          ? isCorrection
-                            ? 'bg-red-50/70 border-red-200 text-gray-900'
-                            : isClient
-                              ? 'bg-blue-50/70 border-blue-200 text-gray-900'
-                              : isShort
-                                ? 'bg-purple-50/70 border-purple-200 text-gray-900'
-                                : isStaff
-                                  ? 'bg-emerald-50/70 border-emerald-200 text-gray-900'
-                                  : 'bg-white border-amber-200 text-gray-900'
-                          : 'bg-gray-100 border-gray-200 text-gray-400 opacity-60'
-                      }`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <span
-                            className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded-full tracking-wider ${
-                              isCorrection
-                                ? 'bg-red-100 text-red-700'
-                                : isClient
-                                  ? 'bg-blue-100 text-blue-700'
-                                  : isShort
-                                    ? 'bg-purple-100 text-purple-700'
-                                    : isStaff
-                                      ? 'bg-emerald-100 text-emerald-700'
-                                      : 'bg-amber-100 text-amber-800'
-                            }`}
-                          >
-                            {isCorrection
-                              ? 'Learned Correction'
-                              : isClient
-                                ? 'Client & Rate'
-                                : isShort
-                                  ? 'Shorthand'
-                                  : isStaff
-                                    ? 'Staff'
-                                    : 'Rule'}
-                          </span>
-                          {m.structured?.enforcedRate != null && (
-                            <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black px-1.5 py-0.2 rounded-full">
-                              ₹{m.structured.enforcedRate}
-                            </span>
-                          )}
-                          {m.structured?.deliveryDay && (
-                            <span className="bg-cyan-100 text-cyan-800 text-[9px] font-black px-1.5 py-0.2 rounded-full">
-                              {m.structured.deliveryDay}
-                            </span>
-                          )}
-                          {m.active === false && (
-                            <span className="text-[9px] font-bold text-gray-400 italic">
-                              {m.supersededReason ? 'Superseded' : 'Paused'}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs font-semibold leading-snug break-words">{m.rule}</p>
-                      </div>
-
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => toggleAiMemory?.(m.id, !m.active)}
-                          className={`px-1.5 py-1 rounded text-[10px] font-bold transition-colors cursor-pointer border ${
-                            m.active !== false
-                              ? 'bg-emerald-100 border-emerald-300 text-emerald-800'
-                              : 'bg-gray-200 border-gray-300 text-gray-600'
-                          }`}
-                          title={m.active !== false ? 'Active (Click to pause)' : 'Paused (Click to activate)'}
-                        >
-                          {m.active !== false ? 'Active' : 'Off'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteAiMemory?.(m.id)}
-                          className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
-                          title="Delete memory"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-        {/* AI Feedback & Weekly Review Accordion Card */}
+        {/* Single Streamlined AI Feedback Card */}
         {showFeedbackModal && (
           <div className="border-b border-blue-200 bg-blue-50/70 p-3 text-xs space-y-3 shrink-0 animate-in fade-in">
-            {/* Header with Tabs and Close */}
+            {/* Header with Title and Close */}
             <div className="flex items-center justify-between border-b border-blue-200/80 pb-2">
               <div className="flex items-center gap-1.5">
                 <MessageSquarePlus className="w-4 h-4 text-blue-700 shrink-0" />
-                <span className="font-black text-gray-900 text-xs">AI Feedback & Weekly Review</span>
+                <span className="font-black text-gray-900 text-xs">Submit AI Feedback</span>
               </div>
-              <div className="flex items-center gap-1">
-                <div className="flex bg-blue-100 p-0.5 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setShowFeedbackModal(false)}
+                className="p-1 text-gray-400 hover:text-gray-700 rounded cursor-pointer"
+                title="Close Feedback"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            {/* Submit Feedback Form */}
+            <form onSubmit={handleSubmitFeedback} className="space-y-2.5">
+              {feedbackSnippet && (
+                <div className="p-2 bg-white rounded-lg border border-blue-100 text-[11px] text-gray-600">
+                  <span className="font-bold text-gray-700 block text-[10px] uppercase tracking-wide">Referenced Context:</span>
+                  <span className="line-clamp-2 italic">{feedbackSnippet}</span>
+                </div>
+              )}
+
+              {/* Rating selection */}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tight">Rating:</span>
+                <div className="flex gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setFeedbackTab('submit')}
-                    aria-label="Submit Feedback Tab"
-                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold cursor-pointer transition-colors ${
-                      feedbackTab === 'submit' ? 'bg-white text-blue-900 shadow-2xs' : 'text-blue-700 hover:text-blue-900'
+                    onClick={() => setFeedbackRating('positive')}
+                    className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+                      feedbackRating === 'positive'
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
                     }`}
                   >
-                    Submit Feedback
+                    <ThumbsUp size={12} />
+                    <span>Accurate</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => setFeedbackTab('weekly_review')}
-                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
-                      feedbackTab === 'weekly_review' ? 'bg-white text-blue-900 shadow-2xs' : 'text-blue-700 hover:text-blue-900'
+                    onClick={() => setFeedbackRating('negative')}
+                    className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+                      feedbackRating === 'negative'
+                        ? 'bg-rose-600 text-white'
+                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
                     }`}
                   >
-                    <span>Weekly Review</span>
-                    {aiFeedbacks.filter((f) => f && f.status === 'pending_weekly_review').length > 0 && (
-                      <span className="px-1 py-0.2 rounded-full bg-rose-500 text-white text-[8px] font-black">
-                        {aiFeedbacks.filter((f) => f && f.status === 'pending_weekly_review').length}
-                      </span>
-                    )}
+                    <ThumbsDown size={12} />
+                    <span>Needs Correction</span>
                   </button>
                 </div>
+              </div>
+
+              {/* Category selection */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tight">Topic:</span>
+                {[
+                  { id: 'catering_sales', label: 'Catering / Multi-Date' },
+                  { id: 'retail_sales', label: 'Retail Sales' },
+                  { id: 'client_matching', label: 'Client Matching' },
+                  { id: 'payment_ocr', label: 'Payment OCR' },
+                  { id: 'general', label: 'General / Other' },
+                ].map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setFeedbackType(cat.id)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors ${
+                      feedbackType === cat.id
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Feedback Comment Textarea */}
+              <div>
+                <textarea
+                  rows={2}
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  placeholder="Enter what went well or what needs improvement..."
+                  className="w-full p-2 bg-white border border-blue-200 rounded-lg text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Submit button */}
+              <div className="flex justify-end gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => setShowFeedbackModal(false)}
-                  className="p-1 text-gray-400 hover:text-gray-700 rounded cursor-pointer"
-                  title="Close Feedback"
+                  className="px-3 py-1 rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-100 cursor-pointer"
                 >
-                  <X size={14} />
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  aria-label="Send Feedback"
+                  disabled={isSubmittingFeedback || !feedbackText.trim()}
+                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                >
+                  {isSubmittingFeedback ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                  <span>Send Feedback</span>
                 </button>
               </div>
-            </div>
-
-            {/* TAB 1: Submit Feedback Form */}
-            {feedbackTab === 'submit' ? (
-              <form onSubmit={handleSubmitFeedback} className="space-y-2.5">
-                {feedbackSnippet && (
-                  <div className="p-2 bg-white rounded-lg border border-blue-100 text-[11px] text-gray-600">
-                    <span className="font-bold text-gray-700 block text-[10px] uppercase tracking-wide">Referenced Context:</span>
-                    <span className="line-clamp-2 italic">{feedbackSnippet}</span>
-                  </div>
-                )}
-
-                {/* Rating selection */}
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tight">Rating:</span>
-                  <div className="flex gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setFeedbackRating('positive')}
-                      className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
-                        feedbackRating === 'positive'
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      <ThumbsUp size={12} />
-                      <span>Accurate</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFeedbackRating('negative')}
-                      className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
-                        feedbackRating === 'negative'
-                          ? 'bg-rose-600 text-white'
-                          : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      <ThumbsDown size={12} />
-                      <span>Needs Correction</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Category selection */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tight">Topic:</span>
-                  {[
-                    { id: 'catering_sales', label: 'Catering / Multi-Date' },
-                    { id: 'retail_sales', label: 'Retail Sales' },
-                    { id: 'client_matching', label: 'Client Matching' },
-                    { id: 'payment_ocr', label: 'Payment OCR' },
-                    { id: 'general', label: 'General / Other' },
-                  ].map((cat) => (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => setFeedbackType(cat.id)}
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors ${
-                        feedbackType === cat.id
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      {cat.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Feedback Comment Textarea */}
-                <div>
-                  <textarea
-                    rows={2}
-                    value={feedbackText}
-                    onChange={(e) => setFeedbackText(e.target.value)}
-                    placeholder="Enter what went well or what needs improvement (e.g. 'Maruti Caterers date was 20/11' or 'Recognized slang')..."
-                    className="w-full p-2 bg-white border border-blue-200 rounded-lg text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-
-                {/* Optional: Save as Memory Rule */}
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={feedbackSaveAsRule}
-                    onChange={(e) => setFeedbackSaveAsRule(e.target.checked)}
-                    className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 focus:ring-0"
-                  />
-                  <span className="text-[11px] text-gray-700 font-medium">
-                    Also convert and save this as a permanent AI Memory rule
-                  </span>
-                </label>
-
-                {/* Submit button */}
-                <div className="flex justify-end gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowFeedbackModal(false)}
-                    className="px-3 py-1 rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-100 cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    aria-label="Send Feedback"
-                    disabled={isSubmittingFeedback || !feedbackText.trim()}
-                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1"
-                  >
-                    {isSubmittingFeedback ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-                    <span>Send Feedback</span>
-                  </button>
-                </div>
-              </form>
-            ) : (
-              /* TAB 2: Weekly Review Queue */
-              <div className="space-y-2">
-                {/* Filter and Summary Header */}
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-bold text-gray-700">
-                    Weekly Queue ({aiFeedbacks.filter((f) => f && f.status === 'pending_weekly_review').length} pending)
-                  </span>
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setWeeklyReviewFilter('pending')}
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer ${
-                        weeklyReviewFilter === 'pending' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200'
-                      }`}
-                    >
-                      Pending Only
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setWeeklyReviewFilter('all')}
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer ${
-                        weeklyReviewFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200'
-                      }`}
-                    >
-                      All ({aiFeedbacks.length})
-                    </button>
-                  </div>
-                </div>
-
-                {/* Feedbacks List */}
-                <div className="max-h-[260px] overflow-y-auto space-y-1.5 pr-0.5">
-                  {(() => {
-                    const filtered = aiFeedbacks.filter((f) => {
-                      if (!f) return false
-                      if (weeklyReviewFilter === 'pending') return f.status === 'pending_weekly_review'
-                      return true
-                    })
-                    if (filtered.length === 0) {
-                      return (
-                        <div className="p-4 text-center bg-white rounded-xl border border-blue-100 text-gray-400">
-                          <CheckCircle2 className="w-6 h-6 text-emerald-500 mx-auto mb-1" />
-                          <p className="font-bold text-gray-700 text-xs">All Caught Up!</p>
-                          <p className="text-[10px]">No pending feedback items in weekly review queue.</p>
-                        </div>
-                      )
-                    }
-
-                    return filtered.map((item) => {
-                      const isPending = item.status === 'pending_weekly_review'
-                      return (
-                        <div
-                          key={item.id}
-                          className="bg-white p-2 rounded-xl border border-gray-200 shadow-2xs space-y-1 text-xs"
-                        >
-                          <div className="flex items-center justify-between gap-1">
-                            <div className="flex items-center gap-1.5">
-                              <span
-                                className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase ${
-                                  item.rating === 'positive'
-                                    ? 'bg-emerald-50 text-emerald-700'
-                                    : 'bg-rose-50 text-rose-700'
-                                }`}
-                              >
-                                {item.rating === 'positive' ? '👍 Accurate' : '⚠️ Correction'}
-                              </span>
-                              <span className="px-1.5 py-0.2 rounded bg-gray-100 text-gray-700 text-[8px] font-bold uppercase">
-                                {item.type || 'general'}
-                              </span>
-                            </div>
-                            <span
-                              className={`text-[8px] font-black px-1.5 py-0.2 rounded uppercase ${
-                                isPending ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
-                              }`}
-                            >
-                              {isPending ? '⏳ Pending' : '✓ Reviewed'}
-                            </span>
-                          </div>
-
-                          <p className="text-gray-900 font-medium text-[11px]">{item.message}</p>
-                          {item.rawSnippet && (
-                            <p className="text-[9px] text-gray-400 italic truncate max-w-full">
-                              Snippet: {item.rawSnippet}
-                            </p>
-                          )}
-
-                          <div className="flex items-center justify-between pt-1 border-t border-gray-100 text-[10px]">
-                            <span className="text-[9px] text-gray-400">
-                              {item.createdAt?.toDate?.()
-                                ? item.createdAt.toDate().toLocaleDateString('en-GB')
-                                : (item.submittedAt ? item.submittedAt.slice(0, 10) : 'Recent')}
-                            </span>
-                            <div className="flex items-center gap-1">
-                              {isPending && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleMarkReviewed(item.id)}
-                                  className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded text-[9px] font-bold cursor-pointer"
-                                  title="Mark as reviewed"
-                                >
-                                  ✓ Reviewed
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => handleConvertToRule(item)}
-                                className="px-1.5 py-0.5 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded text-[9px] font-bold flex items-center gap-0.5 cursor-pointer"
-                                title="Convert to permanent AI rule"
-                              >
-                                <Brain size={10} />
-                                <span>Save Rule</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteFeedback(item.id)}
-                                className="text-gray-400 hover:text-red-500 p-0.5 rounded cursor-pointer"
-                                title="Delete"
-                              >
-                                <Trash2 size={11} />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })
-                  })()}
-                </div>
-              </div>
-            )}
+            </form>
           </div>
         )}
 

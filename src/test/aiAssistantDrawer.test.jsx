@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../firebase-config', () => ({
@@ -236,7 +236,7 @@ describe('AiAssistantDrawer', () => {
     unmount()
   })
 
-  it('renders Memory Bank button and toggles memory inspector panel with saved rules', () => {
+  it('does not render Permanent AI Memory button or accordion in drawer', () => {
     const { unmount } = render(
       <AiAssistantDrawer
         isOpen={true}
@@ -248,51 +248,10 @@ describe('AiAssistantDrawer', () => {
       />
     )
 
-    // Memory button exists in header
-    const memBtn = screen.getByRole('button', { name: /view ai memories/i })
-    expect(memBtn).toBeInTheDocument()
-
-    // Open Memory Inspector
-    fireEvent.click(memBtn)
-    expect(screen.getByText(/Permanent AI Memory/i)).toBeInTheDocument()
-    expect(screen.getByText('Royal Hotel rate is 115')).toBeInTheDocument()
-
-    // Close Memory Inspector
-    fireEvent.click(memBtn)
-    expect(screen.queryByText('Auto-enforced to prevent mistakes')).not.toBeInTheDocument()
-
-    unmount()
-  })
-
-  it('enforces click-to-open style accordion for Permanent AI Memory (collapsed by default)', () => {
-    const { unmount } = render(
-      <AiAssistantDrawer
-        isOpen={true}
-        onClose={() => {}}
-        onNavigateTab={() => {}}
-        onOpenPaymentModal={() => {}}
-        onOpenOrderModal={() => {}}
-        onOpenAddClient={() => {}}
-      />
-    )
-
-    // Accordion toggle exists and is collapsed by default ("Tap to open")
-    const toggleBtn = screen.getByRole('button', { name: /toggle permanent ai memory/i })
-    expect(toggleBtn).toBeInTheDocument()
-    expect(toggleBtn).toHaveTextContent(/tap to open/i)
-    expect(screen.queryByText('Auto-enforced to prevent mistakes')).not.toBeInTheDocument()
-    expect(screen.queryByText('Royal Hotel rate is 115')).not.toBeInTheDocument()
-
-    // Click to open
-    fireEvent.click(toggleBtn)
-    expect(toggleBtn).toHaveTextContent(/open/i)
-    expect(screen.getByText('Auto-enforced to prevent mistakes')).toBeInTheDocument()
-    expect(screen.getByText('Royal Hotel rate is 115')).toBeInTheDocument()
-
-    // Click to collapse
-    fireEvent.click(toggleBtn)
-    expect(toggleBtn).toHaveTextContent(/tap to open/i)
-    expect(screen.queryByText('Auto-enforced to prevent mistakes')).not.toBeInTheDocument()
+    // Memory button and accordion are removed as requested
+    expect(screen.queryByRole('button', { name: /view ai memories/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /toggle permanent ai memory/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Permanent AI Memory/i)).not.toBeInTheDocument()
 
     unmount()
   })
@@ -602,7 +561,7 @@ describe('AiAssistantDrawer', () => {
     unmount()
   })
 
-  it('renders Feedback button, toggles feedback modal, and supports submitting & weekly review', async () => {
+  it('renders Feedback button, toggles single streamlined feedback modal, and empties chatbox on submission', async () => {
     const { unmount } = render(
       <AiAssistantDrawer
         isOpen={true}
@@ -618,17 +577,24 @@ describe('AiAssistantDrawer', () => {
     const feedbackBtn = screen.getByRole('button', { name: /AI Feedback/i })
     expect(feedbackBtn).toBeInTheDocument()
 
-    // Toggle open Feedback accordion
+    // Weekly review tab should not exist
+    expect(screen.queryByText('Weekly Review')).not.toBeInTheDocument()
+
+    // Toggle open Feedback modal
     fireEvent.click(feedbackBtn)
 
-    expect(screen.getByText('AI Feedback & Weekly Review')).toBeInTheDocument()
-    expect(screen.getAllByText('Submit Feedback').length).toBeGreaterThan(0)
-    expect(screen.getByText('Weekly Review')).toBeInTheDocument()
+    expect(screen.getByText('Submit AI Feedback')).toBeInTheDocument()
+    expect(screen.queryByText('Weekly Review')).not.toBeInTheDocument()
+
+    // Put text in chat input to verify it gets emptied on submit
+    const chatInput = screen.getByPlaceholderText(/Ask bot above/i)
+    fireEvent.change(chatInput, { target: { value: 'some draft query in chatbox' } })
+    expect(chatInput.value).toBe('some draft query in chatbox')
 
     // Fill submit feedback form
     const textarea = screen.getByPlaceholderText(/Enter what went well or what needs improvement/i)
     fireEvent.change(textarea, {
-      target: { value: 'Maruti caterers 3 orders recognized accurately with separate dates' },
+      target: { value: 'Nung is Piece of bottle, 48 Pieces are equal to one box' },
     })
 
     const submitBtn = screen.getByRole('button', { name: /Send Feedback/i })
@@ -638,24 +604,15 @@ describe('AiAssistantDrawer', () => {
       expect.objectContaining({
         type: 'catering_sales',
         rating: 'positive',
-        message: 'Maruti caterers 3 orders recognized accurately with separate dates',
-        status: 'pending_weekly_review',
+        message: 'Nung is Piece of bottle, 48 Pieces are equal to one box',
       })
     )
 
-    // Switch to Weekly Review tab
-    const weeklyTabBtn = screen.getByRole('button', { name: /Weekly Review/i })
-    fireEvent.click(weeklyTabBtn)
-
-    // Check that pending feedback item from store is visible
-    expect(
-      screen.getByText(/Parsed Maruti caterers perfectly with 3 separate dates and venues/i)
-    ).toBeInTheDocument()
-
-    // Click Reviewed button
-    const markReviewedBtn = screen.getByRole('button', { name: /✓ Reviewed/i })
-    await fireEvent.click(markReviewedBtn)
-    expect(mockMarkAiFeedbackReviewed).toHaveBeenCalledWith('fb-1', 'Reviewed weekly')
+    // Verify chatbox is emptied and ready
+    await waitFor(() => {
+      expect(chatInput.value).toBe('')
+      expect(screen.queryByText('Submit AI Feedback')).not.toBeInTheDocument()
+    })
 
     unmount()
   })
