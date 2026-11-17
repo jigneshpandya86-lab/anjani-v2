@@ -175,14 +175,18 @@ export function findMatchingClient(rawName, clients = [], options = {}) {
   }
 
   // Tier 2: Exact Name Match
-  const exactMatch = clients.find((c) => c?.name && c.name.toLowerCase().trim() === targetLower)
+  const exactMatch = clients.find(
+    (c) =>
+      (c?.displayName && c.displayName.toLowerCase().trim() === targetLower) ||
+      (c?.name && c.name.toLowerCase().trim() === targetLower)
+  )
   if (exactMatch) {
     return {
       matched: true,
       client: exactMatch,
       matchType: 'exact',
       confidence: 1.0,
-      canonicalName: exactMatch.name,
+      canonicalName: exactMatch.displayName || exactMatch.name,
     }
   }
 
@@ -190,16 +194,19 @@ export function findMatchingClient(rawName, clients = [], options = {}) {
   const targetPhonetic = getPhoneticKey(targetName)
   if (targetPhonetic && targetPhonetic.length >= 3) {
     let phoneticMatch = clients.find((c) => {
-      if (!c?.name) return false
-      return getPhoneticKey(c.name) === targetPhonetic
+      const nameKey = c?.name ? getPhoneticKey(c.name) : null
+      const displayKey = c?.displayName ? getPhoneticKey(c.displayName) : null
+      return nameKey === targetPhonetic || displayKey === targetPhonetic
     })
     if (!phoneticMatch && targetPhonetic.length >= 4) {
       phoneticMatch = clients.find((c) => {
-        if (!c?.name) return false
-        const cPhonetic = getPhoneticKey(c.name)
+        const nameKey = c?.name ? getPhoneticKey(c.name) : ''
+        const displayKey = c?.displayName ? getPhoneticKey(c.displayName) : ''
         return (
-          cPhonetic.includes(targetPhonetic) ||
-          (cPhonetic.length >= 4 && targetPhonetic.includes(cPhonetic))
+          nameKey.includes(targetPhonetic) ||
+          displayKey.includes(targetPhonetic) ||
+          (nameKey.length >= 4 && targetPhonetic.includes(nameKey)) ||
+          (displayKey.length >= 4 && targetPhonetic.includes(displayKey))
         )
       })
     }
@@ -209,7 +216,7 @@ export function findMatchingClient(rawName, clients = [], options = {}) {
         client: phoneticMatch,
         matchType: 'phonetic',
         confidence: 0.95,
-        canonicalName: phoneticMatch.name,
+        canonicalName: phoneticMatch.displayName || phoneticMatch.name,
       }
     }
   }
@@ -219,10 +226,11 @@ export function findMatchingClient(rawName, clients = [], options = {}) {
   const cleanTarget = targetLower.replace(/[^a-z0-9]/g, '')
   if (cleanTarget.length >= 4) {
     const substringMatch = clients.find((c) => {
-      if (!c?.name) return false
-      const cleanC = c.name.toLowerCase().replace(/[^a-z0-9]/g, '')
-      if (cleanC.length < 4) return false
-      return cleanTarget.includes(cleanC) || cleanC.includes(cleanTarget)
+      const cleanName = c?.name ? c.name.toLowerCase().replace(/[^a-z0-9]/g, '') : ''
+      const cleanDisplay = c?.displayName ? c.displayName.toLowerCase().replace(/[^a-z0-9]/g, '') : ''
+      const matchName = cleanName.length >= 4 && (cleanTarget.includes(cleanName) || cleanName.includes(cleanTarget))
+      const matchDisplay = cleanDisplay.length >= 4 && (cleanTarget.includes(cleanDisplay) || cleanDisplay.includes(cleanTarget))
+      return matchName || matchDisplay
     })
     if (substringMatch) {
       return {
@@ -230,7 +238,7 @@ export function findMatchingClient(rawName, clients = [], options = {}) {
         client: substringMatch,
         matchType: 'substring',
         confidence: 0.90,
-        canonicalName: substringMatch.name,
+        canonicalName: substringMatch.displayName || substringMatch.name,
       }
     }
   }
@@ -241,9 +249,13 @@ export function findMatchingClient(rawName, clients = [], options = {}) {
   const threshold = options.threshold || 0.82
 
   for (const c of clients) {
-    if (!c?.name) continue
-    const cLower = c.name.toLowerCase().trim()
-    const score = similarityRatio(targetLower, cLower)
+    if (!c?.name && !c?.displayName) continue
+    const cLower = (c.name || '').toLowerCase().trim()
+    const dLower = (c.displayName || '').toLowerCase().trim()
+    const score = Math.max(
+      cLower ? similarityRatio(targetLower, cLower) : 0,
+      dLower ? similarityRatio(targetLower, dLower) : 0
+    )
     if (score >= threshold && score > bestScore) {
       bestScore = score
       bestMatch = c
@@ -256,7 +268,7 @@ export function findMatchingClient(rawName, clients = [], options = {}) {
       client: bestMatch,
       matchType: 'fuzzy',
       confidence: bestScore,
-      canonicalName: bestMatch.name,
+      canonicalName: bestMatch.displayName || bestMatch.name,
     }
   }
 
@@ -317,7 +329,7 @@ export function findBestExistingClientMatch(rawName, clients = [], options = {})
 
   for (const client of clients) {
     if (!client) continue
-    const cName = String(client.name || '').trim()
+    const cName = String(client.displayName || client.name || '').trim()
     if (!cName) continue
 
     const cLower = cName.toLowerCase()

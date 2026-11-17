@@ -148,6 +148,104 @@ export function parsePriceUpdateIntent(query, store = {}) {
   }
 }
 
+export function parseQuantityUpdateIntent(query, store = {}) {
+  if (!query || typeof query !== 'string') return null
+  if (store.isClientMode || store.isPaymentMode || store.isSalesMode) return null
+  const rawQ = query.trim()
+  const normDigitsQ = normalizeDigits(rawQ)
+  const normQ = normDigitsQ.toLowerCase()
+
+  // 1. Must NOT be an explicit new order creation command or payment received
+  const isOrderCreation = /^(?:create\s+order|new\s+order|place\s+order|book\s+order|order\s+for)\b/i.test(normQ)
+  const isPaymentReceived = /^(?:received|payment\s+received|jama\s+kary[ao]|paid|rupiya\s+malya)\b/i.test(normQ)
+  const isClientCreation =
+    /^(?:add|new|create)\s+(?:client|customer|party|shop)\b/i.test(normQ) ||
+    /(?:નવો|નવા|નવી)\s+(?:ગ્રાહક|કસ્ટમર|ક્લાયન્ટ|પાર્ટી|દુકાન)/i.test(rawQ) ||
+    /(?:नया|नए|नई)\s+(?:ग्राहक|कस्टमर|क्लाइंट|पार्टी|दुकान)/i.test(rawQ) ||
+    /(?:mobile|phone|address|મોબાઈલ|ફોન|સરનામું|એડ્રેસ)\s*[:=]?/i.test(rawQ)
+
+  if (isOrderCreation || isPaymentReceived || isClientCreation) {
+    return null
+  }
+
+  // 2. Identify quantity update intent
+  const isQtyVerbCombo =
+    /(?:update|change|set|edit|modify)\s+(?:the\s+)?(?:order\s+)?(?:qty|quantity|boxes|peti|count)\b/i.test(normQ) ||
+    /(?:order\s+)?(?:qty|quantity|boxes|peti|count)\s*(?:update|change|set|edit|modify|badlo|બદલો)\b/i.test(normQ) ||
+    /^(?:make\s+it|karo|karjo)\s+\d+/i.test(normQ)
+
+  const isBoxKaroCombo =
+    /\b\d+\s*(?:box|boxes|peti|case|bxs|બોક્સ|બોક્ષ|pcs|piece|pieces|nung|nang|નંગ|bottle|bottles|બોટલ)\s*(?:karo|karjo|kari\s*aapo|કરો|કરજો|કરી\s*આપો|kar\s*do|rakho|kardo)\b/i.test(normQ) ||
+    /(?:karo|karjo|kari\s*aapo|કરો|કરજો|કરી\s*આપો|kar\s*do|rakho)\s+\d+\s*(?:box|boxes|peti|case|bxs|બોક્સ|બોક્ષ|pcs|piece|pieces|nung|nang|નંગ)/i.test(normQ)
+
+  const isDirectQtyCommand =
+    /^(?:update\s+)?(?:order\s+)?(?:qty|quantity)\s*[:=]?\s*\d+\s*(?:box|boxes|peti|pcs|pieces|nung|nang|નંગ)?$/i.test(normQ) ||
+    /^(?:order\s+)?(?:qty|quantity)\s*[:=]?\s*\d+\s*(?:for|to|of)\s+([A-Za-z0-9\s]{2,25})$/i.test(normQ) ||
+    /^([A-Za-z0-9\s]{2,25})\s+(?:qty|quantity)\s*[:=]?\s*\d+$/i.test(normQ)
+
+  const isQtyUpdate = isQtyVerbCombo || isBoxKaroCombo || isDirectQtyCommand
+  if (!isQtyUpdate) return null
+
+  // 3. Extract quantity value
+  let qty = null
+  let isPieces = false
+
+  // Check pieces / nung / nang / pcs
+  const piecesMatch =
+    normQ.match(/(\d+(?:\.\d+)?)\s*(?:pcs|piece|pieces|nung|nang|નંગ|bottle|bottles|બોટલ)/i) ||
+    normQ.match(/(?:pcs|piece|pieces|nung|nang|નંગ|bottle|bottles|બોટલ)\s*[:=]?\s*(\d+(?:\.\d+)?)/i)
+
+  if (piecesMatch && piecesMatch[1]) {
+    const rawPieces = parseFloat(piecesMatch[1])
+    if (!isNaN(rawPieces) && rawPieces > 0) {
+      qty = Math.ceil(rawPieces / 48)
+      isPieces = true
+    }
+  }
+
+  if (qty === null) {
+    const qtyMatch =
+      normQ.match(/(?:qty|quantity|boxes?|peti|to|is|as)\s*[:=]?\s*(\d+(?:\.\d+)?)/i) ||
+      normQ.match(/(\d+(?:\.\d+)?)\s*(?:box|boxes|peti|case|bxs|બોક્સ|બોક્ષ|karo|કરો)/i) ||
+      normQ.match(/\b(\d+(?:\.\d+)?)\b/)
+
+    if (qtyMatch && qtyMatch[1]) {
+      const val = parseFloat(qtyMatch[1])
+      if (!isNaN(val) && val > 0) {
+        qty = Math.ceil(val)
+      }
+    }
+  }
+
+  // 4. Extract client if mentioned
+  const matchedClient = matchClientFromText(rawQ, store.clients || [])
+
+  return {
+    handled: true,
+    type: 'update_qty',
+    data: {
+      qty,
+      isPieces,
+      client: matchedClient
+        ? { id: matchedClient.id, name: matchedClient.name, displayName: matchedClient.displayName, skuRates: matchedClient.skuRates, rate: matchedClient.rate }
+        : null,
+      clientName: matchedClient?.displayName || matchedClient?.name || null,
+      rawQuery: rawQ,
+    },
+    text: qty
+      ? `📦 Order quantity update to ${qty} boxes detected.`
+      : `📦 Please specify the quantity (e.g., "update qty to 20").`,
+    chips: !qty
+      ? [
+          { label: '10 Boxes', qty: 10, action: 'apply_qty' },
+          { label: '20 Boxes', qty: 20, action: 'apply_qty' },
+          { label: '30 Boxes', qty: 30, action: 'apply_qty' },
+          { label: '50 Boxes', qty: 50, action: 'apply_qty' },
+        ]
+      : undefined,
+  }
+}
+
 export function tryLocalIntentRoute(query, store = {}) {
   if (!query || typeof query !== 'string') return null
   const rawQ = query.trim()
@@ -159,6 +257,14 @@ export function tryLocalIntentRoute(query, store = {}) {
   const priceUpdateRoute = parsePriceUpdateIntent(rawQ, store)
   if (priceUpdateRoute && priceUpdateRoute.handled) {
     return priceUpdateRoute
+  }
+
+  // ==========================================
+  // SEQUENCE 0.5: ORDER QUANTITY UPDATE (Zero tokens & Instant response)
+  // ==========================================
+  const qtyUpdateRoute = parseQuantityUpdateIntent(rawQ, store)
+  if (qtyUpdateRoute && qtyUpdateRoute.handled) {
+    return qtyUpdateRoute
   }
 
   // Multi-date catering / sales orders local parsing (Zero tokens & Instant response)
@@ -224,7 +330,7 @@ export function tryLocalIntentRoute(query, store = {}) {
     let originalPieces = null
     if (isPieces && (sku === 'Anjani 200ml' || !sku || sku.includes('200ml'))) {
       originalPieces = qty
-      qty = qty % 48 === 0 ? qty / 48 : Number((qty / 48).toFixed(2))
+      qty = Math.ceil(qty / 48)
     }
 
     // Extract rate

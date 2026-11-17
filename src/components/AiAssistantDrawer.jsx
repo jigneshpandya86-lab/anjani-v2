@@ -564,9 +564,13 @@ export default function AiAssistantDrawer({
       return
     }
 
-    // 2. If quick action query (Stock / Dues / Menu / Price Rate)
+    // 2. If quick action query (Stock / Dues / Menu / Price Rate / Qty)
     if (chip.action === 'apply_rate' || chip.rate) {
       handleSend(`update price to ${chip.rate || String(chip.label).replace(/\D/g, '')}`)
+      return
+    }
+    if (chip.action === 'apply_qty' || chip.qty) {
+      handleSend(`update qty to ${chip.qty || String(chip.label).replace(/\D/g, '')}`)
       return
     }
     if (chip.action === 'query_stock') {
@@ -1065,6 +1069,115 @@ export default function AiAssistantDrawer({
                   { label: '₹140', rate: 140, action: 'apply_rate' },
                   { label: '₹150', rate: 150, action: 'apply_rate' },
                 ],
+                isLocal: true,
+                timestamp: new Date(),
+              },
+            ])
+            return
+          }
+        }
+
+        if (localRoute.type === 'update_qty') {
+          const targetQty = localRoute.data.qty
+          let targetClient = localRoute.data.client
+          let targetClientName = localRoute.data.clientName
+
+          // Check if there is an unconfirmed batch sales or draft order in messages
+          let foundPendingBatch = null
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            if (m.type === 'retail_sales' && m.data?.sales?.length > 0 && !processedSalesBatches[m.id]) {
+              foundPendingBatch = m
+              break
+            }
+          }
+
+          if (foundPendingBatch) {
+            // If target client was not explicitly stated in query, infer from batch
+            if (!targetClientName && foundPendingBatch.data.sales.length > 0) {
+              const firstClient = foundPendingBatch.data.sales[0].clientName
+              const allSame = foundPendingBatch.data.sales.every((s) => s.clientName === firstClient)
+              if (allSame && firstClient) {
+                targetClientName = firstClient
+                targetClient =
+                  (clients || []).find(
+                    (c) => (c.displayName || c.name)?.toLowerCase() === firstClient.toLowerCase()
+                  ) || {
+                    name: firstClient,
+                  }
+              }
+            }
+
+            if (targetQty !== null && targetQty > 0) {
+              let newTotalAmt = 0
+
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  if (msg.id !== foundPendingBatch.id) return msg
+                  const updatedSales = msg.data.sales.map((sale) => {
+                    const matchSale =
+                      !targetClientName ||
+                      sale.clientName?.toLowerCase().includes(targetClientName.toLowerCase())
+                    if (!matchSale) {
+                      newTotalAmt += Number(sale.totalAmount || 0)
+                      return sale
+                    }
+                    const updatedItems = (sale.items || []).map((it) => {
+                      const itemRate = Number(it.rate) || 130
+                      const nextAmount = targetQty * itemRate
+                      return { ...it, qty: targetQty, amount: nextAmount }
+                    })
+                    const saleTotal = updatedItems.reduce(
+                      (s, it) => s + (Number(it.amount) || 0),
+                      0
+                    )
+                    newTotalAmt += saleTotal
+                    return { ...sale, items: updatedItems, totalAmount: saleTotal }
+                  })
+                  return { ...msg, data: { ...msg.data, sales: updatedSales } }
+                })
+              )
+
+              toast.success(`Order quantity updated to ${targetQty} boxes`)
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `📦 **Order Quantity Updated**: Set quantity to **${targetQty} boxes** for **${targetClientName || 'drafted orders'}**.\n\nRecalculated batch total: **₹${newTotalAmt.toLocaleString('en-IN')}**.`,
+                  type: 'update_qty_confirm',
+                  data: { qty: targetQty, clientName: targetClientName, newTotalAmt },
+                  isLocal: true,
+                  timestamp: new Date(),
+                },
+              ])
+              return
+            } else {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `📦 **Update Order Quantity**: What quantity would you like to set for **${targetClientName || 'drafted orders'}**?`,
+                  chips: [
+                    { label: '10 Boxes', qty: 10, action: 'apply_qty' },
+                    { label: '20 Boxes', qty: 20, action: 'apply_qty' },
+                    { label: '30 Boxes', qty: 30, action: 'apply_qty' },
+                    { label: '50 Boxes', qty: 50, action: 'apply_qty' },
+                  ],
+                  isLocal: true,
+                  timestamp: new Date(),
+                },
+              ])
+              return
+            }
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `📦 **Order Quantity**: No pending drafted order was found to update. You can place a new order by typing e.g. *"20 box Anjani 200ml for ${targetClientName || 'Royal Hotel'}"*.`,
                 isLocal: true,
                 timestamp: new Date(),
               },
@@ -1990,16 +2103,16 @@ export default function AiAssistantDrawer({
         {/* Message Thread */}
         <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50/50">
           {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center p-4 text-gray-700 select-none space-y-3.5">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#131921] to-gray-800 text-[#ff9900] flex items-center justify-center shadow-md">
-                <Bot className="w-6 h-6" />
+            <div className="flex flex-col items-center justify-start text-center pt-2 pb-4 px-2 text-gray-700 select-none space-y-2.5">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#131921] to-gray-800 text-[#ff9900] flex items-center justify-center shadow-md">
+                <Bot className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="text-sm font-black text-gray-900">Anjani</h3>
               </div>
 
               {/* Main Menu Action Chips */}
-              <div className="w-full max-w-sm grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 text-left">
+              <div className="w-full max-w-sm grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-left">
                 {MAIN_MENU_CHIPS.map((chip) => (
                   <button
                     key={chip.id}
@@ -4160,7 +4273,7 @@ export default function AiAssistantDrawer({
               e.preventDefault()
               handleSend()
             }}
-            className="flex items-end gap-2"
+            className="flex items-end gap-1.5"
           >
             <input
               type="file"
@@ -4173,18 +4286,18 @@ export default function AiAssistantDrawer({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="p-2.5 text-gray-500 hover:text-amz-orange hover:bg-orange-50 rounded-xl border border-gray-300 transition-colors shrink-0 cursor-pointer mb-0.5"
+              className="p-1.5 text-gray-500 hover:text-amz-orange hover:bg-orange-50 rounded-lg border border-gray-300 transition-colors shrink-0 cursor-pointer mb-1"
               title="Upload Bill, Receipt or WhatsApp Voice Note"
             >
-              <Camera className="w-5 h-5" />
+              <Camera className="w-4 h-4" />
             </button>
 
             {/* Mic & Speech Language Control */}
-            <div className="relative shrink-0 flex items-center mb-0.5" ref={speechLangMenuRef}>
+            <div className="relative shrink-0 flex items-center mb-1" ref={speechLangMenuRef}>
               <button
                 type="button"
                 onClick={toggleMic}
-                className={`p-2.5 rounded-l-xl border border-r-0 transition-colors shrink-0 cursor-pointer ${
+                className={`p-1.5 rounded-l-lg border border-r-0 transition-colors shrink-0 cursor-pointer ${
                   isListening
                     ? 'bg-red-500 text-white border-red-600 animate-pulse shadow-md'
                     : 'text-gray-500 hover:text-amz-orange hover:bg-orange-50 border-gray-300'
@@ -4196,13 +4309,13 @@ export default function AiAssistantDrawer({
                 }
                 aria-label={isListening ? 'Stop voice listening' : 'Start voice dictation'}
               >
-                {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
               </button>
 
               <button
                 type="button"
                 onClick={() => setShowLangMenu((prev) => !prev)}
-                className={`h-[42px] px-1.5 rounded-r-xl border text-[10px] font-black tracking-tight transition-colors cursor-pointer flex items-center gap-0.5 shrink-0 ${
+                className={`h-[33px] px-1 rounded-r-lg border text-[9px] font-black tracking-tight transition-colors cursor-pointer flex items-center gap-0.5 shrink-0 ${
                   isListening
                     ? 'bg-red-600 text-white border-red-600'
                     : 'bg-gray-50 hover:bg-gray-100 text-gray-700 hover:text-gray-900 border-gray-300'
@@ -4285,7 +4398,7 @@ export default function AiAssistantDrawer({
                               : 'Ask bot above, type @client, /sku, or speech...'
               }
               style={{ minHeight: '42px', height: 'auto' }}
-              className={`flex-1 py-2.5 px-3 border rounded-xl text-xs sm:text-sm outline-none transition-all resize-none max-h-36 overflow-y-auto leading-relaxed ${
+              className={`flex-1 py-2 px-3 border-2 rounded-xl text-xs sm:text-sm outline-none transition-all resize-none max-h-36 overflow-y-auto leading-relaxed ${
                 isPaymentMode
                   ? 'border-emerald-600 ring-2 ring-emerald-200/70 bg-emerald-50/20'
                   : isClientMode
@@ -4294,17 +4407,17 @@ export default function AiAssistantDrawer({
                       ? 'border-emerald-500 ring-2 ring-emerald-200/60 bg-emerald-50/20'
                       : isAccountsMode
                         ? 'border-blue-500 ring-2 ring-blue-200/60 bg-blue-50/20'
-                        : 'border-gray-300 focus:ring-2 focus:ring-amz-orange focus:border-amz-orange'
+                        : 'border-gray-300 focus:ring-2 focus:ring-[#ff9900] focus:border-[#ff9900]'
               }`}
             />
 
             <button
               type="submit"
               disabled={loading || (!inputMessage.trim() && !selectedFile)}
-              className="p-2.5 bg-[#131921] hover:bg-black text-[#ff9900] disabled:opacity-40 rounded-xl transition-all font-bold cursor-pointer shrink-0 mb-0.5"
+              className="p-2 bg-[#131921] hover:bg-black text-[#ff9900] disabled:opacity-40 rounded-xl transition-all font-bold cursor-pointer shrink-0 mb-1"
               title="Send message"
             >
-              <Send className="w-5 h-5" />
+              <Send className="w-4 h-4" />
             </button>
           </form>
         </div>

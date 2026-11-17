@@ -100,6 +100,29 @@ describe('clientMatchingUtils', () => {
       expect(match).toBeNull()
     })
 
+    it('matches customer by Zoho Books Display Name', () => {
+      const clientsWithDisplay = [
+        ...clients,
+        { id: 'c5', name: 'Krishna Dairy', displayName: 'Krishna Dairy - Amit', contactPerson: 'Amit', mobile: '9988776655' },
+      ]
+
+      // Match by exact display name
+      const match1 = findMatchingClient('Krishna Dairy - Amit', clientsWithDisplay)
+      expect(match1).not.toBeNull()
+      expect(match1.client.id).toBe('c5')
+      expect(match1.canonicalName).toBe('Krishna Dairy - Amit')
+
+      // Match by company name
+      const match2 = findMatchingClient('Krishna Dairy', clientsWithDisplay)
+      expect(match2).not.toBeNull()
+      expect(match2.client.id).toBe('c5')
+
+      // Match by contact person / substring in display name
+      const match3 = findMatchingClient('Amit', clientsWithDisplay)
+      expect(match3).not.toBeNull()
+      expect(match3.client.id).toBe('c5')
+    })
+
     it('isolates "Retail" and generic walk-in customers from matching unrelated clients (e.g. Dr. Rahul Vasava)', () => {
       const clientsWithDoctor = [
         ...clients,

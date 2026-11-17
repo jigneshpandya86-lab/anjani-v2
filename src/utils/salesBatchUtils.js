@@ -145,7 +145,7 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [],
         (meta.id === 'anjani_200ml' || meta.label.includes('200ml'))
       ) {
         origPieces = itQty
-        itQty = itQty % 48 === 0 ? itQty / 48 : Number((itQty / 48).toFixed(2))
+        itQty = Math.ceil(itQty / 48)
         itUnit = 'Box'
       }
 
@@ -238,7 +238,7 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [],
           (meta.id === 'anjani_200ml' || meta.label.includes('200ml'))
         ) {
           origPieces = qty
-          qty = qty % 48 === 0 ? qty / 48 : Number((qty / 48).toFixed(2))
+          qty = Math.ceil(qty / 48)
           unit = 'Box'
         }
 
@@ -463,7 +463,7 @@ export function parseLocalSalesText(rawText = '', clients = []) {
         let originalPieces = null
         if (isPieces && (sku === 'Anjani 200ml' || !sku || sku.includes('200ml'))) {
           originalPieces = num
-          finalQty = num % 48 === 0 ? num / 48 : Number((num / 48).toFixed(2))
+          finalQty = Math.ceil(num / 48)
         }
 
         if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }

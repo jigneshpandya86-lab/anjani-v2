@@ -323,6 +323,49 @@ describe('aiIntentRouter', () => {
     expect(res6.chips.length).toBeGreaterThan(0)
   })
 
+  it('handles order quantity update intent locally with zero tokens and pieces ceiling conversion', () => {
+    const fakeStore = {
+      clients: [{ id: 'c1', name: 'Maruti Caterers', mobile: '9825012345', rate: 130 }],
+    }
+
+    // 1. "update qty to 20"
+    const res1 = tryLocalIntentRoute('update qty to 20', fakeStore)
+    expect(res1).not.toBeNull()
+    expect(res1.handled).toBe(true)
+    expect(res1.type).toBe('update_qty')
+    expect(res1.data.qty).toBe(20)
+
+    // 2. "20 box karo"
+    const res2 = tryLocalIntentRoute('20 box karo', fakeStore)
+    expect(res2).not.toBeNull()
+    expect(res2.handled).toBe(true)
+    expect(res2.type).toBe('update_qty')
+    expect(res2.data.qty).toBe(20)
+
+    // 3. "make it 30 boxes"
+    const res3 = tryLocalIntentRoute('make it 30 boxes', fakeStore)
+    expect(res3).not.toBeNull()
+    expect(res3.handled).toBe(true)
+    expect(res3.type).toBe('update_qty')
+    expect(res3.data.qty).toBe(30)
+
+    // 4. "1000 pieces karo" -> ceil(1000 / 48) = 21 boxes
+    const res4 = tryLocalIntentRoute('1000 pieces karo', fakeStore)
+    expect(res4).not.toBeNull()
+    expect(res4.handled).toBe(true)
+    expect(res4.type).toBe('update_qty')
+    expect(res4.data.qty).toBe(21)
+    expect(res4.data.isPieces).toBe(true)
+
+    // 5. Client specified: "update qty for Maruti Caterers to 25"
+    const res5 = tryLocalIntentRoute('update qty for Maruti Caterers to 25', fakeStore)
+    expect(res5).not.toBeNull()
+    expect(res5.handled).toBe(true)
+    expect(res5.type).toBe('update_qty')
+    expect(res5.data.qty).toBe(25)
+    expect(res5.data.clientName).toBe('Maruti Caterers')
+  })
+
   it('removes verbose instruction text from drafted catering/retail orders in AI chat', () => {
     const fakeStore = {
       clients: [{ id: 'c1', name: 'Maruti Caterers', mobile: '9825012345', rate: 130 }],

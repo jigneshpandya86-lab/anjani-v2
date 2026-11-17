@@ -1393,8 +1393,11 @@ export const useClientStore = create((set, get) => ({
   },
 
   addClient: async (data) => {
+    const rawName = ensureEnglishText(data.name || '').trim()
     const cleanPayload = {
-      name: ensureEnglishText(data.name || '').trim(),
+      name: rawName,
+      displayName: ensureEnglishText(data.displayName || rawName).trim(),
+      contactPerson: ensureEnglishText(data.contactPerson || '').trim(),
       mobile: normalizeDigits(data.mobile || data.phone || '').replace(/\D/g, '').trim(),
       address: ensureEnglishText(data.address || '').trim(),
       rate: Number(data.rate) || 0,
@@ -1425,7 +1428,7 @@ export const useClientStore = create((set, get) => ({
     const sanitized = {}
     Object.entries(data || {}).forEach(([k, v]) => {
       if (v !== undefined && k !== 'undefined') {
-        if (k === 'name' || k === 'address' || k === 'location' || k === 'contactPerson' || k === 'notes') {
+        if (k === 'name' || k === 'displayName' || k === 'contactPerson' || k === 'address' || k === 'location' || k === 'notes') {
           sanitized[k] = ensureEnglishText(v)
         } else if (k === 'mobile' || k === 'phone') {
           sanitized[k] = normalizeDigits(v).replace(/\D/g, '')

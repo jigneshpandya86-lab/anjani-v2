@@ -1376,7 +1376,7 @@ function formatSkuSlangForPrompt() {
 - "1 liter", "1L", "badi botal", "ek liter": Bailey 1 Liter (Case / Box).
 - "2 liter", "2L", "jumbo", "family pack": Bailey 2 Liter (Case / Box).
 - "kedi", "crate", "khokhu", "case", "box": Box unit.
-- "nung", "nang", "નંગ", "piece", "pieces", "pcs", "bottle", "bottel", "બોટલ": Individual bottle pieces. CRITICAL CONVERSION RULE: For Anjani 200ml, 48 pieces (નંગ) = 1 Box. All order quantities MUST be recorded in Boxes! When quantity is specified in pieces/nung/bottles, convert to boxes by dividing by 48 (e.g. "48 nung" = 1 box, "96 nung" = 2 boxes, "4800 nung" = 100 boxes, "2400 nung" = 50 boxes, "1000 nung" = 20.83 boxes, "4000 nung" = 83.33 boxes).
+- "nung", "nang", "નંગ", "piece", "pieces", "pcs", "bottle", "bottel", "બોટલ": Individual bottle pieces. CRITICAL CONVERSION RULE: For Anjani 200ml, 48 pieces (નંગ) = 1 Box. All order quantities MUST be recorded in whole Boxes rounded UP using ceiling! When quantity is specified in pieces/nung/bottles, convert to boxes by dividing by 48 and round up to whole number (e.g. "48 nung" = 1 box, "96 nung" = 2 boxes, "4800 nung" = 100 boxes, "2400 nung" = 50 boxes, "1000 nung" = 21 boxes, "4000 nung" = 84 boxes).
 - "hajar", "હજાર": Thousand. CRITICAL: In vernacular Gujarati, people often say "4000 hajar nung" redundantly to mean 4,000 bottles (NOT 4,000,000). If the number is already >= 100, do not multiply by 1000! If they say "4 hajar", then it is 4,000 bottles (4000 / 48 = 83.33 boxes).
 - "sanje", "સાંજે", "evening": Evening shift delivery.
 - "savare", "સવારે", "morning": Morning shift delivery.
@@ -2412,7 +2412,7 @@ User Text: ${rawText.slice(0, 1000)}`
                 ) {
                   const rawPieces = Number(orderData.qty) || 1
                   orderData.originalPieces = rawPieces
-                  orderData.qty = rawPieces % 48 === 0 ? rawPieces / 48 : Number((rawPieces / 48).toFixed(2))
+                  orderData.qty = Math.ceil(rawPieces / 48)
                   orderData.unit = 'Box'
                 }
               }
@@ -2599,7 +2599,7 @@ CRITICAL RULES & USER INSTRUCTIONS:
    - Populate "deliveryTime": shift/time like "Evening", "Morning", "Afternoon", or time written.
    - Populate "address": venue/location in English Title Case (e.g., "Balaji Party Plot Harni Road Vadodara", "PG Party Plot Harni Baroda").
    - Understand Gujarati colloquial expressions:
-     * "nung" / "nang" / "નંગ" / "bottle" / "બોટલ" = Individual bottle pieces. CRITICAL CONVERSION: 48 pieces (નંગ) = 1 Box of Anjani 200ml. All order quantities MUST be output in Boxes! (e.g. 48 nung = 1 box, 96 nung = 2 boxes, 4800 nung = 100 boxes, 2400 nung = 50 boxes, 1000 nung = 20.83 boxes, 4000 nung = 83.33 boxes).
+     * "nung" / "nang" / "નંગ" / "bottle" / "બોટલ" = Individual bottle pieces. CRITICAL CONVERSION: 48 pieces (નંગ) = 1 Box of Anjani 200ml. All order quantities MUST be output in whole Boxes rounded UP using ceiling! (e.g. 48 nung = 1 box, 96 nung = 2 boxes, 4800 nung = 100 boxes, 2400 nung = 50 boxes, 1000 nung = 21 boxes, 4000 nung = 84 boxes).
      * "hajar" / "હજાર" = thousand. Note: "4000 hajar nung" is a Gujarati vernacular idiom meaning 4000 bottles/pieces (qty: 83.33 boxes). "4 hajar" means 4000 bottles (83.33 boxes).
 6. USER INSTRUCTIONS: Strictly follow any explicit instructions written by the user in the prompt (such as specific pricing, dates, or payment notes).
 
@@ -2660,7 +2660,7 @@ ${rawText.slice(0, 3000)}`
                     ) {
                       const rawPieces = Number(it.qty) || 1
                       it.originalPieces = rawPieces
-                      it.qty = rawPieces % 48 === 0 ? rawPieces / 48 : Number((rawPieces / 48).toFixed(2))
+                      it.qty = Math.ceil(rawPieces / 48)
                       it.unit = 'Box'
                     }
                   }

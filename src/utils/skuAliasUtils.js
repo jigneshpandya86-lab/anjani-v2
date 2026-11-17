@@ -250,7 +250,7 @@ export function parseQuantityAndSku(line, skusList = WATER_SKUS) {
   let originalPieces = null
   if (isPieces && (sku?.id === 'anjani_200ml' || !sku || sku.label?.includes('200ml'))) {
     originalPieces = qty
-    const boxQty = qty % 48 === 0 ? qty / 48 : Number((qty / 48).toFixed(2))
+    const boxQty = Math.ceil(qty / 48)
     return {
       qty: boxQty,
       unit: 'Box',

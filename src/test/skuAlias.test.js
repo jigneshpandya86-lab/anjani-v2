@@ -117,9 +117,9 @@ describe('skuAliasUtils', () => {
       expect(p3.originalPieces).toBe(4800)
       expect(p3.sku.id).toBe('anjani_200ml')
 
-      // 1000 pieces = 20.83 boxes
+      // 1000 pieces rounded UP using ceiling = 21 boxes
       const p4 = parseQuantityAndSku('1000 nung')
-      expect(p4.qty).toBe(20.83)
+      expect(p4.qty).toBe(21)
       expect(p4.unit).toBe('Box')
       expect(p4.originalPieces).toBe(1000)
       expect(p4.sku.id).toBe('anjani_200ml')

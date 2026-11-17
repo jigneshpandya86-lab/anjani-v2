@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useMemo } from 'react'
 import { useClientStore } from '../store/clientStore'
 import { UserPlus, CheckCircle, MapPinned, ChevronDown, ChevronUp, Package, X } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -11,6 +11,9 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
   const data = client || initialValues || {}
   // If editing or prefilling, fill in the blanks. All clients are created in English only!
   const [name, setName] = useState(() => ensureEnglishText(data.name || ''))
+  const [displayName, setDisplayName] = useState(() => ensureEnglishText(data.displayName || data.name || ''))
+  const [contactPerson, setContactPerson] = useState(() => ensureEnglishText(data.contactPerson || ''))
+  const [isDisplayNameTouched, setIsDisplayNameTouched] = useState(() => Boolean(data.displayName && data.displayName !== data.name))
   const [phone, setPhone] = useState(() => normalizeDigits(data.mobile || data.phone || '').replace(/\D/g, ''))
   const [address, setAddress] = useState(() => ensureEnglishText(data.address || ''))
   const [rate, setRate] = useState(data.rate !== undefined && data.rate !== null && data.rate !== '' ? String(data.rate) : '')
@@ -39,6 +42,19 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
   const [status, setStatus] = useState("idle")
   const [isRegular, setIsRegular] = useState(!!data.isRegular)
   const [isDefaulter, setIsDefaulter] = useState(!!data.isDefaulter)
+
+  const displayNameSuggestions = useMemo(() => {
+    const suggestions = []
+    const n = name.trim()
+    const cp = contactPerson.trim()
+    if (n) suggestions.push(n)
+    if (cp) suggestions.push(cp)
+    if (n && cp) {
+      suggestions.push(`${n} - ${cp}`)
+      suggestions.push(`${cp} (${n})`)
+    }
+    return [...new Set(suggestions)]
+  }, [name, contactPerson])
 
   const addClient = useClientStore((state) => state.addClient)
   const updateClient = useClientStore((state) => state.updateClient)
@@ -92,8 +108,11 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
         finalMapLink = `https://www.google.com/maps?q=${finalLat},${finalLng}`
       }
 
+      const cleanName = ensureEnglishText(name || '').trim()
       const payload = {
-        name: ensureEnglishText(name || '').trim(),
+        name: cleanName,
+        displayName: ensureEnglishText(displayName || cleanName).trim(),
+        contactPerson: ensureEnglishText(contactPerson || '').trim(),
         mobile: normalizeDigits(phone || '').replace(/\D/g, '').trim(),
         address: ensureEnglishText(address || '').trim(),
         rate: rate === '' ? 0 : Number(rate),
@@ -115,6 +134,9 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
       }
 
       setName('')
+      setDisplayName('')
+      setContactPerson('')
+      setIsDisplayNameTouched(false)
       setPhone('')
       setAddress('')
       setRate('')
@@ -174,7 +196,7 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
                     htmlFor="client-name"
                     className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide"
                   >
-                    Client Name
+                    Client / Company Name
                   </label>
                   <input
                     id="client-name"
@@ -182,12 +204,93 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
                     value={name}
                     onChange={(e) => {
                       const val = e.target.value
-                      setName(hasIndicScript(val) ? ensureEnglishText(val) : val)
+                      const eng = hasIndicScript(val) ? ensureEnglishText(val) : val
+                      setName(eng)
+                      if (!isDisplayNameTouched) {
+                        setDisplayName(contactPerson.trim() ? `${eng} - ${contactPerson.trim()}` : eng)
+                      }
                     }}
                     onBlur={() => setName((prev) => ensureEnglishText(prev))}
                     className="w-full p-2.5 border border-gray-300 rounded-lg text-base sm:text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
-                    placeholder="e.g. Rahul Sharma"
+                    placeholder="e.g. Royal Hotel or Rahul Sharma"
                   />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="contact-person"
+                    className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide"
+                  >
+                    Contact Person <span className="text-[10px] text-gray-400 font-normal normal-case">(Optional)</span>
+                  </label>
+                  <input
+                    id="contact-person"
+                    value={contactPerson}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      const eng = hasIndicScript(val) ? ensureEnglishText(val) : val
+                      setContactPerson(eng)
+                      if (!isDisplayNameTouched && eng.trim()) {
+                        setDisplayName(name.trim() ? `${name.trim()} - ${eng.trim()}` : eng)
+                      }
+                    }}
+                    onBlur={() => setContactPerson((prev) => ensureEnglishText(prev))}
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-base sm:text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none"
+                    placeholder="e.g. Rajeshbhai"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label
+                      htmlFor="display-name"
+                      className="block text-xs font-bold text-gray-600 uppercase tracking-wide"
+                    >
+                      Customer Display Name
+                    </label>
+                    <span className="text-[10px] font-semibold text-amz-orange bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">
+                      Zoho Books Style
+                    </span>
+                  </div>
+                  <input
+                    id="display-name"
+                    value={displayName}
+                    onChange={(e) => {
+                      setIsDisplayNameTouched(true)
+                      const val = e.target.value
+                      setDisplayName(hasIndicScript(val) ? ensureEnglishText(val) : val)
+                    }}
+                    onBlur={() => setDisplayName((prev) => ensureEnglishText(prev))}
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-base sm:text-sm focus:ring-2 focus:ring-amz-orange focus:border-amz-orange outline-none font-medium"
+                    placeholder="e.g. Royal Hotel - Rajeshbhai"
+                  />
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    Primary name displayed on invoices, orders, delivery notes, and lists.
+                  </p>
+
+                  {/* Zoho Books Auto Suggestions */}
+                  {displayNameSuggestions.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                      <span className="text-[10px] text-gray-400 font-semibold">Suggestions:</span>
+                      {displayNameSuggestions.map((sug) => (
+                        <button
+                          key={sug}
+                          type="button"
+                          onClick={() => {
+                            setDisplayName(sug)
+                            setIsDisplayNameTouched(true)
+                          }}
+                          className={`text-[11px] px-2 py-0.5 rounded-full border transition-all cursor-pointer ${
+                            displayName === sug
+                              ? 'bg-orange-500 text-white border-orange-500 font-bold shadow-2xs'
+                              : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
+                          }`}
+                        >
+                          {sug}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div>

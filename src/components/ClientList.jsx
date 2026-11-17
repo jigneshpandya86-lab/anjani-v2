@@ -26,7 +26,9 @@ export default function ClientList({ onEdit, onPay, onOrder, onLedger }) {
       (clients || [])
         .filter(
           (c) =>
+            (c.displayName || '').toLowerCase().includes(search.toLowerCase()) ||
             (c.name || '').toLowerCase().includes(search.toLowerCase()) ||
+            (c.contactPerson || '').toLowerCase().includes(search.toLowerCase()) ||
             (c.mobile || '').includes(search),
         )
         .filter((c) => !showDefaultersOnly || c.isDefaulter === true)
@@ -111,7 +113,12 @@ export default function ClientList({ onEdit, onPay, onOrder, onLedger }) {
           <div className="flex justify-between items-start mb-2">
             <div>
               <div className="flex items-center gap-1.5 flex-wrap">
-                <h3 className="font-bold text-gray-900 leading-tight">{client.name || 'Unnamed Client'}</h3>
+                <h3 className="font-bold text-gray-900 leading-tight">
+                  {client.displayName || client.name || 'Unnamed Client'}
+                </h3>
+                {client.displayName && client.name && client.displayName.toLowerCase().trim() !== client.name.toLowerCase().trim() && (
+                  <span className="text-[11px] text-gray-500 font-medium">({client.name})</span>
+                )}
                 {client.isRegular && (
                   <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase rounded bg-orange-100 text-orange-700 tracking-wider">Regular</span>
                 )}

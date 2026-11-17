@@ -321,32 +321,32 @@ PG party plot harni baroda`
     expect(parsed.type).toBe('retail_sales')
     expect(parsed.data.sales.length).toBe(3)
 
-    // Order 1: 18/11/26 -> 1000 bottles (1000 / 48 = 20.83 boxes)
+    // Order 1: 18/11/26 -> 1000 bottles (1000 / 48 = 20.83 -> rounded up to 21 boxes)
     const order1 = parsed.data.sales[0]
     expect(order1.clientName).toContain('Maruti Caterers')
     expect(order1.date).toBe('2026-11-18')
-    expect(order1.items[0].qty).toBe(20.83)
+    expect(order1.items[0].qty).toBe(21)
     expect(order1.items[0].originalPieces).toBe(1000)
     expect(order1.items[0].sku).toBe('Anjani 200ml')
     expect(order1.items[0].unit).toBe('Box')
 
-    // Order 2: 20/11/26 -> Balaji Party Plot, Harni Road, Vadodara, 4000 bottles 200ml (4000 / 48 = 83.33 boxes)
+    // Order 2: 20/11/26 -> Balaji Party Plot, Harni Road, Vadodara, 4000 bottles 200ml (4000 / 48 = 83.33 -> rounded up to 84 boxes)
     const order2 = parsed.data.sales[1]
     expect(order2.clientName).toContain('Maruti Caterers')
     expect(order2.date).toBe('2026-11-20')
     expect(order2.address).toMatch(/Balaji Party Plot.*Harni Road.*Vadodara/i)
-    expect(order2.items[0].qty).toBe(83.33)
+    expect(order2.items[0].qty).toBe(84)
     expect(order2.items[0].originalPieces).toBe(4000)
     expect(order2.items[0].sku).toBe('Anjani 200ml')
     expect(order2.items[0].unit).toBe('Box')
 
-    // Order 3: 21/11/26 -> Evening (Sanje), 4000 hajar nung (vernacular 4000 pcs / 48 = 83.33 boxes), PG party plot
+    // Order 3: 21/11/26 -> Evening (Sanje), 4000 hajar nung (vernacular 4000 pcs / 48 = 83.33 -> rounded up to 84 boxes), PG party plot
     const order3 = parsed.data.sales[2]
     expect(order3.clientName).toContain('Maruti Caterers')
     expect(order3.date).toBe('2026-11-21')
     expect(order3.deliveryTime).toBe('Evening')
     expect(order3.address).toMatch(/PG Party Plot.*Harni.*Baroda/i)
-    expect(order3.items[0].qty).toBe(83.33) // 4000 pieces converted to 83.33 boxes
+    expect(order3.items[0].qty).toBe(84) // 4000 pieces converted to 84 boxes
     expect(order3.items[0].originalPieces).toBe(4000)
     expect(order3.items[0].sku).toBe('Anjani 200ml')
     expect(order3.items[0].unit).toBe('Box')
