@@ -22,7 +22,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase-config'
 import { DEFAULT_SKU, getSkuMeta, WATER_SKUS } from '../constants/skus'
-import { consolidateRetailSales } from '../utils/salesBatchUtils'
+import { consolidateRetailSales, normalizeDeliveryTime } from '../utils/salesBatchUtils'
 import { DEFAULT_ACCOUNTS, getAccountMeta } from '../constants/accounts'
 import {
   normalizeOrderWriteData,
@@ -1641,10 +1641,11 @@ export const useClientStore = create((set, get) => ({
 
       // 3. Create order document in Confirmed state so edits can be made
       const effectiveDate = sale.date || sale.deliveryDate || dateStr
-      const effectiveTime = sale.deliveryTime || sale.time || timeStr
+      const effectiveDeliveryTime = normalizeDeliveryTime(sale.deliveryTime || sale.time || timeStr)
+      const effectiveTime = effectiveDeliveryTime
       const combinedNotes = [
         sale.notes,
-        sale.deliveryTime && !sale.notes?.includes(sale.deliveryTime) ? `Time: ${sale.deliveryTime}` : '',
+        effectiveDeliveryTime && !sale.notes?.includes(effectiveDeliveryTime) ? `Time: ${effectiveDeliveryTime}` : '',
       ]
         .filter(Boolean)
         .join(' • ')
@@ -1668,7 +1669,7 @@ export const useClientStore = create((set, get) => ({
         date: effectiveDate,
         deliveryDate: sale.deliveryDate || effectiveDate,
         time: effectiveTime,
-        deliveryTime: sale.deliveryTime || '',
+        deliveryTime: effectiveDeliveryTime,
         notes: combinedNotes,
         createdAt: serverTimestamp(),
       })

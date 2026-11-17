@@ -1566,6 +1566,23 @@ exports.askAnjaniAi = onCall(async (request) => {
     }
   }
 
+  const normalizeDeliveryTimeHelper = (rawTime) => {
+    if (!rawTime || typeof rawTime !== 'string' || !rawTime.trim() || rawTime.trim() === 'N/A') {
+      return '11 AM'
+    }
+    const t = rawTime.trim()
+    if (/(?:\b(?:sanje|saanj|saanje|evening|shyam)\b|સાંજે|સાંજ)/i.test(t)) {
+      return '4 PM'
+    }
+    if (/(?:\b(?:savare|sakal|morning)\b|સવારે|સવાર)/i.test(t)) {
+      return '9 AM'
+    }
+    if (/(?:\b(?:bapore|dupahar|afternoon)\b|બપોરે|બપોર)/i.test(t)) {
+      return '1 PM'
+    }
+    return t
+  }
+
   const DIGIT_MAP = {
     '૦': '0', '૧': '1', '૨': '2', '૩': '3', '૪': '4',
     '૫': '5', '૬': '6', '૭': '7', '૮': '8', '૯': '9',
@@ -1780,7 +1797,7 @@ IMPORTANT RULES:
 1. RETAIL CONSOLIDATION: All walk-in, cash counter, unnamed, or retail customer sales MUST BE CONSOLIDATED INTO A SINGLE order with "clientName": "Retail". NEVER create multiple separate "Retail" sales entries. Regular named business customers (e.g., specific shop names like "Jay Ambe Provision", "Rohitbhai") each get their own separate order.
 2. DIFFERENT RATES MUST REMAIN SEPARATE LINE ITEMS: If the same SKU is sold at different rates (for example: "Bailey 1 Liter 10 @ 120" and "Bailey 1 Liter 5 @ 125"), DO NOT merge them! Keep each distinct rate as its own item in the "items" array with its exact qty and rate. Only combine items if BOTH the SKU and the unit rate are identical.
 3. EXTRACT ADDRESS / DELIVERY LOCATION: If an address, delivery location, road, area, or landmark is visible or mentioned for a customer (e.g. 'Waghodia Road', 'Manjalpur', 'Opposite Bank'), ALWAYS extract it into the 'address' field in clean English Title Case.
-4. MULTI-DATE / CATERING / EVENT ORDERS: If a document or note lists multiple dates, shifts (sanje/evening, savare/morning), or venues (e.g. Party Plots), each date/event represents a SEPARATE ORDER for that client. Generate an individual entry in the "sales" array for EACH date/event, populating "date" (YYYY-MM-DD), "deliveryTime" (e.g. "Evening", "Morning"), and "address" (e.g. "Balaji Party Plot Harni Road Vadodara").
+4. MULTI-DATE / CATERING / EVENT ORDERS: If a document or note lists multiple dates, shifts (sanje/evening, savare/morning), or venues (e.g. Party Plots), each date/event represents a SEPARATE ORDER for that client. Generate an individual entry in the "sales" array for EACH date/event, populating "date" (YYYY-MM-DD), "deliveryTime" (when "sanje" or evening set "4 PM"; when "savare" or morning set "9 AM"; when no time defined set "11 AM"), and "address" (e.g. "Balaji Party Plot Harni Road Vadodara").
 
 Return strict JSON:
 {
@@ -1797,7 +1814,7 @@ Return strict JSON:
       "address": string (delivery address, road, area, or landmark in English if mentioned, else ""),
       "date": string (order or event date in YYYY-MM-DD if specified, else ""),
       "deliveryDate": string (delivery/event date in YYYY-MM-DD if specified, else ""),
-      "deliveryTime": string (delivery shift/time such as "Evening", "Morning", etc., if specified, else ""),
+      "deliveryTime": string (delivery shift/time: set "4 PM" for sanje/evening, "9 AM" for savare/morning, "11 AM" if no time defined, else specific time written),
       "items": [
         {
           "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",
@@ -2223,6 +2240,13 @@ Return strict JSON:
         parsedData.docType === 'retail_sales' ||
         (Array.isArray(parsedData.sales) && parsedData.sales.length > 0)
       ) {
+        if (Array.isArray(parsedData.sales)) {
+          for (const s of parsedData.sales) {
+            if (s) {
+              s.deliveryTime = normalizeDeliveryTimeHelper(s.deliveryTime || s.time)
+            }
+          }
+        }
         return {
           type: 'retail_sales',
           modelUsed: modelName,
@@ -2624,7 +2648,7 @@ CRITICAL RULES & USER INSTRUCTIONS:
 4. EXTRACT ADDRESS / DELIVERY LOCATION: If an address, delivery location, road, area, or landmark is written or dictated for a customer (e.g. 'Waghodia Road', 'Manjalpur', 'Opposite D-Mart'), ALWAYS extract it into the 'address' field in clean English Title Case.
 5. MULTI-DATE / CATERING / EVENT ORDERS (MANDATORY): If a note or message contains multiple dates, shifts (sanje/evening, savare/morning), or venues (e.g. Party Plots, marriage halls), each date/event represents a SEPARATE ORDER for that client. Generate an individual entry in the "sales" array for EACH date/event.
    - Populate "date": "YYYY-MM-DD" for that specific order. Convert dates like "18/11/26" or "18/11/2026" to "2026-11-18".
-   - Populate "deliveryTime": shift/time like "Evening", "Morning", "Afternoon", or time written.
+   - Populate "deliveryTime": shift/time. CRITICAL DELIVERY TIME RULE: When order time says "sanje" (or "evening", "saanj", "સાંજે"), set "4 PM". When order time says "savare" (or "morning", "સવારે"), set "9 AM". When NO time or shift is defined, ALWAYS set "11 AM".
    - Populate "address": venue/location in English Title Case (e.g., "Balaji Party Plot Harni Road Vadodara", "PG Party Plot Harni Baroda").
    - Understand Gujarati colloquial expressions:
      * "nung" / "nang" / "નંગ" / "bottle" / "બોટલ" = Individual bottle pieces. CRITICAL CONVERSION: 48 pieces (નંગ) = 1 Box of Anjani 200ml. All order quantities MUST be output in whole Boxes rounded UP using ceiling! (e.g. 48 nung = 1 box, 96 nung = 2 boxes, 4800 nung = 100 boxes, 2400 nung = 50 boxes, 1000 nung = 21 boxes, 4000 nung = 84 boxes).
@@ -2646,7 +2670,7 @@ Return strict JSON:
       "address": string (delivery address, road, area, or landmark in English if mentioned, else ""),
       "date": string (order or event date in YYYY-MM-DD, e.g. "2026-11-18", if specified; else today),
       "deliveryDate": string (delivery/event date in YYYY-MM-DD if specified),
-      "deliveryTime": string (delivery shift/time such as "Evening", "Morning", etc., if specified, else ""),
+      "deliveryTime": string (delivery shift/time: set "4 PM" for sanje/evening, "9 AM" for savare/morning, "11 AM" if no time defined, else specific time written),
       "items": [
         {
           "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",
@@ -2674,8 +2698,11 @@ ${rawText.slice(0, 3000)}`
           const parsedData = parseStructuredJson(rawJson)
 
           if (Array.isArray(parsedData.sales) && parsedData.sales.length > 0) {
-            // Piece conversion safety (48 pieces = 1 Box for Anjani 200ml)
+            // Delivery time normalization & piece conversion safety (48 pieces = 1 Box for Anjani 200ml)
             for (const sale of parsedData.sales) {
+              if (sale) {
+                sale.deliveryTime = normalizeDeliveryTimeHelper(sale.deliveryTime || sale.time)
+              }
               if (Array.isArray(sale.items)) {
                 for (const it of sale.items) {
                   const skuStr = String(it.sku || '').toLowerCase()

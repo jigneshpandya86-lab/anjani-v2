@@ -43,6 +43,30 @@ export function normalizeDateString(dateStr) {
 }
 
 /**
+ * Normalizes delivery time strings according to Anjani business rules:
+ * - "sanje" / "evening" -> "4 PM"
+ * - "savare" / "morning" -> "9 AM"
+ * - "bapore" / "afternoon" -> "1 PM"
+ * - When no time is defined or empty -> "11 AM"
+ */
+export function normalizeDeliveryTime(rawTime) {
+  if (!rawTime || typeof rawTime !== 'string' || !rawTime.trim() || rawTime.trim() === 'N/A') {
+    return '11 AM'
+  }
+  const t = rawTime.trim()
+  if (/(?:\b(?:sanje|saanj|saanje|evening|shyam)\b|સાંજે|સાંજ)/i.test(t)) {
+    return '4 PM'
+  }
+  if (/(?:\b(?:savare|sakal|morning)\b|સવારે|સવાર)/i.test(t)) {
+    return '9 AM'
+  }
+  if (/(?:\b(?:bapore|dupahar|afternoon)\b|બપોરે|બપોર)/i.test(t)) {
+    return '1 PM'
+  }
+  return t
+}
+
+/**
  * Checks if a customer name represents an unknown, walk-in, or retail customer.
  */
 export function isRetailCustomer(rawName) {
@@ -179,8 +203,8 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [],
         : sale.date
         ? normalizeDateString(sale.date) || sale.date
         : undefined,
-      deliveryTime: sale.deliveryTime || sale.time || undefined,
-      time: sale.time || sale.deliveryTime || undefined,
+      deliveryTime: normalizeDeliveryTime(sale.deliveryTime || sale.time),
+      time: sale.time || normalizeDeliveryTime(sale.deliveryTime || sale.time),
       address: effectiveAddress,
       location: effectiveLocation,
       paymentMode: ['cash', 'online', 'credit'].includes(sale.paymentMode)
@@ -354,18 +378,19 @@ export function parseLocalSalesText(rawText = '', clients = []) {
       }
     }
     if (currentOrder.items && currentOrder.items.length > 0) {
+      const finalDeliveryTime = normalizeDeliveryTime(currentOrder.deliveryTime)
       orders.push({
         clientName: currentOrder.clientName || defaultClientName,
         date: currentOrder.date || undefined,
         deliveryDate: currentOrder.deliveryDate || currentOrder.date || undefined,
-        deliveryTime: currentOrder.deliveryTime || '',
+        deliveryTime: finalDeliveryTime,
         address: currentOrder.address || '',
         items: currentOrder.items,
         totalAmount: 0,
         paymentMode: 'credit',
         notes: [
           currentOrder.notes,
-          currentOrder.deliveryTime ? `Time: ${currentOrder.deliveryTime}` : '',
+          finalDeliveryTime ? `Time: ${finalDeliveryTime}` : '',
           currentOrder.address ? `Venue: ${currentOrder.address}` : '',
         ]
           .filter(Boolean)
@@ -409,17 +434,17 @@ export function parseLocalSalesText(rawText = '', clients = []) {
     // 2. Check Shift / Delivery Time
     if (/\b(?:sanje|saanj|shyam|evening|સાંજે|સાંજ)\b/i.test(rawLine)) {
       if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }
-      currentOrder.deliveryTime = 'Evening'
+      currentOrder.deliveryTime = '4 PM'
       continue
     }
     if (/\b(?:savare|sakal|morning|સવારે|સવાર)\b/i.test(rawLine)) {
       if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }
-      currentOrder.deliveryTime = 'Morning'
+      currentOrder.deliveryTime = '9 AM'
       continue
     }
     if (/\b(?:bapore|dupahar|afternoon|બપોરે|બપોર)\b/i.test(rawLine)) {
       if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }
-      currentOrder.deliveryTime = 'Afternoon'
+      currentOrder.deliveryTime = '1 PM'
       continue
     }
 

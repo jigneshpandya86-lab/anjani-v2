@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { getSkuMeta } from '../constants/skus'
-import { isRetailCustomer, consolidateRetailSales, normalizeDateString, parseLocalSalesText } from '../utils/salesBatchUtils'
+import { isRetailCustomer, consolidateRetailSales, normalizeDateString, normalizeDeliveryTime, parseLocalSalesText } from '../utils/salesBatchUtils'
 import { getRecentSkuPrice } from '../utils/orderUtils'
 
 describe('Retail Sales Batch Normalization', () => {
@@ -321,30 +321,32 @@ PG party plot harni baroda`
     expect(parsed.type).toBe('retail_sales')
     expect(parsed.data.sales.length).toBe(3)
 
-    // Order 1: 18/11/26 -> 1000 bottles (1000 / 48 = 20.83 -> rounded up to 21 boxes)
+    // Order 1: 18/11/26 -> Maruti Caterers, 1000 bottles (rounded up to 21 boxes), default time 11 AM when not defined
     const order1 = parsed.data.sales[0]
     expect(order1.clientName).toContain('Maruti Caterers')
     expect(order1.date).toBe('2026-11-18')
+    expect(order1.deliveryTime).toBe('11 AM')
     expect(order1.items[0].qty).toBe(21)
     expect(order1.items[0].originalPieces).toBe(1000)
     expect(order1.items[0].sku).toBe('Anjani 200ml')
     expect(order1.items[0].unit).toBe('Box')
 
-    // Order 2: 20/11/26 -> Balaji Party Plot, Harni Road, Vadodara, 4000 bottles 200ml (4000 / 48 = 83.33 -> rounded up to 84 boxes)
+    // Order 2: 20/11/26 -> Balaji Party Plot, Harni Road, Vadodara, 4000 bottles 200ml (4000 / 48 = 83.33 -> rounded up to 84 boxes), default time 11 AM
     const order2 = parsed.data.sales[1]
     expect(order2.clientName).toContain('Maruti Caterers')
     expect(order2.date).toBe('2026-11-20')
+    expect(order2.deliveryTime).toBe('11 AM')
     expect(order2.address).toMatch(/Balaji Party Plot.*Harni Road.*Vadodara/i)
     expect(order2.items[0].qty).toBe(84)
     expect(order2.items[0].originalPieces).toBe(4000)
     expect(order2.items[0].sku).toBe('Anjani 200ml')
     expect(order2.items[0].unit).toBe('Box')
 
-    // Order 3: 21/11/26 -> Evening (Sanje), 4000 hajar nung (vernacular 4000 pcs / 48 = 83.33 -> rounded up to 84 boxes), PG party plot
+    // Order 3: 21/11/26 -> Evening (Sanje -> 4 PM), 4000 hajar nung (vernacular 4000 pcs / 48 = 83.33 -> rounded up to 84 boxes), PG party plot
     const order3 = parsed.data.sales[2]
     expect(order3.clientName).toContain('Maruti Caterers')
     expect(order3.date).toBe('2026-11-21')
-    expect(order3.deliveryTime).toBe('Evening')
+    expect(order3.deliveryTime).toBe('4 PM')
     expect(order3.address).toMatch(/PG Party Plot.*Harni.*Baroda/i)
     expect(order3.items[0].qty).toBe(84) // 4000 pieces converted to 84 boxes
     expect(order3.items[0].originalPieces).toBe(4000)
@@ -355,9 +357,11 @@ PG party plot harni baroda`
     const enriched = consolidateRetailSales(parsed.data.sales, mockClients)
     expect(enriched.length).toBe(3)
     expect(enriched[0].date).toBe('2026-11-18')
+    expect(enriched[0].deliveryTime).toBe('11 AM')
     expect(enriched[1].date).toBe('2026-11-20')
+    expect(enriched[1].deliveryTime).toBe('11 AM')
     expect(enriched[2].date).toBe('2026-11-21')
-    expect(enriched[2].deliveryTime).toBe('Evening')
+    expect(enriched[2].deliveryTime).toBe('4 PM')
   })
 
   it('correctly converts pieces (nung / bottle) to boxes using 48 pieces = 1 box rule', () => {
@@ -388,5 +392,22 @@ Maruti Caterers
     expect(parsed.data.sales[2].items[0].qty).toBe(100)
     expect(parsed.data.sales[2].items[0].originalPieces).toBe(4800)
     expect(parsed.data.sales[2].items[0].unit).toBe('Box')
+  })
+
+  it('normalizes delivery times: sanje/evening -> 4 PM, savare -> 9 AM, no time -> 11 AM', () => {
+    expect(normalizeDeliveryTime('sanje')).toBe('4 PM')
+    expect(normalizeDeliveryTime('Sanje')).toBe('4 PM')
+    expect(normalizeDeliveryTime('saanj')).toBe('4 PM')
+    expect(normalizeDeliveryTime('સાંજે')).toBe('4 PM')
+    expect(normalizeDeliveryTime('Evening')).toBe('4 PM')
+    expect(normalizeDeliveryTime('savare')).toBe('9 AM')
+    expect(normalizeDeliveryTime('સવારે')).toBe('9 AM')
+    expect(normalizeDeliveryTime('bapore')).toBe('1 PM')
+    expect(normalizeDeliveryTime('બપોરે')).toBe('1 PM')
+    expect(normalizeDeliveryTime('')).toBe('11 AM')
+    expect(normalizeDeliveryTime(null)).toBe('11 AM')
+    expect(normalizeDeliveryTime(undefined)).toBe('11 AM')
+    expect(normalizeDeliveryTime('N/A')).toBe('11 AM')
+    expect(normalizeDeliveryTime('2:30 PM')).toBe('2:30 PM')
   })
 })
