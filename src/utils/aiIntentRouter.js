@@ -62,10 +62,104 @@ function matchClientFromText(text, clients = []) {
   return null
 }
 
+export function parsePriceUpdateIntent(query, store = {}) {
+  if (!query || typeof query !== 'string') return null
+  if (store.isClientMode || store.isPaymentMode || store.isSalesMode) return null
+  const rawQ = query.trim()
+  const normDigitsQ = normalizeDigits(rawQ)
+  const normQ = normDigitsQ.toLowerCase()
+
+  // 1. Must NOT be an explicit order creation, payment received, or client creation command
+  const isOrderCreation = /^(?:create\s+order|new\s+order|place\s+order|book\s+order|order\s+for|order\s+\d+)\b/i.test(normQ)
+  const isPaymentReceived = /^(?:received|payment\s+received|jama\s+kary[ao]|paid|rupiya\s+malya)\b/i.test(normQ)
+  const isClientCreation =
+    /^(?:add|new|create)\s+(?:client|customer|party|shop)\b/i.test(normQ) ||
+    /(?:નવો|નવા|નવી)\s+(?:ગ્રાહક|કસ્ટમર|ક્લાયન્ટ|પાર્ટી|દુકાન)/i.test(rawQ) ||
+    /(?:नया|नए|नई)\s+(?:ग्राहक|कस्टमर|क्लाइंट|पार्टी|दुकान)/i.test(rawQ) ||
+    /(?:mobile|phone|address|મોબાઈલ|ફોન|સરનામું|એડ્રેસ)\s*[:=]?/i.test(rawQ)
+
+  if (isOrderCreation || isPaymentReceived || isClientCreation) {
+    return null
+  }
+
+  // 2. Identify price/rate update intent
+  const isPriceVerbCombo =
+    /(?:update|change|set|edit|modify)\s+(?:the\s+)?(?:price|rate|bhav|ભાવ|રેટ)/i.test(normQ) ||
+    /(?:price|rate|bhav|ભાવ|રેટ)\s*(?:update|change|set|edit|modify|badlo|બદલો)\b/i.test(normQ) ||
+    /^(?:update|change|set)\s+(?:the\s+)?(?:price|rate|bhav)/i.test(normQ)
+
+  const isBhavKaroCombo =
+    /(?:rate|bhav|price|ભાવ|રેટ)\s*[:=]?\s*\d+\s*(?:karo|karjo|kari\s*aapo|કરો|કરજો|કરી\s*આપો)/i.test(normQ) ||
+    /\d+\s*(?:bhav|rate|price|ભાવ|રેટ)\s*(?:karo|karjo|kari\s*aapo|કરો|કરજો|કરી\s*આપો)/i.test(normQ)
+
+  const isDirectRateCommand =
+    /^(?:rate|bhav|price|ભાવ|રેટ)\s*[:=]?\s*\d+(?:\.\d+)?$/i.test(normQ) ||
+    /^([A-Za-z0-9\s]{2,25})\s+(?:rate|bhav|price|ભાવ|રેટ)\s*[:=]?\s*\d+(?:\.\d+)?$/i.test(normQ) ||
+    /^(?:rate|bhav|price|ભાવ|રેટ)\s*[:=]?\s*\d+(?:\.\d+)?\s*(?:for|to|of)\s+([A-Za-z0-9\s]{2,25})$/i.test(normQ)
+
+  const isPriceUpdate = isPriceVerbCombo || isBhavKaroCombo || isDirectRateCommand
+  if (!isPriceUpdate) return null
+
+  // 3. Extract rate
+  let rate = null
+  const rateMatch =
+    normQ.match(/(?:rate|bhav|price|ભાવ|રેટ|to|is|as|@|₹|rs\.?)\s*[:=]?\s*(\d+(?:\.\d+)?)/i) ||
+    normQ.match(/(\d+(?:\.\d+)?)\s*(?:bhav|rate|price|ભાવ|રેટ|karo|કરો|rs|rupees)/i) ||
+    normQ.match(/\b(\d+(?:\.\d+)?)\b/)
+
+  if (rateMatch && rateMatch[1]) {
+    const val = parseFloat(rateMatch[1])
+    if (!isNaN(val) && val > 0) {
+      rate = val
+    }
+  }
+
+  // 4. Extract client if mentioned
+  const matchedClient = matchClientFromText(rawQ, store.clients || [])
+
+  // 5. Extract SKU if mentioned
+  const matchedSku = findMatchingSku(rawQ)?.sku?.label || DEFAULT_SKU
+
+  return {
+    handled: true,
+    type: 'update_price',
+    data: {
+      rate,
+      sku: matchedSku,
+      client: matchedClient
+        ? { id: matchedClient.id, name: matchedClient.name, skuRates: matchedClient.skuRates, rate: matchedClient.rate }
+        : null,
+      clientName: matchedClient?.name || null,
+      rawQuery: rawQ,
+    },
+    text: rate
+      ? `💰 Price update to ₹${rate} detected.`
+      : `💰 Please specify the price/rate (e.g., "update price to 140").`,
+    chips: !rate
+      ? [
+          { label: '₹120', rate: 120, action: 'apply_rate' },
+          { label: '₹125', rate: 125, action: 'apply_rate' },
+          { label: '₹130', rate: 130, action: 'apply_rate' },
+          { label: '₹135', rate: 135, action: 'apply_rate' },
+          { label: '₹140', rate: 140, action: 'apply_rate' },
+          { label: '₹150', rate: 150, action: 'apply_rate' },
+        ]
+      : undefined,
+  }
+}
+
 export function tryLocalIntentRoute(query, store = {}) {
   if (!query || typeof query !== 'string') return null
   const rawQ = query.trim()
   const q = rawQ.toLowerCase()
+
+  // ==========================================
+  // SEQUENCE 0: PRICE & RATE UPDATE (Zero tokens & Instant response)
+  // ==========================================
+  const priceUpdateRoute = parsePriceUpdateIntent(rawQ, store)
+  if (priceUpdateRoute && priceUpdateRoute.handled) {
+    return priceUpdateRoute
+  }
 
   // Multi-date catering / sales orders local parsing (Zero tokens & Instant response)
   const isSingleOrderCommand = /^(?:create\s+order|new\s+order|place\s+order|book\s+order|order\s+for|order\s+\d+)\b/i.test(q)
@@ -87,7 +181,7 @@ export function tryLocalIntentRoute(query, store = {}) {
         return {
           handled: true,
           type: 'retail_sales',
-          text: `📋 **Parsed ${enrichedSales.length} Catering/Retail Order${enrichedSales.length !== 1 ? 's' : ''}**\n\nReview the order list below. You can adjust quantities, change payment modes, or remove items before confirming:`,
+          text: `📋 **Parsed ${enrichedSales.length} Catering/Retail Order${enrichedSales.length !== 1 ? 's' : ''}**`,
           data: {
             summary: {
               totalOrders: enrichedSales.length,

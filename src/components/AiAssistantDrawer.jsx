@@ -96,6 +96,7 @@ export default function AiAssistantDrawer({
   const createBatchSales = useClientStore((state) => state.createBatchSales)
   const createBatchAccountEntries = useClientStore((state) => state.createBatchAccountEntries)
   const updateOrder = useClientStore((state) => state.updateOrder)
+  const updateClient = useClientStore((state) => state.updateClient)
   const addClient = useClientStore((state) => state.addClient)
   const addPayment = useClientStore((state) => state.addPayment)
   const addOrder = useClientStore((state) => state.addOrder)
@@ -563,7 +564,11 @@ export default function AiAssistantDrawer({
       return
     }
 
-    // 2. If quick action query (Stock / Dues / Menu)
+    // 2. If quick action query (Stock / Dues / Menu / Price Rate)
+    if (chip.action === 'apply_rate' || chip.rate) {
+      handleSend(`update price to ${chip.rate || String(chip.label).replace(/\D/g, '')}`)
+      return
+    }
     if (chip.action === 'query_stock') {
       handleSend('Current stock')
       return
@@ -900,6 +905,174 @@ export default function AiAssistantDrawer({
       })
 
       if (localRoute && localRoute.handled) {
+        if (localRoute.type === 'update_price') {
+          const targetRate = localRoute.data.rate
+          const targetSku = localRoute.data.sku || 'Anjani 200ml'
+          let targetClient = localRoute.data.client
+          let targetClientName = localRoute.data.clientName
+
+          // Check if there is an unconfirmed batch sales or draft order in messages
+          let foundPendingBatch = null
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            if (m.type === 'retail_sales' && m.data?.sales?.length > 0 && !processedSalesBatches[m.id]) {
+              foundPendingBatch = m
+              break
+            }
+          }
+
+          if (foundPendingBatch) {
+            // If target client was not explicitly stated in query, infer from batch
+            if (!targetClientName && foundPendingBatch.data.sales.length > 0) {
+              const firstClient = foundPendingBatch.data.sales[0].clientName
+              const allSame = foundPendingBatch.data.sales.every((s) => s.clientName === firstClient)
+              if (allSame && firstClient) {
+                targetClientName = firstClient
+                targetClient =
+                  (clients || []).find((c) => c.name?.toLowerCase() === firstClient.toLowerCase()) || {
+                    name: firstClient,
+                  }
+              }
+            }
+
+            if (targetRate !== null && targetRate > 0) {
+              let newTotalAmt = 0
+
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  if (msg.id !== foundPendingBatch.id) return msg
+                  const updatedSales = msg.data.sales.map((sale) => {
+                    const matchSale =
+                      !targetClientName ||
+                      sale.clientName?.toLowerCase().includes(targetClientName.toLowerCase())
+                    if (!matchSale) {
+                      newTotalAmt += Number(sale.totalAmount || 0)
+                      return sale
+                    }
+                    const updatedItems = (sale.items || []).map((it) => {
+                      const nextAmount = (Number(it.qty) || 0) * targetRate
+                      return { ...it, rate: targetRate, amount: nextAmount }
+                    })
+                    const saleTotal = updatedItems.reduce(
+                      (s, it) => s + (Number(it.amount) || 0),
+                      0
+                    )
+                    newTotalAmt += saleTotal
+                    return { ...sale, items: updatedItems, totalAmount: saleTotal }
+                  })
+                  return { ...msg, data: { ...msg.data, sales: updatedSales } }
+                })
+              )
+
+              if (targetClient?.id) {
+                try {
+                  updateClient(targetClient.id, {
+                    rate: targetRate,
+                    skuRates: { ...(targetClient.skuRates || {}), [targetSku]: targetRate },
+                  })
+                } catch (_e) {
+                  console.error('Failed to update client rate:', _e)
+                }
+              }
+
+              toast.success(`Price updated to ₹${targetRate}`)
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `💰 **Price Updated**: Set rate to **₹${targetRate}/unit** for **${targetClientName || 'drafted orders'}**.\n\nRecalculated batch total: **₹${newTotalAmt.toLocaleString('en-IN')}**.`,
+                  type: 'update_price_confirm',
+                  data: { rate: targetRate, clientName: targetClientName, newTotalAmt },
+                  isLocal: true,
+                  timestamp: new Date(),
+                },
+              ])
+              return
+            } else {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `💰 **Update Price**: What price would you like to set for **${targetClientName || 'drafted orders'}**?`,
+                  chips: [
+                    { label: '₹120', rate: 120, action: 'apply_rate' },
+                    { label: '₹125', rate: 125, action: 'apply_rate' },
+                    { label: '₹130', rate: 130, action: 'apply_rate' },
+                    { label: '₹135', rate: 135, action: 'apply_rate' },
+                    { label: '₹140', rate: 140, action: 'apply_rate' },
+                    { label: '₹150', rate: 150, action: 'apply_rate' },
+                  ],
+                  isLocal: true,
+                  timestamp: new Date(),
+                },
+              ])
+              return
+            }
+          }
+
+          // If no pending batch in messages, but client specified with rate
+          if (targetRate !== null && targetRate > 0) {
+            if (targetClient?.id) {
+              try {
+                updateClient(targetClient.id, {
+                  rate: targetRate,
+                  skuRates: { ...(targetClient.skuRates || {}), [targetSku]: targetRate },
+                })
+              } catch (_e) {
+                console.error('Failed to update client rate:', _e)
+              }
+              toast.success(`Price updated to ₹${targetRate} for ${targetClient.name}`)
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `💰 **Client Price Updated**: Default rate for **${targetClient.name}** (${targetSku}) is now updated to **₹${targetRate}/unit**.`,
+                  type: 'update_price_confirm',
+                  data: { rate: targetRate, client: targetClient },
+                  isLocal: true,
+                  timestamp: new Date(),
+                },
+              ])
+              return
+            } else {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `💰 **Price Update**: Recognized rate **₹${targetRate}**. Which customer would you like to update? (e.g., *"update price for Maruti Caterers to ${targetRate}"*)`,
+                  isLocal: true,
+                  timestamp: new Date(),
+                },
+              ])
+              return
+            }
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `💰 **Update Price**: Please specify the customer name and new rate (e.g., *"update price for Maruti Caterers to 140"* or *"Maruti Caterers rate 140"*).`,
+                chips: [
+                  { label: '₹120', rate: 120, action: 'apply_rate' },
+                  { label: '₹125', rate: 125, action: 'apply_rate' },
+                  { label: '₹130', rate: 130, action: 'apply_rate' },
+                  { label: '₹135', rate: 135, action: 'apply_rate' },
+                  { label: '₹140', rate: 140, action: 'apply_rate' },
+                  { label: '₹150', rate: 150, action: 'apply_rate' },
+                ],
+                isLocal: true,
+                timestamp: new Date(),
+              },
+            ])
+            return
+          }
+        }
+
         setMessages((prev) => [
           ...prev,
           {
@@ -908,6 +1081,7 @@ export default function AiAssistantDrawer({
             text: localRoute.text,
             type: localRoute.type,
             data: localRoute.data,
+            chips: localRoute.chips,
             isLocal: true,
             timestamp: new Date(),
           },
@@ -1379,6 +1553,27 @@ export default function AiAssistantDrawer({
             return it
           })
           const nextTotal = updatedItems.reduce((s, it) => s + it.qty * (it.rate || 0), 0)
+          return { ...sale, items: updatedItems, totalAmount: nextTotal }
+        })
+        return { ...msg, data: { ...msg.data, sales: updatedSales } }
+      })
+    )
+  }
+
+  // Adjust unit rate for a sale item in a retail sales batch by item index
+  const handleUpdateRetailSaleRate = (msgId, saleIdx, itemIdx, newRate) => {
+    const rateVal = Math.max(0, Number(newRate) || 0)
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id !== msgId || msg.type !== 'retail_sales') return msg
+        const updatedSales = msg.data.sales.map((sale, sIdx) => {
+          if (saleIdx !== null && sIdx !== saleIdx) return sale
+          const updatedItems = sale.items.map((it, iIdx) => {
+            if (itemIdx !== null && iIdx !== itemIdx) return it
+            const nextAmount = (Number(it.qty) || 0) * rateVal
+            return { ...it, rate: rateVal, amount: nextAmount }
+          })
+          const nextTotal = updatedItems.reduce((s, it) => s + (Number(it.qty) || 0) * (it.rate || 0), 0)
           return { ...sale, items: updatedItems, totalAmount: nextTotal }
         })
         return { ...msg, data: { ...msg.data, sales: updatedSales } }
@@ -2847,10 +3042,32 @@ export default function AiAssistantDrawer({
                                           <span className="font-bold text-gray-800 truncate block">
                                             {it.sku}
                                           </span>
-                                          <span className="text-[10px] text-gray-500 font-semibold">
-                                            {it.qty} {it.unit || 'cs'} {it.rate > 0 ? `@ ₹${it.rate}` : ''}
-                                            {lineTotal > 0 ? ` = ₹${lineTotal.toLocaleString('en-IN')}` : ''}
-                                          </span>
+                                          <div className="text-[10px] text-gray-500 font-semibold flex items-center flex-wrap gap-1">
+                                            <span>{it.qty} {it.unit || 'cs'}</span>
+                                            {!isBatchDone ? (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const newRateStr = window.prompt(`Enter new rate for ${it.sku} (₹):`, it.rate || 130)
+                                                  if (newRateStr !== null && newRateStr.trim() !== '') {
+                                                    const parsed = parseFloat(newRateStr)
+                                                    if (!isNaN(parsed) && parsed > 0) {
+                                                      handleUpdateRetailSaleRate(msg.id, sIdx, itIdx, parsed)
+                                                      toast.success(`Updated rate to ₹${parsed}`)
+                                                    }
+                                                  }
+                                                }}
+                                                className="px-1.5 py-0.2 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[9px] inline-flex items-center gap-0.5 cursor-pointer border border-blue-200 transition-colors"
+                                                title="Tap to edit rate"
+                                              >
+                                                <span>@ ₹{it.rate}</span>
+                                                <Edit2 className="w-2.5 h-2.5 opacity-70" />
+                                              </button>
+                                            ) : (
+                                              <span>{it.rate > 0 ? `@ ₹${it.rate}` : ''}</span>
+                                            )}
+                                            {lineTotal > 0 && <span>= ₹{lineTotal.toLocaleString('en-IN')}</span>}
+                                          </div>
                                         </div>
                                         <div className="flex items-center gap-1 shrink-0">
                                           {!isBatchDone && (

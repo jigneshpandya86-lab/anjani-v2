@@ -271,5 +271,70 @@ describe('aiIntentRouter', () => {
     expect(res.data.assignedTo).toBe('nilesh')
     expect(res.data.text).toContain('collect empty jars')
   })
+
+  it('handles price and rate update commands locally with zero tokens', () => {
+    const fakeStore = {
+      clients: [{ id: 'c1', name: 'Maruti Caterers', mobile: '9825012345', rate: 130 }],
+    }
+
+    // 1. "update price to 140"
+    const res1 = tryLocalIntentRoute('update price to 140', fakeStore)
+    expect(res1).not.toBeNull()
+    expect(res1.handled).toBe(true)
+    expect(res1.type).toBe('update_price')
+    expect(res1.data.rate).toBe(140)
+
+    // 2. "change rate to 135"
+    const res2 = tryLocalIntentRoute('change rate to 135', fakeStore)
+    expect(res2).not.toBeNull()
+    expect(res2.handled).toBe(true)
+    expect(res2.type).toBe('update_price')
+    expect(res2.data.rate).toBe(135)
+
+    // 3. Gujarati vernacular: "bhav 140 karo"
+    const res3 = tryLocalIntentRoute('bhav 140 karo', fakeStore)
+    expect(res3).not.toBeNull()
+    expect(res3.handled).toBe(true)
+    expect(res3.type).toBe('update_price')
+    expect(res3.data.rate).toBe(140)
+
+    // 4. "rate 140"
+    const res4 = tryLocalIntentRoute('rate 140', fakeStore)
+    expect(res4).not.toBeNull()
+    expect(res4.handled).toBe(true)
+    expect(res4.type).toBe('update_price')
+    expect(res4.data.rate).toBe(140)
+
+    // 5. Client specified: "update price for Maruti Caterers to 140"
+    const res5 = tryLocalIntentRoute('update price for Maruti Caterers to 140', fakeStore)
+    expect(res5).not.toBeNull()
+    expect(res5.handled).toBe(true)
+    expect(res5.type).toBe('update_price')
+    expect(res5.data.rate).toBe(140)
+    expect(res5.data.clientName).toBe('Maruti Caterers')
+
+    // 6. Generic "update price" without amount -> prompts with quick chips
+    const res6 = tryLocalIntentRoute('update price', fakeStore)
+    expect(res6).not.toBeNull()
+    expect(res6.handled).toBe(true)
+    expect(res6.type).toBe('update_price')
+    expect(res6.data.rate).toBeNull()
+    expect(res6.chips).toBeDefined()
+    expect(res6.chips.length).toBeGreaterThan(0)
+  })
+
+  it('removes verbose instruction text from drafted catering/retail orders in AI chat', () => {
+    const fakeStore = {
+      clients: [{ id: 'c1', name: 'Maruti Caterers', mobile: '9825012345', rate: 130 }],
+    }
+    const salesNote = '18/11/26\nsanje\nMaruti Caterers\n4800 nung 200ml'
+    const result = tryLocalIntentRoute(salesNote, fakeStore)
+    expect(result).not.toBeNull()
+    expect(result.handled).toBe(true)
+    expect(result.type).toBe('retail_sales')
+    expect(result.text).not.toContain('Review the order list below')
+    expect(result.text).not.toContain('You can adjust quantities, change payment modes, or remove items before confirming:')
+    expect(result.text).toBe('📋 **Parsed 1 Catering/Retail Order**')
+  })
 })
 

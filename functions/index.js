@@ -2233,6 +2233,30 @@ Return strict JSON:
       // Text mode
       const rawText = String(text || '').trim()
 
+      // Check for price / rate update intent in text
+      const isPriceUpdateTextIntent =
+        /(?:update\s+price|change\s+price|set\s+price|update\s+rate|change\s+rate|set\s+rate|rate\s+update|price\s+update|bhav\s+badlo|bhav\s+change|rate\s+change|ભાવ\s*બદલો|રેટ\s*બદલો)\b/i.test(rawText) ||
+        /(?:rate|bhav|price|ભાવ|રેટ)\s*[:=]?\s*\d+\s*(?:karo|karjo|kari\s*aapo|કરો|કરજો|કરી\s*આપો)?/i.test(rawText) ||
+        /(?:update|change|set)\s+(?:the\s+)?(?:rate|price|bhav)\b/i.test(rawText)
+
+      if (isPriceUpdateTextIntent && !/(?:create\s+order|new\s+order|place\s+order)\b/i.test(rawText)) {
+        const rateMatch =
+          rawText.match(/(?:rate|bhav|price|ભાવ|રેટ|to|is|as|@|₹|rs\.?)\s*[:=]?\s*(\d+(?:\.\d+)?)/i) ||
+          rawText.match(/\b(\d+(?:\.\d+)?)\b/)
+        const rate = rateMatch ? parseFloat(rateMatch[1]) : 0
+        return {
+          type: 'update_price',
+          modelUsed: modelName,
+          data: {
+            rate,
+            rawText,
+          },
+          text: rate > 0
+            ? `💰 **Price Update**: Recognized command to update price to **₹${rate}**.`
+            : `💰 **Update Price**: Please specify the new rate and customer (e.g., *"update price to 140"*).`,
+        }
+      }
+
       // Check if this is an accounts & staff cash entry
       const isExplicitAccounts = mode === 'accounts_cash' || mode === 'accounts'
       const hasAccountsKeywords =
