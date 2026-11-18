@@ -201,6 +201,16 @@ function App() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+      if (activeTab === 'ai') {
+        document.body.style.overflow = 'hidden'
+      } else {
+        document.body.style.overflow = ''
+      }
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        document.body.style.overflow = ''
+      }
     }
   }, [activeTab])
 
@@ -1254,8 +1264,20 @@ function App() {
       <NetworkStatusBar />
 
       {/* Main Content Area */}
-      <div className="flex flex-col min-h-screen">
-        <div className={`max-w-5xl mx-auto w-full px-3.5 sm:px-4 ${activeTab === 'ai' ? 'pb-20' : 'pb-28'}`}>
+      <div
+        className={`flex flex-col ${
+          activeTab === 'ai'
+            ? 'h-[calc(100dvh-58px-58px)] max-h-[calc(100dvh-116px)] overflow-hidden'
+            : 'min-h-screen'
+        }`}
+      >
+        <div
+          className={`max-w-5xl mx-auto w-full ${
+            activeTab === 'ai'
+              ? 'flex-1 flex flex-col h-full p-0 overflow-hidden'
+              : 'px-3.5 sm:px-4 pb-28'
+          }`}
+        >
           {activeTab === 'orders' && (
             <OrdersDashboard
               onEdit={setEditOrder}
@@ -1351,7 +1373,7 @@ function App() {
           )}
           {activeTab === 'settings' && <SettingsTab />}
           {activeTab === 'ai' && (
-            <div className="w-full flex-1 flex flex-col h-[calc(100dvh-130px)] sm:h-[calc(100vh-140px)] max-w-2xl mx-auto rounded-2xl overflow-hidden shadow-xs border border-gray-200 bg-white">
+            <div className="w-full flex-1 flex flex-col h-full overflow-hidden bg-white sm:h-[calc(100dvh-135px)] sm:max-w-2xl sm:mx-auto sm:rounded-2xl sm:border sm:border-gray-200 sm:shadow-xs">
               <AiAssistantDrawer
                 isOpen={true}
                 isPage={true}
