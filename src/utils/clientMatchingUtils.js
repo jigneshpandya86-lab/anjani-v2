@@ -174,12 +174,23 @@ export function findMatchingClient(rawName, clients = [], options = {}) {
     return null
   }
 
-  // Tier 2: Exact Name Match
-  const exactMatch = clients.find(
-    (c) =>
-      (c?.displayName && c.displayName.toLowerCase().trim() === targetLower) ||
-      (c?.name && c.name.toLowerCase().trim() === targetLower)
-  )
+  // Tier 2: Exact Name Match (Checks official name, Zoho-style displayName, and base business alias)
+  const exactMatch = clients.find((c) => {
+    const cName = c?.name ? c.name.toLowerCase().trim() : ''
+    const cDisplay = c?.displayName ? c.displayName.toLowerCase().trim() : ''
+    const cBase = c?.displayName
+      ? c.displayName.replace(/\s*\([^)]*\)/g, '').toLowerCase().trim()
+      : ''
+    const cParen = c?.displayName
+      ? (c.displayName.match(/\(([^)]+)\)/)?.[1] || '').toLowerCase().trim()
+      : ''
+    return (
+      (cDisplay && cDisplay === targetLower) ||
+      (cBase && cBase === targetLower) ||
+      (cParen && cParen === targetLower) ||
+      (cName && cName === targetLower)
+    )
+  })
   if (exactMatch) {
     return {
       matched: true,
@@ -196,17 +207,23 @@ export function findMatchingClient(rawName, clients = [], options = {}) {
     let phoneticMatch = clients.find((c) => {
       const nameKey = c?.name ? getPhoneticKey(c.name) : null
       const displayKey = c?.displayName ? getPhoneticKey(c.displayName) : null
-      return nameKey === targetPhonetic || displayKey === targetPhonetic
+      const cBase = c?.displayName ? c.displayName.replace(/\s*\([^)]*\)/g, '').trim() : ''
+      const baseKey = cBase ? getPhoneticKey(cBase) : null
+      return nameKey === targetPhonetic || displayKey === targetPhonetic || baseKey === targetPhonetic
     })
     if (!phoneticMatch && targetPhonetic.length >= 4) {
       phoneticMatch = clients.find((c) => {
         const nameKey = c?.name ? getPhoneticKey(c.name) : ''
         const displayKey = c?.displayName ? getPhoneticKey(c.displayName) : ''
+        const cBase = c?.displayName ? c.displayName.replace(/\s*\([^)]*\)/g, '').trim() : ''
+        const baseKey = cBase ? getPhoneticKey(cBase) : ''
         return (
           nameKey.includes(targetPhonetic) ||
           displayKey.includes(targetPhonetic) ||
+          baseKey.includes(targetPhonetic) ||
           (nameKey.length >= 4 && targetPhonetic.includes(nameKey)) ||
-          (displayKey.length >= 4 && targetPhonetic.includes(displayKey))
+          (displayKey.length >= 4 && targetPhonetic.includes(displayKey)) ||
+          (baseKey.length >= 4 && targetPhonetic.includes(baseKey))
         )
       })
     }
@@ -228,9 +245,12 @@ export function findMatchingClient(rawName, clients = [], options = {}) {
     const substringMatch = clients.find((c) => {
       const cleanName = c?.name ? c.name.toLowerCase().replace(/[^a-z0-9]/g, '') : ''
       const cleanDisplay = c?.displayName ? c.displayName.toLowerCase().replace(/[^a-z0-9]/g, '') : ''
+      const cBase = c?.displayName ? c.displayName.replace(/\s*\([^)]*\)/g, '').trim() : ''
+      const cleanBase = cBase ? cBase.toLowerCase().replace(/[^a-z0-9]/g, '') : ''
       const matchName = cleanName.length >= 4 && (cleanTarget.includes(cleanName) || cleanName.includes(cleanTarget))
       const matchDisplay = cleanDisplay.length >= 4 && (cleanTarget.includes(cleanDisplay) || cleanDisplay.includes(cleanTarget))
-      return matchName || matchDisplay
+      const matchBase = cleanBase.length >= 4 && (cleanTarget.includes(cleanBase) || cleanBase.includes(cleanTarget))
+      return matchName || matchDisplay || matchBase
     })
     if (substringMatch) {
       return {
@@ -252,9 +272,11 @@ export function findMatchingClient(rawName, clients = [], options = {}) {
     if (!c?.name && !c?.displayName) continue
     const cLower = (c.name || '').toLowerCase().trim()
     const dLower = (c.displayName || '').toLowerCase().trim()
+    const cBase = c?.displayName ? c.displayName.replace(/\s*\([^)]*\)/g, '').toLowerCase().trim() : ''
     const score = Math.max(
       cLower ? similarityRatio(targetLower, cLower) : 0,
-      dLower ? similarityRatio(targetLower, dLower) : 0
+      dLower ? similarityRatio(targetLower, dLower) : 0,
+      cBase ? similarityRatio(targetLower, cBase) : 0
     )
     if (score >= threshold && score > bestScore) {
       bestScore = score

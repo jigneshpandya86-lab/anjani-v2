@@ -656,5 +656,51 @@ describe('aiIntentRouter', () => {
     expect(result.type).toBe('orders_list')
     expect(result.text).toBe('')
   })
+
+  it('recognizes client display names and handles "make <client> regular client" command', () => {
+    const fakeStore = {
+      clients: [
+        {
+          id: 'c-maa',
+          name: 'Nirmalbhai',
+          displayName: 'Maa Excellence (Nirmalbhai)',
+          isRegular: false,
+          rate: 130,
+        },
+      ],
+    }
+
+    // 1. "make Maa Excellence a regular client"
+    const res1 = tryLocalIntentRoute('make Maa Excellence a regular client', fakeStore)
+    expect(res1).not.toBeNull()
+    expect(res1.handled).toBe(true)
+    expect(res1.type).toBe('client_regular_status')
+    expect(res1.data.clientId).toBe('c-maa')
+    expect(res1.data.isRegular).toBe(true)
+    expect(res1.text).toContain('Maa Excellence (Nirmalbhai)')
+
+    // 2. Gujarati vernacular: "Maa Excellence ne regular client banao"
+    const res2 = tryLocalIntentRoute('Maa Excellence ne regular client banao', fakeStore)
+    expect(res2).not.toBeNull()
+    expect(res2.handled).toBe(true)
+    expect(res2.type).toBe('client_regular_status')
+    expect(res2.data.clientId).toBe('c-maa')
+    expect(res2.data.isRegular).toBe(true)
+
+    // 3. Remove regular status: "remove Maa Excellence from regular"
+    const res3 = tryLocalIntentRoute('remove Maa Excellence from regular', fakeStore)
+    expect(res3).not.toBeNull()
+    expect(res3.handled).toBe(true)
+    expect(res3.type).toBe('client_regular_status')
+    expect(res3.data.clientId).toBe('c-maa')
+    expect(res3.data.isRegular).toBe(false)
+
+    // 4. Order command using business alias: "order 20 boxes for Maa Excellence"
+    const resOrder = tryLocalIntentRoute('order 20 boxes for Maa Excellence', fakeStore)
+    expect(resOrder).not.toBeNull()
+    expect(resOrder.handled).toBe(true)
+    expect(resOrder.data.clientId).toBe('c-maa')
+    expect(resOrder.data.clientName).toBe('Maa Excellence (Nirmalbhai)')
+  })
 })
 

@@ -524,12 +524,17 @@ export function parseLocalSalesText(rawText = '', clients = []) {
       /(?:caterer|caterers|catering|decorators|mandap|traders|agency|enterprise|dairy|store)/i.test(
         rawLine
       ) ||
-      clients.some(
-        (c) =>
-          c.name &&
-          c.name.length > 2 &&
-          rawLine.toLowerCase().includes(c.name.toLowerCase().trim())
-      )
+      clients.some((c) => {
+        const cName = c?.name?.toLowerCase().trim()
+        const cDisplay = c?.displayName?.toLowerCase().trim()
+        const cBase = c?.displayName ? c.displayName.replace(/\s*\([^)]*\)/g, '').toLowerCase().trim() : ''
+        const norm = rawLine.toLowerCase()
+        return (
+          (cName && cName.length > 2 && norm.includes(cName)) ||
+          (cDisplay && cDisplay.length > 2 && norm.includes(cDisplay)) ||
+          (cBase && cBase.length > 2 && norm.includes(cBase))
+        )
+      })
 
     if (isClientLine) {
       const detectedName = lineEn

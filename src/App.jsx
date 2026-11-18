@@ -128,6 +128,7 @@ function App() {
       } catch {
         // ignore
       }
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
     }
   }, [])
   const [editOrder, setEditOrder] = useState(null)
@@ -196,6 +197,12 @@ function App() {
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [aiDrawerOpen, setAiDrawerOpen])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+    }
+  }, [activeTab])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1248,7 +1255,7 @@ function App() {
 
       {/* Main Content Area */}
       <div className="flex flex-col min-h-screen">
-        <div className="max-w-5xl mx-auto w-full px-3.5 sm:px-4 pb-28">
+        <div className={`max-w-5xl mx-auto w-full px-3.5 sm:px-4 ${activeTab === 'ai' ? 'pb-20' : 'pb-28'}`}>
           {activeTab === 'orders' && (
             <OrdersDashboard
               onEdit={setEditOrder}

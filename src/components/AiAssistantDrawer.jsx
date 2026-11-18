@@ -98,6 +98,7 @@ export default function AiAssistantDrawer({
 }) {
   const fileInputRef = useRef(null)
   const messagesEndRef = useRef(null)
+  const messagesContainerRef = useRef(null)
   const inputRef = useRef(null)
 
   const clients = useClientStore((state) => state.clients)
@@ -576,8 +577,15 @@ export default function AiAssistantDrawer({
   }, [aiPrefillFile])
 
   useEffect(() => {
-    if (typeof messagesEndRef.current?.scrollIntoView === 'function') {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    if (messagesContainerRef.current) {
+      if (typeof messagesContainerRef.current.scrollTo === 'function') {
+        messagesContainerRef.current.scrollTo({
+          top: messagesContainerRef.current.scrollHeight,
+          behavior: 'smooth',
+        })
+      } else {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+      }
     }
   }, [messages, loading])
 
@@ -1665,6 +1673,34 @@ export default function AiAssistantDrawer({
           }
         }
 
+        if (localRoute.type === 'client_regular_status') {
+          const targetClient = localRoute.data.client
+          const isRegular = localRoute.data.isRegular
+          if (targetClient?.id) {
+            try {
+              await updateClient(targetClient.id, { isRegular })
+              toast.success(`${targetClient.displayName || targetClient.name} marked as ${isRegular ? 'regular' : 'standard'}!`)
+            } catch (err) {
+              console.error('Failed to update client regular status:', err)
+              toast.error('Failed to update regular status: ' + err.message)
+            }
+          }
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: localRoute.text,
+              type: localRoute.type,
+              data: localRoute.data,
+              chips: localRoute.chips,
+              isLocal: true,
+              timestamp: new Date(),
+            },
+          ])
+          return
+        }
+
         setMessages((prev) => [
           ...prev,
           {
@@ -1737,7 +1773,20 @@ export default function AiAssistantDrawer({
 
       const response = await askAnjaniAi({
         memories: aiMemories.filter((m) => m && m.active !== false),
-        knownClients: (clients || []).map((c) => c?.name).filter(Boolean).slice(0, 150),
+        knownClients: (clients || [])
+          .flatMap((c) => {
+            const list = [c?.name, c?.displayName]
+            if (c?.displayName) {
+              const stripped = c.displayName.replace(/\s*\([^)]*\)/g, '').trim()
+              if (stripped) list.push(stripped)
+              const paren = (c.displayName.match(/\(([^)]+)\)/)?.[1] || '').trim()
+              if (paren) list.push(paren)
+            }
+            return list
+          })
+          .filter(Boolean)
+          .filter((v, i, a) => a.indexOf(v) === i)
+          .slice(0, 250),
         text: promptText,
         imageBase64: filePayload?.base64 || null,
         mimeType: filePayload?.mimeType || 'image/jpeg',
@@ -2960,7 +3009,7 @@ export default function AiAssistantDrawer({
         </div>
 
         {/* Message Thread */}
-        <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50/50">
+        <div ref={messagesContainerRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50/50">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-start text-center pt-0 pb-2 px-1 text-gray-700 select-none space-y-2">
               {/* Main Menu Action Chips (2-column layout on both mobile and desktop) */}

@@ -123,6 +123,29 @@ describe('clientMatchingUtils', () => {
       expect(match3.client.id).toBe('c5')
     })
 
+    it('matches customer by base alias when displayName has parentheses (e.g. Maa Excellence from Maa Excellence (Nirmalbhai))', () => {
+      const clientsWithParen = [
+        ...clients,
+        { id: 'c-maa', name: 'Nirmalbhai', displayName: 'Maa Excellence (Nirmalbhai)', mobile: '9825123456' },
+      ]
+
+      // Match by base business name "Maa Excellence"
+      const match1 = findMatchingClient('Maa Excellence', clientsWithParen)
+      expect(match1).not.toBeNull()
+      expect(match1.client.id).toBe('c-maa')
+      expect(match1.matchType).toBe('exact')
+
+      // Match by person name "Nirmalbhai"
+      const match2 = findMatchingClient('Nirmalbhai', clientsWithParen)
+      expect(match2).not.toBeNull()
+      expect(match2.client.id).toBe('c-maa')
+
+      // Match by full display name
+      const match3 = findMatchingClient('Maa Excellence (Nirmalbhai)', clientsWithParen)
+      expect(match3).not.toBeNull()
+      expect(match3.client.id).toBe('c-maa')
+    })
+
     it('isolates "Retail" and generic walk-in customers from matching unrelated clients (e.g. Dr. Rahul Vasava)', () => {
       const clientsWithDoctor = [
         ...clients,

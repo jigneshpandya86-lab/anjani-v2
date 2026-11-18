@@ -24,20 +24,40 @@ function matchSkuFromText(text) {
   return match?.sku?.label || DEFAULT_SKU
 }
 
-// Helper: Match client from text against store.clients (with phonetic & fuzzy matching)
+// Helper: Match client from text against store.clients (with phonetic, alias & fuzzy matching)
 function matchClientFromText(text, clients = []) {
   if (!text || !Array.isArray(clients) || clients.length === 0) return null
   const norm = text.toLowerCase()
-  // 1. Exact or contains match (longest first)
-  const sorted = [...clients].sort((a, b) => (b.name?.length || 0) - (a.name?.length || 0))
-  for (const c of sorted) {
-    if (c.name && norm.includes(c.name.toLowerCase().trim())) {
-      return c
+
+  // 1. Exact or contains match across name, displayName, and base displayName (longest first)
+  const candidateClients = []
+  for (const c of clients) {
+    if (c.name) candidateClients.push({ client: c, term: c.name.toLowerCase().trim() })
+    if (c.displayName) {
+      candidateClients.push({ client: c, term: c.displayName.toLowerCase().trim() })
+      const base = c.displayName.replace(/\s*\([^)]*\)/g, '').toLowerCase().trim()
+      if (base && base !== c.displayName.toLowerCase().trim()) {
+        candidateClients.push({ client: c, term: base })
+      }
+      const paren = (c.displayName.match(/\(([^)]+)\)/)?.[1] || '').toLowerCase().trim()
+      if (paren) {
+        candidateClients.push({ client: c, term: paren })
+      }
+    }
+  }
+  candidateClients.sort((a, b) => b.term.length - a.term.length)
+  for (const item of candidateClients) {
+    if (item.term.length >= 3 && norm.includes(item.term)) {
+      return item.client
     }
   }
 
-  // 2. Extracted candidate patterns (e.g. "order for Sandeep", "from Sandeep", "Sandeep paid 500")
+  // 2. Extracted candidate patterns (e.g. "make Maa Excellence regular", "order for Sandeep", "from Sandeep", "Sandeep paid 500")
   const candidatePatterns = [
+    /(?:make|set|mark|add)\s+([A-Za-z0-9\s]{2,25})\s+(?:as\s+)?(?:a\s+)?(?:regular|daily|routine)\s*(?:client|customer)?/i,
+    /(?:make|set|mark)\s+([A-Za-z0-9\s]{2,25})\s+regular/i,
+    /(?:regular|daily)\s+(?:client|customer)\s+([A-Za-z0-9\s]{2,25})/i,
+    /([A-Za-z0-9\s]{2,25})\s+ne\s+regular/i,
     /(?:for|to|of|client|customer)\s+([A-Za-z0-9\s]{2,25})(?:$|\s+(?:mobile|phone|address|rate|qty|@|\d))/i,
     /(?:from|by)\s+([A-Za-z0-9\s]{2,25})(?:$|\s+(?:via|through|cash|upi|gpay|online))/i,
     /^([A-Za-z0-9\s]{2,20})\s+(?:paid|jama|order|bhav|rate|\d)/i,
@@ -50,11 +70,11 @@ function matchClientFromText(text, clients = []) {
     }
   }
 
-  // 3. Check word tokens against findMatchingClient (phonetic equivalence e.g. Sandeep <-> Sandip)
+  // 3. Check multi-word and word tokens against findMatchingClient
   const tokens = text.replace(/[^A-Za-z0-9\s]/g, ' ').split(/\s+/).filter((t) => t.length >= 3)
   for (const token of tokens) {
     const match = findMatchingClient(token, clients)
-    if (match?.client && match.matchType === 'phonetic') {
+    if (match?.client && (match.matchType === 'exact' || match.matchType === 'substring' || match.matchType === 'phonetic')) {
       return match.client
     }
   }
@@ -541,7 +561,7 @@ export function tryLocalIntentRoute(query, store = {}) {
       rate = getRecentSkuPrice(sku, store.orders || [], matchedClient?.id)
     }
 
-    let clientName = matchedClient ? matchedClient.name : ''
+    let clientName = matchedClient ? (matchedClient.displayName || matchedClient.name) : ''
     if (!clientName) {
       // Try to extract customer name following "for", "to", "of", "client"
       const nameMatch = rawQ.match(/(?:for|to|client|customer)\s+([A-Za-z0-9\s]{2,25})(?:$|\s+(?:mobile|phone|address|rate|qty|@|\d))/i)
@@ -631,7 +651,7 @@ export function tryLocalIntentRoute(query, store = {}) {
     const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0
 
     if (amount > 0) {
-      let clientName = matchedClient ? matchedClient.name : ''
+      let clientName = matchedClient ? (matchedClient.displayName || matchedClient.name) : ''
       if (!clientName) {
         const fromMatch = rawQ.match(/(?:from|by|client|customer)\s+([A-Za-z0-9\s]{2,25})(?:$|\s+(?:via|through|cash|upi|gpay|online))/i)
         if (fromMatch) {
@@ -662,6 +682,42 @@ export function tryLocalIntentRoute(query, store = {}) {
           date: new Date().toISOString().slice(0, 10),
           notes: rawQ,
         },
+      }
+    }
+  }
+
+  // ==========================================
+  // SEQUENCE 3A: CLIENT REGULAR STATUS UPDATE
+  // E.g. "make Maa Excellence a regular client", "mark Nilesh as regular", "Maa Excellence regular client"
+  // ==========================================
+  const isRegularStatusIntent =
+    /(?:make|set|mark|add)\s+([A-Za-z0-9\s]{2,30})\s+(?:as\s+)?(?:a\s+)?(?:regular|daily|routine)\s*(?:client|customer)?/i.test(q) ||
+    /(?:make|set|mark)\s+([A-Za-z0-9\s]{2,30})\s+regular/i.test(q) ||
+    /(?:regular|daily)\s+(?:client|customer)\s+([A-Za-z0-9\s]{2,30})/i.test(q) ||
+    /([A-Za-z0-9\s]{2,30})\s+ne\s+regular\s*(?:client|customer|banao|karo)?/i.test(rawQ) ||
+    /(?:remove|unmark)\s+([A-Za-z0-9\s]{2,30})\s+(?:from\s+)?regular/i.test(q)
+
+  if (isRegularStatusIntent) {
+    const isRemove = /(?:remove|unmark|not regular|stop regular)\b/i.test(q)
+    const targetClient = matchClientFromText(rawQ, store.clients || [])
+    if (targetClient) {
+      const clientDisplayName = targetClient.displayName || targetClient.name
+      return {
+        handled: true,
+        type: 'client_regular_status',
+        text: isRemove
+          ? `👤 **Client Regular Status**: Removed **${clientDisplayName}** from regular customers list.`
+          : `⭐ **Regular Client Updated**: **${clientDisplayName}** is now marked as a regular customer.`,
+        data: {
+          client: targetClient,
+          clientName: clientDisplayName,
+          clientId: targetClient.id,
+          isRegular: !isRemove,
+        },
+        chips: [
+          { label: 'Create Order', action: 'draft_order_for_client', client: targetClient },
+          { label: 'View Profile', action: 'open_client_profile', client: targetClient },
+        ],
       }
     }
   }

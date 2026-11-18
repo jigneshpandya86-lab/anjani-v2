@@ -1429,7 +1429,19 @@ async function getKnownCustomerNames() {
       .where('active', '!=', false)
       .limit(300)
       .get()
-    cachedKnownCustomerNames = snap.docs.map((d) => d.data().name).filter(Boolean)
+    const names = []
+    snap.docs.forEach((d) => {
+      const data = d.data()
+      if (data.displayName) {
+        names.push(data.displayName)
+        const stripped = data.displayName.replace(/\s*\([^)]*\)/g, '').trim()
+        if (stripped) names.push(stripped)
+        const paren = (data.displayName.match(/\(([^)]+)\)/)?.[1] || '').trim()
+        if (paren) names.push(paren)
+      }
+      if (data.name) names.push(data.name)
+    })
+    cachedKnownCustomerNames = Array.from(new Set(names.filter(Boolean))).slice(0, 250)
   } catch (e) {
     logger.warn('Failed to load known customers in cloud function:', e.message)
     cachedKnownCustomerNames = []
@@ -1489,16 +1501,17 @@ function formatActiveTasksForPrompt(tasks = []) {
 
 function formatKnownClientsForPrompt(clientNames = []) {
   if (!Array.isArray(clientNames) || clientNames.length === 0) return ''
-  const uniqueNames = Array.from(new Set(clientNames.filter(Boolean))).slice(0, 150)
+  const uniqueNames = Array.from(new Set(clientNames.filter(Boolean))).slice(0, 250)
   if (uniqueNames.length === 0) return ''
 
   let block = '\n\n## 👥 KNOWN EXISTING CUSTOMERS / CLIENT MASTER (STRICT REUSE & DEDUPLICATION):\n'
-  block += 'Annapurna already has these registered customers in the system:\n'
+  block += 'Annapurna already has these registered customers and display aliases in the system:\n'
   block += uniqueNames.map((n) => `• "${n}"`).join(', ') + '\n\n'
   block += 'MANDATORY CLIENT MATCHING & PHONETIC DEDUPLICATION RULES:\n'
-  block += '1. PHONETIC & SPELLING VARIATION MATCHING: If the user dictates or writes a name that is phonetically or functionally identical to any existing customer above (e.g., "Sandeep" vs "Sandip", "Pradeep" vs "Pradip", "Rohit" vs "Rohitbhai", "Jay Ambe" vs "Jay Ambe Provision Store"), you MUST output the EXACT canonical name from the KNOWN EXISTING CUSTOMERS list above.\n'
-  block += '2. NEVER CREATE A SLIGHTLY DIFFERENT SPELLING: Do NOT invent or output "Sandeep" if "Sandip" exists in the known customer list. Output "Sandip".\n'
-  block += '3. Only output a new customer name if the business or person is genuinely new and does not match any existing customer above.\n'
+  block += '1. ZOHO-STYLE DISPLAY NAME & ALIAS RECOGNITION: Clients often have display names combining business and person (e.g., "Maa Excellence (Nirmalbhai)"). If the user mentions "Maa Excellence", recognize them immediately as that existing client! Never ask if they are new if either the business name or person name matches any known customer or alias above.\n'
+  block += '2. PHONETIC & SPELLING VARIATION MATCHING: If the user dictates or writes a name that is phonetically or functionally identical to any existing customer above (e.g., "Sandeep" vs "Sandip", "Pradeep" vs "Pradip", "Rohit" vs "Rohitbhai", "Jay Ambe" vs "Jay Ambe Provision Store"), you MUST output the EXACT canonical name from the KNOWN EXISTING CUSTOMERS list above.\n'
+  block += '3. REGULAR CLIENT COMMAND: If the user requests to make/mark a client regular ("make Maa Excellence regular client", "mark Nirmalbhai as regular"), confirm setting them as a regular customer.\n'
+  block += '4. Only output a new customer name if the business or person is genuinely new and does not match any existing customer or alias above.\n'
   return block
 }
 
