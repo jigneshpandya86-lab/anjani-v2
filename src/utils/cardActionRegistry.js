@@ -11,11 +11,7 @@ import { normalizeIndianPhone } from '../services/leadSmsService'
 export function getOrderCardActions({ order, handlers = {} }) {
   if (!order) return []
 
-  const clientName = order.clientName || order.name || 'Customer'
-  const qty = order.qty || order.totalQty || 1
-  const sku = order.sku || order.product || '200ml'
   const address = order.address || order.location || ''
-  const phone = order.mobile || order.phone || ''
 
   const actions = [
     {
@@ -152,9 +148,6 @@ export function getClientCardActions({ client, handlers = {} }) {
  */
 export function getPaymentCardActions({ payment, handlers = {} }) {
   if (!payment) return []
-
-  const phone = payment.clientMobile || payment.phone || ''
-  const cleanPhone = normalizeIndianPhone(phone)
 
   const actions = [
     {
