@@ -2962,14 +2962,7 @@ export default function AiAssistantDrawer({
         {/* Message Thread */}
         <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50/50">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-start text-center pt-1 pb-3 px-2 text-gray-700 select-none space-y-2">
-              <div className="flex items-center justify-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#131921] to-gray-800 text-[#ff9900] flex items-center justify-center shadow-xs">
-                  <Bot className="w-4 h-4" />
-                </div>
-                <h3 className="text-sm font-black text-gray-900 tracking-tight">Anjani</h3>
-              </div>
-
+            <div className="flex flex-col items-center justify-start text-center pt-0 pb-2 px-1 text-gray-700 select-none space-y-2">
               {/* Main Menu Action Chips (2-column layout on both mobile and desktop) */}
               <div className="w-full max-w-sm grid grid-cols-2 gap-1.5 sm:gap-2 text-left">
                 {MAIN_MENU_CHIPS.map((chip) => (

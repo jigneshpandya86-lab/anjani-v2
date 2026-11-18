@@ -275,7 +275,8 @@ describe('AiAssistantDrawer', () => {
       />
     )
 
-    expect(screen.getByRole('heading', { level: 3, name: 'Anjani' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: 'Anjani' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 3, name: 'Anjani' })).not.toBeInTheDocument()
     expect(screen.queryByText('Anjani WhatsApp-Style Assistant')).not.toBeInTheDocument()
     expect(screen.queryByText(/guided workflows/i)).not.toBeInTheDocument()
     expect(screen.getByText('💸 Record Expense')).toBeInTheDocument()
