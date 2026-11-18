@@ -41,9 +41,8 @@ import {
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import toast from 'react-hot-toast'
-import { app, db, storage } from '../firebase-config'
+import { app, db } from '../firebase-config'
 import { useClientStore } from '../store/clientStore'
 import { WATER_SKUS } from '../constants/skus'
 import { getAccountMeta } from '../constants/accounts'
@@ -138,8 +137,7 @@ export default function AiAssistantDrawer({
   const [feedbackRating, setFeedbackRating] = useState('positive')
   const [feedbackText, setFeedbackText] = useState('')
   const [feedbackSnippet, setFeedbackSnippet] = useState('')
-  const [feedbackImageFile, setFeedbackImageFile] = useState(null)
-  const [feedbackImagePreview, setFeedbackImagePreview] = useState(null)
+  const [feedbackImage, setFeedbackImage] = useState(null)
   const feedbackFileInputRef = useRef(null)
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false)
   const [isCheckingFeedback, setIsCheckingFeedback] = useState(false)
@@ -251,35 +249,32 @@ export default function AiAssistantDrawer({
   }
 
   const handleClearFeedbackImage = () => {
-    setFeedbackImageFile(null)
-    if (feedbackImagePreview && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
-      try {
-        URL.revokeObjectURL(feedbackImagePreview)
-      } catch (_e) {}
-    }
-    setFeedbackImagePreview(null)
+    setFeedbackImage(null)
     if (feedbackFileInputRef.current) {
       feedbackFileInputRef.current.value = ''
     }
   }
 
-  const handleFeedbackFileSelect = (e) => {
+  const handleFeedbackFileSelect = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (!file.type || !file.type.startsWith('image/')) {
       toast.error('Please select an image file (PNG, JPG, WebP, etc.)')
       return
     }
-    setFeedbackImageFile(file)
-    const previewUrl =
-      typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
-        ? URL.createObjectURL(file)
-        : 'mock-preview-url'
-    setFeedbackImagePreview(previewUrl)
-    toast.success('Screenshot attached!', { icon: '📸' })
+    try {
+      toast.loading('Processing screenshot...', { id: 'fb-img-proc' })
+      const processed = await processAiBillImage(file, 1024, 0.75)
+      toast.dismiss('fb-img-proc')
+      setFeedbackImage(processed)
+      toast.success('Screenshot attached!', { icon: '📸' })
+    } catch (err) {
+      toast.dismiss('fb-img-proc')
+      toast.error('Failed to process image: ' + err.message)
+    }
   }
 
-  const handleFeedbackPaste = (e) => {
+  const handleFeedbackPaste = async (e) => {
     const items = e.clipboardData?.items
     if (!items) return
     for (let i = 0; i < items.length; i++) {
@@ -288,13 +283,16 @@ export default function AiAssistantDrawer({
         const file = item.getAsFile()
         if (file) {
           e.preventDefault()
-          setFeedbackImageFile(file)
-          const previewUrl =
-            typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
-              ? URL.createObjectURL(file)
-              : 'mock-preview-url'
-          setFeedbackImagePreview(previewUrl)
-          toast.success('Screenshot pasted from clipboard!', { icon: '📸' })
+          try {
+            toast.loading('Processing screenshot...', { id: 'fb-img-proc' })
+            const processed = await processAiBillImage(file, 1024, 0.75)
+            toast.dismiss('fb-img-proc')
+            setFeedbackImage(processed)
+            toast.success('Screenshot pasted from clipboard!', { icon: '📸' })
+          } catch (err) {
+            toast.dismiss('fb-img-proc')
+            toast.error('Failed to process pasted screenshot: ' + err.message)
+          }
           break
         }
       }
@@ -303,31 +301,12 @@ export default function AiAssistantDrawer({
 
   const handleSubmitFeedback = async (e) => {
     e?.preventDefault()
-    if (!feedbackText.trim() && !feedbackImageFile) {
+    if (!feedbackText.trim() && !feedbackImage) {
       toast.error('Please enter your feedback comments or attach a screenshot')
       return
     }
     setIsSubmittingFeedback(true)
     try {
-      let attachmentUrl = null
-      let attachmentName = null
-      if (feedbackImageFile) {
-        toast.loading('Uploading screenshot...', { id: 'fb-upload' })
-        try {
-          const sanitizedName = (feedbackImageFile.name || 'screenshot.png').replace(/[^a-zA-Z0-9._-]/g, '_')
-          const storagePath = `ai-feedback-attachments/${Date.now()}_${sanitizedName}`
-          const fileRef = ref(storage, storagePath)
-          await uploadBytes(fileRef, feedbackImageFile)
-          attachmentUrl = await getDownloadURL(fileRef)
-          attachmentName = feedbackImageFile.name || 'screenshot.png'
-          toast.dismiss('fb-upload')
-        } catch (uploadErr) {
-          toast.dismiss('fb-upload')
-          console.error('Failed to upload screenshot attachment:', uploadErr)
-          toast.error('Screenshot upload failed, submitting feedback text')
-        }
-      }
-
       // Map recent chat messages so the feedback carries full conversation context to improve AI responses
       const recentChat = (messages || [])
         .slice(-6)
@@ -340,14 +319,16 @@ export default function AiAssistantDrawer({
         }))
 
       const effectiveMessage =
-        feedbackText.trim() || (feedbackImageFile ? 'Screenshot attached for visual review and enhancement' : '')
+        feedbackText.trim() || (feedbackImage ? 'Screenshot attached for visual review and enhancement' : '')
 
       await addAiFeedback?.({
         type: feedbackType,
         rating: feedbackRating,
         message: effectiveMessage,
-        attachmentUrl: attachmentUrl || null,
-        attachmentName: attachmentName || null,
+        attachmentUrl: feedbackImage?.dataUrl || null,
+        attachmentName: feedbackImage?.fileName || null,
+        screenshotDataUrl: feedbackImage?.dataUrl || null,
+        screenshotBase64: feedbackImage?.base64 || null,
         rawSnippet: feedbackSnippet || (recentChat.length > 0 ? recentChat[recentChat.length - 1].text : ''),
         recentChat,
         sessionRef: 'conversation://2aca385b-885b-44b6-a062-4ffe8fbd20fb',
@@ -357,7 +338,7 @@ export default function AiAssistantDrawer({
       })
 
       toast.success(
-        attachmentUrl
+        feedbackImage
           ? 'Feedback & screenshot submitted for AI review! Ready.'
           : 'Feedback submitted with chat context! Ready.',
         { icon: '📝' }
@@ -2424,19 +2405,19 @@ export default function AiAssistantDrawer({
               </div>
 
               {/* Screenshot / Image Attachment Preview or File Picker */}
-              {feedbackImagePreview ? (
+              {feedbackImage ? (
                 <div className="flex items-center gap-2.5 p-2 bg-white rounded-lg border border-blue-200 shadow-2xs">
                   <img
-                    src={feedbackImagePreview}
+                    src={feedbackImage.dataUrl}
                     alt="Feedback attachment"
                     className="w-12 h-12 object-cover rounded-md border border-gray-200 shrink-0"
                   />
                   <div className="flex-1 min-w-0 text-left">
                     <p className="text-xs font-semibold text-gray-800 truncate">
-                      {feedbackImageFile?.name || 'Attached Screenshot'}
+                      {feedbackImage.fileName || 'Attached Screenshot'}
                     </p>
                     <p className="text-[10px] text-gray-500">
-                      {feedbackImageFile ? `${(feedbackImageFile.size / 1024).toFixed(1)} KB` : 'Image attached'}
+                      {feedbackImage.sizeKb ? `${feedbackImage.sizeKb} KB` : 'Image attached'}
                     </p>
                     <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
                       <Check size={11} /> Screenshot attached
@@ -2502,7 +2483,7 @@ export default function AiAssistantDrawer({
                   <button
                     type="submit"
                     aria-label="Send Feedback"
-                    disabled={isSubmittingFeedback || (!feedbackText.trim() && !feedbackImageFile)}
+                    disabled={isSubmittingFeedback || (!feedbackText.trim() && !feedbackImage)}
                     className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1"
                   >
                     {isSubmittingFeedback ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}

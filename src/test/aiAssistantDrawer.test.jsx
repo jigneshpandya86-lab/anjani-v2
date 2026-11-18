@@ -672,13 +672,14 @@ describe('AiAssistantDrawer', () => {
     const submitBtn = screen.getByRole('button', { name: /Send Feedback/i })
     fireEvent.click(submitBtn)
 
-    // Check uploadBytes was invoked and feedback saved
+    // Check feedback saved with screenshot data
     await waitFor(() => {
-      expect(mockUploadBytes).toHaveBeenCalled()
       expect(mockAddAiFeedback).toHaveBeenCalledWith(
         expect.objectContaining({
-          attachmentUrl: 'https://storage.googleapis.com/test-bucket/screenshot.png',
+          attachmentUrl: 'data:image/jpeg;base64,mock',
           attachmentName: 'screenshot-ui-bug.png',
+          screenshotDataUrl: 'data:image/jpeg;base64,mock',
+          screenshotBase64: 'mock-base64',
         })
       )
     })
