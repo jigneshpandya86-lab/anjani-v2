@@ -346,7 +346,7 @@ export function tryLocalIntentRoute(query, store = {}) {
       }
     } else {
       const summaryLines = pending
-        .map((f, i) => `${i + 1}. **"${f.message}"**`)
+        .map((f, i) => `${i + 1}. **"${f.message}"**${f.attachmentUrl ? ' 📸 [Screenshot Attached]' : ''}`)
         .join('\n')
       return {
         handled: true,

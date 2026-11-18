@@ -41,8 +41,9 @@ import {
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import toast from 'react-hot-toast'
-import { app, db } from '../firebase-config'
+import { app, db, storage } from '../firebase-config'
 import { useClientStore } from '../store/clientStore'
 import { WATER_SKUS } from '../constants/skus'
 import { getAccountMeta } from '../constants/accounts'
@@ -137,6 +138,9 @@ export default function AiAssistantDrawer({
   const [feedbackRating, setFeedbackRating] = useState('positive')
   const [feedbackText, setFeedbackText] = useState('')
   const [feedbackSnippet, setFeedbackSnippet] = useState('')
+  const [feedbackImageFile, setFeedbackImageFile] = useState(null)
+  const [feedbackImagePreview, setFeedbackImagePreview] = useState(null)
+  const feedbackFileInputRef = useRef(null)
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false)
   const [isCheckingFeedback, setIsCheckingFeedback] = useState(false)
 
@@ -246,14 +250,84 @@ export default function AiAssistantDrawer({
     setShowFeedbackModal(true)
   }
 
+  const handleClearFeedbackImage = () => {
+    setFeedbackImageFile(null)
+    if (feedbackImagePreview && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+      try {
+        URL.revokeObjectURL(feedbackImagePreview)
+      } catch (_e) {}
+    }
+    setFeedbackImagePreview(null)
+    if (feedbackFileInputRef.current) {
+      feedbackFileInputRef.current.value = ''
+    }
+  }
+
+  const handleFeedbackFileSelect = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type || !file.type.startsWith('image/')) {
+      toast.error('Please select an image file (PNG, JPG, WebP, etc.)')
+      return
+    }
+    setFeedbackImageFile(file)
+    const previewUrl =
+      typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+        ? URL.createObjectURL(file)
+        : 'mock-preview-url'
+    setFeedbackImagePreview(previewUrl)
+    toast.success('Screenshot attached!', { icon: '📸' })
+  }
+
+  const handleFeedbackPaste = (e) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (item.type && item.type.startsWith('image/')) {
+        const file = item.getAsFile()
+        if (file) {
+          e.preventDefault()
+          setFeedbackImageFile(file)
+          const previewUrl =
+            typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+              ? URL.createObjectURL(file)
+              : 'mock-preview-url'
+          setFeedbackImagePreview(previewUrl)
+          toast.success('Screenshot pasted from clipboard!', { icon: '📸' })
+          break
+        }
+      }
+    }
+  }
+
   const handleSubmitFeedback = async (e) => {
     e?.preventDefault()
-    if (!feedbackText.trim()) {
-      toast.error('Please enter your feedback comments')
+    if (!feedbackText.trim() && !feedbackImageFile) {
+      toast.error('Please enter your feedback comments or attach a screenshot')
       return
     }
     setIsSubmittingFeedback(true)
     try {
+      let attachmentUrl = null
+      let attachmentName = null
+      if (feedbackImageFile) {
+        toast.loading('Uploading screenshot...', { id: 'fb-upload' })
+        try {
+          const sanitizedName = (feedbackImageFile.name || 'screenshot.png').replace(/[^a-zA-Z0-9._-]/g, '_')
+          const storagePath = `ai-feedback-attachments/${Date.now()}_${sanitizedName}`
+          const fileRef = ref(storage, storagePath)
+          await uploadBytes(fileRef, feedbackImageFile)
+          attachmentUrl = await getDownloadURL(fileRef)
+          attachmentName = feedbackImageFile.name || 'screenshot.png'
+          toast.dismiss('fb-upload')
+        } catch (uploadErr) {
+          toast.dismiss('fb-upload')
+          console.error('Failed to upload screenshot attachment:', uploadErr)
+          toast.error('Screenshot upload failed, submitting feedback text')
+        }
+      }
+
       // Map recent chat messages so the feedback carries full conversation context to improve AI responses
       const recentChat = (messages || [])
         .slice(-6)
@@ -265,10 +339,15 @@ export default function AiAssistantDrawer({
           timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp || null,
         }))
 
+      const effectiveMessage =
+        feedbackText.trim() || (feedbackImageFile ? 'Screenshot attached for visual review and enhancement' : '')
+
       await addAiFeedback?.({
         type: feedbackType,
         rating: feedbackRating,
-        message: feedbackText.trim(),
+        message: effectiveMessage,
+        attachmentUrl: attachmentUrl || null,
+        attachmentName: attachmentName || null,
         rawSnippet: feedbackSnippet || (recentChat.length > 0 ? recentChat[recentChat.length - 1].text : ''),
         recentChat,
         sessionRef: 'conversation://2aca385b-885b-44b6-a062-4ffe8fbd20fb',
@@ -277,9 +356,15 @@ export default function AiAssistantDrawer({
         submittedAt: new Date().toISOString(),
       })
 
-      toast.success('Feedback submitted with chat context! Ready.', { icon: '📝' })
+      toast.success(
+        attachmentUrl
+          ? 'Feedback & screenshot submitted for AI review! Ready.'
+          : 'Feedback submitted with chat context! Ready.',
+        { icon: '📝' }
+      )
       setFeedbackText('')
       setFeedbackSnippet('')
+      handleClearFeedbackImage()
       setInputMessage('')
       setShowFeedbackModal(false)
     } catch (err) {
@@ -339,7 +424,7 @@ export default function AiAssistantDrawer({
         setShowFeedbackModal(false)
 
         const summaryLines = pending
-          .map((f, i) => `${i + 1}. **"${f.message}"**`)
+          .map((f, i) => `${i + 1}. **"${f.message}"**${f.attachmentUrl ? ' 📸 [Screenshot Attached]' : ''}`)
           .join('\n')
 
         setMessages((prev) => [
@@ -2243,7 +2328,10 @@ export default function AiAssistantDrawer({
             <button
               type="button"
               onClick={() => {
-                setShowFeedbackModal((prev) => !prev)
+                setShowFeedbackModal((prev) => {
+                  if (prev) handleClearFeedbackImage()
+                  return !prev
+                })
               }}
               className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 showFeedbackModal
@@ -2303,7 +2391,10 @@ export default function AiAssistantDrawer({
               </div>
               <button
                 type="button"
-                onClick={() => setShowFeedbackModal(false)}
+                onClick={() => {
+                  handleClearFeedbackImage()
+                  setShowFeedbackModal(false)
+                }}
                 className="p-1 text-gray-400 hover:text-gray-700 rounded cursor-pointer"
                 title="Close Feedback"
               >
@@ -2326,10 +2417,63 @@ export default function AiAssistantDrawer({
                   rows={3}
                   value={feedbackText}
                   onChange={(e) => setFeedbackText(e.target.value)}
-                  placeholder="Enter your feedback or improvement request..."
+                  onPaste={handleFeedbackPaste}
+                  placeholder="Enter your feedback or improvement request (or paste screenshot directly)..."
                   className="w-full p-2 bg-white border border-blue-200 rounded-lg text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
+
+              {/* Screenshot / Image Attachment Preview or File Picker */}
+              {feedbackImagePreview ? (
+                <div className="flex items-center gap-2.5 p-2 bg-white rounded-lg border border-blue-200 shadow-2xs">
+                  <img
+                    src={feedbackImagePreview}
+                    alt="Feedback attachment"
+                    className="w-12 h-12 object-cover rounded-md border border-gray-200 shrink-0"
+                  />
+                  <div className="flex-1 min-w-0 text-left">
+                    <p className="text-xs font-semibold text-gray-800 truncate">
+                      {feedbackImageFile?.name || 'Attached Screenshot'}
+                    </p>
+                    <p className="text-[10px] text-gray-500">
+                      {feedbackImageFile ? `${(feedbackImageFile.size / 1024).toFixed(1)} KB` : 'Image attached'}
+                    </p>
+                    <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
+                      <Check size={11} /> Screenshot attached
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleClearFeedbackImage}
+                    className="p-1.5 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50 transition-colors cursor-pointer shrink-0"
+                    title="Remove screenshot"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <input
+                    ref={feedbackFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleFeedbackFileSelect}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => feedbackFileInputRef.current?.click()}
+                    className="px-2.5 py-1 bg-white hover:bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                    title="Attach screenshot or photo from gallery or camera"
+                  >
+                    <Camera size={13} className="text-blue-600" />
+                    <span>Attach Screenshot</span>
+                  </button>
+                  <span className="text-[10px] text-gray-500 italic">
+                    or paste screenshot (Ctrl+V)
+                  </span>
+                </div>
+              )}
 
               {/* Submit & Manual Trigger buttons */}
               <div className="flex items-center justify-between pt-1">
@@ -2347,7 +2491,10 @@ export default function AiAssistantDrawer({
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => setShowFeedbackModal(false)}
+                    onClick={() => {
+                      handleClearFeedbackImage()
+                      setShowFeedbackModal(false)
+                    }}
                     className="px-3 py-1 rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-100 cursor-pointer"
                   >
                     Cancel
@@ -2355,7 +2502,7 @@ export default function AiAssistantDrawer({
                   <button
                     type="submit"
                     aria-label="Send Feedback"
-                    disabled={isSubmittingFeedback || !feedbackText.trim()}
+                    disabled={isSubmittingFeedback || (!feedbackText.trim() && !feedbackImageFile)}
                     className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1"
                   >
                     {isSubmittingFeedback ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}

@@ -10,6 +10,16 @@ vi.mock('../firebase-config', () => ({
   storage: {},
 }))
 
+const mockUploadBytes = vi.fn(() => Promise.resolve({ ref: {} }))
+const mockGetDownloadURL = vi.fn(() => Promise.resolve('https://storage.googleapis.com/test-bucket/screenshot.png'))
+
+vi.mock('firebase/storage', () => ({
+  getStorage: vi.fn(() => ({})),
+  ref: vi.fn(() => ({})),
+  uploadBytes: (...args) => mockUploadBytes(...args),
+  getDownloadURL: (...args) => mockGetDownloadURL(...args),
+}))
+
 let mockHttpsCallableResponse = vi.fn(() => Promise.resolve({ data: {} }))
 
 vi.mock('firebase/functions', () => ({
@@ -621,6 +631,56 @@ describe('AiAssistantDrawer', () => {
     await waitFor(() => {
       expect(chatInput.value).toBe('')
       expect(screen.queryByText('Submit AI Feedback')).not.toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('allows attaching and uploading screenshot in feedback modal and persists attachmentUrl', async () => {
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+        onOpenPaymentModal={() => {}}
+        onOpenOrderModal={() => {}}
+        onOpenAddClient={() => {}}
+      />
+    )
+
+    // Open Feedback modal
+    const feedbackBtn = screen.getByRole('button', { name: /AI Feedback/i })
+    fireEvent.click(feedbackBtn)
+
+    expect(screen.getByText('Submit AI Feedback')).toBeInTheDocument()
+    expect(screen.getByText('Attach Screenshot')).toBeInTheDocument()
+
+    // Attach screenshot file
+    const file = new File(['fake-screenshot-content'], 'screenshot-ui-bug.png', { type: 'image/png' })
+    const fileInput = document.querySelector('input[type="file"][accept="image/*"]')
+    expect(fileInput).not.toBeNull()
+
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    // Verify screenshot preview appears
+    await waitFor(() => {
+      expect(screen.getByText('screenshot-ui-bug.png')).toBeInTheDocument()
+      expect(screen.getByText('Screenshot attached')).toBeInTheDocument()
+    })
+
+    // Submit feedback with screenshot
+    const submitBtn = screen.getByRole('button', { name: /Send Feedback/i })
+    fireEvent.click(submitBtn)
+
+    // Check uploadBytes was invoked and feedback saved
+    await waitFor(() => {
+      expect(mockUploadBytes).toHaveBeenCalled()
+      expect(mockAddAiFeedback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attachmentUrl: 'https://storage.googleapis.com/test-bucket/screenshot.png',
+          attachmentName: 'screenshot-ui-bug.png',
+        })
+      )
     })
 
     unmount()
