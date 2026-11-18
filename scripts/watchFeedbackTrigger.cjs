@@ -1,10 +1,22 @@
-const admin = require('../functions/node_modules/firebase-admin')
+const fs = require('fs')
+const { Firestore } = require('../functions/node_modules/@google-cloud/firestore')
+const { OAuth2Client } = require('../functions/node_modules/google-auth-library')
 
-if (!admin.apps.length) {
-  admin.initializeApp({ projectId: 'anjaniappnew' })
+let db
+try {
+  const cfg = JSON.parse(
+    fs.readFileSync('/home/jigneshpandya86/.config/configstore/firebase-tools.json', 'utf8')
+  )
+  const client = new OAuth2Client()
+  client.setCredentials(cfg.tokens)
+  db = new Firestore({ projectId: 'anjaniappnew', authClient: client })
+} catch (_authErr) {
+  const admin = require('../functions/node_modules/firebase-admin')
+  if (!admin.apps.length) {
+    admin.initializeApp({ projectId: 'anjaniappnew' })
+  }
+  db = admin.firestore()
 }
-
-const db = admin.firestore()
 
 console.log('[Watcher] Listening for on-demand feedback trigger in Firestore collection ai_feedback_triggers...')
 

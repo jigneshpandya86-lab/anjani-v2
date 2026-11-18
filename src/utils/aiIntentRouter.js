@@ -246,6 +246,46 @@ export function parseQuantityUpdateIntent(query, store = {}) {
   }
 }
 
+/**
+ * Constructs a human-like, polite delivery reminder SMS/WhatsApp message for delivery staff.
+ *
+ * @param {Object} options
+ * @param {string} [options.staffName='Nilesh'] - Recipient staff member's name
+ * @param {Array} [options.orders=[]] - Orders to remind about
+ * @returns {string} Clean formatted reminder message
+ */
+export function buildStaffDeliveryReminderMessage({ staffName = 'Nilesh', orders = [] }) {
+  const staffGreeting = staffName.toLowerCase().endsWith('bhai') ? staffName : `${staffName}bhai`
+  if (!orders || orders.length === 0) {
+    return `${staffGreeting}, today no pending delivery orders. - Anjani Water`
+  }
+
+  if (orders.length === 1) {
+    const o = orders[0]
+    const cName = o.clientName || o.name || 'Customer'
+    const qty = o.qty || o.totalQty || 1
+    const sku = o.sku || o.product || '200ml'
+    const addr = o.address ? `📍 ${o.address}` : ''
+    const time = o.time || o.deliveryTime ? `⏰ ${o.time || o.deliveryTime}` : ''
+    const details = [addr, time].filter(Boolean).join(' ')
+    return `${staffGreeting}, ${cName} nu ${qty} box ${sku} delivery baki chhe.${details ? ' ' + details + '.' : ''} Dispatch kari dejo. - Anjani Water`
+  }
+
+  const itemsSummary = orders
+    .slice(0, 5)
+    .map((o, idx) => {
+      const cName = o.clientName || o.name || 'Customer'
+      const qty = o.qty || o.totalQty || 1
+      const sku = o.sku || o.product || '200ml'
+      const addr = o.address ? ` (${o.address})` : ''
+      return `${idx + 1}) ${cName}: ${qty}b ${sku}${addr}`
+    })
+    .join('\n')
+
+  const extraCount = orders.length > 5 ? `\n...and ${orders.length - 5} more` : ''
+  return `${staffGreeting}, aajna ${orders.length} orders delivery baki chhe:\n${itemsSummary}${extraCount}\nDispatch kari dejo. - Anjani Water`
+}
+
 export function tryLocalIntentRoute(query, store = {}) {
   if (!query || typeof query !== 'string') return null
   const rawQ = query.trim()
@@ -787,6 +827,104 @@ export function tryLocalIntentRoute(query, store = {}) {
     }
   }
 
+  // ==========================================
+  // SEQUENCE 4D-1: CONTEXTUAL ORDER DELIVERY REMINDERS (e.g. "Remind Nilesh for it", "Remind driver", "Remind Nilesh for delivery")
+  // ==========================================
+  const mentionsStaff =
+    /(?:nilesh(?:bhai)?|hitesh(?:bhai)?|driver|staff|delivery\s*(?:boy|man|person))\b/i.test(q)
+  const mentionsReminder =
+    /(?:remind|msg|message|sms|alert|notify|inform|janavo|kaho|moklo|send\s*(?:reminder|msg|message|sms)|follow\s*up|dispatch\s+karva|delivery\s+karva)\b/i.test(q)
+  const hasOrderPronounOrRef =
+    /(?:for\s+(?:it|this|these|orders?|delivery|deliveries|dispatch)|about\s+(?:it|this|these|orders?|delivery|deliveries|dispatch)|regarding\s+(?:it|this|these|orders?|delivery|deliveries|dispatch)|delivery\s+mate|dispatch\s+mate|aa\s+order\s+mate|order\s+mate|delivery\s+nu|order\s+nu|\bfor\s+(?:it|this|them|these)\b)/i.test(q) ||
+    /^(?:remind|msg|sms|notify)\s+(?:nilesh|hitesh|driver|staff)\s*$/i.test(q)
+
+  // Look backward in recentMessages for the latest order context
+  let contextOrders = []
+  let recentWasOrders = false
+  if (Array.isArray(store.recentMessages) && store.recentMessages.length > 0) {
+    for (let i = store.recentMessages.length - 1; i >= 0; i--) {
+      const m = store.recentMessages[i]
+      if (m.type === 'orders_list' && Array.isArray(m.data?.orders) && m.data.orders.length > 0) {
+        contextOrders = m.data.orders
+        recentWasOrders = true
+        break
+      }
+      if (m.type === 'retail_sales' && Array.isArray(m.data?.sales) && m.data.sales.length > 0) {
+        contextOrders = m.data.sales
+        recentWasOrders = true
+        break
+      }
+      if (m.type === 'single_order' && m.data?.order) {
+        contextOrders = [m.data.order]
+        recentWasOrders = true
+        break
+      }
+    }
+  }
+
+  // Also check store.orders if contextOrders is empty
+  const now = new Date()
+  const yyyy = now.getFullYear()
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const dd = String(now.getDate()).padStart(2, '0')
+  const todayStr = `${yyyy}-${mm}-${dd}`
+  const openOrdersInStore = (store.orders || []).filter((o) => {
+    const isCancelled = o.status === 'cancelled' || o.isCancelled === true
+    const isDelivered = o.status === 'delivered'
+    const isToday = o.date === todayStr || !o.date
+    return !isCancelled && !isDelivered && isToday
+  })
+
+  const isOrderDeliveryReminder =
+    mentionsStaff &&
+    mentionsReminder &&
+    (hasOrderPronounOrRef ||
+      recentWasOrders ||
+      /(?:order|orders|delivery|deliveries|dispatch)\b/i.test(q))
+
+  if (isOrderDeliveryReminder) {
+    let assignedStaff = resolveStaffMember('nilesh', store.staffList) || {
+      id: 'nilesh',
+      name: 'Nilesh',
+      mobile: '7990943652',
+    }
+    if (/hitesh/i.test(q)) {
+      assignedStaff = resolveStaffMember('hiteshbhai', store.staffList) || {
+        id: 'hiteshbhai',
+        name: 'Hiteshbhai',
+        mobile: '7778077617',
+      }
+    }
+
+    const ordersToRemind = contextOrders.length > 0 ? contextOrders : openOrdersInStore
+    const daytimeCheck = checkIsDayTime()
+    const staffName = assignedStaff?.name || 'Nilesh'
+    const staffPhone = assignedStaff?.mobile || '7990943652'
+
+    const reminderMessage = buildStaffDeliveryReminderMessage({
+      staffName,
+      orders: ordersToRemind,
+    })
+
+    return {
+      handled: true,
+      type: 'staff_order_reminder',
+      text:
+        ordersToRemind.length > 0
+          ? `🚚 **Order Delivery Reminder**: Ready to send SMS reminder to ${staffName}bhai for **${ordersToRemind.length}** open order${ordersToRemind.length > 1 ? 's' : ''}:`
+          : `🚚 **Order Delivery Reminder**: No open orders found right now to remind ${staffName}bhai about.`,
+      data: {
+        orders: ordersToRemind,
+        assignedTo: assignedStaff?.id || 'nilesh',
+        assignedStaffName: staffName,
+        staffPhone,
+        message: reminderMessage,
+        daytimeCheck,
+        noOrders: ordersToRemind.length === 0,
+      },
+    }
+  }
+
   // 4D. Staff Cash Custody & Accounts Overview (Nilesh, Hiteshbhai, Counter, Bank)
   const cashCustodyPatterns = [
     /nilesh/i,
@@ -807,7 +945,7 @@ export function tryLocalIntentRoute(query, store = {}) {
 
   if (
     cashCustodyPatterns.some((pattern) => pattern.test(q)) &&
-    !/(?:task|tasks|kaam|follow\s*up|followup|assign|remind)\b/i.test(q)
+    !/(?:task|tasks|kaam|follow\s*up|followup|assign|remind|message|msg|sms|delivery|deliveries|dispatch|order|orders)\b/i.test(q)
   ) {
     const summary = store.accountsSummary || {}
     const nileshBal = Number(summary.nilesh || 0)
@@ -895,7 +1033,7 @@ export function tryLocalIntentRoute(query, store = {}) {
       .replace(/^[;:,-\s]+/, '')
       .trim()
 
-    if (!taskText || taskText.length < 2) {
+    if (!taskText || taskText.length < 2 || /^(?:it|this|these|that|them)$/i.test(taskText)) {
       taskText = isFollowUp ? 'Follow up with customer on delivery / collection' : 'Delivery & customer service task'
     }
 

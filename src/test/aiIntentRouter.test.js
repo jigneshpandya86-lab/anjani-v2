@@ -6,7 +6,7 @@ vi.mock('../firebase-config', () => ({
   auth: {},
 }))
 
-import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
+import { tryLocalIntentRoute, buildStaffDeliveryReminderMessage } from '../utils/aiIntentRouter'
 
 describe('aiIntentRouter', () => {
   it('handles order creation draft intent locally with zero tokens', () => {
@@ -399,6 +399,129 @@ describe('aiIntentRouter', () => {
     expect(resPending.type).toBe('feedback_status')
     expect(resPending.text).toContain('Found 1 Pending Feedback Request')
     expect(resPending.text).toContain('Improve order quantity update')
+  })
+
+  it('routes "Remind Nilesh for it" to staff_order_reminder when previous message was orders_list', () => {
+    const fakeStore = {
+      recentMessages: [
+        {
+          id: 'msg-1',
+          sender: 'assistant',
+          type: 'orders_list',
+          data: {
+            orders: [
+              {
+                id: 'ord-1',
+                clientName: 'Patel Enterprise',
+                qty: 10,
+                sku: 'Anjani 200ml',
+                address: 'Near Bus Stand',
+                time: '4 PM',
+              },
+            ],
+          },
+        },
+      ],
+    }
+
+    const result = tryLocalIntentRoute('Remind Nilesh for it', fakeStore)
+    expect(result).not.toBeNull()
+    expect(result.handled).toBe(true)
+    expect(result.type).toBe('staff_order_reminder')
+    expect(result.data.assignedStaffName).toBe('Nilesh')
+    expect(result.data.staffPhone).toBe('7990943652')
+    expect(result.data.orders.length).toBe(1)
+    expect(result.data.message).toContain('Nileshbhai')
+    expect(result.data.message).toContain('Patel Enterprise nu 10 box Anjani 200ml delivery baki chhe')
+    expect(result.data.message).toContain('Near Bus Stand')
+    expect(result.data.message).toContain('Dispatch kari dejo')
+  })
+
+  it('routes variations like "Remind driver", "Remind Nilesh for this", and "Nilesh ne message karo" to staff_order_reminder', () => {
+    const fakeStore = {
+      recentMessages: [
+        {
+          id: 'msg-1',
+          sender: 'assistant',
+          type: 'orders_list',
+          data: {
+            orders: [
+              {
+                id: 'ord-1',
+                clientName: 'Shreeji Mart',
+                qty: 5,
+                sku: 'Bailey 500ml',
+                address: 'Station Road',
+              },
+            ],
+          },
+        },
+      ],
+    }
+
+    const resDriver = tryLocalIntentRoute('Remind driver for it', fakeStore)
+    expect(resDriver.type).toBe('staff_order_reminder')
+    expect(resDriver.data.assignedStaffName).toBe('Nilesh')
+
+    const resThis = tryLocalIntentRoute('Remind Nilesh for this', fakeStore)
+    expect(resThis.type).toBe('staff_order_reminder')
+
+    const resMsg = tryLocalIntentRoute('Nilesh ne message karo aa order mate', fakeStore)
+    expect(resMsg.type).toBe('staff_order_reminder')
+  })
+
+  it('routes to Hiteshbhai when "Remind Hiteshbhai for it" is requested', () => {
+    const fakeStore = {
+      recentMessages: [
+        {
+          id: 'msg-1',
+          sender: 'assistant',
+          type: 'orders_list',
+          data: {
+            orders: [
+              {
+                id: 'ord-1',
+                clientName: 'Om Traders',
+                qty: 12,
+                sku: 'Anjani 200ml',
+              },
+            ],
+          },
+        },
+      ],
+    }
+
+    const result = tryLocalIntentRoute('Remind Hiteshbhai for it', fakeStore)
+    expect(result.type).toBe('staff_order_reminder')
+    expect(result.data.assignedStaffName).toBe('Hiteshbhai')
+    expect(result.data.staffPhone).toBe('7778077617')
+    expect(result.data.message).toContain('Hiteshbhai')
+  })
+
+  it('formats multiple orders correctly in buildStaffDeliveryReminderMessage', () => {
+    const orders = [
+      { clientName: 'Patel Enterprise', qty: 10, sku: 'Anjani 200ml', address: 'Old Padra' },
+      { clientName: 'Shreeji Mart', qty: 5, sku: 'Bailey 500ml', address: 'Gotri' },
+    ]
+
+    const msg = buildStaffDeliveryReminderMessage({ staffName: 'Nilesh', orders })
+    expect(msg).toContain('Nileshbhai, aajna 2 orders delivery baki chhe:')
+    expect(msg).toContain('1) Patel Enterprise: 10b Anjani 200ml (Old Padra)')
+    expect(msg).toContain('2) Shreeji Mart: 5b Bailey 500ml (Gotri)')
+    expect(msg).toContain('Dispatch kari dejo. - Anjani Water')
+  })
+
+  it('safely distinguishes explicit task assignment from order delivery reminders', () => {
+    const fakeStore = {}
+    const resTask = tryLocalIntentRoute('Assign task to Nilesh: Clean delivery van', fakeStore)
+    expect(resTask.type).toBe('staff_task_draft')
+    expect(resTask.data.text).toContain('Clean delivery van')
+
+    // Prevention of "it" tasks
+    const resPronoun = tryLocalIntentRoute('create task for nilesh: it', fakeStore)
+    expect(resPronoun.type).toBe('staff_task_draft')
+    expect(resPronoun.data.text).not.toBe('it')
+    expect(resPronoun.data.text).toBe('Delivery & customer service task')
   })
 })
 

@@ -37,6 +37,7 @@ import {
   FileText,
   MessageSquarePlus,
   RefreshCw,
+  Copy,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
@@ -67,6 +68,7 @@ import {
   buildTaskWhatsAppUrl,
   recordTaskFollowUpHistory,
 } from '../services/taskService'
+import { sendBackgroundSms, normalizeIndianPhone } from '../services/leadSmsService'
 
 export const SPEECH_LANGUAGES = [
   { code: 'en-IN', label: 'English', short: 'EN', hint: 'English (India)' },
@@ -150,6 +152,10 @@ export default function AiAssistantDrawer({
   const [sendingFollowUpId, setSendingFollowUpId] = useState(null)
   const [editingDraftTexts, setEditingDraftTexts] = useState({})
   const [editingDraftIds, setEditingDraftIds] = useState({})
+  const [sentOrderReminders, setSentOrderReminders] = useState({})
+  const [sendingReminderId, setSendingReminderId] = useState(null)
+  const [editingReminderTexts, setEditingReminderTexts] = useState({})
+  const [editingReminderIds, setEditingReminderIds] = useState({})
 
   const [messages, setMessages] = useState([])
 
@@ -1011,6 +1017,7 @@ export default function AiAssistantDrawer({
         isClientMode: isClient,
         isPaymentMode: isPayment,
         isSalesMode: isSales,
+        recentMessages: messages,
       })
 
       if (localRoute && localRoute.handled) {
@@ -3785,6 +3792,202 @@ export default function AiAssistantDrawer({
                     </div>
                   </div>
                 )}
+
+                {/* 5B. Interactive Staff Order Delivery Reminder Card */}
+                {msg.type === 'staff_order_reminder' && msg.data && (() => {
+                  const currentReminderText =
+                    editingReminderTexts[msg.id] !== undefined
+                      ? editingReminderTexts[msg.id]
+                      : (msg.data.message || '')
+                  const isEditing = Boolean(editingReminderIds[msg.id])
+                  const sentStatus = sentOrderReminders[msg.id]
+                  const isSendingThis = sendingReminderId === msg.id
+
+                  const handleSendMacroDroidSms = async () => {
+                    const daytime = checkIsDayTime()
+                    let force = false
+                    if (!daytime.isDayTime) {
+                      const confirmSend = window.confirm(
+                        `⚠️ Outside Daytime Hours (${daytime.istTimeStr})\n\nDaytime is 9:00 AM – 8:00 PM IST to avoid disturbing staff at night.\n\nDo you want to send SMS to ${msg.data.assignedStaffName} anyway?`
+                      )
+                      if (!confirmSend) return
+                      force = true
+                    }
+
+                    try {
+                      setSendingReminderId(msg.id)
+                      await sendBackgroundSms({
+                        phone: msg.data.staffPhone,
+                        message: currentReminderText,
+                      })
+                      setSentOrderReminders((prev) => ({ ...prev, [msg.id]: 'sms' }))
+                      toast.success(
+                        `Delivery reminder sent to ${msg.data.assignedStaffName} via MacroDroid! 📲`,
+                        { icon: '📲' }
+                      )
+                    } catch (err) {
+                      toast.error('Failed to send SMS: ' + err.message)
+                    } finally {
+                      setSendingReminderId(null)
+                    }
+                  }
+
+                  const handleOpenWhatsApp = () => {
+                    const cleanPhone = normalizeIndianPhone(msg.data.staffPhone)
+                    const waUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(currentReminderText)}`
+                    window.open(waUrl, '_blank')
+                    setSentOrderReminders((prev) => ({ ...prev, [msg.id]: 'whatsapp' }))
+                    toast.success(`Opened WhatsApp for ${msg.data.assignedStaffName}! 💬`, { icon: '💬' })
+                  }
+
+                  const handleCopyReminder = () => {
+                    navigator.clipboard.writeText(currentReminderText)
+                    toast.success('Reminder copied to clipboard! 📋', { icon: '📋' })
+                  }
+
+                  return (
+                    <div className="mt-2 bg-white border border-amber-300 rounded-xl p-2.5 space-y-2 text-xs text-gray-800 shadow-2xs">
+                      {/* Header: Title, Staff Badge, Phone, Daytime */}
+                      <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-black uppercase bg-amber-100 text-amber-900 border border-amber-200">
+                            🚚 Delivery SMS Reminder
+                          </span>
+                          <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-700">
+                            👤 {msg.data.assignedStaffName} ({msg.data.staffPhone})
+                          </span>
+                        </div>
+                        <span
+                          className="shrink-0 text-[10px] cursor-help px-1.5 py-0.5 rounded bg-gray-50 border border-gray-200 text-gray-600 font-medium"
+                          title={
+                            msg.data.daytimeCheck?.isDayTime
+                              ? `☀️ Safe to SMS (${msg.data.daytimeCheck?.istTimeStr || 'IST'})`
+                              : `🌙 Night - SMS held (${msg.data.daytimeCheck?.istTimeStr || 'IST'})`
+                          }
+                        >
+                          {msg.data.daytimeCheck?.isDayTime ? '☀️ Safe (Daytime)' : '🌙 Night (Held)'}
+                        </span>
+                      </div>
+
+                      {/* Orders Summary (if orders exist) */}
+                      {Array.isArray(msg.data.orders) && msg.data.orders.length > 0 && (
+                        <div className="bg-amber-50/60 rounded-lg p-1.5 border border-amber-200/60 space-y-1">
+                          <div className="text-[10px] font-semibold text-amber-900 uppercase tracking-wider">
+                            Orders to Dispatch ({msg.data.orders.length}):
+                          </div>
+                          <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
+                            {msg.data.orders.map((ord, idx) => (
+                              <div
+                                key={ord.id || idx}
+                                className="flex items-center justify-between text-[11px] bg-white/80 px-2 py-1 rounded border border-amber-100"
+                              >
+                                <span className="font-semibold text-gray-900 truncate">
+                                  {ord.clientName || ord.name || 'Customer'}
+                                </span>
+                                <span className="shrink-0 font-bold text-amber-800 text-[10px] ml-1">
+                                  {ord.qty || ord.totalQty || 1}x {ord.sku || ord.product || '200ml'}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Message Preview / Editor */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-gray-500 font-semibold">
+                          <span>SMS / WhatsApp Message Text:</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingReminderIds((prev) => ({
+                                ...prev,
+                                [msg.id]: !prev[msg.id],
+                              }))
+                            }
+                            className="text-amber-700 hover:text-amber-900 underline cursor-pointer"
+                          >
+                            {isEditing ? 'Done Editing' : 'Edit Text'}
+                          </button>
+                        </div>
+                        {isEditing ? (
+                          <textarea
+                            value={currentReminderText}
+                            onChange={(e) =>
+                              setEditingReminderTexts((prev) => ({
+                                ...prev,
+                                [msg.id]: e.target.value,
+                              }))
+                            }
+                            rows={3}
+                            className="w-full text-[11px] font-sans border border-amber-300 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-amber-500 bg-amber-50/30"
+                          />
+                        ) : (
+                          <div className="bg-gray-50 rounded p-1.5 border border-gray-200 font-mono text-[10.5px] text-gray-700 whitespace-pre-wrap leading-tight select-all">
+                            {currentReminderText}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center justify-between gap-1.5 pt-0.5">
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                          {/* Send MacroDroid SMS Button */}
+                          <button
+                            type="button"
+                            disabled={isSendingThis || msg.data.noOrders}
+                            onClick={handleSendMacroDroidSms}
+                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer ${
+                              sentStatus === 'sms'
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white'
+                            } ${isSendingThis ? 'opacity-70 cursor-wait' : ''} ${msg.data.noOrders ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {isSendingThis ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span>Sending...</span>
+                              </>
+                            ) : sentStatus === 'sms' ? (
+                              <>
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>SMS Sent ✅</span>
+                              </>
+                            ) : (
+                              <>
+                                <Send className="w-3.5 h-3.5" />
+                                <span>Send SMS (MacroDroid)</span>
+                              </>
+                            )}
+                          </button>
+
+                          {/* WhatsApp Button */}
+                          <button
+                            type="button"
+                            disabled={msg.data.noOrders}
+                            onClick={handleOpenWhatsApp}
+                            className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-lg text-xs font-bold bg-green-600 hover:bg-green-700 text-white transition-colors shadow-2xs cursor-pointer shrink-0"
+                            title="Send via WhatsApp"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>WhatsApp</span>
+                          </button>
+
+                          {/* Copy Button */}
+                          <button
+                            type="button"
+                            onClick={handleCopyReminder}
+                            className="h-7 w-7 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                            title="Copy reminder text"
+                            aria-label="Copy text"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* 6. Interactive Staff Task Assignment Draft Card (Ultra-compact 2-line card) */}
                 {msg.type === 'staff_task_draft' && msg.data && (() => {
