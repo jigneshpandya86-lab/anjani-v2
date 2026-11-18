@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 const VALID_TABS = [
   'orders',
   'clients',
+  'ai',
   'payments',
   'stock',
   'expenses',
@@ -47,6 +48,11 @@ describe('Tab routing and persistence', () => {
   it('restores leads tab when page is reloaded with #leads hash', () => {
     window.location.hash = '#leads'
     expect(getInitialTab()).toBe('leads')
+  })
+
+  it('restores ai tab when page is reloaded with #ai hash', () => {
+    window.location.hash = '#ai'
+    expect(getInitialTab()).toBe('ai')
   })
 
   it('restores leads tab from localStorage even if URL hash is missing', () => {

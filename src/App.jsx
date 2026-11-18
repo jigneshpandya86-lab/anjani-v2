@@ -29,6 +29,7 @@ import {
   IndianRupee,
   ArrowRightLeft,
   UserCheck,
+  Bot,
 } from 'lucide-react'
 import {
   collection,
@@ -77,6 +78,7 @@ import {
 const VALID_TABS = [
   'orders',
   'clients',
+  'ai',
   'payments',
   'stock',
   'expenses',
@@ -651,12 +653,21 @@ function App() {
   const navItems = [
     { id: 'orders', label: 'Orders', icon: <ShoppingCart size={20} /> },
     { id: 'clients', label: 'Clients', icon: <Users size={20} /> },
-    { id: 'payments', label: 'Transactions', icon: <CreditCard size={20} /> },
-    { id: 'stock', label: 'Stock', icon: <Package size={20} /> },
+    { id: 'ai', label: 'AI', icon: <Bot size={20} /> },
     { id: 'expenses', label: 'Expenses', icon: <Receipt size={20} /> },
-  ].filter(item => userRole === 'admin' || item.id === 'orders')
+  ].filter((item) => userRole === 'admin' || item.id === 'orders' || item.id === 'ai')
 
   const drawerNavItems = [
+    userRole === 'admin' && {
+      id: 'payments',
+      label: 'Transactions',
+      icon: <CreditCard size={20} />,
+    },
+    userRole === 'admin' && {
+      id: 'stock',
+      label: 'Stock',
+      icon: <Package size={20} />,
+    },
     { id: 'tasks', label: 'Tasks', icon: <CheckSquare size={20} /> },
     userRole === 'admin' && {
       id: 'accounts',
@@ -678,7 +689,7 @@ function App() {
       label: 'Celebrations',
       icon: <Gift size={20} />,
     },
-    ...navItems,
+    ...navItems.filter((i) => i.id !== 'ai'),
     userRole === 'admin' && {
       id: 'settings',
       label: 'Settings',
@@ -1151,7 +1162,7 @@ function App() {
         {/* AUTH: user email + logout button — do not remove */}
         <div className="flex items-center gap-2 relative" ref={notificationPanelRef}>
           <button
-            onClick={() => openAiWithMode('auto')}
+            onClick={() => setActiveTab('ai')}
             className="p-2 rounded-xl text-[#ff9900] bg-orange-50 hover:bg-orange-100 transition-colors relative flex items-center justify-center border border-orange-200"
             aria-label="Anjani AI Assistant"
             title="Anjani AI Assistant (Scan Vendor Bill / Queries)"
@@ -1331,6 +1342,35 @@ function App() {
             />
           )}
           {activeTab === 'settings' && <SettingsTab />}
+          {activeTab === 'ai' && (
+            <div className="w-full flex-1 flex flex-col h-[calc(100dvh-130px)] sm:h-[calc(100vh-140px)] max-w-2xl mx-auto rounded-2xl overflow-hidden shadow-xs border border-gray-200 bg-white">
+              <AiAssistantDrawer
+                isOpen={true}
+                isPage={true}
+                onClose={() => setActiveTab('orders')}
+                initialMode={aiInitialMode}
+                onNavigateTab={(tab) => setActiveTab(tab)}
+                onOpenPaymentModal={(prefill) => {
+                  if (prefill?.clientId) {
+                    const client = clients.find((c) => c.id === prefill.clientId)
+                    setPayClient(client || null)
+                  } else if (prefill?.clientName) {
+                    const client = clients.find(
+                      (c) => c.name?.toLowerCase() === prefill.clientName.toLowerCase()
+                    )
+                    setPayClient(client || { name: prefill.clientName })
+                  } else {
+                    setPayClient({})
+                  }
+                  setPaymentPrefill(prefill)
+                }}
+                onOpenOrderModal={(order) => {
+                  setEditOrder(order)
+                }}
+                onShareInvoice={handleOrderInvoiceWhatsApp}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -1651,83 +1691,79 @@ function App() {
         </button>
       )}
 
-      {/* AI Assistant Drawer */}
-      <AiAssistantDrawer
-        isOpen={aiDrawerOpen}
-        onClose={handleCloseAiDrawer}
-        initialMode={aiInitialMode}
-        onNavigateTab={(tab) => setActiveTab(tab)}
-        onOpenPaymentModal={(prefill) => {
-          if (prefill?.clientId) {
-            const client = clients.find((c) => c.id === prefill.clientId)
-            setPayClient(client || null)
-          } else if (prefill?.clientName) {
-            const client = clients.find(
-              (c) => c.name?.toLowerCase() === prefill.clientName?.toLowerCase(),
-            )
-            setPayClient(client || null)
-          } else if (prefill && typeof prefill === 'object' && prefill.id) {
-            setPayClient(prefill)
-          } else {
-            setPayClient(null)
-          }
-          setPaymentPrefill(prefill || null)
-          setAiDrawerOpen(false)
-        }}
-        onOpenAddClient={(prefill) => {
-          setClientPrefill(prefill || null)
-          setAddClientOpen(true)
-          setAiDrawerOpen(false)
-        }}
-        onOpenEditClient={(client) => {
-          setEditClient(client || null)
-          setAiDrawerOpen(false)
-        }}
-        onOpenOrderModal={(order) => {
-          setEditOrder(order)
-          setAiDrawerOpen(false)
-        }}
-        onShareInvoice={handleOrderInvoiceWhatsApp}
-      />
+      {/* AI Assistant Drawer (when opened as overlay from floating button or shortcuts on non-AI tabs) */}
+      {activeTab !== 'ai' && (
+        <AiAssistantDrawer
+          isOpen={aiDrawerOpen}
+          onClose={handleCloseAiDrawer}
+          initialMode={aiInitialMode}
+          onNavigateTab={(tab) => setActiveTab(tab)}
+          onOpenPaymentModal={(prefill) => {
+            if (prefill?.clientId) {
+              const client = clients.find((c) => c.id === prefill.clientId)
+              setPayClient(client || null)
+            } else if (prefill?.clientName) {
+              const client = clients.find(
+                (c) => c.name?.toLowerCase() === prefill.clientName?.toLowerCase(),
+              )
+              setPayClient(client || null)
+            } else if (prefill && typeof prefill === 'object' && prefill.id) {
+              setPayClient(prefill)
+            } else {
+              setPayClient(null)
+            }
+            setPaymentPrefill(prefill || null)
+            setAiDrawerOpen(false)
+          }}
+          onOpenAddClient={(prefill) => {
+            setClientPrefill(prefill || null)
+            setAddClientOpen(true)
+            setAiDrawerOpen(false)
+          }}
+          onOpenEditClient={(client) => {
+            setEditClient(client || null)
+            setAiDrawerOpen(false)
+          }}
+          onOpenOrderModal={(order) => {
+            setEditOrder(order)
+            setAiDrawerOpen(false)
+          }}
+          onShareInvoice={handleOrderInvoiceWhatsApp}
+        />
+      )}
 
-      {/* Floating Contextual AI Assistant Trigger Button (Uniform across all pages at bottom-40) */}
-      <button
-        type="button"
-        onClick={() => {
-          const modeMap = {
-            orders: 'retail_sales',
-            clients: 'create_client',
-            payments: 'receive_payment',
-            accounts: 'accounts_cash',
+      {/* Floating Contextual AI Assistant Trigger Button (Uniform across other pages at bottom-40, hidden on AI page) */}
+      {activeTab !== 'ai' && (
+        <button
+          type="button"
+          onClick={() => setActiveTab('ai')}
+          className="fixed right-4 bottom-40 z-[998] bg-[#131921] hover:bg-black text-[#ff9900] border border-[#ff9900]/80 h-11 w-11 sm:h-12 sm:w-12 rounded-full shadow-lg shadow-black/30 flex items-center justify-center active:scale-90 transition-all cursor-pointer group"
+          aria-label="Open Contextual AI Assistant"
+          title={
+            activeTab === 'orders'
+              ? 'AI Voice & Sales Order'
+              : activeTab === 'clients'
+                ? 'AI Add Client / Scan Card'
+                : activeTab === 'payments'
+                  ? 'AI Payment Entry / UPI Receipt'
+                  : activeTab === 'accounts'
+                    ? 'AI Staff Custody & Handover'
+                    : 'AI Assistant'
           }
-          openAiWithMode(modeMap[activeTab] || 'auto')
-        }}
-        className="fixed right-4 bottom-40 z-[998] bg-[#131921] hover:bg-black text-[#ff9900] border border-[#ff9900]/80 h-11 w-11 sm:h-12 sm:w-12 rounded-full shadow-lg shadow-black/30 flex items-center justify-center active:scale-90 transition-all cursor-pointer group"
-        aria-label="Open Contextual AI Assistant"
-        title={
-          activeTab === 'orders'
-            ? 'AI Voice & Sales Order'
-            : activeTab === 'clients'
-              ? 'AI Add Client / Scan Card'
-              : activeTab === 'payments'
-                ? 'AI Payment Entry / UPI Receipt'
-                : activeTab === 'accounts'
-                  ? 'AI Staff Custody & Handover'
-                  : 'AI Assistant'
-        }
-      >
-        {activeTab === 'orders' ? (
-          <ShoppingCart size={20} className="text-[#ff9900] group-hover:rotate-6 transition-transform" />
-        ) : activeTab === 'clients' ? (
-          <UserPlus size={20} className="text-[#ff9900] group-hover:rotate-6 transition-transform" />
-        ) : activeTab === 'payments' ? (
-          <IndianRupee size={20} className="text-[#ff9900] group-hover:rotate-6 transition-transform" />
-        ) : activeTab === 'accounts' ? (
-          <ArrowRightLeft size={20} className="text-[#ff9900] group-hover:rotate-6 transition-transform" />
-        ) : (
-          <Sparkles size={20} className="text-[#ff9900] group-hover:rotate-12 transition-transform" />
-        )}
-      </button>
+        >
+          {activeTab === 'orders' ? (
+            <ShoppingCart size={20} className="text-[#ff9900] group-hover:rotate-6 transition-transform" />
+          ) : activeTab === 'clients' ? (
+            <UserPlus size={20} className="text-[#ff9900] group-hover:rotate-6 transition-transform" />
+          ) : activeTab === 'payments' ? (
+            <IndianRupee size={20} className="text-[#ff9900] group-hover:rotate-6 transition-transform" />
+          ) : activeTab === 'accounts' ? (
+            <ArrowRightLeft size={20} className="text-[#ff9900] group-hover:rotate-6 transition-transform" />
+          ) : (
+            <Sparkles size={20} className="text-[#ff9900] group-hover:rotate-12 transition-transform" />
+          )}
+        </button>
+      )}
     </div>
   )
 }

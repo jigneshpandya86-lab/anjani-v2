@@ -1055,7 +1055,7 @@ export function tryLocalIntentRoute(query, store = {}) {
       type: 'staff_order_reminder',
       text:
         ordersToRemind.length > 0
-          ? `🚚 **Order Delivery Reminder**: Ready to send SMS reminder to ${staffName}bhai for **${ordersToRemind.length}** open order${ordersToRemind.length > 1 ? 's' : ''}:`
+          ? '' // Clean empty text so only compact 1-line card renders (Feedback EUD8gyVjHdiGMp6xBM7l)
           : `🚚 **Order Delivery Reminder**: No open orders found right now to remind ${staffName}bhai about.`,
       data: {
         orders: ordersToRemind,

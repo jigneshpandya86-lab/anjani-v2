@@ -50,12 +50,17 @@ export async function processAiBillImage(file, maxDimension = 1280, quality = 0.
     })
   }
 
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        const img = new Image()
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Image processing timed out. Please try a smaller image.'))
+    }, 10000)
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const img = new Image()
 
       img.onload = () => {
+        clearTimeout(timer)
         let width = img.width
         let height = img.height
 
@@ -98,11 +103,17 @@ export async function processAiBillImage(file, maxDimension = 1280, quality = 0.
         })
       }
 
-      img.onerror = () => reject(new Error('Failed to load image file'))
+      img.onerror = () => {
+        clearTimeout(timer)
+        reject(new Error('Failed to load image file'))
+      }
       img.src = event.target.result
     }
 
-    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.onerror = () => {
+      clearTimeout(timer)
+      reject(new Error('Failed to read file'))
+    }
     reader.readAsDataURL(file)
   })
 }

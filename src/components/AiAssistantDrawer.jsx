@@ -94,6 +94,7 @@ export default function AiAssistantDrawer({
   onOpenEditClient,
   onShareInvoice,
   initialMode,
+  isPage = false,
 }) {
   const fileInputRef = useRef(null)
   const messagesEndRef = useRef(null)
@@ -258,13 +259,16 @@ export default function AiAssistantDrawer({
   const handleFeedbackFileSelect = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (!file.type || !file.type.startsWith('image/')) {
+    const isImage =
+      (file.type && file.type.startsWith('image/')) ||
+      /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(file.name)
+    if (!isImage) {
       toast.error('Please select an image file (PNG, JPG, WebP, etc.)')
       return
     }
     try {
       toast.loading('Processing screenshot...', { id: 'fb-img-proc' })
-      const processed = await processAiBillImage(file, 1024, 0.75)
+      const processed = await processAiBillImage(file, 800, 0.7)
       toast.dismiss('fb-img-proc')
       setFeedbackImage(processed)
       toast.success('Screenshot attached!', { icon: '📸' })
@@ -285,7 +289,7 @@ export default function AiAssistantDrawer({
           e.preventDefault()
           try {
             toast.loading('Processing screenshot...', { id: 'fb-img-proc' })
-            const processed = await processAiBillImage(file, 1024, 0.75)
+            const processed = await processAiBillImage(file, 800, 0.7)
             toast.dismiss('fb-img-proc')
             setFeedbackImage(processed)
             toast.success('Screenshot pasted from clipboard!', { icon: '📸' })
@@ -2539,23 +2543,35 @@ export default function AiAssistantDrawer({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-[1200] flex justify-end bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in">
+    <div
+      className={
+        isPage
+          ? 'w-full h-full flex flex-col bg-white overflow-hidden relative'
+          : 'fixed inset-0 z-[1200] flex justify-end bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in'
+      }
+    >
       <div
-        className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right"
+        className={
+          isPage
+            ? 'w-full h-full flex flex-col bg-white overflow-hidden'
+            : 'w-full max-w-lg bg-white h-full shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right'
+        }
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="bg-[#131921] text-white px-3 py-2 flex items-center justify-between border-b border-gray-800 shrink-0">
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-              aria-label="Back to parent page"
-              title="Back"
-            >
-              <ArrowLeft className="w-5 h-5 text-gray-300 hover:text-white" />
-            </button>
+            {!isPage && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                aria-label="Back to parent page"
+                title="Back"
+              >
+                <ArrowLeft className="w-5 h-5 text-gray-300 hover:text-white" />
+              </button>
+            )}
             <div className="w-6 h-6 rounded-md bg-[#ff9900]/20 flex items-center justify-center text-[#ff9900]">
               <Sparkles className="w-3.5 h-3.5" />
             </div>
@@ -2954,18 +2970,18 @@ export default function AiAssistantDrawer({
                 <h3 className="text-sm font-black text-gray-900 tracking-tight">Anjani</h3>
               </div>
 
-              {/* Main Menu Action Chips */}
-              <div className="w-full max-w-sm grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
+              {/* Main Menu Action Chips (2-column layout on both mobile and desktop) */}
+              <div className="w-full max-w-sm grid grid-cols-2 gap-1.5 sm:gap-2 text-left">
                 {MAIN_MENU_CHIPS.map((chip) => (
                   <button
                     key={chip.id}
                     type="button"
                     onClick={() => handleChipClick(chip)}
-                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-2xs hover:scale-[1.02] active:scale-95 ${
+                    className={`p-2 sm:p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer shadow-2xs hover:scale-[1.02] active:scale-95 ${
                       chip.color || 'bg-white text-gray-800 border-gray-200 hover:bg-gray-50'
                     }`}
                   >
-                    <span>{chip.label}</span>
+                    <span className="truncate">{chip.label}</span>
                   </button>
                 ))}
               </div>
@@ -4652,57 +4668,72 @@ export default function AiAssistantDrawer({
                   }
 
                   return (
-                    <div className="mt-2 bg-white border border-amber-300 rounded-xl p-2.5 space-y-2 text-xs text-gray-800 shadow-2xs">
-                      {/* Header: Title, Staff Badge, Phone, Daytime */}
-                      <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                    <div className="mt-2 bg-white border border-amber-300 rounded-lg p-2 text-xs space-y-1.5 shadow-2xs">
+                      {/* Compact 1-line reminder bar */}
+                      <div className="flex items-center justify-between gap-1.5 min-w-0">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-black uppercase bg-amber-100 text-amber-900 border border-amber-200">
-                            🚚 Delivery SMS Reminder
+                          <span className="shrink-0 px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-amber-100 text-amber-900 border border-amber-200">
+                            📲 Remind {msg.data.assignedStaffName || 'Nilesh'}
                           </span>
-                          <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-700">
-                            👤 {msg.data.assignedStaffName} ({msg.data.staffPhone})
+                          <span className="font-bold text-gray-900 truncate text-[11px]">
+                            {Array.isArray(msg.data.orders) && msg.data.orders.length > 0
+                              ? `${msg.data.orders[0].clientName || 'Customer'} (${msg.data.orders[0].qty || 1}x ${msg.data.orders[0].sku || '200ml'}${msg.data.orders.length > 1 ? ` +${msg.data.orders.length - 1}` : ''})`
+                              : 'Delivery Reminder'}
+                          </span>
+                          <span
+                            className="shrink-0 text-[10px]"
+                            title={msg.data.daytimeCheck?.isDayTime ? 'Safe Daytime' : 'Night Held'}
+                          >
+                            {msg.data.daytimeCheck?.isDayTime ? '☀️' : '🌙'}
                           </span>
                         </div>
-                        <span
-                          className="shrink-0 text-[10px] cursor-help px-1.5 py-0.5 rounded bg-gray-50 border border-gray-200 text-gray-600 font-medium"
-                          title={
-                            msg.data.daytimeCheck?.isDayTime
-                              ? `☀️ Safe to SMS (${msg.data.daytimeCheck?.istTimeStr || 'IST'})`
-                              : `🌙 Night - SMS held (${msg.data.daytimeCheck?.istTimeStr || 'IST'})`
-                          }
-                        >
-                          {msg.data.daytimeCheck?.isDayTime ? '☀️ Safe (Daytime)' : '🌙 Night (Held)'}
-                        </span>
-                      </div>
 
-                      {/* Orders Summary (if orders exist) */}
-                      {Array.isArray(msg.data.orders) && msg.data.orders.length > 0 && (
-                        <div className="bg-amber-50/60 rounded-lg p-1.5 border border-amber-200/60 space-y-1">
-                          <div className="text-[10px] font-semibold text-amber-900 uppercase tracking-wider">
-                            Orders to Dispatch ({msg.data.orders.length}):
-                          </div>
-                          <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
-                            {msg.data.orders.map((ord, idx) => (
-                              <div
-                                key={ord.id || idx}
-                                className="flex items-center justify-between text-[11px] bg-white/80 px-2 py-1 rounded border border-amber-100"
-                              >
-                                <span className="font-semibold text-gray-900 truncate">
-                                  {ord.clientName || ord.name || 'Customer'}
-                                </span>
-                                <span className="shrink-0 font-bold text-amber-800 text-[10px] ml-1">
-                                  {ord.qty || ord.totalQty || 1}x {ord.sku || ord.product || '200ml'}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                        {/* Direct action buttons (strictly 2-3 words / icons) */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            disabled={isSendingThis || msg.data.noOrders}
+                            onClick={handleSendMacroDroidSms}
+                            aria-label="Send SMS"
+                            title="Send SMS via MacroDroid"
+                            className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all shadow-2xs flex items-center gap-0.5 cursor-pointer ${
+                              sentStatus === 'sms'
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white'
+                            } ${isSendingThis ? 'opacity-70 cursor-wait' : ''} ${msg.data.noOrders ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {isSendingThis ? (
+                              <Loader2 size={11} className="animate-spin" />
+                            ) : sentStatus === 'sms' ? (
+                              <CheckCircle2 size={11} />
+                            ) : (
+                              <Send size={11} />
+                            )}
+                            <span>{sentStatus === 'sms' ? 'Sent' : 'SMS'}</span>
+                          </button>
 
-                      {/* Message Preview / Editor */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-[10px] text-gray-500 font-semibold">
-                          <span>SMS / WhatsApp Message Text:</span>
+                          <button
+                            type="button"
+                            disabled={msg.data.noOrders}
+                            onClick={handleOpenWhatsApp}
+                            aria-label="WhatsApp"
+                            title="Open WhatsApp"
+                            className="px-2 py-0.5 rounded text-[11px] font-bold bg-green-600 hover:bg-green-700 text-white transition-colors shadow-2xs flex items-center gap-0.5 cursor-pointer"
+                          >
+                            <MessageCircle size={11} />
+                            <span>WhatsApp</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleCopyReminder}
+                            aria-label="Copy message"
+                            title="Copy reminder text"
+                            className="h-6 w-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center transition-colors cursor-pointer"
+                          >
+                            <Copy size={11} />
+                          </button>
+
                           <button
                             type="button"
                             onClick={() =>
@@ -4711,12 +4742,18 @@ export default function AiAssistantDrawer({
                                 [msg.id]: !prev[msg.id],
                               }))
                             }
-                            className="text-amber-700 hover:text-amber-900 underline cursor-pointer"
+                            aria-label="Edit text"
+                            title="Edit text"
+                            className="h-6 w-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center transition-colors cursor-pointer"
                           >
-                            {isEditing ? 'Done Editing' : 'Edit Text'}
+                            <Edit2 size={11} />
                           </button>
                         </div>
-                        {isEditing ? (
+                      </div>
+
+                      {/* Optional inline text edit area (only shown if user clicks edit) */}
+                      {isEditing && (
+                        <div className="pt-1.5 border-t border-amber-200/60 space-y-1">
                           <textarea
                             value={currentReminderText}
                             onChange={(e) =>
@@ -4725,72 +4762,11 @@ export default function AiAssistantDrawer({
                                 [msg.id]: e.target.value,
                               }))
                             }
-                            rows={3}
+                            rows={2}
                             className="w-full text-[11px] font-sans border border-amber-300 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-amber-500 bg-amber-50/30"
                           />
-                        ) : (
-                          <div className="bg-gray-50 rounded p-1.5 border border-gray-200 font-mono text-[10.5px] text-gray-700 whitespace-pre-wrap leading-tight select-all">
-                            {currentReminderText}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Action Buttons */}
-                      <div className="flex items-center justify-between gap-1.5 pt-0.5">
-                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                          {/* Send MacroDroid SMS Button */}
-                          <button
-                            type="button"
-                            disabled={isSendingThis || msg.data.noOrders}
-                            onClick={handleSendMacroDroidSms}
-                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer ${
-                              sentStatus === 'sms'
-                                ? 'bg-emerald-600 text-white'
-                                : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white'
-                            } ${isSendingThis ? 'opacity-70 cursor-wait' : ''} ${msg.data.noOrders ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          >
-                            {isSendingThis ? (
-                              <>
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                <span>Sending...</span>
-                              </>
-                            ) : sentStatus === 'sms' ? (
-                              <>
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>SMS Sent ✅</span>
-                              </>
-                            ) : (
-                              <>
-                                <Send className="w-3.5 h-3.5" />
-                                <span>Send SMS (MacroDroid)</span>
-                              </>
-                            )}
-                          </button>
-
-                          {/* WhatsApp Button */}
-                          <button
-                            type="button"
-                            disabled={msg.data.noOrders}
-                            onClick={handleOpenWhatsApp}
-                            className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-lg text-xs font-bold bg-green-600 hover:bg-green-700 text-white transition-colors shadow-2xs cursor-pointer shrink-0"
-                            title="Send via WhatsApp"
-                          >
-                            <MessageCircle className="w-3.5 h-3.5" />
-                            <span>WhatsApp</span>
-                          </button>
-
-                          {/* Copy Button */}
-                          <button
-                            type="button"
-                            onClick={handleCopyReminder}
-                            className="h-7 w-7 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center transition-colors cursor-pointer shrink-0"
-                            title="Copy reminder text"
-                            aria-label="Copy text"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
                         </div>
-                      </div>
+                      )}
                     </div>
                   )
                 })()}
