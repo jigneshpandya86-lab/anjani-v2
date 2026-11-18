@@ -30,6 +30,7 @@ import {
   ArrowRightLeft,
   UserCheck,
   Bot,
+  RefreshCw,
 } from 'lucide-react'
 import {
   collection,
@@ -1446,6 +1447,33 @@ function App() {
                       {report.label}
                     </button>
                   ))}
+              </div>
+
+              {/* Force Cache Bust & Reload App Button */}
+              <div className="pt-2 border-t border-gray-100 px-1 pb-4">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (typeof window !== 'undefined') {
+                      try {
+                        if ('caches' in window) {
+                          const keys = await caches.keys()
+                          await Promise.all(keys.map((k) => caches.delete(k)))
+                        }
+                        if ('serviceWorker' in navigator) {
+                          const regs = await navigator.serviceWorker.getRegistrations()
+                          await Promise.all(regs.map((r) => r.unregister()))
+                        }
+                      } catch (_e) {}
+                      window.location.reload(true)
+                    }
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-orange-50 hover:bg-orange-100 text-[#ff9900] border border-orange-200 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                  title="Clear cache and reload the latest version of the app"
+                >
+                  <RefreshCw size={14} />
+                  <span>Update / Reload Latest App</span>
+                </button>
               </div>
             </nav>
           </aside>
