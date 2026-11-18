@@ -13,6 +13,18 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       window.location.reload()
     }
   })
+
+  // Proactively check for new service worker updates on load and on tab focus
+  navigator.serviceWorker.ready
+    .then((reg) => {
+      reg.update().catch(() => {})
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          reg.update().catch(() => {})
+        }
+      })
+    })
+    .catch(() => {})
 }
 
 createRoot(document.getElementById('root')).render(

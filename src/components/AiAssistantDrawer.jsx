@@ -693,6 +693,10 @@ export default function AiAssistantDrawer({
       setShowFeedbackModal(true)
       return
     }
+    if (chip.action === 'query_orders') {
+      handleSend('orders')
+      return
+    }
     if (chip.action === 'query_stock') {
       handleSend('Current stock')
       return
@@ -1863,7 +1867,7 @@ export default function AiAssistantDrawer({
 
     const sheetData = {
       type: 'order',
-      title: 'Order Actions',
+      title: 'Order Card',
       subtitle: `${clientName} • ${qty}x ${sku}`,
       itemSummary: {
         title: clientName,
@@ -1949,7 +1953,7 @@ export default function AiAssistantDrawer({
 
     const sheetData = {
       type: 'payment',
-      title: 'Payment Actions',
+      title: 'Payment Card',
       subtitle: `${clientName} • ₹${amt.toLocaleString('en-IN')}`,
       itemSummary: {
         title: clientName,
@@ -2016,7 +2020,7 @@ export default function AiAssistantDrawer({
 
     const sheetData = {
       type: 'task',
-      title: 'Task Actions',
+      title: 'Staff Task Card',
       subtitle: `${staffName} • ${taskDesc.slice(0, 30)}`,
       itemSummary: {
         title: staffName,
@@ -2028,6 +2032,52 @@ export default function AiAssistantDrawer({
 
     lastActiveCardActionsRef.current = actions
     setActiveCardSheet(sheetData)
+  }
+
+  const openHandoverSecondaryMenu = (entry) => {
+    if (!entry) return
+    const actions = getHandoverCardActions({
+      handover: entry,
+      handlers: {
+        onStaffSms: async (ent) => {
+          try {
+            await sendBackgroundSms({
+              phone: '7990943652',
+              message: `Anjani Cash Handover: Received ₹${Number(ent.amount || 0).toLocaleString('en-IN')}. Narration: ${ent.narration || 'Handover'}. - Anjani Water`,
+            })
+            toast.success('Handover SMS sent! 📲')
+          } catch (err) {
+            toast.error('Failed to send SMS: ' + err.message)
+          }
+        },
+        onWhatsAppSlip: (ent) => {
+          const url = `https://api.whatsapp.com/send?phone=917990943652&text=${encodeURIComponent(
+            `Anjani Cash Handover: Received ₹${Number(ent.amount || 0).toLocaleString('en-IN')}. Narration: ${ent.narration || 'Handover'}. - Anjani Water`
+          )}`
+          window.open(url, '_blank')
+        },
+        onOpenCalculator: () => {
+          onNavigateTab?.('accounts')
+          onClose()
+        },
+        onViewPassbook: () => {
+          onNavigateTab?.('accounts')
+          onClose()
+        },
+      },
+    })
+    lastActiveCardActionsRef.current = actions
+    setActiveCardSheet({
+      type: 'handover',
+      title: 'Handover Card',
+      subtitle: `${entry.fromAccount || 'Cash'} ➔ ${entry.toAccount || 'Staff'}`,
+      itemSummary: {
+        title: `₹${Number(entry.amount || 0).toLocaleString('en-IN')}`,
+        detail: entry.narration || 'Cash Transfer',
+        badge: 'Handover',
+      },
+      actions,
+    })
   }
 
   // Adjust quantity for a sale item in a retail sales batch by item index
@@ -2600,24 +2650,40 @@ export default function AiAssistantDrawer({
 
                 {/* 1. Interactive Order Draft Card */}
                 {msg.type === 'order_draft' && msg.data && (
-                  <div className="mt-3 bg-white border border-gray-300 rounded-xl p-3.5 space-y-3 text-xs text-gray-800 shadow-sm">
+                  <div
+                    onClick={() => openOrderSecondaryMenu(placedOrders[msg.id] || msg.data)}
+                    className="mt-3 bg-white border border-gray-300 hover:border-amber-400 rounded-xl p-3.5 space-y-3 text-xs text-gray-800 shadow-sm cursor-pointer transition-all"
+                  >
                     <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shrink-0">
                           <ClipboardList className="w-4 h-4" />
                         </div>
-                        <div>
-                          <p className="font-bold text-gray-900 text-sm">Order Draft</p>
-                          <p className="text-[11px] text-gray-500">For {msg.data.clientName || 'Customer'}</p>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-bold text-gray-900 text-sm">Order Card</p>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                openOrderSecondaryMenu(placedOrders[msg.id] || msg.data)
+                              }}
+                              className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 flex items-center gap-1 transition-colors cursor-pointer"
+                              title="Open WhatsApp Banking Quick Actions"
+                            >
+                              <Zap size={10} className="text-amber-700" /> Actions (1-6)
+                            </button>
+                          </div>
+                          <p className="text-[11px] text-gray-500 truncate">For {msg.data.clientName || 'Customer'}</p>
                           {(msg.data.address || msg.data.location) && (
-                            <p className="text-[11px] text-gray-600 flex items-center gap-1 mt-0.5 font-medium">
+                            <p className="text-[11px] text-gray-600 flex items-center gap-1 mt-0.5 font-medium truncate">
                               <span>📍</span> {msg.data.address || msg.data.location}
                             </p>
                           )}
                         </div>
                       </div>
                       {placedOrders[msg.id] ? (
-                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-700 flex items-center gap-1">
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-700 flex items-center gap-1 shrink-0">
                           <CheckCircle2 className="w-3.5 h-3.5" /> Placed
                         </span>
                       ) : null}
@@ -2642,11 +2708,12 @@ export default function AiAssistantDrawer({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 pt-1">
+                    <div className="flex items-center gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
                       <button
                         type="button"
                         disabled={placedOrders[msg.id]}
-                        onClick={async () => {
+                        onClick={async (e) => {
+                          e.stopPropagation()
                           try {
                             const savedOrder = await addOrder({
                               clientId: msg.data.clientId,
@@ -2675,7 +2742,8 @@ export default function AiAssistantDrawer({
                       {onOpenOrderModal && (
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation()
                             const saved = placedOrders[msg.id]
                             onOpenOrderModal(saved && typeof saved === 'object' ? saved : msg.data)
                           }}
@@ -2697,25 +2765,41 @@ export default function AiAssistantDrawer({
 
                 {/* 2. Interactive Payment Receipt Card */}
                 {msg.type === 'receive_payment' && msg.data && (
-                  <div className="mt-3 bg-white border border-gray-300 rounded-xl p-3.5 space-y-3 text-xs text-gray-800 shadow-sm">
+                  <div
+                    onClick={() => openPaymentSecondaryMenu(msg.data)}
+                    className="mt-3 bg-white border border-gray-300 hover:border-emerald-400 rounded-xl p-3.5 space-y-3 text-xs text-gray-800 shadow-sm cursor-pointer transition-all"
+                  >
                     <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shrink-0">
                           <IndianRupee className="w-4 h-4" />
                         </div>
-                        <div>
-                          <p className="font-bold text-gray-900 text-sm">Payment Receipt</p>
-                          <p className="text-[11px] text-gray-500">{msg.data.onlineProvider || 'UPI / Cash Payment'}</p>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-bold text-gray-900 text-sm">Payment Receipt</p>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                openPaymentSecondaryMenu(msg.data)
+                              }}
+                              className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 flex items-center gap-1 transition-colors cursor-pointer"
+                              title="Open Payment Quick Actions"
+                            >
+                              <Zap size={10} className="text-emerald-700" /> Actions (1-3)
+                            </button>
+                          </div>
+                          <p className="text-[11px] text-gray-500 truncate">{msg.data.onlineProvider || 'UPI / Cash Payment'}</p>
                         </div>
                       </div>
                       {recordedPayments[msg.paymentId || msg.id] ? (
-                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-700 flex items-center gap-1">
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-700 flex items-center gap-1 shrink-0">
                           <CheckCircle2 className="w-3.5 h-3.5" /> Recorded
                         </span>
                       ) : null}
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs" onClick={(e) => e.stopPropagation()}>
                       <div>
                         <label className="text-[10px] uppercase font-bold text-gray-500">Customer / Client</label>
                         <select
@@ -2818,7 +2902,7 @@ export default function AiAssistantDrawer({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 pt-1">
+                    <div className="flex items-center gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
                       <button
                         type="button"
                         disabled={
@@ -2895,7 +2979,11 @@ export default function AiAssistantDrawer({
                     <div className="space-y-1.5 divide-y divide-gray-100">
                       {/* Client row */}
                       {msg.data.clientName && (
-                        <div className="flex items-center justify-between gap-2 pt-1 first:pt-0">
+                        <div
+                          onClick={() => openClientSecondaryMenu({ name: msg.data.clientName, mobile: msg.data.clientMobile })}
+                          className="flex items-center justify-between gap-2 pt-1 first:pt-0 cursor-pointer hover:bg-blue-50/50 p-1 rounded-lg transition-colors"
+                          title="Tap for Client Card actions"
+                        >
                           <span className="text-gray-500 flex items-center gap-1.5 font-medium shrink-0">
                             <User className="w-3.5 h-3.5 text-blue-600" /> Client
                           </span>
@@ -2921,7 +3009,11 @@ export default function AiAssistantDrawer({
 
                       {/* Order row */}
                       {msg.data.order && (
-                        <div className="flex items-center justify-between gap-2 pt-1.5">
+                        <div
+                          onClick={() => openOrderSecondaryMenu({ ...msg.data.order, clientName: msg.data.clientName, mobile: msg.data.clientMobile })}
+                          className="flex items-center justify-between gap-2 pt-1.5 cursor-pointer hover:bg-amber-50/50 p-1 rounded-lg transition-colors"
+                          title="Tap for Order Card actions"
+                        >
                           <span className="text-gray-500 flex items-center gap-1.5 font-medium shrink-0">
                             <Package className="w-3.5 h-3.5 text-emerald-600" /> Order
                           </span>
@@ -2936,7 +3028,11 @@ export default function AiAssistantDrawer({
 
                       {/* Payment row */}
                       {msg.data.payment && (
-                        <div className="flex items-center justify-between gap-2 pt-1.5">
+                        <div
+                          onClick={() => openPaymentSecondaryMenu({ ...msg.data.payment, clientName: msg.data.clientName, clientMobile: msg.data.clientMobile })}
+                          className="flex items-center justify-between gap-2 pt-1.5 cursor-pointer hover:bg-emerald-50/50 p-1 rounded-lg transition-colors"
+                          title="Tap for Payment Card actions"
+                        >
                           <span className="text-gray-500 flex items-center gap-1.5 font-medium shrink-0">
                             <IndianRupee className="w-3.5 h-3.5 text-emerald-600" /> Payment
                           </span>
@@ -3286,7 +3382,7 @@ export default function AiAssistantDrawer({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 pt-1">
+                    <div className="flex items-center gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
                       <button
                         type="button"
                         disabled={createdClients[msg.clientId || msg.id] || !msg.data.name}
@@ -3488,11 +3584,12 @@ export default function AiAssistantDrawer({
                             return (
                               <div
                                 key={sale.id || sIdx}
-                                className="bg-white p-2 rounded-xl border border-gray-100 shadow-2xs space-y-1.5"
+                                onClick={() => openOrderSecondaryMenu(sale)}
+                                className="bg-white hover:bg-amber-50/20 p-2 rounded-xl border border-gray-100 hover:border-amber-300 shadow-2xs space-y-1.5 cursor-pointer transition-all"
                               >
                                 {/* Customer Header */}
                                 <div className="flex items-center justify-between gap-1">
-                                  <div className="flex items-center gap-1.5 min-w-0">
+                                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
                                     <span className="font-extrabold text-gray-900 text-xs truncate">
                                       {sale.clientName}
                                     </span>
@@ -3515,16 +3612,32 @@ export default function AiAssistantDrawer({
                                       </span>
                                     )}
                                   </div>
-                                  {!isBatchDone && (
+                                  <div className="flex items-center gap-1 shrink-0">
                                     <button
                                       type="button"
-                                      onClick={() => handleDeleteRetailSale(msg.id, sIdx)}
-                                      className="text-gray-400 hover:text-red-500 p-0.5 rounded transition-colors cursor-pointer shrink-0"
-                                      title="Remove"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        openOrderSecondaryMenu(sale)
+                                      }}
+                                      className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-200 cursor-pointer flex items-center gap-0.5"
+                                      title="Open Order Card Quick Actions"
                                     >
-                                      <Trash2 className="w-3 h-3" />
+                                      ⚡ Actions
                                     </button>
-                                  )}
+                                    {!isBatchDone && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleDeleteRetailSale(msg.id, sIdx)
+                                        }}
+                                        className="text-gray-400 hover:text-red-500 p-0.5 rounded transition-colors cursor-pointer"
+                                        title="Remove"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
 
                                 {/* Delivery Date / Time / Address Badges */}
@@ -3716,18 +3829,34 @@ export default function AiAssistantDrawer({
                   const isBatchDone = processedSalesBatches[msg.id]
 
                   return (
-                    <div className="mt-2.5 bg-white border border-blue-200 rounded-2xl p-2.5 space-y-2 text-xs shadow-xs">
+                    <div
+                      onClick={() => openHandoverSecondaryMenu(entries[0])}
+                      className="mt-2.5 bg-white border border-blue-200 hover:border-blue-400 rounded-2xl p-2.5 space-y-2 text-xs shadow-xs cursor-pointer transition-all"
+                    >
                       {/* Top Header with 1-Tap Confirm */}
                       <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-gray-100">
-                        <div className="flex items-center gap-1.5">
-                          <span className="p-1 rounded-lg bg-blue-50 text-blue-600 font-black">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="p-1 rounded-lg bg-blue-50 text-blue-600 font-black shrink-0">
                             <ArrowRightLeft className="w-3.5 h-3.5" />
                           </span>
-                          <div>
-                            <span className="text-[11px] font-black uppercase text-gray-800 tracking-tight">
-                              Accounts & Staff Cash
-                            </span>
-                            <span className="text-[10px] text-gray-500 font-bold ml-1.5">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[11px] font-black uppercase text-gray-800 tracking-tight">
+                                Handover Card
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  openHandoverSecondaryMenu(entries[0])
+                                }}
+                                className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-blue-100 hover:bg-blue-200 text-blue-900 border border-blue-300 flex items-center gap-0.5 cursor-pointer"
+                                title="Open Handover Quick Actions"
+                              >
+                                ⚡ Actions
+                              </button>
+                            </div>
+                            <span className="text-[10px] text-gray-500 font-bold block truncate">
                               {entries.length} {entries.length === 1 ? 'entry' : 'entries'} • ₹{totalAmt.toLocaleString('en-IN')}
                             </span>
                           </div>
@@ -3909,9 +4038,22 @@ export default function AiAssistantDrawer({
                           <span className="font-bold text-gray-900 truncate">
                             {ord.clientName || ord.name || 'Customer'}
                           </span>
-                          <span className="text-[10px] px-1.5 py-0.2 rounded font-bold bg-amber-100 text-amber-800 uppercase shrink-0">
-                            {ord.qty}x {ord.sku || ord.product || '200ml'}
-                          </span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                openOrderSecondaryMenu(ord)
+                              }}
+                              className="text-[9px] px-1.5 py-0.2 rounded font-black bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-200 uppercase flex items-center gap-0.5 cursor-pointer"
+                              title="Open Order Card Quick Actions"
+                            >
+                              ⚡ Actions
+                            </button>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded font-bold bg-amber-100 text-amber-800 uppercase">
+                              {ord.qty}x {ord.sku || ord.product || '200ml'}
+                            </span>
+                          </div>
                         </div>
                         <div className="flex items-center justify-between gap-1 pt-0.5">
                           <span className="text-[10px] text-gray-500 truncate flex-1">
@@ -4283,11 +4425,28 @@ export default function AiAssistantDrawer({
                   })
 
                   return (
-                    <div className="mt-2 bg-white border border-teal-200 rounded-xl p-2 space-y-1 text-xs text-gray-800 shadow-2xs">
+                    <div
+                      onClick={() => openTaskSecondaryMenu({ ...msg.data, text: currentDraftText })}
+                      className="mt-2 bg-white border border-teal-200 hover:border-teal-400 rounded-xl p-2 space-y-1 text-xs text-gray-800 shadow-2xs cursor-pointer transition-all"
+                    >
                       {/* Line 1: Staff, Target, Day/Night & Icon-Only Action Buttons */}
                       <div className="flex items-center justify-between gap-1.5">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="shrink-0 px-1.5 py-0.2 rounded text-[10px] font-black uppercase bg-teal-100 text-teal-800">
+                            👤 {msg.data.assignedStaffName}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openTaskSecondaryMenu({ ...msg.data, text: currentDraftText })
+                            }}
+                            className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-teal-100 hover:bg-teal-200 text-teal-900 border border-teal-300 flex items-center gap-0.5 cursor-pointer"
+                            title="Open Staff Task Quick Actions"
+                          >
+                            ⚡ Actions
+                          </button>
+                          <span className="shrink-0 text-[10px] text-gray-500 font-semibold">
                             👤 {msg.data.assignedStaffName}
                           </span>
                           <span className="shrink-0 text-[10px] text-gray-500 font-semibold">

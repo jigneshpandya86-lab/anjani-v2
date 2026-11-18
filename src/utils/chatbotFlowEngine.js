@@ -36,6 +36,7 @@ export const FLOW_TYPES = {
 }
 
 export const MAIN_MENU_CHIPS = [
+  { id: 'quick_orders', label: '📦 Orders & Deliveries', action: 'query_orders', color: 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100' },
   { id: 'flow_task', label: '📋 Assign Staff Task', flow: FLOW_TYPES.STAFF_TASK, color: 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100' },
   { id: 'quick_tasks', label: '⏰ Staff Tasks & Follow-up', action: 'query_tasks', color: 'bg-cyan-50 text-cyan-700 border-cyan-200 hover:bg-cyan-100' },
   { id: 'flow_expense', label: '💸 Record Expense', flow: FLOW_TYPES.EXPENSE, color: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100' },

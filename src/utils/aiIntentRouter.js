@@ -725,20 +725,38 @@ export function tryLocalIntentRoute(query, store = {}) {
     const todayStr = `${yyyy}-${mm}-${dd}`
 
     const allOrders = store.orders || []
-    const pendingOrders = allOrders
+    let pendingOrders = allOrders
       .filter((o) => {
         const isCancelled = o.status === 'cancelled' || o.isCancelled === true
-        const isDelivered = o.status === 'delivered'
+        const isDelivered = o.status === 'delivered' || o.status === 'Delivered'
         const isToday = o.date === todayStr || !o.date
         return !isCancelled && !isDelivered && isToday
       })
       .slice(0, 8)
 
+    let isRecentFallback = false
+    if (pendingOrders.length === 0) {
+      // Fallback: check any pending/confirmed orders regardless of date
+      pendingOrders = allOrders
+        .filter((o) => {
+          const isCancelled = o.status === 'cancelled' || o.isCancelled === true
+          const isDelivered = o.status === 'delivered' || o.status === 'Delivered'
+          return !isCancelled && !isDelivered
+        })
+        .slice(0, 8)
+    }
+
+    if (pendingOrders.length === 0) {
+      // If no open orders at all, show recent orders so cards can be reviewed and actioned
+      pendingOrders = allOrders.slice(0, 5)
+      isRecentFallback = true
+    }
+
     if (pendingOrders.length === 0) {
       return {
         handled: true,
         type: 'orders_list',
-        text: `🚚 **Today's Deliveries**: All scheduled deliveries for today are completed or there are no pending orders!`,
+        text: `📦 **Orders**: No orders found in the database yet. You can book an order by tapping **📦 Book Order** or typing *"Order 20 box Anjani 200ml for Royal Hotel"*!`,
         data: { orders: [] },
       }
     }
@@ -746,7 +764,9 @@ export function tryLocalIntentRoute(query, store = {}) {
     return {
       handled: true,
       type: 'orders_list',
-      text: `🚚 **Pending Deliveries Today**: Found **${pendingOrders.length}** open order${pendingOrders.length > 1 ? 's' : ''} needing dispatch:`,
+      text: isRecentFallback
+        ? `📦 **Recent Orders**: Showing **${pendingOrders.length}** recent order card${pendingOrders.length > 1 ? 's' : ''}. Tap any card to open WhatsApp Banking actions:`
+        : `🚚 **Open Orders**: Found **${pendingOrders.length}** order card${pendingOrders.length > 1 ? 's' : ''}. Tap any card to open WhatsApp Banking actions:`,
       data: { orders: pendingOrders },
     }
   }
