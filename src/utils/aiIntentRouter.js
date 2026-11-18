@@ -292,6 +292,27 @@ export function tryLocalIntentRoute(query, store = {}) {
   const q = rawQ.toLowerCase()
 
   // ==========================================
+  // SEQUENCE 0.0: CARD ACTION NUMERIC QUICK-SELECT (WhatsApp Banking style 1, 2, 3)
+  // ==========================================
+  if (Array.isArray(store.activeCardActions) && store.activeCardActions.length > 0) {
+    const num = parseInt(rawQ, 10)
+    if (!isNaN(num) && num >= 1 && num <= store.activeCardActions.length && String(num) === rawQ) {
+      const action = store.activeCardActions[num - 1]
+      if (action) {
+        return {
+          handled: true,
+          type: 'card_action_select',
+          text: `Executing [${num}] ${action.label}...`,
+          data: {
+            action,
+            number: num,
+          },
+        }
+      }
+    }
+  }
+
+  // ==========================================
   // SEQUENCE 0: PRICE & RATE UPDATE (Zero tokens & Instant response)
   // ==========================================
   const priceUpdateRoute = parsePriceUpdateIntent(rawQ, store)

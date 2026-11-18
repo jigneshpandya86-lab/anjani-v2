@@ -7,6 +7,7 @@ vi.mock('../firebase-config', () => ({
 }))
 
 import { tryLocalIntentRoute, buildStaffDeliveryReminderMessage } from '../utils/aiIntentRouter'
+import { getOrderCardActions, getClientCardActions } from '../utils/cardActionRegistry'
 
 describe('aiIntentRouter', () => {
   it('handles order creation draft intent locally with zero tokens', () => {
@@ -522,6 +523,49 @@ describe('aiIntentRouter', () => {
     expect(resPronoun.type).toBe('staff_task_draft')
     expect(resPronoun.data.text).not.toBe('it')
     expect(resPronoun.data.text).toBe('Delivery & customer service task')
+  })
+
+  it('generates strictly 2-3 word option labels for Order Card and Client Card', () => {
+    const dummyOrder = { id: 'ord-1', clientName: 'Maruti Caterers', qty: 20, sku: 'Anjani 200ml' }
+    const orderActions = getOrderCardActions({ order: dummyOrder })
+    expect(orderActions.length).toBeGreaterThanOrEqual(4)
+
+    orderActions.forEach((act) => {
+      // Strip emojis and check word count
+      const cleanLabel = act.label.replace(/[^\w\s]/gi, '').trim()
+      const words = cleanLabel.split(/\s+/).filter(Boolean)
+      expect(words.length).toBeGreaterThanOrEqual(1)
+      expect(words.length).toBeLessThanOrEqual(3)
+    })
+
+    const dummyClient = { id: 'c1', name: 'Maruti Caterers', mobile: '9825012345' }
+    const clientActions = getClientCardActions({ client: dummyClient })
+    clientActions.forEach((act) => {
+      const cleanLabel = act.label.replace(/[^\w\s]/gi, '').trim()
+      const words = cleanLabel.split(/\s+/).filter(Boolean)
+      expect(words.length).toBeGreaterThanOrEqual(1)
+      expect(words.length).toBeLessThanOrEqual(3)
+    })
+  })
+
+  it('routes single digit input (1, 2, 3) to card_action_select when activeCardActions is provided', () => {
+    const dummyActions = [
+      { id: 'remind', number: 1, label: '📲 Remind Nilesh' },
+      { id: 'whatsapp', number: 2, label: '💬 WhatsApp Nilesh' },
+    ]
+
+    const fakeStore = { activeCardActions: dummyActions }
+    const res1 = tryLocalIntentRoute('1', fakeStore)
+    expect(res1).not.toBeNull()
+    expect(res1.handled).toBe(true)
+    expect(res1.type).toBe('card_action_select')
+    expect(res1.data.number).toBe(1)
+    expect(res1.data.action.id).toBe('remind')
+
+    const res2 = tryLocalIntentRoute('2', fakeStore)
+    expect(res2.handled).toBe(true)
+    expect(res2.data.number).toBe(2)
+    expect(res2.data.action.id).toBe('whatsapp')
   })
 })
 

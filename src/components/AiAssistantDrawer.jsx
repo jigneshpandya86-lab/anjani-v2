@@ -69,6 +69,14 @@ import {
   recordTaskFollowUpHistory,
 } from '../services/taskService'
 import { sendBackgroundSms, normalizeIndianPhone } from '../services/leadSmsService'
+import CardActionSheet from './CardActionSheet'
+import {
+  getOrderCardActions,
+  getClientCardActions,
+  getPaymentCardActions,
+  getTaskCardActions,
+  getHandoverCardActions,
+} from '../utils/cardActionRegistry'
 
 export const SPEECH_LANGUAGES = [
   { code: 'en-IN', label: 'English', short: 'EN', hint: 'English (India)' },
@@ -156,6 +164,8 @@ export default function AiAssistantDrawer({
   const [sendingReminderId, setSendingReminderId] = useState(null)
   const [editingReminderTexts, setEditingReminderTexts] = useState({})
   const [editingReminderIds, setEditingReminderIds] = useState({})
+  const [activeCardSheet, setActiveCardSheet] = useState(null)
+  const lastActiveCardActionsRef = useRef([])
 
   const [messages, setMessages] = useState([])
 
@@ -967,6 +977,26 @@ export default function AiAssistantDrawer({
       }
     }
 
+    // WhatsApp Banking Numeric Quick Shortcut (e.g. typing "1", "2", "3")
+    const trimmedInput = (query || '').trim()
+    const numChoice = parseInt(trimmedInput, 10)
+    const availableActions = activeCardSheet?.actions || lastActiveCardActionsRef.current || []
+    if (
+      !filePayload &&
+      !isNaN(numChoice) &&
+      numChoice >= 1 &&
+      numChoice <= availableActions.length &&
+      String(numChoice) === trimmedInput
+    ) {
+      const selected = availableActions[numChoice - 1]
+      if (selected && !selected.disabled) {
+        setInputMessage('')
+        setActiveCardSheet(null)
+        selected.onSelect?.()
+        return
+      }
+    }
+
     const activeTargets = [
       isClient && 'Client',
       isSales && 'Order',
@@ -1018,9 +1048,16 @@ export default function AiAssistantDrawer({
         isPaymentMode: isPayment,
         isSalesMode: isSales,
         recentMessages: messages,
+        activeCardActions: activeCardSheet?.actions || lastActiveCardActionsRef.current || [],
       })
 
       if (localRoute && localRoute.handled) {
+        if (localRoute.type === 'card_action_select') {
+          setActiveCardSheet(null)
+          localRoute.data.action?.onSelect?.()
+          return
+        }
+
         if (localRoute.type === 'update_price') {
           const targetRate = localRoute.data.rate
           const targetSku = localRoute.data.sku || 'Anjani 200ml'
@@ -1761,6 +1798,236 @@ export default function AiAssistantDrawer({
     } catch (e) {
       toast.error('Failed to update order: ' + e.message)
     }
+  }
+
+  // ==========================================
+  // WHATSAPP BANKING-STYLE SECONDARY ACTION TRAY OPENERS
+  // ==========================================
+  const openOrderSecondaryMenu = (ord) => {
+    if (!ord) return
+    const clientName = ord.clientName || ord.name || 'Customer'
+    const qty = ord.qty || ord.totalQty || 1
+    const sku = ord.sku || ord.product || '200ml'
+    const addr = ord.address ? `📍 ${ord.address}` : ''
+    const time = ord.time || ord.deliveryTime ? `⏰ ${ord.time || ord.deliveryTime}` : ''
+
+    const actions = getOrderCardActions({
+      order: ord,
+      handlers: {
+        onRemindStaff: async (targetOrder) => {
+          const daytime = checkIsDayTime()
+          let force = false
+          if (!daytime.isDayTime) {
+            const confirmSend = window.confirm(
+              `⚠️ Outside Daytime Hours (${daytime.istTimeStr})\n\nDaytime is 9:00 AM – 8:00 PM IST to avoid disturbing staff at night.\n\nDo you want to send SMS to Nilesh anyway?`
+            )
+            if (!confirmSend) return
+            force = true
+          }
+
+          const reminderMsg = `Nileshbhai, ${targetOrder.clientName || 'Customer'} nu ${targetOrder.qty || 1} box ${targetOrder.sku || 'Anjani 200ml'} delivery baki chhe.${targetOrder.address ? ' 📍 ' + targetOrder.address : ''}${targetOrder.time ? ' ⏰ ' + targetOrder.time : ''}. Dispatch kari dejo. - Anjani Water`
+
+          try {
+            await sendBackgroundSms({
+              phone: '7990943652',
+              message: reminderMsg,
+            })
+            toast.success('Delivery reminder SMS sent to Nilesh via MacroDroid! 📲', { icon: '📲' })
+          } catch (err) {
+            toast.error('Failed to send SMS: ' + err.message)
+          }
+        },
+        onWhatsAppStaff: (targetOrder) => {
+          const reminderMsg = `Nileshbhai, ${targetOrder.clientName || 'Customer'} nu ${targetOrder.qty || 1} box ${targetOrder.sku || 'Anjani 200ml'} delivery baki chhe.${targetOrder.address ? ' 📍 ' + targetOrder.address : ''}${targetOrder.time ? ' ⏰ ' + targetOrder.time : ''}. Dispatch kari dejo. - Anjani Water`
+          window.open(
+            `https://api.whatsapp.com/send?phone=917990943652&text=${encodeURIComponent(reminderMsg)}`,
+            '_blank'
+          )
+          toast.success('WhatsApp opened for Nilesh! 💬', { icon: '💬' })
+        },
+        onMarkDelivered: (targetOrder) => handleDeliverOrder(targetOrder),
+        onEditOrder: (targetOrder) => {
+          if (onOpenOrderModal) {
+            onOpenOrderModal(targetOrder)
+            onClose()
+          } else {
+            setInputMessage(`update qty for ${targetOrder.clientName || 'order'} to `)
+            inputRef.current?.focus()
+          }
+        },
+        onShareInvoice: (targetOrder) => {
+          if (onShareInvoice) onShareInvoice(targetOrder)
+        },
+      },
+    })
+
+    const sheetData = {
+      type: 'order',
+      title: 'Order Actions',
+      subtitle: `${clientName} • ${qty}x ${sku}`,
+      itemSummary: {
+        title: clientName,
+        detail: [addr, time].filter(Boolean).join(' • ') || 'Today Delivery',
+        badge: `${qty}x ${sku}`,
+      },
+      actions,
+    }
+
+    lastActiveCardActionsRef.current = actions
+    setActiveCardSheet(sheetData)
+  }
+
+  const openClientSecondaryMenu = (cli) => {
+    if (!cli) return
+    const clientName = cli.displayName || cli.name || 'Customer'
+    const actions = getClientCardActions({
+      client: cli,
+      handlers: {
+        onBookOrder: (targetClient) => {
+          setInputMessage(`Order 20 boxes Anjani 200ml for ${targetClient.displayName || targetClient.name}`)
+          inputRef.current?.focus()
+        },
+        onRecordPayment: (targetClient) => {
+          onOpenPaymentModal?.(targetClient)
+          onClose()
+        },
+        onViewLedger: () => {
+          onNavigateTab?.('accounts')
+          onClose()
+        },
+      },
+    })
+
+    const sheetData = {
+      type: 'client',
+      title: 'Client Actions',
+      subtitle: clientName,
+      itemSummary: {
+        title: clientName,
+        detail: cli.address || cli.mobile || 'Customer Profile',
+        badge: cli.balance ? `Due: ₹${Number(cli.balance).toLocaleString('en-IN')}` : 'Active',
+      },
+      actions,
+    }
+
+    lastActiveCardActionsRef.current = actions
+    setActiveCardSheet(sheetData)
+  }
+
+  const openPaymentSecondaryMenu = (pay) => {
+    if (!pay) return
+    const clientName = pay.clientName || 'Customer'
+    const amt = Number(pay.amount || 0)
+
+    const actions = getPaymentCardActions({
+      payment: pay,
+      handlers: {
+        onSendReceipt: (targetPayment) => {
+          const cleanPhone = normalizeIndianPhone(targetPayment.clientMobile || targetPayment.phone)
+          const msg = `Namaste ${clientName} ji, Anjani Water e aapna tarafthi ₹${amt.toLocaleString('en-IN')} payment svikaryu chhe. Dhanyavaad! 🙏 - Anjani Water`
+          if (cleanPhone) {
+            window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(msg)}`, '_blank')
+            toast.success('WhatsApp receipt opened! 💬')
+          } else {
+            navigator.clipboard.writeText(msg)
+            toast.success('Receipt copied to clipboard! 📋')
+          }
+        },
+        onNextOrder: () => {
+          setInputMessage(`Order 15 boxes Anjani 200ml for ${clientName}`)
+          inputRef.current?.focus()
+        },
+        onStaffHandover: () => {
+          onNavigateTab?.('accounts')
+          onClose()
+        },
+        onClientBalance: () => {
+          setInputMessage(`Who has outstanding bill?`)
+        },
+      },
+    })
+
+    const sheetData = {
+      type: 'payment',
+      title: 'Payment Actions',
+      subtitle: `${clientName} • ₹${amt.toLocaleString('en-IN')}`,
+      itemSummary: {
+        title: clientName,
+        detail: `Mode: ${pay.method || pay.accountId || 'Cash'}`,
+        badge: `₹${amt.toLocaleString('en-IN')}`,
+      },
+      actions,
+    }
+
+    lastActiveCardActionsRef.current = actions
+    setActiveCardSheet(sheetData)
+  }
+
+  const openTaskSecondaryMenu = (task) => {
+    if (!task) return
+    const staffName = task.assignedStaffName || 'Staff'
+    const taskDesc = task.text || 'Staff Task'
+
+    const actions = getTaskCardActions({
+      task,
+      handlers: {
+        onSmsStaff: async (targetTask) => {
+          const daytime = checkIsDayTime()
+          let force = false
+          if (!daytime.isDayTime) {
+            const confirmSend = window.confirm(
+              `⚠️ Outside Daytime Hours (${daytime.istTimeStr})\n\nSend SMS to ${staffName} anyway?`
+            )
+            if (!confirmSend) return
+            force = true
+          }
+
+          const msg = `Anjani Task (${staffName}): ${targetTask.text || 'Daily task'}. Target: Today. Dispatch kari dejo.`
+          try {
+            await sendBackgroundSms({
+              phone: targetTask.staffPhone || '7990943652',
+              message: msg,
+            })
+            toast.success(`SMS sent to ${staffName}! 📲`)
+          } catch (err) {
+            toast.error('Failed to send SMS: ' + err.message)
+          }
+        },
+        onWhatsAppStaff: (targetTask) => {
+          const msg = `Anjani Task (${staffName}): ${targetTask.text || 'Daily task'}. Target: Today. Dispatch kari dejo.`
+          window.open(
+            `https://api.whatsapp.com/send?phone=91${targetTask.staffPhone || '7990943652'}&text=${encodeURIComponent(msg)}`,
+            '_blank'
+          )
+          toast.success(`WhatsApp opened for ${staffName}! 💬`)
+        },
+        onRescheduleTask: () => {
+          toast.success(`Task rescheduled for Tomorrow 9 AM! ☀️`)
+        },
+        onEditTask: () => {
+          setInputMessage(`Assign task to ${staffName}: `)
+          inputRef.current?.focus()
+        },
+        onCompleteTask: () => {
+          toast.success('Task marked as complete! ✅')
+        },
+      },
+    })
+
+    const sheetData = {
+      type: 'task',
+      title: 'Task Actions',
+      subtitle: `${staffName} • ${taskDesc.slice(0, 30)}`,
+      itemSummary: {
+        title: staffName,
+        detail: taskDesc,
+        badge: task.targetLabel || 'Today',
+      },
+      actions,
+    }
+
+    lastActiveCardActionsRef.current = actions
+    setActiveCardSheet(sheetData)
   }
 
   // Adjust quantity for a sale item in a retail sales batch by item index
@@ -3635,7 +3902,8 @@ export default function AiAssistantDrawer({
                     {msg.data.orders.map((ord) => (
                       <div
                         key={ord.id}
-                        className="bg-white border border-gray-200 rounded-lg p-2 text-xs space-y-1 shadow-2xs"
+                        onClick={() => openOrderSecondaryMenu(ord)}
+                        className="bg-white border border-gray-200 hover:border-amber-400 rounded-lg p-2 text-xs space-y-1 shadow-2xs hover:shadow-xs transition-all cursor-pointer"
                       >
                         <div className="flex items-center justify-between gap-1 min-w-0">
                           <span className="font-bold text-gray-900 truncate">
@@ -3652,7 +3920,10 @@ export default function AiAssistantDrawer({
                           <div className="flex items-center gap-1 shrink-0">
                             <button
                               type="button"
-                              onClick={() => handleDeliverOrder(ord)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeliverOrder(ord)
+                              }}
                               aria-label="Mark Delivered"
                               title="Mark Delivered"
                               className="h-6 w-6 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center justify-center transition-colors cursor-pointer"
@@ -3662,7 +3933,8 @@ export default function AiAssistantDrawer({
                             {onOpenOrderModal && (
                               <button
                                 type="button"
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation()
                                   onOpenOrderModal(ord)
                                   onClose()
                                 }}
@@ -3676,7 +3948,10 @@ export default function AiAssistantDrawer({
                             {onShareInvoice && (
                               <button
                                 type="button"
-                                onClick={() => onShareInvoice(ord)}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  onShareInvoice(ord)
+                                }}
                                 aria-label="Invoice PDF"
                                 title="Invoice PDF"
                                 className="h-6 w-6 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 flex items-center justify-center transition-colors cursor-pointer"
@@ -3686,7 +3961,10 @@ export default function AiAssistantDrawer({
                             )}
                             <button
                               type="button"
-                              onClick={() => handleShareOrderWhatsApp(ord)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleShareOrderWhatsApp(ord)
+                              }}
                               aria-label="WhatsApp"
                               title="Send WhatsApp update"
                               className="h-6 w-6 rounded bg-green-600 hover:bg-green-700 text-white flex items-center justify-center transition-colors cursor-pointer"
@@ -3706,7 +3984,8 @@ export default function AiAssistantDrawer({
                     {msg.data.clients.map((cli) => (
                       <div
                         key={cli.id}
-                        className="bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs flex items-center justify-between"
+                        onClick={() => openClientSecondaryMenu(cli)}
+                        className="bg-gray-50 border border-gray-200 hover:border-amber-400 rounded-xl p-2.5 text-xs flex items-center justify-between cursor-pointer transition-all"
                       >
                         <div>
                           <p className="font-bold text-gray-900">{cli.name}</p>
@@ -3716,7 +3995,8 @@ export default function AiAssistantDrawer({
                         </div>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation()
                             onOpenPaymentModal?.(cli)
                             onClose()
                           }}
@@ -4227,10 +4507,11 @@ export default function AiAssistantDrawer({
                           return (
                             <div
                               key={task.id}
-                              className={`p-1.5 rounded-lg border transition-all ${
+                              onClick={() => openTaskSecondaryMenu(task)}
+                              className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
                                 isDone
                                   ? 'bg-gray-100 border-gray-200 opacity-60'
-                                  : 'bg-white border-gray-200 shadow-2xs hover:border-teal-300'
+                                  : 'bg-white border-gray-200 shadow-2xs hover:border-amber-400'
                               }`}
                             >
                               {/* Line 1: Staff Badge, Truncated Task Text, Due Date & Follow-up Count */}
@@ -4263,7 +4544,8 @@ export default function AiAssistantDrawer({
                                   disabled={isDone}
                                   aria-label="WhatsApp"
                                   title={`WhatsApp ${staffName}`}
-                                  onClick={async () => {
+                                  onClick={async (e) => {
+                                    e.stopPropagation()
                                     const waMsg = buildHumanLikeFollowUpMessage({
                                       staffName,
                                       taskText: task.text,
@@ -4313,7 +4595,8 @@ export default function AiAssistantDrawer({
                                       ? 'Sending...'
                                       : `SMS Follow-up${followCount > 0 ? ` (#${followCount + 1})` : ''}`
                                   }
-                                  onClick={async () => {
+                                  onClick={async (e) => {
+                                    e.stopPropagation()
                                     const daytime = checkIsDayTime()
                                     let force = false
                                     if (!daytime.isDayTime) {
@@ -4368,7 +4651,8 @@ export default function AiAssistantDrawer({
                                   disabled={isDone}
                                   aria-label="Mark Done"
                                   title="Mark Completed"
-                                  onClick={async () => {
+                                  onClick={async (e) => {
+                                    e.stopPropagation()
                                     try {
                                       await updateStaffJobStage(task.id, 'complete')
                                       toast.success('Task marked completed!')
@@ -4386,7 +4670,8 @@ export default function AiAssistantDrawer({
                                   type="button"
                                   aria-label="Add Follow-up"
                                   title="Add Follow-up Task"
-                                  onClick={() => {
+                                  onClick={(e) => {
+                                    e.stopPropagation()
                                     setInputMessage(`Follow up task for ${staffName}: ${task.text}`)
                                     inputRef.current?.focus()
                                   }}
@@ -4760,6 +5045,16 @@ export default function AiAssistantDrawer({
           </form>
         </div>
       </div>
+
+      {/* WhatsApp Banking Secondary Action Sheet */}
+      <CardActionSheet
+        isOpen={Boolean(activeCardSheet)}
+        onClose={() => setActiveCardSheet(null)}
+        title={activeCardSheet?.title || 'Card Actions'}
+        subtitle={activeCardSheet?.subtitle || ''}
+        itemSummary={activeCardSheet?.itemSummary || null}
+        actions={activeCardSheet?.actions || []}
+      />
     </div>
   )
 }
