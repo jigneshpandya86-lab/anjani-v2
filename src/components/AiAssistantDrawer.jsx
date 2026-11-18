@@ -751,6 +751,18 @@ export default function AiAssistantDrawer({
       handleSend(`update qty to ${chip.qty || String(chip.label).replace(/\D/g, '')}`)
       return
     }
+    if (chip.action === 'open_order_menu' && chip.order) {
+      openOrderSecondaryMenu(chip.order)
+      return
+    }
+    if (chip.action === 'remind_staff' && chip.order) {
+      handleSend('remind nilesh for this order')
+      return
+    }
+    if (chip.action === 'mark_delivered' && chip.order) {
+      handleDeliverOrder(chip.order)
+      return
+    }
     if (chip.action === 'manual_feedback_check') {
       handleTriggerFeedbackCheck()
       return
@@ -1133,8 +1145,9 @@ export default function AiAssistantDrawer({
           const targetSku = localRoute.data.sku || 'Anjani 200ml'
           let targetClient = localRoute.data.client
           let targetClientName = localRoute.data.clientName
+          let targetOrder = localRoute.data.order || null
 
-          // Check if there is an unconfirmed batch sales or draft order in messages
+          // Check if there is an unconfirmed batch sales or draft order/orders_list in messages
           let foundPendingBatch = null
           for (let i = messages.length - 1; i >= 0; i--) {
             const m = messages[i]
@@ -1142,6 +1155,23 @@ export default function AiAssistantDrawer({
               foundPendingBatch = m
               break
             }
+            if (!targetOrder) {
+              if (m.type === 'orders_list' && Array.isArray(m.data?.orders) && m.data.orders.length > 0) {
+                targetOrder = targetClientName
+                  ? (m.data.orders.find((o) => (o.clientName || o.name)?.toLowerCase().includes(targetClientName.toLowerCase())) || m.data.orders[0])
+                  : m.data.orders[0]
+              } else if (m.type === 'order_draft' && m.data) {
+                targetOrder = m.data
+              }
+            }
+          }
+
+          if (targetOrder && !targetClientName) {
+            targetClientName = targetOrder.clientName || targetOrder.name
+            targetClient =
+              (clients || []).find(
+                (c) => (c.displayName || c.name)?.toLowerCase() === targetClientName?.toLowerCase()
+              ) || targetClient || (targetClientName ? { name: targetClientName, id: targetOrder.clientId } : null)
           }
 
           if (foundPendingBatch) {
@@ -1218,7 +1248,7 @@ export default function AiAssistantDrawer({
                 {
                   id: 'asst-' + Date.now(),
                   sender: 'assistant',
-                  text: `💰 **Update Price**: What price would you like to set for **${targetClientName || 'drafted orders'}**?`,
+                  text: `💰 **Update Price**: Set price for **${targetClientName || 'drafted orders'}**:`,
                   chips: [
                     { label: '₹120', rate: 120, action: 'apply_rate' },
                     { label: '₹125', rate: 125, action: 'apply_rate' },
@@ -1235,7 +1265,110 @@ export default function AiAssistantDrawer({
             }
           }
 
-          // If no pending batch in messages, but client specified with rate
+          // Case B: Existing Order Card (from orders_list or order_draft)
+          if (targetOrder) {
+            if (targetRate !== null && targetRate > 0) {
+              const orderQty = Number(targetOrder.qty || targetOrder.quantity || targetOrder.boxes || (targetOrder.items?.[0]?.qty) || 1)
+              const orderSku = targetOrder.sku || targetOrder.product || (targetOrder.items?.[0]?.sku) || targetSku
+              const updatedItems = (targetOrder.items && targetOrder.items.length > 0)
+                ? targetOrder.items.map((it, idx) => {
+                    if (idx === 0 || !targetSku || it.sku === targetSku) {
+                      const q = Number(it.qty) || orderQty
+                      return { ...it, rate: targetRate, amount: q * targetRate }
+                    }
+                    return it
+                  })
+                : [{ sku: orderSku, qty: orderQty, rate: targetRate, amount: orderQty * targetRate }]
+              const calculatedTotal = updatedItems.reduce((acc, it) => acc + (Number(it.amount) || 0), 0)
+
+              if (targetOrder.id) {
+                try {
+                  await updateOrder(targetOrder.id, {
+                    rate: targetRate,
+                    items: updatedItems,
+                    totalAmount: calculatedTotal,
+                  })
+                } catch (err) {
+                  console.error('Failed to update order in Firestore:', err)
+                }
+              }
+
+              if (targetClient?.id) {
+                try {
+                  updateClient(targetClient.id, {
+                    rate: targetRate,
+                    skuRates: { ...(targetClient.skuRates || {}), [targetSku]: targetRate },
+                  })
+                } catch (_e) {
+                  console.error('Failed to update client rate:', _e)
+                }
+              }
+
+              const updatedOrderObj = {
+                ...targetOrder,
+                rate: targetRate,
+                items: updatedItems,
+                totalAmount: calculatedTotal,
+              }
+
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  if (msg.type === 'orders_list' && Array.isArray(msg.data?.orders)) {
+                    const updatedOrders = msg.data.orders.map((o) =>
+                      o.id === targetOrder.id ? updatedOrderObj : o
+                    )
+                    return { ...msg, data: { ...msg.data, orders: updatedOrders } }
+                  }
+                  if (msg.type === 'order_draft' && msg.data?.id === targetOrder.id) {
+                    return { ...msg, data: updatedOrderObj }
+                  }
+                  return msg
+                })
+              )
+
+              toast.success(`Price updated to ₹${targetRate} for ${targetClientName || 'order'}`)
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `💰 **Order Price Updated**: Set rate to **₹${targetRate}/unit** for **${targetClientName || 'Customer'}**.\n\nNew total: **₹${calculatedTotal.toLocaleString('en-IN')}**.`,
+                  type: 'update_price_confirm',
+                  data: { rate: targetRate, clientName: targetClientName, totalAmount: calculatedTotal, order: updatedOrderObj },
+                  chips: [
+                    { label: '⚡ Actions', action: 'open_order_menu', order: updatedOrderObj },
+                    { label: '📲 Remind Nilesh', action: 'remind_staff', order: updatedOrderObj },
+                    { label: '🚚 Mark Delivered', action: 'mark_delivered', order: updatedOrderObj },
+                  ],
+                  isLocal: true,
+                  timestamp: new Date(),
+                },
+              ])
+              return
+            } else {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `💰 **Update Price**: Set price for **${targetClientName || 'Customer'}**:`,
+                  chips: [
+                    { label: '₹120', rate: 120, action: 'apply_rate' },
+                    { label: '₹125', rate: 125, action: 'apply_rate' },
+                    { label: '₹130', rate: 130, action: 'apply_rate' },
+                    { label: '₹135', rate: 135, action: 'apply_rate' },
+                    { label: '₹140', rate: 140, action: 'apply_rate' },
+                    { label: '₹150', rate: 150, action: 'apply_rate' },
+                  ],
+                  isLocal: true,
+                  timestamp: new Date(),
+                },
+              ])
+              return
+            }
+          }
+
+          // If no pending batch/order in messages, but client specified with rate
           if (targetRate !== null && targetRate > 0) {
             if (targetClient?.id) {
               try {
@@ -1246,13 +1379,13 @@ export default function AiAssistantDrawer({
               } catch (_e) {
                 console.error('Failed to update client rate:', _e)
               }
-              toast.success(`Price updated to ₹${targetRate} for ${targetClient.name}`)
+              toast.success(`Price updated to ₹${targetRate} for ${targetClient.displayName || targetClient.name}`)
               setMessages((prev) => [
                 ...prev,
                 {
                   id: 'asst-' + Date.now(),
                   sender: 'assistant',
-                  text: `💰 **Client Price Updated**: Default rate for **${targetClient.name}** (${targetSku}) is now updated to **₹${targetRate}/unit**.`,
+                  text: `💰 **Client Price Updated**: Default rate for **${targetClient.displayName || targetClient.name}** (${targetSku}) is now updated to **₹${targetRate}/unit**.`,
                   type: 'update_price_confirm',
                   data: { rate: targetRate, client: targetClient },
                   isLocal: true,
@@ -1279,7 +1412,9 @@ export default function AiAssistantDrawer({
               {
                 id: 'asst-' + Date.now(),
                 sender: 'assistant',
-                text: `💰 **Update Price**: Please specify the customer name and new rate (e.g., *"update price for Maruti Caterers to 140"* or *"Maruti Caterers rate 140"*).`,
+                text: targetClientName
+                  ? `💰 **Update Price**: Set price for **${targetClientName}**:`
+                  : `💰 **Update Price**: Please specify the customer name and new rate (e.g., *"update price for Maruti Caterers to 140"* or *"Maruti Caterers rate 140"*).`,
                 chips: [
                   { label: '₹120', rate: 120, action: 'apply_rate' },
                   { label: '₹125', rate: 125, action: 'apply_rate' },
@@ -1300,8 +1435,9 @@ export default function AiAssistantDrawer({
           const targetQty = localRoute.data.qty
           let targetClient = localRoute.data.client
           let targetClientName = localRoute.data.clientName
+          let targetOrder = localRoute.data.order || null
 
-          // Check if there is an unconfirmed batch sales or draft order in messages
+          // Check if there is an unconfirmed batch sales or draft order/orders_list in messages
           let foundPendingBatch = null
           for (let i = messages.length - 1; i >= 0; i--) {
             const m = messages[i]
@@ -1309,6 +1445,23 @@ export default function AiAssistantDrawer({
               foundPendingBatch = m
               break
             }
+            if (!targetOrder) {
+              if (m.type === 'orders_list' && Array.isArray(m.data?.orders) && m.data.orders.length > 0) {
+                targetOrder = targetClientName
+                  ? (m.data.orders.find((o) => (o.clientName || o.name)?.toLowerCase().includes(targetClientName.toLowerCase())) || m.data.orders[0])
+                  : m.data.orders[0]
+              } else if (m.type === 'order_draft' && m.data) {
+                targetOrder = m.data
+              }
+            }
+          }
+
+          if (targetOrder && !targetClientName) {
+            targetClientName = targetOrder.clientName || targetOrder.name
+            targetClient =
+              (clients || []).find(
+                (c) => (c.displayName || c.name)?.toLowerCase() === targetClientName?.toLowerCase()
+              ) || targetClient || (targetClientName ? { name: targetClientName, id: targetOrder.clientId } : null)
           }
 
           if (foundPendingBatch) {
@@ -1390,13 +1543,116 @@ export default function AiAssistantDrawer({
               ])
               return
             }
+          }
+
+          // Case B: Existing Order Card (from orders_list or order_draft)
+          if (targetOrder) {
+            if (targetQty !== null && targetQty > 0) {
+              const orderRate = Number(targetOrder.rate || (targetOrder.items?.[0]?.rate) || 120)
+              const updatedItems = (targetOrder.items && targetOrder.items.length > 0)
+                ? targetOrder.items.map((it, idx) => {
+                    if (idx === 0) {
+                      const r = Number(it.rate) || orderRate
+                      return { ...it, qty: targetQty, amount: targetQty * r }
+                    }
+                    return it
+                  })
+                : [{ sku: targetOrder.sku || 'Anjani 200ml', qty: targetQty, rate: orderRate, amount: targetQty * orderRate }]
+              const calculatedTotal = updatedItems.reduce((acc, it) => acc + (Number(it.amount) || 0), 0)
+
+              if (targetOrder.id) {
+                try {
+                  await updateOrder(targetOrder.id, {
+                    qty: targetQty,
+                    quantity: targetQty,
+                    boxes: targetQty,
+                    items: updatedItems,
+                    totalAmount: calculatedTotal,
+                  })
+                } catch (err) {
+                  console.error('Failed to update order quantity in Firestore:', err)
+                }
+              }
+
+              const updatedOrderObj = {
+                ...targetOrder,
+                qty: targetQty,
+                quantity: targetQty,
+                boxes: targetQty,
+                items: updatedItems,
+                totalAmount: calculatedTotal,
+              }
+
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  if (msg.type === 'orders_list' && Array.isArray(msg.data?.orders)) {
+                    const updatedOrders = msg.data.orders.map((o) =>
+                      o.id === targetOrder.id ? updatedOrderObj : o
+                    )
+                    return { ...msg, data: { ...msg.data, orders: updatedOrders } }
+                  }
+                  if (msg.type === 'order_draft' && msg.data?.id === targetOrder.id) {
+                    return { ...msg, data: updatedOrderObj }
+                  }
+                  return msg
+                })
+              )
+
+              toast.success(`Quantity updated to ${targetQty} boxes`)
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `📦 **Order Quantity Updated**: Set quantity to **${targetQty} boxes** for **${targetClientName || 'Customer'}**.\n\nNew total: **₹${calculatedTotal.toLocaleString('en-IN')}**.`,
+                  type: 'update_qty_confirm',
+                  data: { qty: targetQty, clientName: targetClientName, totalAmount: calculatedTotal, order: updatedOrderObj },
+                  chips: [
+                    { label: '⚡ Actions', action: 'open_order_menu', order: updatedOrderObj },
+                    { label: '📲 Remind Nilesh', action: 'remind_staff', order: updatedOrderObj },
+                    { label: '🚚 Mark Delivered', action: 'mark_delivered', order: updatedOrderObj },
+                  ],
+                  isLocal: true,
+                  timestamp: new Date(),
+                },
+              ])
+              return
+            } else {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `📦 **Update Qty**: Set quantity for **${targetClientName || 'Customer'}**:`,
+                  chips: [
+                    { label: '10 Boxes', qty: 10, action: 'apply_qty' },
+                    { label: '20 Boxes', qty: 20, action: 'apply_qty' },
+                    { label: '30 Boxes', qty: 30, action: 'apply_qty' },
+                    { label: '50 Boxes', qty: 50, action: 'apply_qty' },
+                  ],
+                  isLocal: true,
+                  timestamp: new Date(),
+                },
+              ])
+              return
+            }
           } else {
             setMessages((prev) => [
               ...prev,
               {
                 id: 'asst-' + Date.now(),
                 sender: 'assistant',
-                text: `📦 **Order Quantity**: No pending drafted order was found to update. You can place a new order by typing e.g. *"20 box Anjani 200ml for ${targetClientName || 'Royal Hotel'}"*.`,
+                text: targetClientName
+                  ? `📦 **Update Qty**: Set quantity for **${targetClientName}**:`
+                  : `📦 **Order Quantity**: No pending drafted order was found to update. You can place a new order by typing e.g. *"20 box Anjani 200ml for ${targetClientName || 'Royal Hotel'}"*.`,
+                chips: targetClientName
+                  ? [
+                      { label: '10 Boxes', qty: 10, action: 'apply_qty' },
+                      { label: '20 Boxes', qty: 20, action: 'apply_qty' },
+                      { label: '30 Boxes', qty: 30, action: 'apply_qty' },
+                      { label: '50 Boxes', qty: 50, action: 'apply_qty' },
+                    ]
+                  : undefined,
                 isLocal: true,
                 timestamp: new Date(),
               },

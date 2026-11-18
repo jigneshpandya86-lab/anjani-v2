@@ -62,6 +62,66 @@ function matchClientFromText(text, clients = []) {
   return null
 }
 
+export function extractContextualClientAndOrder(recentMessages = [], clients = []) {
+  if (!Array.isArray(recentMessages) || recentMessages.length === 0) {
+    return { client: null, clientName: null, order: null }
+  }
+
+  for (let i = recentMessages.length - 1; i >= 0; i--) {
+    const m = recentMessages[i]
+    if (m.data?.order) {
+      const ord = m.data.order
+      const cName = ord.clientName || ord.name || m.data.clientName
+      const matched = (clients || []).find((c) => (c.displayName || c.name)?.toLowerCase() === cName?.toLowerCase())
+      return {
+        client: matched || m.data.client || (cName ? { name: cName, id: ord.clientId } : null),
+        clientName: cName || null,
+        order: ord,
+      }
+    }
+    if (m.type === 'orders_list' && Array.isArray(m.data?.orders) && m.data.orders.length > 0) {
+      const ord = m.data.orders[0]
+      const cName = ord.clientName || ord.name
+      const matched = (clients || []).find((c) => (c.displayName || c.name)?.toLowerCase() === cName?.toLowerCase())
+      return {
+        client: matched || (cName ? { name: cName, id: ord.clientId } : null),
+        clientName: cName || null,
+        order: ord,
+      }
+    }
+    if (m.type === 'order_draft' && m.data) {
+      const cName = m.data.clientName
+      const matched = (clients || []).find((c) => (c.displayName || c.name)?.toLowerCase() === cName?.toLowerCase())
+      return {
+        client: matched || (cName ? { name: cName, id: m.data.clientId } : null),
+        clientName: cName || null,
+        order: m.data,
+      }
+    }
+    if (m.type === 'retail_sales' && Array.isArray(m.data?.sales) && m.data.sales.length > 0) {
+      const sale = m.data.sales[0]
+      const cName = sale.clientName
+      const matched = (clients || []).find((c) => (c.displayName || c.name)?.toLowerCase() === cName?.toLowerCase())
+      return {
+        client: matched || (cName ? { name: cName } : null),
+        clientName: cName || null,
+        order: sale,
+      }
+    }
+    if (m.data?.clientName) {
+      const cName = m.data.clientName
+      const matched = (clients || []).find((c) => (c.displayName || c.name)?.toLowerCase() === cName?.toLowerCase())
+      return {
+        client: matched || m.data.client || (cName ? { name: cName } : null),
+        clientName: cName,
+        order: null,
+      }
+    }
+  }
+
+  return { client: null, clientName: null, order: null }
+}
+
 export function parsePriceUpdateIntent(query, store = {}) {
   if (!query || typeof query !== 'string') return null
   if (store.isClientMode || store.isPaymentMode || store.isSalesMode) return null
@@ -97,7 +157,15 @@ export function parsePriceUpdateIntent(query, store = {}) {
     /^([A-Za-z0-9\s]{2,25})\s+(?:rate|bhav|price|ભાવ|રેટ)\s*[:=]?\s*\d+(?:\.\d+)?$/i.test(normQ) ||
     /^(?:rate|bhav|price|ભાવ|રેટ)\s*[:=]?\s*\d+(?:\.\d+)?\s*(?:for|to|of)\s+([A-Za-z0-9\s]{2,25})$/i.test(normQ)
 
-  const isPriceUpdate = isPriceVerbCombo || isBhavKaroCombo || isDirectRateCommand
+  const lastMsg = store.recentMessages?.[store.recentMessages.length - 1]
+  const isAwaitingPrice = lastMsg?.sender === 'assistant' && (
+    lastMsg?.type === 'update_price' ||
+    lastMsg?.text?.includes('Update Price') ||
+    lastMsg?.chips?.some((c) => c.action === 'apply_rate' || c.rate)
+  )
+  const isNumericOnly = /^\s*(?:₹|rs\.?)?\s*(\d+(?:\.\d+)?)\s*(?:₹|rs\.?|rupees)?\s*$/i.test(normQ)
+
+  const isPriceUpdate = isPriceVerbCombo || isBhavKaroCombo || isDirectRateCommand || (isAwaitingPrice && isNumericOnly)
   if (!isPriceUpdate) return null
 
   // 3. Extract rate
@@ -114,11 +182,20 @@ export function parsePriceUpdateIntent(query, store = {}) {
     }
   }
 
-  // 4. Extract client if mentioned
-  const matchedClient = matchClientFromText(rawQ, store.clients || [])
+  // 4. Extract client if mentioned, or fallback to previous conversation step context
+  let matchedClient = matchClientFromText(rawQ, store.clients || [])
+  let contextOrder = null
+  if (!matchedClient && Array.isArray(store.recentMessages)) {
+    const ctx = extractContextualClientAndOrder(store.recentMessages, store.clients || [])
+    if (ctx.clientName) {
+      matchedClient = ctx.client
+      contextOrder = ctx.order
+    }
+  }
 
   // 5. Extract SKU if mentioned
-  const matchedSku = findMatchingSku(rawQ)?.sku?.label || DEFAULT_SKU
+  const matchedSku = findMatchingSku(rawQ)?.sku?.label || contextOrder?.sku || DEFAULT_SKU
+  const clientName = matchedClient?.displayName || matchedClient?.name || (contextOrder?.clientName || null)
 
   return {
     handled: true,
@@ -129,12 +206,17 @@ export function parsePriceUpdateIntent(query, store = {}) {
       client: matchedClient
         ? { id: matchedClient.id, name: matchedClient.name, skuRates: matchedClient.skuRates, rate: matchedClient.rate }
         : null,
-      clientName: matchedClient?.name || null,
+      clientName,
+      order: contextOrder,
       rawQuery: rawQ,
     },
     text: rate
-      ? `💰 Price update to ₹${rate} detected.`
-      : `💰 Please specify the price/rate (e.g., "update price to 140").`,
+      ? (clientName
+          ? `💰 Price update to ₹${rate} for ${clientName} detected.`
+          : `💰 Price update to ₹${rate} detected.`)
+      : (clientName
+          ? `💰 **Update Price**: Set price for **${clientName}**:`
+          : `💰 Please specify the price/rate (e.g., "update price to 140").`),
     chips: !rate
       ? [
           { label: '₹120', rate: 120, action: 'apply_rate' },
@@ -183,7 +265,15 @@ export function parseQuantityUpdateIntent(query, store = {}) {
     /^(?:order\s+)?(?:qty|quantity)\s*[:=]?\s*\d+\s*(?:for|to|of)\s+([A-Za-z0-9\s]{2,25})$/i.test(normQ) ||
     /^([A-Za-z0-9\s]{2,25})\s+(?:qty|quantity)\s*[:=]?\s*\d+$/i.test(normQ)
 
-  const isQtyUpdate = isQtyVerbCombo || isBoxKaroCombo || isDirectQtyCommand
+  const lastMsg = store.recentMessages?.[store.recentMessages.length - 1]
+  const isAwaitingQty = lastMsg?.sender === 'assistant' && (
+    lastMsg?.type === 'update_qty' ||
+    lastMsg?.text?.includes('Update Qty') ||
+    lastMsg?.chips?.some((c) => c.action === 'apply_qty' || c.qty)
+  )
+  const isQtyNumericOnly = /^\s*(\d+)\s*(?:boxes|box|બોક્સ|પેટી|pieces|pcs)?\s*$/i.test(normQ)
+
+  const isQtyUpdate = isQtyVerbCombo || isBoxKaroCombo || isDirectQtyCommand || (isAwaitingQty && isQtyNumericOnly)
   if (!isQtyUpdate) return null
 
   // 3. Extract quantity value
@@ -217,8 +307,18 @@ export function parseQuantityUpdateIntent(query, store = {}) {
     }
   }
 
-  // 4. Extract client if mentioned
-  const matchedClient = matchClientFromText(rawQ, store.clients || [])
+  // 4. Extract client if mentioned, or fallback to previous conversation step context
+  let matchedClient = matchClientFromText(rawQ, store.clients || [])
+  let contextOrder = null
+  if (!matchedClient && Array.isArray(store.recentMessages)) {
+    const ctx = extractContextualClientAndOrder(store.recentMessages, store.clients || [])
+    if (ctx.clientName) {
+      matchedClient = ctx.client
+      contextOrder = ctx.order
+    }
+  }
+
+  const clientName = matchedClient?.displayName || matchedClient?.name || (contextOrder?.clientName || null)
 
   return {
     handled: true,
@@ -229,12 +329,17 @@ export function parseQuantityUpdateIntent(query, store = {}) {
       client: matchedClient
         ? { id: matchedClient.id, name: matchedClient.name, displayName: matchedClient.displayName, skuRates: matchedClient.skuRates, rate: matchedClient.rate }
         : null,
-      clientName: matchedClient?.displayName || matchedClient?.name || null,
+      clientName,
+      order: contextOrder,
       rawQuery: rawQ,
     },
     text: qty
-      ? `📦 Order quantity update to ${qty} boxes detected.`
-      : `📦 Please specify the quantity (e.g., "update qty to 20").`,
+      ? (clientName
+          ? `📦 Quantity update to ${qty} boxes for ${clientName} detected.`
+          : `📦 Order quantity update to ${qty} boxes detected.`)
+      : (clientName
+          ? `📦 **Update Qty**: Set quantity for **${clientName}**:`
+          : `📦 Please specify the quantity (e.g., "update qty to 20").`),
     chips: !qty
       ? [
           { label: '10 Boxes', qty: 10, action: 'apply_qty' },
@@ -764,9 +869,7 @@ export function tryLocalIntentRoute(query, store = {}) {
     return {
       handled: true,
       type: 'orders_list',
-      text: isRecentFallback
-        ? `📦 **Recent Orders**: Showing **${pendingOrders.length}** recent order card${pendingOrders.length > 1 ? 's' : ''}. Tap any card to open WhatsApp Banking actions:`
-        : `🚚 **Open Orders**: Found **${pendingOrders.length}** order card${pendingOrders.length > 1 ? 's' : ''}. Tap any card to open WhatsApp Banking actions:`,
+      text: '', // Removed per feedback ZqIaU8BhotH06GucocHS: keep card without repetitive intro lines
       data: { orders: pendingOrders },
     }
   }

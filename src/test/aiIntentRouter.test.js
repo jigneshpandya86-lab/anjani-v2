@@ -567,5 +567,94 @@ describe('aiIntentRouter', () => {
     expect(res2.data.number).toBe(2)
     expect(res2.data.action.id).toBe('whatsapp')
   })
+
+  it('multi-turn context: carries client and order from previous orders_list to "update price" and "update qty"', () => {
+    const fakeOrdersListMsg = {
+      type: 'orders_list',
+      data: {
+        orders: [
+          {
+            id: 'ord-nilesh-1',
+            clientName: 'Nilesh Bhai (Bhaji Pav)',
+            clientId: 'c-nilesh',
+            qty: 10,
+            sku: 'Anjani 200ml',
+            rate: 120,
+            totalAmount: 1200,
+          },
+        ],
+      },
+    }
+
+    const fakeStore = {
+      clients: [
+        { id: 'c-nilesh', name: 'Nilesh Bhai (Bhaji Pav)', displayName: 'Nilesh Bhai (Bhaji Pav)', rate: 120 },
+      ],
+      recentMessages: [fakeOrdersListMsg],
+    }
+
+    // 1. User says "update price" without mentioning customer or rate
+    const resPricePrompt = tryLocalIntentRoute('update price', fakeStore)
+    expect(resPricePrompt).not.toBeNull()
+    expect(resPricePrompt.handled).toBe(true)
+    expect(resPricePrompt.type).toBe('update_price')
+    expect(resPricePrompt.data.clientName).toBe('Nilesh Bhai (Bhaji Pav)')
+    expect(resPricePrompt.data.order.id).toBe('ord-nilesh-1')
+    expect(resPricePrompt.text).toContain('Nilesh Bhai (Bhaji Pav)')
+    expect(resPricePrompt.chips).toBeDefined()
+
+    // 2. User says "update price to 140"
+    const resPriceUpdate = tryLocalIntentRoute('update price to 140', fakeStore)
+    expect(resPriceUpdate.handled).toBe(true)
+    expect(resPriceUpdate.type).toBe('update_price')
+    expect(resPriceUpdate.data.rate).toBe(140)
+    expect(resPriceUpdate.data.clientName).toBe('Nilesh Bhai (Bhaji Pav)')
+    expect(resPriceUpdate.data.order.id).toBe('ord-nilesh-1')
+
+    // 3. Follow-up: User enters single number "140" when previous was price prompt
+    const fakePricePromptMsg = {
+      sender: 'assistant',
+      type: 'update_price',
+      text: '💰 **Update Price**: Set price for **Nilesh Bhai (Bhaji Pav)**:',
+      chips: [{ label: '₹140', rate: 140, action: 'apply_rate' }],
+      data: { order: fakeOrdersListMsg.data.orders[0], clientName: 'Nilesh Bhai (Bhaji Pav)' },
+    }
+    const storeWithPrompt = {
+      ...fakeStore,
+      recentMessages: [fakeOrdersListMsg, fakePricePromptMsg],
+    }
+    const resNumberPrice = tryLocalIntentRoute('140', storeWithPrompt)
+    expect(resNumberPrice.handled).toBe(true)
+    expect(resNumberPrice.type).toBe('update_price')
+    expect(resNumberPrice.data.rate).toBe(140)
+    expect(resNumberPrice.data.clientName).toBe('Nilesh Bhai (Bhaji Pav)')
+
+    // 4. User says "update qty"
+    const resQtyPrompt = tryLocalIntentRoute('update qty', fakeStore)
+    expect(resQtyPrompt.handled).toBe(true)
+    expect(resQtyPrompt.type).toBe('update_qty')
+    expect(resQtyPrompt.data.clientName).toBe('Nilesh Bhai (Bhaji Pav)')
+    expect(resQtyPrompt.data.order.id).toBe('ord-nilesh-1')
+
+    // 5. User says "make it 30 boxes" or "30 box karo"
+    const resQtyUpdate = tryLocalIntentRoute('30 box karo', fakeStore)
+    expect(resQtyUpdate.handled).toBe(true)
+    expect(resQtyUpdate.type).toBe('update_qty')
+    expect(resQtyUpdate.data.qty).toBe(30)
+    expect(resQtyUpdate.data.clientName).toBe('Nilesh Bhai (Bhaji Pav)')
+    expect(resQtyUpdate.data.order.id).toBe('ord-nilesh-1')
+  })
+
+  it('orders_list has clean empty text so only compact order cards render without boilerplate sentences', () => {
+    const fakeStore = {
+      orders: [
+        { id: '1', clientName: 'Nilesh Bhai', status: 'Pending', date: new Date().toISOString().split('T')[0] },
+      ],
+    }
+    const result = tryLocalIntentRoute('orders', fakeStore)
+    expect(result.handled).toBe(true)
+    expect(result.type).toBe('orders_list')
+    expect(result.text).toBe('')
+  })
 })
 
