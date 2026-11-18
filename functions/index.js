@@ -1278,13 +1278,13 @@ async function getAiMemories() {
 
     const rawMemories = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
 
-    // Also auto-map completed owner feedbacks directly into Gemini prompt memory
+    // Also auto-map reviewed/completed owner feedbacks directly into Gemini prompt memory
     let feedbackMemories = []
     try {
       const fbSnap = await admin
         .firestore()
         .collection('ai_feedbacks')
-        .where('status', '==', 'completed')
+        .where('status', 'in', ['reviewed', 'completed'])
         .limit(20)
         .get()
 
