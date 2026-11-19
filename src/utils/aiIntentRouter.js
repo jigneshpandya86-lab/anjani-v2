@@ -474,7 +474,7 @@ export function tryLocalIntentRoute(query, store = {}) {
         handled: true,
         type: 'feedback_status',
         data: { pendingCount: 0, pending: [] },
-        text: '✅ **Feedback Queue Status**: All caught up! There are **0 pending feedback requests** in Firestore.\n\n*(Autonomous 24/7 background listener is active in Google Cloud `asia-south1`, processing incoming feedback automatically even when Cloud Shell is closed).*',
+        text: '✅ **Feedback Queue Status**: All caught up! There are **0 pending feedback requests** in Firestore.\n\n*(Feedbacks are stored safely in Firebase and reviewed/processed with developer in chat).*',
         chips: [
           { label: 'Submit Feedback', action: 'open_feedback_modal' },
           { label: 'Check Again', action: 'manual_feedback_check' },
@@ -491,9 +491,9 @@ export function tryLocalIntentRoute(query, store = {}) {
         handled: true,
         type: 'feedback_status',
         data: { pendingCount: pending.length, pending },
-        text: `⚡ **Found ${pending.length} Pending Feedback Request(s) in Queue**:\n\n${summaryLines}\n\n*(Tap **Run AI Now** to trigger immediate serverless processing, or let the 24/7 background listener resolve it).*`,
+        text: `⚡ **Found ${pending.length} Pending Feedback Request(s) in Queue**:\n\n${summaryLines}\n\n*(Saved safely in Firebase for developer review and implementation).*`,
         chips: [
-          { label: '⚡ Run AI Now', action: 'manual_feedback_check' },
+          { label: 'Check Again', action: 'manual_feedback_check' },
           { label: 'Submit Feedback', action: 'open_feedback_modal' },
         ],
       }

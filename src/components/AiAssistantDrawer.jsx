@@ -344,8 +344,8 @@ export default function AiAssistantDrawer({
 
       toast.success(
         feedbackImage
-          ? 'Feedback & screenshot submitted for AI review! Ready.'
-          : 'Feedback submitted with chat context! Ready.',
+          ? 'Feedback & screenshot saved to Firebase! Stored for review.'
+          : 'Feedback saved to Firebase! Stored for review.',
         { icon: '📝' }
       )
       setFeedbackText('')
@@ -363,52 +363,23 @@ export default function AiAssistantDrawer({
   const handleTriggerFeedbackCheck = async () => {
     setIsCheckingFeedback(true)
     try {
-      toast.loading('Signaling autonomous AI and checking queue...', { id: 'manual-fb-check' })
+      toast.loading('Checking feedback queue in Firebase...', { id: 'manual-fb-check' })
       const list = (await fetchAiFeedbacks?.()) || []
       const pending = list.filter(
         (f) => f.status === 'pending_review' || f.status === 'pending_weekly_review' || f.status === 'pending'
       )
 
-      // 1. Post trigger signal directly into Firestore 'ai_feedback_triggers'
-      try {
-        await addDoc(collection(db, 'ai_feedback_triggers'), {
-          status: 'pending',
-          source: 'app_ui_button',
-          requestedBy: 'Jigneshbhai',
-          pendingCount: pending.length,
-          pendingFeedbacks: pending.map((f) => ({ id: f.id, message: f.message })),
-          requestedAt: serverTimestamp(),
-          clientTime: new Date().toISOString(),
-        })
-      } catch (_trigErr) {
-        console.warn('Failed to write trigger doc to Firestore:', _trigErr)
-      }
-
-      // 2. Invoke Callable Cloud Function for immediate serverless processing
-      let cloudResult = null
-      try {
-        const functions = getFunctions(app, 'asia-south1')
-        const triggerAiFeedbackProcessing = httpsCallable(functions, 'triggerAiFeedbackProcessing')
-        const resp = await triggerAiFeedbackProcessing()
-        cloudResult = resp?.data
-      } catch (callErr) {
-        console.warn('Direct callable trigger invocation failed or timed out:', callErr)
-      }
-
-      // 3. Refresh feedbacks in store
-      await fetchAiFeedbacks?.().catch(() => {})
-
-      if (!cloudResult || cloudResult.processedCount === 0) {
-        toast.success('AI Trigger active! 0 pending items in queue.', {
+      if (pending.length === 0) {
+        toast.success('Feedback queue up to date! 0 pending items.', {
           id: 'manual-fb-check',
-          icon: '⚡',
+          icon: '✅',
         })
         setMessages((prev) => [
           ...prev,
           {
             id: 'asst-' + Date.now(),
             sender: 'assistant',
-            text: `⚡ **Autonomous AI Engine Active (24/7 Serverless)**:\n\nThe autonomous background processor is active in Google Cloud. Currently **0 pending feedback requests** in Firestore.\n\nAny feedback or screenshot you submit is processed automatically in the background even if Cloud Shell is closed!`,
+            text: `✅ **Feedback Queue Status**:\n\nAll caught up! There are **0 pending feedback requests** in Firestore.\n\nAny feedback or screenshot you submit is saved safely to Firebase for developer review and implementation.`,
             type: 'feedback_status',
             chips: [{ label: 'Submit Feedback', action: 'open_feedback_modal' }],
             isLocal: true,
@@ -416,41 +387,37 @@ export default function AiAssistantDrawer({
           },
         ])
       } else {
-        toast.success(`⚡ Autonomous AI processed ${cloudResult.processedCount} feedback item(s)!`, {
+        toast.success(`Found ${pending.length} pending feedback item(s) in queue.`, {
           id: 'manual-fb-check',
-          icon: '🧠',
-          duration: 5000,
+          icon: '📋',
         })
         setShowFeedbackModal(false)
 
-        const resolutionDetails = (cloudResult.results || [])
-          .map((r, i) => {
-            const ruleText = r.appliedRule ? `\n   - **Learned Rule**: ${r.appliedRule}` : ''
-            const updatesText =
-              r.dbUpdatesApplied && r.dbUpdatesApplied.length > 0
-                ? `\n   - **Database Updated**: ${r.dbUpdatesApplied
-                    .map((u) => `${u.customer} (${JSON.stringify(u.fields)})`)
-                    .join(', ')}`
-                : ''
-            return `${i + 1}. **${r.resolutionSummary || 'Completed'}**${ruleText}${updatesText}`
-          })
-          .join('\n\n')
+        const summaryLines = pending
+          .map(
+            (f, i) =>
+              `${i + 1}. **"${f.message}"**${f.attachmentUrl ? ' 📸 [Screenshot Attached]' : ''}`
+          )
+          .join('\n')
 
         setMessages((prev) => [
           ...prev,
           {
             id: 'asst-' + Date.now(),
             sender: 'assistant',
-            text: `🧠 **Autonomous AI Feedback Processing Complete**!\n\nProcessed **${cloudResult.processedCount} item(s)**:\n\n${resolutionDetails}\n\n*These rules and updates have been permanently saved to AI Memory and are active right now!*`,
+            text: `📋 **Found ${pending.length} Pending Feedback Request(s) in Queue**:\n\n${summaryLines}\n\n*These feedback items are safely stored in Firebase and will be addressed by your developer in chat.*`,
             type: 'feedback_status',
-            chips: [{ label: 'Check Again', action: 'manual_feedback_check' }],
+            chips: [
+              { label: 'Submit Feedback', action: 'open_feedback_modal' },
+              { label: 'Check Again', action: 'manual_feedback_check' },
+            ],
             isLocal: true,
             timestamp: new Date(),
           },
         ])
       }
     } catch (err) {
-      toast.error('Failed to trigger feedback: ' + (err.message || 'Network error'), {
+      toast.error('Failed to check feedback: ' + (err.message || 'Network error'), {
         id: 'manual-fb-check',
       })
     } finally {
