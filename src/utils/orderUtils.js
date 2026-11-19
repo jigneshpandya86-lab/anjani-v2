@@ -57,6 +57,19 @@ export const normalizeOrderWriteData = (data = {}, isUpdate = false) => {
     }
   }
 
+  if (!result.date && data.deliveryDate) {
+    result.date = data.deliveryDate
+  }
+  if (!result.deliveryDate && result.date) {
+    result.deliveryDate = result.date
+  }
+  if (!result.time && data.deliveryTime) {
+    result.time = data.deliveryTime
+  }
+  if (!result.deliveryTime && result.time) {
+    result.deliveryTime = result.time
+  }
+
   if (Array.isArray(data.items) && data.items.length > 0) {
     result.items = data.items.map((it) => {
       const itQty = Number(it.qty) || 0

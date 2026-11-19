@@ -4636,15 +4636,36 @@ You MUST respond ONLY with a valid JSON object (enclosed in \`\`\`json ... \`\`\
     const res = await generativeModel.generateContent({
       contents: [{ role: 'user', parts }],
       generationConfig: {
-        maxOutputTokens: 1500,
+        maxOutputTokens: 4000,
         temperature: 0.1,
       },
     })
     const rawText = res.response?.candidates?.[0]?.content?.parts?.[0]?.text || ''
     let clean = rawText.replace(/^```json\s*|\s*```$/g, '').trim()
-    parsed = JSON.parse(clean)
+    try {
+      parsed = JSON.parse(clean)
+    } catch (_pe) {
+      // Auto-repair if truncated or trailing commas
+      const lastBrace = clean.lastIndexOf('}')
+      if (lastBrace !== -1) {
+        const candidate = clean.slice(0, lastBrace + 1)
+        for (const attempt of [candidate, candidate + ']}', candidate + ']']) {
+          try {
+            parsed = JSON.parse(attempt)
+            break
+          } catch (_e) {}
+        }
+      }
+      if (!parsed) throw _pe
+    }
   } catch (err) {
     logger.error(`Autonomous AI: Gemini generation or parse error for feedback ${docId}:`, err)
+    const isLikelyBug =
+      feedbackType === 'system_bug' ||
+      feedbackType === 'ui_issue' ||
+      feedbackType === 'catering_sales' ||
+      /(?:still\s+not\s+working|not\s+recogni[sz]ed|did\s*n['o]?t\s+update|error|bug|issue|failed|wrong)/i.test(textMessage)
+
     // Fallback parser: treat the message directly as an error correction rule
     parsed = {
       hasMemoryRule: Boolean(textMessage.trim()),
@@ -4654,8 +4675,16 @@ You MUST respond ONLY with a valid JSON object (enclosed in \`\`\`json ... \`\`\
         description: 'Auto-recorded from owner feedback',
       },
       dbUpdates: [],
-      codeBlueprint: null,
-      resolutionSummary: `Learned correction: "${textMessage.slice(0, 100)}"`,
+      codeBlueprint: isLikelyBug
+        ? {
+            isCodeChangeRequired: true,
+            summary: `Automated queue: ${textMessage.slice(0, 100)}`,
+            filesToModify: ['src/utils/aiIntentRouter.js'],
+          }
+        : null,
+      resolutionSummary: isLikelyBug
+        ? `Code fix queued for: "${textMessage.slice(0, 80)}"`
+        : `Learned correction: "${textMessage.slice(0, 100)}"`,
     }
   }
 
@@ -4954,8 +4983,8 @@ exports.onFeedbackCorrectionDeployed = onDocumentUpdated('ai_feedbacks/{docId}',
   const after = event.data?.after?.data()
   if (!before || !after) return
 
-  // Only trigger when moving from queued/pending to completed
-  if (before.status !== 'completed' && after.status === 'completed') {
+  // Only trigger when moving from code_fix_queued to completed
+  if (before.status === 'code_fix_queued' && after.status === 'completed') {
     const resolution = after.resolutionNotes || 'Correction has been successfully applied and verified.'
     const title = '✅ Correction Deployed & Live'
     const pushBody = `Fix live on app: ${resolution.slice(0, 100)}`

@@ -3138,6 +3138,11 @@ export default function AiAssistantDrawer({
                             </button>
                           </div>
                           <p className="text-[11px] text-gray-500 truncate">For {msg.data.clientName || 'Customer'}</p>
+                          {(msg.data.deliveryDate || msg.data.date) && (
+                            <p className="text-[11px] text-gray-600 flex items-center gap-1 mt-0.5 font-medium truncate">
+                              <span>📅</span> {msg.data.deliveryDate || msg.data.date} {msg.data.deliveryTime || msg.data.time ? `• ⏰ ${msg.data.deliveryTime || msg.data.time}` : ''}
+                            </p>
+                          )}
                           {(msg.data.address || msg.data.location) && (
                             <p className="text-[11px] text-gray-600 flex items-center gap-1 mt-0.5 font-medium truncate">
                               <span>📍</span> {msg.data.address || msg.data.location}
@@ -3188,7 +3193,10 @@ export default function AiAssistantDrawer({
                               totalQty: msg.data.totalQty,
                               totalAmount: msg.data.totalAmount,
                               status: 'Pending',
-                              date: msg.data.date,
+                              date: msg.data.deliveryDate || msg.data.date,
+                              deliveryDate: msg.data.deliveryDate || msg.data.date,
+                              time: msg.data.deliveryTime || msg.data.time || '11 AM',
+                              deliveryTime: msg.data.deliveryTime || msg.data.time || '11 AM',
                             })
                             setPlacedOrders((prev) => ({ ...prev, [msg.id]: savedOrder || msg.data }))
                             toast.success(`Order confirmed for ${msg.data.clientName}!`)

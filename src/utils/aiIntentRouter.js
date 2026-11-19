@@ -15,7 +15,7 @@ import { getRecentSkuPrice } from './orderUtils'
 import { findMatchingClient } from './clientMatchingUtils'
 import { findMatchingSku } from './skuAliasUtils'
 import { resolveStaffMember, checkIsDayTime } from '../services/taskService'
-import { parseLocalSalesText, consolidateRetailSales } from './salesBatchUtils'
+import { parseLocalSalesText, consolidateRetailSales, normalizeDateString, normalizeDeliveryTime } from './salesBatchUtils'
 import { extractGoogleMapsUrl, parseGoogleMapsLocation } from './locationUtils'
 
 // Helper: Match SKU from text
@@ -581,7 +581,7 @@ export function tryLocalIntentRoute(query, store = {}) {
   }
 
   // Multi-date catering / sales orders local parsing (Zero tokens & Instant response)
-  const isSingleOrderCommand = /^(?:create\s+order|new\s+order|place\s+order|book\s+order|order\s+for|order\s+\d+)\b/i.test(q)
+  const isSingleOrderCommand = /(?:create\s+order|new\s+order|place\s+order|book\s+order|\border\s+\d+|\border\s+for)\b/i.test(q)
   if (!store.isClientMode && !store.isPaymentMode && !isSingleOrderCommand) {
     const isMultiOrCatering =
       rawQ.includes('\n') ||
@@ -747,8 +747,8 @@ export function tryLocalIntentRoute(query, store = {}) {
     !isTomorrowOrdersQuery &&
     !isTodayOrdersQuery &&
     !isOpenOrdersQuery &&
-    (/^(?:create\s+order|new\s+order|place\s+order|book\s+order|order\s+\d+|order\s+for)\b/i.test(q) ||
-      /(?:create\s+order|new\s+order)\b/i.test(q))
+    (/(?:create\s+order|new\s+order|place\s+order|book\s+order|\border\s+\d+|\border\s+for)\b/i.test(q) ||
+      /\b(?:order|book\s*order)\s+\d+\s*(?:box|boxes|cases?|petli|units?|nung|nang|pieces?)/i.test(q))
 
   if (isOrderCreationIntent) {
     const clients = store.clients || []
@@ -800,16 +800,61 @@ export function tryLocalIntentRoute(query, store = {}) {
       }
     }
 
+    // Extract Delivery Date
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const todayStr = `${currentYear}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    let effectiveDate = todayStr
+    let isTomorrowDate = false
+
+    if (/\b(?:tomorrow|kal|kale|કાલે|કાલ)\b/i.test(rawQ)) {
+      const tm = new Date(now)
+      tm.setDate(tm.getDate() + 1)
+      effectiveDate = `${tm.getFullYear()}-${String(tm.getMonth() + 1).padStart(2, '0')}-${String(tm.getDate()).padStart(2, '0')}`
+      isTomorrowDate = true
+    } else if (/\b(?:today|aaj|aaje|now|આજે|આજ)\b/i.test(rawQ)) {
+      effectiveDate = todayStr
+    } else {
+      const parsedDate = normalizeDateString(rawQ)
+      if (parsedDate) {
+        effectiveDate = parsedDate
+      }
+    }
+
+    // Extract Delivery Time
+    let effectiveTime = '11 AM'
+    const timeMatch = rawQ.match(/\b(\d{1,2}(?::\d{2}|\.\d{2})?)\s*(am|pm)\b/i)
+    if (timeMatch) {
+      const rawNum = timeMatch[1].replace('.', ':')
+      const meridian = timeMatch[2].toUpperCase()
+      effectiveTime = `${rawNum} ${meridian}`
+    } else if (/(?:\b(?:sanje|saanj|saanje|evening|shyam)\b|સાંજે|સાંજ)/i.test(rawQ)) {
+      effectiveTime = '4 PM'
+    } else if (/(?:\b(?:savare|sakal|morning)\b|સવારે|સવાર)/i.test(rawQ)) {
+      effectiveTime = '9 AM'
+    } else if (/(?:\b(?:bapore|dupahar|afternoon)\b|બપોરે|બપોર)/i.test(rawQ)) {
+      effectiveTime = '1 PM'
+    } else if (/(?:\b(?:raate|raat|night)\b|રાત્રે|રાત)/i.test(rawQ)) {
+      effectiveTime = '8 PM'
+    }
+
     // Extract delivery address / location from text (e.g. "at Waghodia road", "deliver to Manjalpur", "near D-Mart")
     let detectedAddress = ''
     const addrMatch = rawQ.match(
-      /(?:at|in|near|address[:\s]+|location[:\s]+|deliver(?:y)?\s+(?:to|at))\s+([A-Za-z0-9\s,.-]{2,40}?)(?:$|\s+(?:mobile|phone|rate|qty|@|\d+\s*(?:box|case|petli)|with|for))/i
+      /(?:address[:\s]+|location[:\s]+|deliver(?:y)?\s+(?:to|at)|near|at|in)\s+([A-Za-z0-9\s,.-]{2,50}?)(?:$|\s+(?:mobile|phone|rate|bhav|qty|@|\d+\s*(?:box|case|petli)|with|for))/i
     )
     if (addrMatch && addrMatch[1]) {
-      const candidate = addrMatch[1].trim()
+      let candidate = addrMatch[1].trim()
+      candidate = candidate
+        .replace(/\b(?:tomorrow|today|kal|kale|aaj|aaje|sanje|savare|bapore|morning|evening|afternoon)\b/gi, '')
+        .replace(/\b\d{1,2}(?::\d{2}|\.\d{2})?\s*(?:am|pm)\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim()
       if (
+        candidate &&
         candidate.toLowerCase() !== clientName.toLowerCase() &&
-        !candidate.toLowerCase().includes(sku.toLowerCase())
+        !candidate.toLowerCase().includes(sku.toLowerCase()) &&
+        !/^\d+$/.test(candidate)
       ) {
         detectedAddress = candidate
       }
@@ -837,11 +882,17 @@ export function tryLocalIntentRoute(query, store = {}) {
     ]
 
     const pieceLabel = originalPieces ? ` (${originalPieces} pcs = ${qty} ${skuMeta.unit})` : ` ${skuMeta.unit}`
+    const dateLabel = isTomorrowDate
+      ? 'Tomorrow'
+      : effectiveDate === todayStr
+      ? 'Today'
+      : effectiveDate
+    const dateTimeSnippet = `📅 **Delivery**: ${dateLabel}${effectiveTime ? ` at ${effectiveTime}` : ''}`
 
     return {
       handled: true,
       type: 'order_draft',
-      text: `🛒 **New Order Draft**: Ready to place order for **${clientName}**${effectiveAddress ? ` (📍 *${effectiveAddress}*)` : ''}:\n• **${qty}${pieceLabel}** — *${sku}* @ ₹${rate}/unit = **₹${(qty * rate).toLocaleString('en-IN')}**`,
+      text: `🛒 **New Order Draft**: Ready to place order for **${clientName}**${effectiveAddress ? ` (📍 *${effectiveAddress}*)` : ''}:\n• **${qty}${pieceLabel}** — *${sku}* @ ₹${rate}/unit = **₹${(qty * rate).toLocaleString('en-IN')}**\n${dateTimeSnippet}`,
       data: {
         clientId: matchedClient?.id || '',
         clientName,
@@ -851,7 +902,10 @@ export function tryLocalIntentRoute(query, store = {}) {
         mobile: matchedClient?.mobile || '',
         address: effectiveAddress,
         location: effectiveLocation,
-        date: new Date().toISOString().slice(0, 10),
+        date: effectiveDate,
+        deliveryDate: effectiveDate,
+        time: effectiveTime,
+        deliveryTime: effectiveTime,
       },
     }
   }

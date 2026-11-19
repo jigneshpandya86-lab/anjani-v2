@@ -782,5 +782,64 @@ describe('aiIntentRouter', () => {
     expect(resOrder.data.clientId).toBe('c-maa')
     expect(resOrder.data.clientName).toBe('Maa Excellence (Nirmalbhai)')
   })
+
+  it('handles user prompt for Kamleshbhai Panchal new order with delivery date, time, and venue', () => {
+    const tm = new Date()
+    tm.setDate(tm.getDate() + 1)
+    const tomorrowStr = `${tm.getFullYear()}-${String(tm.getMonth() + 1).padStart(2, '0')}-${String(tm.getDate()).padStart(2, '0')}`
+
+    const fakeStore = {
+      clients: [
+        { id: 'c-kamlesh', name: 'Kamleshbhai Panchal', displayName: 'Kamleshbhai Panchal', rate: 140 },
+      ],
+      orders: [],
+      recentMessages: [],
+    }
+
+    // 1. Full prompt from user with "new order"
+    const res = tryLocalIntentRoute(
+      'Kamleshbhai Panchal new order 30 box tomorrow 11 AM at jashan kitchen n lawns Rate 130 Rs',
+      fakeStore
+    )
+    expect(res).not.toBeNull()
+    expect(res.handled).toBe(true)
+    expect(res.type).toBe('order_draft')
+    expect(res.data.clientId).toBe('c-kamlesh')
+    expect(res.data.clientName).toBe('Kamleshbhai Panchal')
+    expect(res.data.totalQty).toBe(30)
+    expect(res.data.items[0].rate).toBe(130)
+    expect(res.data.totalAmount).toBe(3900)
+    expect(res.data.date).toBe(tomorrowStr)
+    expect(res.data.deliveryDate).toBe(tomorrowStr)
+    expect(res.data.time).toBe('11 AM')
+    expect(res.data.deliveryTime).toBe('11 AM')
+    expect(res.data.address).toBe('Jashan Kitchen N Lawns')
+    expect(res.data.location).toBe('Jashan Kitchen N Lawns')
+    expect(res.text).toContain('Tomorrow at 11 AM')
+    expect(res.text).toContain('Jashan Kitchen N Lawns')
+    expect(res.text).toContain('₹3,900')
+
+    // 2. Client-first prompt without the word "new"
+    const res2 = tryLocalIntentRoute(
+      'Kamleshbhai Panchal order 30 box tomorrow 11 AM at jashan kitchen n lawns Rate 130 Rs',
+      fakeStore
+    )
+    expect(res2).not.toBeNull()
+    expect(res2.handled).toBe(true)
+    expect(res2.type).toBe('order_draft')
+    expect(res2.data.clientId).toBe('c-kamlesh')
+    expect(res2.data.totalQty).toBe(30)
+    expect(res2.data.deliveryDate).toBe(tomorrowStr)
+    expect(res2.data.deliveryTime).toBe('11 AM')
+
+    // 3. Vernacular evening time "sanje" -> "4 PM"
+    const res3 = tryLocalIntentRoute(
+      'order 20 box kal sanje for Kamleshbhai Panchal at jashan lawns Rate 130 Rs',
+      fakeStore
+    )
+    expect(res3.data.deliveryTime).toBe('4 PM')
+    expect(res3.data.deliveryDate).toBe(tomorrowStr)
+    expect(res3.data.address).toBe('Jashan Lawns')
+  })
 })
 
