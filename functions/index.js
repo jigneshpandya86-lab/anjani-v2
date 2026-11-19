@@ -1013,6 +1013,221 @@ async function sendNotificationToUser(
 // --- NOTIFICATION SYSTEM FUNCTIONS ---
 
 /**
+ * Helper to send a notification message strictly to ADMIN users (e.g. Jignesh) via FCM
+ * and record it in the Firestore notifications collection with targetRole: 'admin'.
+ * Staff members (like Nilesh) will NEVER receive these notifications.
+ */
+async function sendNotificationToAdmins(
+  message,
+  title = 'Admin Notification',
+  pushMessage = null,
+  tag = 'admin-notification',
+) {
+  const db = admin.firestore()
+  try {
+    const newNotification = {
+      message,
+      title,
+      targetRole: 'admin',
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    }
+
+    const notificationDocRef = await db.collection('notifications').add(newNotification)
+
+    // 1. Identify all Admin user IDs from the 'users' collection
+    // Known staff accounts/IDs (like Nilesh: nilesh@gmail.com / 7JhyNPnmLBUCH5f6YhZtMCeL0BA3) are strictly excluded
+    const staffUserIds = new Set(['7JhyNPnmLBUCH5f6YhZtMCeL0BA3'])
+    const staffEmails = new Set(['nilesh@gmail.com'])
+    const adminUserIds = new Set([
+      'kb2RgmI7Iafjd8iSpJFE84kUwuJ2', // Jignesh
+      '99sjK9Fgn4Y6jv4tZiIsTOoGVLm1',
+      'zmlSrAFLycN1Z4qpQaylggm9VCy1',
+    ])
+
+    try {
+      const usersSnapshot = await db.collection('users').get()
+      usersSnapshot.forEach((doc) => {
+        const uData = doc.data() || {}
+        const uid = doc.id
+        const email = (uData.email || '').toLowerCase()
+        const role = (uData.role || '').toLowerCase()
+
+        if (
+          role === 'staff' ||
+          staffEmails.has(email) ||
+          staffUserIds.has(uid) ||
+          email.includes('nilesh')
+        ) {
+          staffUserIds.add(uid)
+          adminUserIds.delete(uid)
+        } else if (role === 'admin' || email.includes('admin') || email.includes('jignesh')) {
+          adminUserIds.add(uid)
+        }
+      })
+    } catch (userQueryErr) {
+      logger.warn(
+        'sendNotificationToAdmins: Could not query users collection, using known admin UIDs:',
+        userQueryErr.message,
+      )
+    }
+
+    logger.info(
+      `sendNotificationToAdmins (${tag}): Identified ${adminUserIds.size} admin UIDs; strictly excluding ${staffUserIds.size} staff UIDs.`,
+    )
+
+    // 2. Collect FCM tokens exclusively for admin accounts
+    const adminTokens = []
+    const seenTokens = new Set()
+
+    // Primary: fetch tokens from userDevices/{adminId}/tokens
+    for (const adminId of adminUserIds) {
+      try {
+        const tokenSnap = await db.collection('userDevices').doc(adminId).collection('tokens').get()
+        tokenSnap.forEach((doc) => {
+          const tData = doc.data() || {}
+          if (tData.token && tData.status !== 'invalid' && !seenTokens.has(tData.token)) {
+            seenTokens.add(tData.token)
+            adminTokens.push({ token: tData.token, ref: doc.ref })
+          }
+        })
+      } catch (tokErr) {
+        logger.warn(
+          `sendNotificationToAdmins: Failed reading tokens for admin ${adminId}:`,
+          tokErr.message,
+        )
+      }
+    }
+
+    // Secondary / Fallback check across collectionGroup('tokens') with rigorous staff filtering
+    try {
+      const groupSnap = await db.collectionGroup('tokens').get()
+      groupSnap.forEach((doc) => {
+        const tData = doc.data() || {}
+        const token = tData.token
+        if (!token || tData.status === 'invalid' || seenTokens.has(token)) {
+          return
+        }
+
+        // Determine owner from path: userDevices/{userId}/tokens/{tokenDoc}
+        const parentUserRef = doc.ref.parent.parent
+        const ownerUid = parentUserRef ? parentUserRef.id : null
+        const loginId = (tData.loginId || '').toLowerCase()
+
+        // STRICT EXCLUSION: If belongs to staff (Nilesh), NEVER send!
+        if (
+          staffUserIds.has(ownerUid) ||
+          staffEmails.has(loginId) ||
+          loginId.includes('nilesh') ||
+          tData.role === 'staff'
+        ) {
+          return
+        }
+
+        // Inclusion: If UID is confirmed admin or loginId is admin/jignesh
+        if (
+          adminUserIds.has(ownerUid) ||
+          loginId.includes('admin') ||
+          loginId.includes('jignesh')
+        ) {
+          seenTokens.add(token)
+          adminTokens.push({ token, ref: doc.ref })
+        }
+      })
+    } catch (groupErr) {
+      logger.warn('sendNotificationToAdmins: collectionGroup fallback error:', groupErr.message)
+    }
+
+    logger.info(`sendNotificationToAdmins (${tag}): Found ${adminTokens.length} active admin tokens.`)
+
+    if (adminTokens.length === 0) {
+      logger.info(`sendNotificationToAdmins (${tag}): No active admin tokens found.`)
+      return { id: notificationDocRef.id, ...newNotification, tokensNotified: 0 }
+    }
+
+    const displayBody = pushMessage || message
+    let totalSuccessCount = 0
+    let totalFailureCount = 0
+
+    // FCM sendEach with chunk size 500
+    const chunkSize = 500
+    for (let i = 0; i < adminTokens.length; i += chunkSize) {
+      const tokenChunk = adminTokens.slice(i, i + chunkSize)
+
+      const messages = tokenChunk.map(({ token }) => ({
+        token,
+        notification: { title, body: displayBody },
+        data: {
+          title,
+          body: message,
+          click_action: 'https://app1.anjaniwater.in',
+          type: 'admin-alert',
+          tag: tag || 'admin-notification',
+        },
+        android: {
+          priority: 'high',
+          notification: {
+            channelId: 'admin_alerts',
+            priority: 'high',
+            defaultVibrateTimings: true,
+            defaultSound: true,
+          },
+        },
+        webpush: {
+          headers: {
+            Urgency: 'high',
+            TTL: '86400',
+          },
+          notification: {
+            title,
+            body: displayBody,
+            icon: '/favicon.svg',
+            badge: '/favicon.svg',
+            vibrate: [200, 100, 200],
+            requireInteraction: true,
+            renotify: true,
+            tag: tag || 'admin-notification',
+          },
+          fcm_options: { link: 'https://app1.anjaniwater.in' },
+        },
+      }))
+
+      const response = await admin.messaging().sendEach(messages)
+      totalSuccessCount += response.successCount
+      totalFailureCount += response.failureCount
+
+      if (response.failureCount > 0) {
+        response.responses.forEach((resp, idx) => {
+          if (!resp.success) {
+            const errCode = resp.error?.code
+            const failedTokenObj = tokenChunk[idx]
+            if (
+              errCode === 'messaging/registration-token-not-registered' ||
+              errCode === 'messaging/invalid-registration-token'
+            ) {
+              failedTokenObj.ref
+                .update({
+                  status: 'invalid',
+                  invalidAt: admin.firestore.FieldValue.serverTimestamp(),
+                  lastError: errCode,
+                })
+                .catch((e) => logger.warn('Failed to mark invalid admin token:', e.message))
+            }
+          }
+        })
+      }
+    }
+
+    logger.info(
+      `sendNotificationToAdmins (${tag}): Sent to ${totalSuccessCount} admin tokens; ${totalFailureCount} failed.`,
+    )
+    return { id: notificationDocRef.id, ...newNotification, tokensNotified: totalSuccessCount }
+  } catch (error) {
+    logger.error('Error in sendNotificationToAdmins:', error)
+    throw error
+  }
+}
+
+/**
  * Helper to broadcast a notification message to all users via FCM
  * and record it in the Firestore notifications collection.
  * Includes token chunking for robustness.
@@ -3959,8 +4174,8 @@ async function processDailyExpenseReport(db, currentHour) {
 
     const notificationMessage = `Today's Expense Summary: Total: ₹${totalAmount}. Breakdown: ${breakdownStr}.`;
 
-    // Broadcast push/in-app notification
-    await broadcastNotification(notificationMessage, 'Daily Expense Summary', null, 'daily-expense-summary');
+    // Broadcast push/in-app notification strictly to admins
+    await sendNotificationToAdmins(notificationMessage, 'Daily Expense Summary', null, 'daily-expense-summary');
     logger.info("Daily Expense Report: FCM notification successfully sent to admin.");
   } catch (error) {
     logger.error("Error processing daily expense report:", error);
@@ -4554,9 +4769,9 @@ You MUST respond ONLY with a valid JSON object (enclosed in \`\`\`json ... \`\`\
     const notifBody = isCodeRequired
       ? `Diagnosed: "${textMessage.slice(0, 50)}...". Action plan ready; you will be notified once the code fix is tested & deployed.`
       : (parsed.resolutionSummary || `Learned new rule from feedback: "${textMessage.slice(0, 60)}"`)
-    await broadcastNotification(notifBody, notifTitle, notifBody, 'ai-feedback-resolved')
+    await sendNotificationToAdmins(notifBody, notifTitle, notifBody, 'ai-feedback-resolved')
   } catch (notifErr) {
-    logger.warn('Autonomous AI: Failed to dispatch broadcast notification:', notifErr.message)
+    logger.warn('Autonomous AI: Failed to dispatch admin notification:', notifErr.message)
   }
 
   return results
@@ -4725,7 +4940,7 @@ exports.notifyCorrectionDeployed = onCall(async (request) => {
       .catch(() => {})
   }
 
-  const res = await broadcastNotification(message, title, message, 'ai-code-deployed')
+  const res = await sendNotificationToAdmins(message, title, message, 'ai-code-deployed')
   return { success: true, notification: res }
 })
 
@@ -4746,7 +4961,7 @@ exports.onFeedbackCorrectionDeployed = onDocumentUpdated('ai_feedbacks/{docId}',
     const pushBody = `Fix live on app: ${resolution.slice(0, 100)}`
 
     logger.info(`onFeedbackCorrectionDeployed: Sending post-correction notification for ${event.params.docId}`)
-    await broadcastNotification(pushBody, title, pushBody, 'ai-code-deployed')
+    await sendNotificationToAdmins(pushBody, title, pushBody, 'ai-code-deployed')
   }
 })
 

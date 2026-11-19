@@ -409,12 +409,21 @@ function App() {
 
   const readStorageKey = user?.uid ? `${NOTIFICATION_READ_STORAGE_PREFIX}-${user.uid}` : null
 
+  const visibleNotifications = useMemo(() => {
+    return notifications.filter((item) => {
+      if (item.targetRole === 'admin' && userRole !== 'admin') {
+        return false
+      }
+      return true
+    })
+  }, [notifications, userRole])
+
   const unreadNotificationCount = useMemo(() => {
-    return notifications.reduce(
+    return visibleNotifications.reduce(
       (count, item) => (notificationReadMap[item.id] ? count : count + 1),
       0,
     )
-  }, [notificationReadMap, notifications])
+  }, [notificationReadMap, visibleNotifications])
 
   // AUTH: monitors login/logout state with fast-path cache and watchdog timer
   useEffect(() => {
@@ -554,7 +563,7 @@ function App() {
   }
 
   const markAllNotificationsAsRead = () => {
-    const next = notifications.reduce((acc, item) => {
+    const next = visibleNotifications.reduce((acc, item) => {
       acc[item.id] = true
       return acc
     }, {})
@@ -1207,7 +1216,7 @@ function App() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={markAllNotificationsAsRead}
-                    disabled={notifications.length === 0}
+                    disabled={visibleNotifications.length === 0}
                     className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-[#131921] disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <CheckCheck size={14} />
@@ -1222,10 +1231,10 @@ function App() {
                 </div>
               </div>
               <div className="max-h-[360px] overflow-y-auto">
-                {notifications.length === 0 ? (
+                {visibleNotifications.length === 0 ? (
                   <p className="px-4 py-6 text-sm text-gray-500">No notifications yet.</p>
                 ) : (
-                  notifications.map((item) => {
+                  visibleNotifications.map((item) => {
                     const isRead = !!notificationReadMap[item.id]
                     return (
                       <button
