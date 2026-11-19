@@ -3013,7 +3013,7 @@ Our 5 canonical water SKUs are:
 
 Classify the user intent and output strict JSON:
 {
-  "type": "orders_query" | "order_create" | "location_update" | "update_date" | "update_time" | "update_price" | "update_qty" | "staff_reminder" | "chat_reply",
+  "type": "orders_query" | "order_create" | "location_update" | "update_date" | "update_time" | "update_price" | "update_qty" | "staff_reminder" | "accounts_query" | "stock_query" | "dues_query" | "tasks_query" | "chat_reply",
   "text": string (Concise 1-sentence reply in English/Gujlish, under 25 words),
   "data": {
     "dateFilter": "today" | "tomorrow" | "all" | "specific",
@@ -3030,7 +3030,9 @@ Classify the user intent and output strict JSON:
     "deliveryDate": "YYYY-MM-DD",
     "location": string,
     "items": [{ "sku": "Anjani 200ml", "qty": number, "rate": number }],
-    "staffName": "Nilesh" | "Hiteshbhai"
+    "staffName": "Nilesh" | "Hiteshbhai" | "all",
+    "message": string,
+    "sku": string
   }
 }
 
@@ -3040,7 +3042,12 @@ CRITICAL RULES:
 3. Location update with map URL (e.g. "https://maps... this is location for tomorrow's maruti caterers order"): type: "location_update", clientName: "Maruti Caterers", dateFilter: "tomorrow", targetDate: "${istTomorrow}", mapLink: "https://...".
 4. Follow-up commands: When user says "update date as tomorrow", "change date to tomorrow", "update time to 11 AM", or "remind Nilesh", infer the client name from the conversation history if not explicitly stated.
 5. Order booking (e.g. "Kamleshbhai 30 box tomorrow 11 AM"): type: "order_create", clientName: "Kamleshbhai", date: "${istTomorrow}", deliveryDate: "${istTomorrow}", time: "11 AM", items: [{ sku: "Anjani 200ml", qty: 30, rate: 130 }].
-6. General conversational inquiries: type: "chat_reply", text: concise reply under 40 words.`
+6. Staff task assignment or reminder (e.g. "Ask Nilesh to call Bhavesh", "Tell Nilesh to collect jars", "Nilesh ne kaho to call Bhavesh", "Remind driver", "Task for Nilesh"): type: "staff_reminder", data: { "staffName": "Nilesh", "message": "Call Bhavesh" }.
+7. Cash custody or accounts inquiry (e.g. "How much cash with Nilesh?", "Nilesh cash", "Kitna cash nilesh ke paas", "Counter cash balance", "Cash in hand summary"): type: "accounts_query", data: { "staffName": "Nilesh" }.
+8. Stock inquiry (e.g. "Check stock", "Stock status", "Kitna stock baki hai"): type: "stock_query", data: { "sku": "all" }.
+9. Customer outstanding dues (e.g. "Outstanding dues", "Pending balances", "Baki rupiya"): type: "dues_query", data: { "clientName": "" }.
+10. Active staff tasks query (e.g. "Show staff tasks", "Nilesh na task", "What are staff tasks today?"): type: "tasks_query", data: { "staffName": "all" }.
+11. General conversational inquiries: type: "chat_reply", text: concise reply under 40 words.`
 
       const safeHistory = Array.isArray(conversationHistory)
         ? conversationHistory

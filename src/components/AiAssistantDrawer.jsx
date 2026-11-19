@@ -47,7 +47,6 @@ import { useClientStore } from '../store/clientStore'
 import { WATER_SKUS } from '../constants/skus'
 import { getAccountMeta } from '../constants/accounts'
 import { processAiBillImage } from '../utils/aiImageHelper'
-import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
 import { findBestExistingClientMatch, findMatchingClient } from '../utils/clientMatchingUtils'
 import { ensureEnglishText, sanitizeClientForEnglish, isMerchantOrSelfName } from '../utils/textUtils'
@@ -869,19 +868,106 @@ export default function AiAssistantDrawer({
       return
     }
     if (chip.action === 'query_orders') {
-      handleSend('orders')
+      const allOrders = orders || []
+      const openOrders = allOrders.filter((o) => {
+        const st = (o.status || '').toLowerCase()
+        return st !== 'cancelled' && st !== 'delivered' && o.isCancelled !== true
+      })
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: 'usr-' + Date.now(),
+          sender: 'user',
+          text: chip.label || '📦 Orders & Deliveries',
+          timestamp: new Date(),
+        },
+        {
+          id: 'asst-' + (Date.now() + 1),
+          sender: 'assistant',
+          text: '',
+          type: 'orders_list',
+          data: { orders: openOrders, dateFilter: 'all' },
+          timestamp: new Date(),
+        },
+      ])
       return
     }
     if (chip.action === 'query_stock') {
-      handleSend('Current stock')
+      const summary = stockSummary || {}
+      const lines = WATER_SKUS.map((sku) => {
+        const qty = summary[sku]?.currentStock ?? 0
+        return `• **${sku}**: **${qty}** ${qty === 1 ? 'unit' : 'units'}`
+      }).join('\n')
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: 'usr-' + Date.now(),
+          sender: 'user',
+          text: chip.label || '📊 Check Stock',
+          timestamp: new Date(),
+        },
+        {
+          id: 'asst-' + (Date.now() + 1),
+          sender: 'assistant',
+          text: `📊 **Live Warehouse Stock Summary**:\n${lines}\n\n• **Total Units**: **${stockTotal ?? 0}**`,
+          type: 'stock_summary',
+          data: { summary, total: stockTotal },
+          timestamp: new Date(),
+        },
+      ])
       return
     }
     if (chip.action === 'query_dues') {
-      handleSend('Outstanding balances')
+      const clientList = clients || []
+      const outstandingClients = clientList
+        .filter((c) => Number(c.balance || c.outstanding || 0) > 0)
+        .sort((a, b) => Number(b.balance || b.outstanding || 0) - Number(a.balance || a.outstanding || 0))
+
+      const totalDues = outstandingClients.reduce((s, c) => s + Number(c.balance || c.outstanding || 0), 0)
+      const top5 = outstandingClients.slice(0, 5)
+      const listLines = top5.map((c) => `• **${c.displayName || c.name}**: ₹${Number(c.balance || c.outstanding || 0).toLocaleString('en-IN')}`).join('\n')
+      const duesText = `💳 **Total Outstanding Dues**: **₹${totalDues.toLocaleString('en-IN')}** across ${outstandingClients.length} clients.\n${listLines ? `\nTop Balances:\n${listLines}` : ''}`
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: 'usr-' + Date.now(),
+          sender: 'user',
+          text: chip.label || '💳 Outstanding Dues',
+          timestamp: new Date(),
+        },
+        {
+          id: 'asst-' + (Date.now() + 1),
+          sender: 'assistant',
+          text: duesText,
+          type: 'dues_summary',
+          timestamp: new Date(),
+        },
+      ])
       return
     }
     if (chip.action === 'query_tasks') {
-      handleSend('show staff tasks')
+      const activeJobs = (jobs || []).filter((j) => j.stage !== 'complete' && j.status !== 'completed')
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: 'usr-' + Date.now(),
+          sender: 'user',
+          text: chip.label || '⏰ Staff Tasks & Follow-up',
+          timestamp: new Date(),
+        },
+        {
+          id: 'asst-' + (Date.now() + 1),
+          sender: 'assistant',
+          text: activeJobs.length > 0
+            ? `📋 Found **${activeJobs.length} active task${activeJobs.length > 1 ? 's' : ''}**:`
+            : '📋 No pending staff tasks in the system right now.',
+          type: 'staff_tasks_list',
+          data: { tasks: activeJobs },
+          timestamp: new Date(),
+        },
+      ])
       return
     }
     if (chip.action === 'main_menu') {
@@ -1211,800 +1297,13 @@ export default function AiAssistantDrawer({
     setIsClientMode(false)
     setIsAccountsMode(false)
 
-    // 1. Zero-Token Local Intent Check (Only if no file is uploaded and not in explicit multi-line sales mode)
-    if (!filePayload && query && !isSales && !isAccounts) {
-      const localRoute = tryLocalIntentRoute(query, {
-        stockSummary,
-        stockTotal,
-        stockEntries,
-        orders,
-        clients,
-        staffList,
-        accountsSummary,
-        jobs,
-        aiFeedbacks,
-        isClientMode: isClient,
-        isPaymentMode: isPayment,
-        isSalesMode: isSales,
-        recentMessages: messages,
-        activeCardActions: activeCardSheet?.actions || lastActiveCardActionsRef.current || [],
-      })
-
-      if (localRoute && localRoute.handled) {
-        if (localRoute.type === 'card_action_select') {
-          setActiveCardSheet(null)
-          localRoute.data.action?.onSelect?.()
-          return
-        }
-
-        if (localRoute.type === 'location_update') {
-          const { mapLink, lat, lng, client, order } = localRoute.data || {}
-          let savedTarget = ''
-
-          if (order?.id) {
-            try {
-              await updateOrder(order.id, {
-                mapLink: mapLink || '',
-                location: mapLink || order.location || '',
-                locationLat: lat ?? null,
-                locationLng: lng ?? null,
-              })
-              savedTarget = `Order #${order.id.slice(-6)}`
-            } catch (err) {
-              console.error('Failed to auto-save order location:', err)
-            }
-          }
-
-          if (client?.id) {
-            try {
-              await updateClient(client.id, {
-                mapLink: mapLink || '',
-                location: mapLink || client.location || '',
-                locationLat: lat ?? null,
-                locationLng: lng ?? null,
-              })
-              if (!savedTarget) {
-                savedTarget = client.displayName || client.name
-              }
-            } catch (err) {
-              console.error('Failed to auto-save client location:', err)
-            }
-          }
-
-          toast.success(savedTarget ? `Location saved to ${savedTarget}!` : 'Location saved!')
-
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: 'asst-' + Date.now(),
-              sender: 'assistant',
-              text: localRoute.text,
-              type: localRoute.type,
-              data: localRoute.data,
-              chips: localRoute.chips,
-              isLocal: true,
-              timestamp: new Date(),
-            },
-          ])
-          return
-        }
-
-        if (localRoute.type === 'update_date') {
-          const { targetDate, targetDateLabel, order, client, clientName } = localRoute.data || {}
-          let targetOrder = order
-
-          if (!targetOrder) {
-            for (let i = messages.length - 1; i >= 0; i--) {
-              const m = messages[i]
-              if (m.type === 'orders_list' && Array.isArray(m.data?.orders) && m.data.orders.length > 0) {
-                targetOrder = clientName
-                  ? (m.data.orders.find((o) => (o.clientName || o.name)?.toLowerCase().includes(clientName.toLowerCase())) || m.data.orders[0])
-                  : m.data.orders[0]
-                break
-              }
-              if (m.type === 'order_draft' && m.data) {
-                targetOrder = m.data
-                break
-              }
-              if (m.data?.order) {
-                targetOrder = m.data.order
-                break
-              }
-            }
-          }
-
-          if (targetOrder?.id && targetDate) {
-            try {
-              await updateOrder(targetOrder.id, {
-                date: targetDate,
-                deliveryDate: targetDate,
-              })
-
-              const updatedOrderObj = {
-                ...targetOrder,
-                date: targetDate,
-                deliveryDate: targetDate,
-              }
-
-              setMessages((prev) =>
-                prev.map((msg) => {
-                  if (msg.type === 'orders_list' && Array.isArray(msg.data?.orders)) {
-                    const updatedOrders = msg.data.orders.map((o) =>
-                      o.id === targetOrder.id ? updatedOrderObj : o
-                    )
-                    return { ...msg, data: { ...msg.data, orders: updatedOrders } }
-                  }
-                  if (msg.type === 'order_draft' && msg.data?.id === targetOrder.id) {
-                    return { ...msg, data: updatedOrderObj }
-                  }
-                  return msg
-                })
-              )
-
-              toast.success(`Order date updated to ${targetDateLabel || targetDate}`)
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `📅 **Order Rescheduled**: Moved **${targetOrder.clientName || targetOrder.name || clientName || 'Order'}**'s delivery to **${targetDateLabel || targetDate}**.`,
-                  type: 'update_date_confirm',
-                  data: { order: updatedOrderObj, date: targetDate },
-                  chips: [
-                    { label: "📦 Tomorrow's Orders", value: 'tomorrow orders' },
-                    { label: "📦 Today's Orders", value: 'today orders' },
-                    { label: 'View Orders', action: 'view_orders' },
-                  ],
-                  isLocal: true,
-                  timestamp: new Date(),
-                },
-              ])
-              return
-            } catch (err) {
-              console.error('Failed to reschedule order:', err)
-              toast.error('Failed to update order date')
-            }
-          }
-        }
-
-        if (localRoute.type === 'update_time') {
-          const { time, order, client, clientName } = localRoute.data || {}
-          let targetOrder = order
-
-          if (!targetOrder) {
-            for (let i = messages.length - 1; i >= 0; i--) {
-              const m = messages[i]
-              if (m.type === 'orders_list' && Array.isArray(m.data?.orders) && m.data.orders.length > 0) {
-                targetOrder = clientName
-                  ? (m.data.orders.find((o) => (o.clientName || o.name)?.toLowerCase().includes(clientName.toLowerCase())) || m.data.orders[0])
-                  : m.data.orders[0]
-                break
-              }
-              if (m.type === 'order_draft' && m.data) {
-                targetOrder = m.data
-                break
-              }
-              if (m.data?.order) {
-                targetOrder = m.data.order
-                break
-              }
-            }
-          }
-
-          if (targetOrder?.id && time) {
-            try {
-              await updateOrder(targetOrder.id, {
-                time: time,
-                deliveryTime: time,
-              })
-
-              const updatedOrderObj = {
-                ...targetOrder,
-                time: time,
-                deliveryTime: time,
-              }
-
-              setMessages((prev) =>
-                prev.map((msg) => {
-                  if (msg.type === 'orders_list' && Array.isArray(msg.data?.orders)) {
-                    const updatedOrders = msg.data.orders.map((o) =>
-                      o.id === targetOrder.id ? updatedOrderObj : o
-                    )
-                    return { ...msg, data: { ...msg.data, orders: updatedOrders } }
-                  }
-                  if (msg.type === 'order_draft' && msg.data?.id === targetOrder.id) {
-                    return { ...msg, data: updatedOrderObj }
-                  }
-                  return msg
-                })
-              )
-
-              toast.success(`Delivery time updated to ${time}`)
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `⏰ **Delivery Time Updated**: Set delivery time to **${time}** for **${targetOrder.clientName || targetOrder.name || clientName || 'Order'}**.`,
-                  type: 'update_time_confirm',
-                  data: { order: updatedOrderObj, time },
-                  chips: [
-                    { label: 'View Orders', action: 'view_orders' },
-                  ],
-                  isLocal: true,
-                  timestamp: new Date(),
-                },
-              ])
-              return
-            } catch (err) {
-              console.error('Failed to update order time:', err)
-              toast.error('Failed to update order time')
-            }
-          }
-        }
-
-        if (localRoute.type === 'update_price') {
-          const targetRate = localRoute.data.rate
-          const targetSku = localRoute.data.sku || 'Anjani 200ml'
-          let targetClient = localRoute.data.client
-          let targetClientName = localRoute.data.clientName
-          let targetOrder = localRoute.data.order || null
-
-          // Check if there is an unconfirmed batch sales or draft order/orders_list in messages
-          let foundPendingBatch = null
-          for (let i = messages.length - 1; i >= 0; i--) {
-            const m = messages[i]
-            if (m.type === 'retail_sales' && m.data?.sales?.length > 0 && !processedSalesBatches[m.id]) {
-              foundPendingBatch = m
-              break
-            }
-            if (!targetOrder) {
-              if (m.type === 'orders_list' && Array.isArray(m.data?.orders) && m.data.orders.length > 0) {
-                targetOrder = targetClientName
-                  ? (m.data.orders.find((o) => (o.clientName || o.name)?.toLowerCase().includes(targetClientName.toLowerCase())) || m.data.orders[0])
-                  : m.data.orders[0]
-              } else if (m.type === 'order_draft' && m.data) {
-                targetOrder = m.data
-              }
-            }
-          }
-
-          if (targetOrder && !targetClientName) {
-            targetClientName = targetOrder.clientName || targetOrder.name
-            targetClient =
-              (clients || []).find(
-                (c) => (c.displayName || c.name)?.toLowerCase() === targetClientName?.toLowerCase()
-              ) || targetClient || (targetClientName ? { name: targetClientName, id: targetOrder.clientId } : null)
-          }
-
-          if (foundPendingBatch) {
-            // If target client was not explicitly stated in query, infer from batch
-            if (!targetClientName && foundPendingBatch.data.sales.length > 0) {
-              const firstClient = foundPendingBatch.data.sales[0].clientName
-              const allSame = foundPendingBatch.data.sales.every((s) => s.clientName === firstClient)
-              if (allSame && firstClient) {
-                targetClientName = firstClient
-                targetClient =
-                  (clients || []).find((c) => c.name?.toLowerCase() === firstClient.toLowerCase()) || {
-                    name: firstClient,
-                  }
-              }
-            }
-
-            if (targetRate !== null && targetRate > 0) {
-              let newTotalAmt = 0
-
-              setMessages((prev) =>
-                prev.map((msg) => {
-                  if (msg.id !== foundPendingBatch.id) return msg
-                  const updatedSales = msg.data.sales.map((sale) => {
-                    const matchSale =
-                      !targetClientName ||
-                      sale.clientName?.toLowerCase().includes(targetClientName.toLowerCase())
-                    if (!matchSale) {
-                      newTotalAmt += Number(sale.totalAmount || 0)
-                      return sale
-                    }
-                    const updatedItems = (sale.items || []).map((it) => {
-                      const nextAmount = (Number(it.qty) || 0) * targetRate
-                      return { ...it, rate: targetRate, amount: nextAmount }
-                    })
-                    const saleTotal = updatedItems.reduce(
-                      (s, it) => s + (Number(it.amount) || 0),
-                      0
-                    )
-                    newTotalAmt += saleTotal
-                    return { ...sale, items: updatedItems, totalAmount: saleTotal }
-                  })
-                  return { ...msg, data: { ...msg.data, sales: updatedSales } }
-                })
-              )
-
-              if (targetClient?.id) {
-                try {
-                  updateClient(targetClient.id, {
-                    rate: targetRate,
-                    skuRates: { ...(targetClient.skuRates || {}), [targetSku]: targetRate },
-                  })
-                } catch (_e) {
-                  console.error('Failed to update client rate:', _e)
-                }
-              }
-
-              toast.success(`Price updated to ₹${targetRate}`)
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `💰 **Price Updated**: Set rate to **₹${targetRate}/unit** for **${targetClientName || 'drafted orders'}**.\n\nRecalculated batch total: **₹${newTotalAmt.toLocaleString('en-IN')}**.`,
-                  type: 'update_price_confirm',
-                  data: { rate: targetRate, clientName: targetClientName, newTotalAmt },
-                  isLocal: true,
-                  timestamp: new Date(),
-                },
-              ])
-              return
-            } else {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `💰 **Update Price**: Set price for **${targetClientName || 'drafted orders'}**:`,
-                  chips: [
-                    { label: '₹120', rate: 120, action: 'apply_rate' },
-                    { label: '₹125', rate: 125, action: 'apply_rate' },
-                    { label: '₹130', rate: 130, action: 'apply_rate' },
-                    { label: '₹135', rate: 135, action: 'apply_rate' },
-                    { label: '₹140', rate: 140, action: 'apply_rate' },
-                    { label: '₹150', rate: 150, action: 'apply_rate' },
-                  ],
-                  isLocal: true,
-                  timestamp: new Date(),
-                },
-              ])
-              return
-            }
-          }
-
-          // Case B: Existing Order Card (from orders_list or order_draft)
-          if (targetOrder) {
-            if (targetRate !== null && targetRate > 0) {
-              const orderQty = Number(targetOrder.qty || targetOrder.quantity || targetOrder.boxes || (targetOrder.items?.[0]?.qty) || 1)
-              const orderSku = targetOrder.sku || targetOrder.product || (targetOrder.items?.[0]?.sku) || targetSku
-              const updatedItems = (targetOrder.items && targetOrder.items.length > 0)
-                ? targetOrder.items.map((it, idx) => {
-                    if (idx === 0 || !targetSku || it.sku === targetSku) {
-                      const q = Number(it.qty) || orderQty
-                      return { ...it, rate: targetRate, amount: q * targetRate }
-                    }
-                    return it
-                  })
-                : [{ sku: orderSku, qty: orderQty, rate: targetRate, amount: orderQty * targetRate }]
-              const calculatedTotal = updatedItems.reduce((acc, it) => acc + (Number(it.amount) || 0), 0)
-
-              if (targetOrder.id) {
-                try {
-                  await updateOrder(targetOrder.id, {
-                    rate: targetRate,
-                    items: updatedItems,
-                    totalAmount: calculatedTotal,
-                  })
-                } catch (err) {
-                  console.error('Failed to update order in Firestore:', err)
-                }
-              }
-
-              if (targetClient?.id) {
-                try {
-                  updateClient(targetClient.id, {
-                    rate: targetRate,
-                    skuRates: { ...(targetClient.skuRates || {}), [targetSku]: targetRate },
-                  })
-                } catch (_e) {
-                  console.error('Failed to update client rate:', _e)
-                }
-              }
-
-              const updatedOrderObj = {
-                ...targetOrder,
-                rate: targetRate,
-                items: updatedItems,
-                totalAmount: calculatedTotal,
-              }
-
-              setMessages((prev) =>
-                prev.map((msg) => {
-                  if (msg.type === 'orders_list' && Array.isArray(msg.data?.orders)) {
-                    const updatedOrders = msg.data.orders.map((o) =>
-                      o.id === targetOrder.id ? updatedOrderObj : o
-                    )
-                    return { ...msg, data: { ...msg.data, orders: updatedOrders } }
-                  }
-                  if (msg.type === 'order_draft' && msg.data?.id === targetOrder.id) {
-                    return { ...msg, data: updatedOrderObj }
-                  }
-                  return msg
-                })
-              )
-
-              toast.success(`Price updated to ₹${targetRate} for ${targetClientName || 'order'}`)
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `💰 **Order Price Updated**: Set rate to **₹${targetRate}/unit** for **${targetClientName || 'Customer'}**.\n\nNew total: **₹${calculatedTotal.toLocaleString('en-IN')}**.`,
-                  type: 'update_price_confirm',
-                  data: { rate: targetRate, clientName: targetClientName, totalAmount: calculatedTotal, order: updatedOrderObj },
-                  chips: [
-                    { label: '⚡ Actions', action: 'open_order_menu', order: updatedOrderObj },
-                    { label: '📲 Remind Nilesh', action: 'remind_staff', order: updatedOrderObj },
-                    { label: '🚚 Mark Delivered', action: 'mark_delivered', order: updatedOrderObj },
-                  ],
-                  isLocal: true,
-                  timestamp: new Date(),
-                },
-              ])
-              return
-            } else {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `💰 **Update Price**: Set price for **${targetClientName || 'Customer'}**:`,
-                  chips: [
-                    { label: '₹120', rate: 120, action: 'apply_rate' },
-                    { label: '₹125', rate: 125, action: 'apply_rate' },
-                    { label: '₹130', rate: 130, action: 'apply_rate' },
-                    { label: '₹135', rate: 135, action: 'apply_rate' },
-                    { label: '₹140', rate: 140, action: 'apply_rate' },
-                    { label: '₹150', rate: 150, action: 'apply_rate' },
-                  ],
-                  isLocal: true,
-                  timestamp: new Date(),
-                },
-              ])
-              return
-            }
-          }
-
-          // If no pending batch/order in messages, but client specified with rate
-          if (targetRate !== null && targetRate > 0) {
-            if (targetClient?.id) {
-              try {
-                updateClient(targetClient.id, {
-                  rate: targetRate,
-                  skuRates: { ...(targetClient.skuRates || {}), [targetSku]: targetRate },
-                })
-              } catch (_e) {
-                console.error('Failed to update client rate:', _e)
-              }
-              toast.success(`Price updated to ₹${targetRate} for ${targetClient.displayName || targetClient.name}`)
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `💰 **Client Price Updated**: Default rate for **${targetClient.displayName || targetClient.name}** (${targetSku}) is now updated to **₹${targetRate}/unit**.`,
-                  type: 'update_price_confirm',
-                  data: { rate: targetRate, client: targetClient },
-                  isLocal: true,
-                  timestamp: new Date(),
-                },
-              ])
-              return
-            } else {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `💰 **Price Update**: Recognized rate **₹${targetRate}**. Which customer would you like to update? (e.g., *"update price for Maruti Caterers to ${targetRate}"*)`,
-                  isLocal: true,
-                  timestamp: new Date(),
-                },
-              ])
-              return
-            }
-          } else {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: 'asst-' + Date.now(),
-                sender: 'assistant',
-                text: targetClientName
-                  ? `💰 **Update Price**: Set price for **${targetClientName}**:`
-                  : `💰 **Update Price**: Please specify the customer name and new rate (e.g., *"update price for Maruti Caterers to 140"* or *"Maruti Caterers rate 140"*).`,
-                chips: [
-                  { label: '₹120', rate: 120, action: 'apply_rate' },
-                  { label: '₹125', rate: 125, action: 'apply_rate' },
-                  { label: '₹130', rate: 130, action: 'apply_rate' },
-                  { label: '₹135', rate: 135, action: 'apply_rate' },
-                  { label: '₹140', rate: 140, action: 'apply_rate' },
-                  { label: '₹150', rate: 150, action: 'apply_rate' },
-                ],
-                isLocal: true,
-                timestamp: new Date(),
-              },
-            ])
-            return
-          }
-        }
-
-        if (localRoute.type === 'update_qty') {
-          const targetQty = localRoute.data.qty
-          let targetClient = localRoute.data.client
-          let targetClientName = localRoute.data.clientName
-          let targetOrder = localRoute.data.order || null
-
-          // Check if there is an unconfirmed batch sales or draft order/orders_list in messages
-          let foundPendingBatch = null
-          for (let i = messages.length - 1; i >= 0; i--) {
-            const m = messages[i]
-            if (m.type === 'retail_sales' && m.data?.sales?.length > 0 && !processedSalesBatches[m.id]) {
-              foundPendingBatch = m
-              break
-            }
-            if (!targetOrder) {
-              if (m.type === 'orders_list' && Array.isArray(m.data?.orders) && m.data.orders.length > 0) {
-                targetOrder = targetClientName
-                  ? (m.data.orders.find((o) => (o.clientName || o.name)?.toLowerCase().includes(targetClientName.toLowerCase())) || m.data.orders[0])
-                  : m.data.orders[0]
-              } else if (m.type === 'order_draft' && m.data) {
-                targetOrder = m.data
-              }
-            }
-          }
-
-          if (targetOrder && !targetClientName) {
-            targetClientName = targetOrder.clientName || targetOrder.name
-            targetClient =
-              (clients || []).find(
-                (c) => (c.displayName || c.name)?.toLowerCase() === targetClientName?.toLowerCase()
-              ) || targetClient || (targetClientName ? { name: targetClientName, id: targetOrder.clientId } : null)
-          }
-
-          if (foundPendingBatch) {
-            // If target client was not explicitly stated in query, infer from batch
-            if (!targetClientName && foundPendingBatch.data.sales.length > 0) {
-              const firstClient = foundPendingBatch.data.sales[0].clientName
-              const allSame = foundPendingBatch.data.sales.every((s) => s.clientName === firstClient)
-              if (allSame && firstClient) {
-                targetClientName = firstClient
-                targetClient =
-                  (clients || []).find(
-                    (c) => (c.displayName || c.name)?.toLowerCase() === firstClient.toLowerCase()
-                  ) || {
-                    name: firstClient,
-                  }
-              }
-            }
-
-            if (targetQty !== null && targetQty > 0) {
-              let newTotalAmt = 0
-
-              setMessages((prev) =>
-                prev.map((msg) => {
-                  if (msg.id !== foundPendingBatch.id) return msg
-                  const updatedSales = msg.data.sales.map((sale) => {
-                    const matchSale =
-                      !targetClientName ||
-                      sale.clientName?.toLowerCase().includes(targetClientName.toLowerCase())
-                    if (!matchSale) {
-                      newTotalAmt += Number(sale.totalAmount || 0)
-                      return sale
-                    }
-                    const updatedItems = (sale.items || []).map((it) => {
-                      const itemRate = Number(it.rate) || 130
-                      const nextAmount = targetQty * itemRate
-                      return { ...it, qty: targetQty, amount: nextAmount }
-                    })
-                    const saleTotal = updatedItems.reduce(
-                      (s, it) => s + (Number(it.amount) || 0),
-                      0
-                    )
-                    newTotalAmt += saleTotal
-                    return { ...sale, items: updatedItems, totalAmount: saleTotal }
-                  })
-                  return { ...msg, data: { ...msg.data, sales: updatedSales } }
-                })
-              )
-
-              toast.success(`Order quantity updated to ${targetQty} boxes`)
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `📦 **Order Quantity Updated**: Set quantity to **${targetQty} boxes** for **${targetClientName || 'drafted orders'}**.\n\nRecalculated batch total: **₹${newTotalAmt.toLocaleString('en-IN')}**.`,
-                  type: 'update_qty_confirm',
-                  data: { qty: targetQty, clientName: targetClientName, newTotalAmt },
-                  isLocal: true,
-                  timestamp: new Date(),
-                },
-              ])
-              return
-            } else {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `📦 **Update Order Quantity**: What quantity would you like to set for **${targetClientName || 'drafted orders'}**?`,
-                  chips: [
-                    { label: '10 Boxes', qty: 10, action: 'apply_qty' },
-                    { label: '20 Boxes', qty: 20, action: 'apply_qty' },
-                    { label: '30 Boxes', qty: 30, action: 'apply_qty' },
-                    { label: '50 Boxes', qty: 50, action: 'apply_qty' },
-                  ],
-                  isLocal: true,
-                  timestamp: new Date(),
-                },
-              ])
-              return
-            }
-          }
-
-          // Case B: Existing Order Card (from orders_list or order_draft)
-          if (targetOrder) {
-            if (targetQty !== null && targetQty > 0) {
-              const orderRate = Number(targetOrder.rate || (targetOrder.items?.[0]?.rate) || 120)
-              const updatedItems = (targetOrder.items && targetOrder.items.length > 0)
-                ? targetOrder.items.map((it, idx) => {
-                    if (idx === 0) {
-                      const r = Number(it.rate) || orderRate
-                      return { ...it, qty: targetQty, amount: targetQty * r }
-                    }
-                    return it
-                  })
-                : [{ sku: targetOrder.sku || 'Anjani 200ml', qty: targetQty, rate: orderRate, amount: targetQty * orderRate }]
-              const calculatedTotal = updatedItems.reduce((acc, it) => acc + (Number(it.amount) || 0), 0)
-
-              if (targetOrder.id) {
-                try {
-                  await updateOrder(targetOrder.id, {
-                    qty: targetQty,
-                    quantity: targetQty,
-                    boxes: targetQty,
-                    items: updatedItems,
-                    totalAmount: calculatedTotal,
-                  })
-                } catch (err) {
-                  console.error('Failed to update order quantity in Firestore:', err)
-                }
-              }
-
-              const updatedOrderObj = {
-                ...targetOrder,
-                qty: targetQty,
-                quantity: targetQty,
-                boxes: targetQty,
-                items: updatedItems,
-                totalAmount: calculatedTotal,
-              }
-
-              setMessages((prev) =>
-                prev.map((msg) => {
-                  if (msg.type === 'orders_list' && Array.isArray(msg.data?.orders)) {
-                    const updatedOrders = msg.data.orders.map((o) =>
-                      o.id === targetOrder.id ? updatedOrderObj : o
-                    )
-                    return { ...msg, data: { ...msg.data, orders: updatedOrders } }
-                  }
-                  if (msg.type === 'order_draft' && msg.data?.id === targetOrder.id) {
-                    return { ...msg, data: updatedOrderObj }
-                  }
-                  return msg
-                })
-              )
-
-              toast.success(`Quantity updated to ${targetQty} boxes`)
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `📦 **Order Quantity Updated**: Set quantity to **${targetQty} boxes** for **${targetClientName || 'Customer'}**.\n\nNew total: **₹${calculatedTotal.toLocaleString('en-IN')}**.`,
-                  type: 'update_qty_confirm',
-                  data: { qty: targetQty, clientName: targetClientName, totalAmount: calculatedTotal, order: updatedOrderObj },
-                  chips: [
-                    { label: '⚡ Actions', action: 'open_order_menu', order: updatedOrderObj },
-                    { label: '📲 Remind Nilesh', action: 'remind_staff', order: updatedOrderObj },
-                    { label: '🚚 Mark Delivered', action: 'mark_delivered', order: updatedOrderObj },
-                  ],
-                  isLocal: true,
-                  timestamp: new Date(),
-                },
-              ])
-              return
-            } else {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `📦 **Update Qty**: Set quantity for **${targetClientName || 'Customer'}**:`,
-                  chips: [
-                    { label: '10 Boxes', qty: 10, action: 'apply_qty' },
-                    { label: '20 Boxes', qty: 20, action: 'apply_qty' },
-                    { label: '30 Boxes', qty: 30, action: 'apply_qty' },
-                    { label: '50 Boxes', qty: 50, action: 'apply_qty' },
-                  ],
-                  isLocal: true,
-                  timestamp: new Date(),
-                },
-              ])
-              return
-            }
-          } else {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: 'asst-' + Date.now(),
-                sender: 'assistant',
-                text: targetClientName
-                  ? `📦 **Update Qty**: Set quantity for **${targetClientName}**:`
-                  : `📦 **Order Quantity**: No pending drafted order was found to update. You can place a new order by typing e.g. *"20 box Anjani 200ml for ${targetClientName || 'Royal Hotel'}"*.`,
-                chips: targetClientName
-                  ? [
-                      { label: '10 Boxes', qty: 10, action: 'apply_qty' },
-                      { label: '20 Boxes', qty: 20, action: 'apply_qty' },
-                      { label: '30 Boxes', qty: 30, action: 'apply_qty' },
-                      { label: '50 Boxes', qty: 50, action: 'apply_qty' },
-                    ]
-                  : undefined,
-                isLocal: true,
-                timestamp: new Date(),
-              },
-            ])
-            return
-          }
-        }
-
-        if (localRoute.type === 'client_regular_status') {
-          const targetClient = localRoute.data.client
-          const isRegular = localRoute.data.isRegular
-          if (targetClient?.id) {
-            try {
-              await updateClient(targetClient.id, { isRegular })
-              toast.success(`${targetClient.displayName || targetClient.name} marked as ${isRegular ? 'regular' : 'standard'}!`)
-            } catch (err) {
-              console.error('Failed to update client regular status:', err)
-              toast.error('Failed to update regular status: ' + err.message)
-            }
-          }
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: 'asst-' + Date.now(),
-              sender: 'assistant',
-              text: localRoute.text,
-              type: localRoute.type,
-              data: localRoute.data,
-              chips: localRoute.chips,
-              isLocal: true,
-              timestamp: new Date(),
-            },
-          ])
-          return
-        }
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: 'asst-' + Date.now(),
-            sender: 'assistant',
-            text: localRoute.text,
-            type: localRoute.type,
-            data: localRoute.data,
-            chips: localRoute.chips,
-            isLocal: true,
-            timestamp: new Date(),
-          },
-        ])
+    // 1. Deterministic Card Action Select (Only when an active card sheet is open and user types a single digit 1, 2, 3)
+    if (!filePayload && query && activeCardSheet?.actions?.length > 0 && /^[1-9]$/.test(query.trim())) {
+      const idx = parseInt(query.trim(), 10) - 1
+      const act = activeCardSheet.actions[idx]
+      if (act && typeof act.onSelect === "function") {
+        setActiveCardSheet(null)
+        act.onSelect()
         return
       }
     }
@@ -2675,6 +1974,136 @@ export default function AiAssistantDrawer({
               { label: 'Confirm & Book Order', action: 'book_order', data: draftOrder },
               { label: 'Edit Draft', action: 'edit_draft', data: draftOrder },
             ],
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'staff_reminder' || resData.type === 'staff_task') {
+        const reminderData = resData.data || {}
+        const staffName = reminderData.staffName || 'Nilesh'
+        const isHitesh = /hitesh/i.test(staffName)
+        const assignedStaff = (staffList || []).find((s) => (s.name || '').toLowerCase().includes(staffName.toLowerCase())) || {
+          id: isHitesh ? 'hiteshbhai' : 'nilesh',
+          name: isHitesh ? 'Hiteshbhai' : 'Nilesh',
+          mobile: isHitesh ? '7778077617' : '7990943652',
+        }
+        const taskText = reminderData.message || reminderData.taskText || resData.text || 'Staff follow-up task'
+        const todayStr = new Date().toISOString().slice(0, 10)
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: '',
+            type: 'staff_task_draft',
+            data: {
+              text: taskText,
+              assignedTo: assignedStaff.id,
+              assignedStaffName: assignedStaff.name,
+              staffPhone: assignedStaff.mobile || '7990943652',
+              dueDate: reminderData.dueDate || todayStr,
+              targetLabel: reminderData.targetLabel || 'Today',
+              isFollowUp: false,
+              daytimeCheck: true,
+            },
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'accounts_query') {
+        const { staffName } = resData.data || {}
+        const summary = accountsSummary || {}
+        const nileshBal = Number(summary.nilesh || 0)
+        const hiteshBal = Number(summary.hiteshbhai || 0)
+        const counterBal = Number(summary.counter || 0)
+        const bankBal = Number(summary.bank || 0)
+        const totalStaffCash = nileshBal + hiteshBal
+
+        let acctText = ''
+        if (staffName && /nilesh/i.test(staffName)) {
+          acctText = `💼 **Cash with Nilesh**: **₹${nileshBal.toLocaleString('en-IN')}**\nNilesh currently has ₹${nileshBal.toLocaleString('en-IN')} in delivery cash custody.`
+        } else if (staffName && /hitesh/i.test(staffName)) {
+          acctText = `💼 **Cash with Hiteshbhai**: **₹${hiteshBal.toLocaleString('en-IN')}**\nHiteshbhai currently has ₹${hiteshBal.toLocaleString('en-IN')} in delivery cash custody.`
+        } else {
+          acctText = `💼 **Staff Cash Custody & Account Balances**:\n• **Nilesh**: ₹${nileshBal.toLocaleString('en-IN')}\n• **Hiteshbhai**: ₹${hiteshBal.toLocaleString('en-IN')}\n• **Total with Delivery Staff**: ₹${totalStaffCash.toLocaleString('en-IN')}\n• **Counter Cash**: ₹${counterBal.toLocaleString('en-IN')}\n• **Bank / UPI**: ₹${bankBal.toLocaleString('en-IN')}`
+        }
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: acctText,
+            type: 'accounts_summary',
+            data: { balances: summary, totalStaffCash },
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'stock_query') {
+        const summary = stockSummary || {}
+        const lines = WATER_SKUS.map((sku) => {
+          const qty = summary[sku]?.currentStock ?? 0
+          return `• **${sku}**: **${qty}** ${qty === 1 ? 'unit' : 'units'}`
+        }).join('\n')
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `📊 **Live Warehouse Stock Summary**:\n${lines}\n\n• **Total Units**: **${stockTotal ?? 0}**`,
+            type: 'stock_summary',
+            data: { summary, total: stockTotal },
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'dues_query') {
+        const { clientName } = resData.data || {}
+        const clientList = clients || []
+        const outstandingClients = clientList
+          .filter((c) => Number(c.balance || c.outstanding || 0) > 0)
+          .sort((a, b) => Number(b.balance || b.outstanding || 0) - Number(a.balance || a.outstanding || 0))
+
+        const totalDues = outstandingClients.reduce((s, c) => s + Number(c.balance || c.outstanding || 0), 0)
+        let duesText = ''
+        if (clientName) {
+          const matched = clientList.find((c) => (c.displayName || c.name || '').toLowerCase().includes(clientName.toLowerCase()))
+          const bal = Number(matched?.balance || matched?.outstanding || 0)
+          duesText = matched
+            ? `💳 **Outstanding Balance for ${matched.displayName || matched.name}**: **₹${bal.toLocaleString('en-IN')}**`
+            : `💳 No customer found matching "${clientName}".`
+        } else {
+          const top5 = outstandingClients.slice(0, 5)
+          const listLines = top5.map((c) => `• **${c.displayName || c.name}**: ₹${Number(c.balance || c.outstanding || 0).toLocaleString('en-IN')}`).join('\n')
+          duesText = `💳 **Total Outstanding Dues**: **₹${totalDues.toLocaleString('en-IN')}** across ${outstandingClients.length} clients.\n${listLines ? `\nTop Balances:\n${listLines}` : ''}`
+        }
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: duesText,
+            type: 'dues_summary',
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'tasks_query') {
+        const { staffName } = resData.data || {}
+        const activeJobs = (jobs || []).filter((j) => j.stage !== 'complete' && j.status !== 'completed')
+        const filtered = staffName && staffName !== 'all'
+          ? activeJobs.filter((j) => (j.assignedTo || '').toLowerCase().includes(staffName.toLowerCase()))
+          : activeJobs
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: filtered.length > 0
+              ? `📋 Found **${filtered.length} active task${filtered.length > 1 ? 's' : ''}**:`
+              : '📋 No pending staff tasks in the system right now.',
+            type: 'staff_tasks_list',
+            data: { tasks: filtered },
             timestamp: new Date(),
           },
         ])
