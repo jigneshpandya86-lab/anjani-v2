@@ -53,9 +53,15 @@ export function parseGoogleMapsLocation(input) {
   )
   if (urlMatch) {
     const url = urlMatch[0]
-    // Check if coordinates exist in query or path (e.g. ?q=22.3072,73.1812 or @22.3072,73.1812)
-    const urlCoordMatch = url.match(
-      /(?:@|\?q=|loc:)\s*([-+]?(?:[1-8]?\d(?:\.\d+)?|90(?:\.0+)?))[,\s]+([-+]?(?:180(?:\.0+)?|(?:1[0-7]\d|\d{1,2})(?:\.\d+)?))/i,
+    let decodedUrl = url
+    try {
+      decodedUrl = decodeURIComponent(url)
+    } catch (_e) {
+      // ignore malformed uri component
+    }
+    // Check if coordinates exist in query or path (e.g. ?q=22.3072,73.1812, ?query=22.3072,73.1812, or @22.3072,73.1812)
+    const urlCoordMatch = decodedUrl.match(
+      /(?:@|[?&]q=|[?&]query=|loc:)\s*([-+]?(?:[1-8]?\d(?:\.\d+)?|90(?:\.0+)?))[,\s]+([-+]?(?:180(?:\.0+)?|(?:1[0-7]\d|\d{1,2})(?:\.\d+)?))/i,
     )
     let lat = null
     let lng = null

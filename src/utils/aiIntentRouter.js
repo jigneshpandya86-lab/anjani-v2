@@ -16,6 +16,7 @@ import { findMatchingClient } from './clientMatchingUtils'
 import { findMatchingSku } from './skuAliasUtils'
 import { resolveStaffMember, checkIsDayTime } from '../services/taskService'
 import { parseLocalSalesText, consolidateRetailSales } from './salesBatchUtils'
+import { extractGoogleMapsUrl, parseGoogleMapsLocation } from './locationUtils'
 
 // Helper: Match SKU from text
 function matchSkuFromText(text) {
@@ -496,6 +497,86 @@ export function tryLocalIntentRoute(query, store = {}) {
           { label: 'Submit Feedback', action: 'open_feedback_modal' },
         ],
       }
+    }
+  }
+
+  // ==========================================
+  // SEQUENCE 0.7: LOCATION / ADDRESS UPDATE FOR EXISTING ORDER OR CLIENT
+  // Handles: "https://maps.app.goo.gl/... This is location for tomorrow's maruti order"
+  // or "update location for Maruti: https://maps..."
+  // Prevents accidentally drafting a new order when the intent is to update location!
+  // ==========================================
+  const mapUrl = extractGoogleMapsUrl(rawQ)
+  const isLocationUpdateIntent =
+    /(?:this\s+is\s+(?:the\s+)?location|update\s+(?:the\s+)?location|change\s+(?:the\s+)?location|set\s+(?:the\s+)?location|location\s+for|address\s+for|map\s+for|location\s+update|address\s+update)/i.test(
+      rawQ
+    ) || Boolean(mapUrl && /(?:location|address|order|client|maps|for\s+tomorrow|for\s+today)/i.test(rawQ))
+
+  // Ensure it's not a multi-item sales list that happens to have a map URL alongside order quantities
+  const hasExplicitOrderQty = /(?:\b\d+\s*(?:nung|nang|નંગ|box|boxes|crate|crates|case|cases|petli|petly|patli|bhav|ભાવ|rate)\b)/i.test(
+    rawQ
+  )
+
+  if (isLocationUpdateIntent && !hasExplicitOrderQty) {
+    const parsedLoc = parseGoogleMapsLocation(rawQ)
+    const effectiveMapLink = mapUrl || parsedLoc?.mapLink || ''
+    const matchedClient = matchClientFromText(rawQ, store.clients || [])
+    const isTomorrow = /(?:tomorrow|kal|આવતીકાલ)/i.test(rawQ)
+
+    // Find if there is an existing order for this client
+    let targetOrder = null
+    if (Array.isArray(store.orders) && store.orders.length > 0) {
+      const activeOrders = store.orders.filter(
+        (o) => o.status !== 'Cancelled' && o.status !== 'Delivered'
+      )
+      if (matchedClient) {
+        targetOrder =
+          activeOrders.find((o) => {
+            const clientMatch = o.clientId === matchedClient.id || o.clientName === matchedClient.name
+            if (!clientMatch) return false
+            if (isTomorrow) return o.deliveryDate?.includes('tomorrow') || o.date === 'tomorrow'
+            return true
+          }) ||
+          activeOrders.find(
+            (o) => o.clientId === matchedClient.id || o.clientName === matchedClient.name
+          )
+      }
+    }
+
+    const clientDisplayName = matchedClient
+      ? matchedClient.displayName || matchedClient.name
+      : 'Client'
+    const coordsStr =
+      parsedLoc?.lat !== null && parsedLoc?.lng !== null && parsedLoc?.lat !== undefined
+        ? `${parsedLoc.lat}, ${parsedLoc.lng}`
+        : null
+
+    return {
+      handled: true,
+      type: 'location_update',
+      data: {
+        mapLink: effectiveMapLink,
+        lat: parsedLoc?.lat || null,
+        lng: parsedLoc?.lng || null,
+        coordsStr,
+        client: matchedClient,
+        order: targetOrder,
+        rawText: rawQ,
+      },
+      text:
+        `📍 **Location Detected for ${clientDisplayName}**:\n\n` +
+        (effectiveMapLink ? `• **Google Maps**: [Open Map Location](${effectiveMapLink})\n` : '') +
+        (coordsStr ? `• **Coordinates**: \`${coordsStr}\`\n` : '') +
+        (targetOrder
+          ? `• **Associated Order**: Order #${targetOrder.id?.slice(-6) || 'Pending'} (${targetOrder.date || 'Active'})\n`
+          : '') +
+        `\n*AI has recognized this as a location update. No duplicate order was created.*`,
+      chips: [
+        targetOrder
+          ? { label: `Save to ${clientDisplayName}'s Order`, action: 'save_order_location' }
+          : { label: `Save to ${clientDisplayName}`, action: 'save_client_location' },
+        { label: 'View Orders', action: 'view_orders' },
+      ],
     }
   }
 

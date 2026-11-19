@@ -413,6 +413,31 @@ describe('aiIntentRouter', () => {
     expect(resCheck.text).toContain('Found 1 Pending Feedback Request')
   })
 
+  it('recognizes location update intent with Google Maps link and does not draft new order', () => {
+    const fakeStore = {
+      clients: [{ id: 'c-maruti', name: 'Maruti caterers' }],
+      orders: [
+        {
+          id: 'ord-maruti-1',
+          clientId: 'c-maruti',
+          clientName: 'Maruti caterers',
+          status: 'Confirmed',
+          date: 'tomorrow',
+        },
+      ],
+    }
+    const query =
+      'https://maps.app.goo.gl/DGYmDSZJb7YwMu1D9\n\nThis is location for tomorrow\'s maruti order'
+    const result = tryLocalIntentRoute(query, fakeStore)
+    expect(result).not.toBeNull()
+    expect(result.handled).toBe(true)
+    expect(result.type).toBe('location_update')
+    expect(result.text).toContain('Location Detected for Maruti caterers')
+    expect(result.text).toContain('No duplicate order was created')
+    expect(result.data.mapLink).toBe('https://maps.app.goo.gl/DGYmDSZJb7YwMu1D9')
+    expect(result.data.order?.id).toBe('ord-maruti-1')
+  })
+
   it('routes "Remind Nilesh for it" to staff_order_reminder when previous message was orders_list', () => {
     const fakeStore = {
       recentMessages: [

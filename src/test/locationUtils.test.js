@@ -20,6 +20,14 @@ describe('locationUtils', () => {
     expect(res.lat).toBeCloseTo(22.3072)
     expect(res.lng).toBeCloseTo(73.1812)
     expect(res.mapLink).toContain('https://www.google.com/maps')
+
+    // Test search URL with query and URL-encoded comma (%2C) as reported in feedback
+    const resEncoded = parseGoogleMapsLocation(
+      'https://www.google.com/maps/search/?api=1&query=22.307428896764883%2C73.1415809616383',
+    )
+    expect(resEncoded).not.toBeNull()
+    expect(resEncoded.lat).toBeCloseTo(22.307428)
+    expect(resEncoded.lng).toBeCloseTo(73.14158)
   })
 
   it('parses Google Maps short link without immediate coords', () => {
