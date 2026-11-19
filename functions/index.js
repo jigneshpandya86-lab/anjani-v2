@@ -1,4 +1,4 @@
-const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore')
+const { onDocumentCreated, onDocumentWritten, onDocumentUpdated } = require('firebase-functions/v2/firestore')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
 const { onCall } = require('firebase-functions/v2/https')
 const { setGlobalOptions } = require('firebase-functions/v2')
@@ -4521,7 +4521,15 @@ You MUST respond ONLY with a valid JSON object (enclosed in \`\`\`json ... \`\`\
   }
 
   // 3. Mark the feedback document in Firestore
-  const isCodeRequired = Boolean(parsed.codeBlueprint?.isCodeChangeRequired)
+  const isCodeRequired =
+    Boolean(parsed.codeBlueprint?.isCodeChangeRequired) ||
+    Boolean(parsed.codeBlueprint?.summary) ||
+    /(?:code fix|code change|will be implemented|bug fix|fix will be|ui fix|layout fix)/i.test(
+      parsed.resolutionSummary || ''
+    ) ||
+    feedbackType === 'ui_issue' ||
+    feedbackType === 'system_bug'
+
   const finalStatus = isCodeRequired ? 'code_fix_queued' : 'completed'
 
   const updatePayload = {
@@ -4536,13 +4544,15 @@ You MUST respond ONLY with a valid JSON object (enclosed in \`\`\`json ... \`\`\
   await db.collection('ai_feedbacks').doc(docId).update(updatePayload)
   logger.info(`Autonomous AI: Marked feedback ${docId} as ${finalStatus}.`)
 
-  // 4. Send Push & In-App Notification to Owner
+  // 4. Send Initial Push & In-App Notification to Owner
+  // If code modification is required, do NOT send a premature completion notification.
+  // The '✅ Correction Deployed & Live' notification is sent strictly POST-CORRECTION once deployed!
   try {
     const notifTitle = isCodeRequired
-      ? '📋 Feedback Analyzed (Code Fix Queued)'
+      ? '📋 Feedback Received & Diagnosed'
       : '🧠 AI Memory Rule Active (Immediate)'
     const notifBody = isCodeRequired
-      ? `AI diagnosed issue: "${textMessage.slice(0, 50)}...". Memory rule saved, code deployment queued.`
+      ? `Diagnosed: "${textMessage.slice(0, 50)}...". Action plan ready; you will be notified once the code fix is tested & deployed.`
       : (parsed.resolutionSummary || `Learned new rule from feedback: "${textMessage.slice(0, 60)}"`)
     await broadcastNotification(notifBody, notifTitle, notifBody, 'ai-feedback-resolved')
   } catch (notifErr) {
@@ -4717,5 +4727,26 @@ exports.notifyCorrectionDeployed = onCall(async (request) => {
 
   const res = await broadcastNotification(message, title, message, 'ai-code-deployed')
   return { success: true, notification: res }
+})
+
+/**
+ * Trigger 4: onDocumentUpdated('ai_feedbacks/{docId}')
+ * Fires strictly POST-CORRECTION when a feedback's status is changed to 'completed'
+ * after code changes have been deployed live!
+ */
+exports.onFeedbackCorrectionDeployed = onDocumentUpdated('ai_feedbacks/{docId}', async (event) => {
+  const before = event.data?.before?.data()
+  const after = event.data?.after?.data()
+  if (!before || !after) return
+
+  // Only trigger when moving from queued/pending to completed
+  if (before.status !== 'completed' && after.status === 'completed') {
+    const resolution = after.resolutionNotes || 'Correction has been successfully applied and verified.'
+    const title = '✅ Correction Deployed & Live'
+    const pushBody = `Fix live on app: ${resolution.slice(0, 100)}`
+
+    logger.info(`onFeedbackCorrectionDeployed: Sending post-correction notification for ${event.params.docId}`)
+    await broadcastNotification(pushBody, title, pushBody, 'ai-code-deployed')
+  }
 })
 
