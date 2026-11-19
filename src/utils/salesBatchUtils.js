@@ -13,9 +13,27 @@ export function normalizeDateString(dateStr) {
   const s = normalizeDigits(String(dateStr).trim())
   if (!s) return null
 
+  const now = new Date()
+  const currentYear = now.getFullYear()
+  const todayStr = `${currentYear}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+  if (/\b(?:today|aaj|aaje|now|આજે|આજ)\b/i.test(s)) {
+    return todayStr
+  }
+
+  if (/\b(?:tomorrow|kal|kale|કાલે|કાલ)\b/i.test(s)) {
+    const tm = new Date(now)
+    tm.setDate(tm.getDate() + 1)
+    return `${tm.getFullYear()}-${String(tm.getMonth() + 1).padStart(2, '0')}-${String(tm.getDate()).padStart(2, '0')}`
+  }
+
   // If already standard YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    return s
+    let [y, m, d] = s.split('-')
+    if (parseInt(y, 10) < currentYear) {
+      y = String(currentYear)
+    }
+    return `${y}-${m}-${d}`
   }
 
   // DD/MM/YY or DD/MM/YYYY or DD-MM-YY or DD-MM-YYYY
@@ -27,15 +45,21 @@ export function normalizeDateString(dateStr) {
     if (year.length === 2) {
       year = `20${year}`
     }
+    if (parseInt(year, 10) < currentYear) {
+      year = String(currentYear)
+    }
     return `${year}-${month}-${day}`
   }
 
   // YYYY/MM/DD
   const mIso = s.match(/\b(\d{4})[/-](\d{1,2})[/-](\d{1,2})\b/)
   if (mIso) {
-    const year = mIso[1]
+    let year = mIso[1]
     const month = mIso[2].padStart(2, '0')
     const day = mIso[3].padStart(2, '0')
+    if (parseInt(year, 10) < currentYear) {
+      year = String(currentYear)
+    }
     return `${year}-${month}-${day}`
   }
 
@@ -338,10 +362,177 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [],
  *  4000 hajar nung bottel
  *  PG party plot harni baroda"
  */
+/**
+ * Parses structured key-value order requests (e.g. from web form, lead submissions, or WhatsApp catalog).
+ */
+export function parseStructuredFormOrder(rawText = '', clients = []) {
+  if (!rawText || typeof rawText !== 'string') return null
+  const clean = rawText.trim()
+
+  const hasFormFields =
+    /(?:Name|Customer|Client)\s*:/i.test(clean) &&
+    (/(?:Quantity|Qty|Boxes|Cases)\s*:/i.test(clean) ||
+      /(?:Phone|Mobile|Contact)\s*:/i.test(clean) ||
+      /(?:Required\s*date|Delivery\s*date|Date)\s*:/i.test(clean) ||
+      /(?:Address|Area|Venue)\s*:/i.test(clean))
+
+  if (!hasFormFields) return null
+
+  // 1. Client Name
+  let clientName = ''
+  const nameMatch = clean.match(/(?:^|\n)\s*(?:Name|Customer|Client)\s*:\s*([^\n\r]+)/i)
+  if (nameMatch) {
+    clientName = nameMatch[1].trim()
+  }
+  if (!clientName || /^(?:Water Order|Order|Retail)$/i.test(clientName)) {
+    clientName = 'Retail'
+  }
+
+  // 2. Phone / Mobile
+  let mobile = ''
+  const phoneMatch = clean.match(/(?:^|\n)\s*(?:Phone|Mobile|Contact|Tel|WhatsApp)\s*:\s*([^\n\r]+)/i)
+  if (phoneMatch) {
+    mobile = normalizeDigits(phoneMatch[1].replace(/[^\d]/g, '')).slice(-10)
+  }
+
+  // 3. Quantity
+  let qty = 1
+  let isPieces = false
+  const qtyMatch = clean.match(/(?:^|\n)\s*(?:Quantity|Qty|Boxes|Cases|Number of Boxes|Count)\s*:\s*([^\n\r]+)/i)
+  if (qtyMatch) {
+    const qtyLine = qtyMatch[1].trim()
+    const numMatch = qtyLine.match(/(\d+)/)
+    if (numMatch) {
+      qty = parseInt(numMatch[1], 10)
+    }
+    if (/(?:pieces?|pcs?|nung|nang|bottles?)/i.test(qtyLine) && !/(?:boxes?|cases?|petli)/i.test(qtyLine)) {
+      isPieces = true
+    }
+  }
+
+  // 4. SKU
+  let sku = DEFAULT_SKU
+  const skuMatch = clean.match(/(?:^|\n)\s*(?:SKU\s*\/?\s*Product|Product|SKU|Item|SKU Code)\s*:\s*([^\n\r]+)/i)
+  const skuText = skuMatch ? skuMatch[1].trim() : clean
+  if (/200\s*ml|200ml|ANJ-200/i.test(skuText)) {
+    sku = 'Anjani 200ml'
+  } else if (/250\s*ml|250ml|BAI-250/i.test(skuText)) {
+    sku = 'Bailey 250ml'
+  } else if (/500\s*ml|500ml|BAI-500/i.test(skuText)) {
+    sku = 'Bailey 500ml'
+  } else if (/1\s*l(?:iter|tr)?|BAI-1000/i.test(skuText)) {
+    sku = 'Bailey 1 Liter'
+  } else if (/2\s*l(?:iter|tr)?|BAI-2000/i.test(skuText)) {
+    sku = 'Bailey 2 Liter'
+  }
+
+  // If pieces, round up to whole boxes for 200ml
+  let originalPieces = null
+  if (isPieces && (sku === 'Anjani 200ml' || sku.includes('200ml'))) {
+    originalPieces = qty
+    qty = Math.ceil(qty / 48)
+  }
+
+  // 5. Date
+  let deliveryDate = undefined
+  const dateMatch = clean.match(/(?:^|\n)\s*(?:Required\s*date|Delivery\s*date|Target\s*date|Date)\s*:\s*([^\n\r]+)/i)
+  if (dateMatch) {
+    deliveryDate = normalizeDateString(dateMatch[1])
+  }
+  if (!deliveryDate) {
+    const isoMatch = clean.match(/\b(\d{4}-\d{2}-\d{2})\b/)
+    if (isoMatch) {
+      deliveryDate = normalizeDateString(isoMatch[1])
+    }
+  }
+
+  // 6. Time
+  let deliveryTime = '11 AM'
+  const timeMatch = clean.match(/(?:^|\n)\s*(?:Preferred\s*time|Delivery\s*time|Time|Shift)\s*:\s*([^\n\r]+)/i)
+  if (timeMatch) {
+    const rawTime = timeMatch[1].trim()
+    if (/any\s*time/i.test(rawTime)) {
+      deliveryTime = '11 AM'
+    } else {
+      deliveryTime = normalizeDeliveryTime(rawTime)
+    }
+  }
+
+  // 7. Area & Address
+  let area = ''
+  const areaMatch = clean.match(/(?:^|\n)\s*Area\s*:\s*([^\n\r]+)/i)
+  if (areaMatch) {
+    area = areaMatch[1].trim()
+  }
+
+  let address = ''
+  const addrMatch = clean.match(/(?:^|\n)\s*(?:Address|Venue|Delivery\s*Address)\s*:\s*([^\n\r]+)/i)
+  if (addrMatch) {
+    address = addrMatch[1].trim()
+  }
+  const fullAddress = [area, address].filter(Boolean).join(', ')
+
+  // 8. Google Maps URL
+  let mapLink = ''
+  const mapMatch = clean.match(/(https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.app\.goo\.gl|goo\.gl\/maps)[^\s\n\r]+)/i)
+  if (mapMatch) {
+    mapLink = mapMatch[1].trim()
+  }
+
+  const orderItem = {
+    sku,
+    qty,
+    rate: 0,
+    unit: 'Box',
+    ...(originalPieces ? { originalPieces } : {}),
+  }
+
+  const notesList = [
+    mobile ? `Phone: ${mobile}` : '',
+    deliveryTime ? `Time: ${deliveryTime}` : '',
+    originalPieces ? `${originalPieces} pcs (${qty} boxes)` : '',
+  ].filter(Boolean)
+
+  return [
+    {
+      clientName,
+      mobile,
+      date: deliveryDate,
+      deliveryDate,
+      deliveryTime,
+      address: fullAddress,
+      location: mapLink || fullAddress,
+      mapLink,
+      items: [orderItem],
+      totalAmount: 0,
+      paymentMode: 'credit',
+      notes: notesList.join(' • '),
+    },
+  ]
+}
+
 export function parseLocalSalesText(rawText = '', clients = []) {
   if (!rawText || typeof rawText !== 'string') return null
   const cleanInput = normalizeDigits(rawText.trim())
   if (!cleanInput) return null
+
+  // Check structured key-value form/lead format first
+  const structuredOrders = parseStructuredFormOrder(cleanInput, clients)
+  if (structuredOrders && structuredOrders.length > 0) {
+    return {
+      type: 'retail_sales',
+      data: {
+        summary: {
+          totalOrders: structuredOrders.length,
+          totalQty: structuredOrders.reduce(
+            (sum, o) => sum + (o.items || []).reduce((isum, it) => isum + it.qty, 0),
+            0
+          ),
+        },
+        sales: structuredOrders,
+      },
+    }
+  }
 
   const lines = cleanInput
     .split(/\r?\n/)
@@ -381,6 +572,7 @@ export function parseLocalSalesText(rawText = '', clients = []) {
       const finalDeliveryTime = normalizeDeliveryTime(currentOrder.deliveryTime)
       orders.push({
         clientName: currentOrder.clientName || defaultClientName,
+        mobile: currentOrder.mobile || undefined,
         date: currentOrder.date || undefined,
         deliveryDate: currentOrder.deliveryDate || currentOrder.date || undefined,
         deliveryTime: finalDeliveryTime,
@@ -404,8 +596,27 @@ export function parseLocalSalesText(rawText = '', clients = []) {
     const rawLine = lines[i]
     const lineEn = ensureEnglishText(transliterateIndicToEnglish(rawLine))
 
+    // 0. Check Name: or Phone: lines
+    const namePrefix = rawLine.match(/^(?:Name|Customer|Client)\s*:\s*(.+)$/i)
+    if (namePrefix) {
+      const detectedName = namePrefix[1].trim()
+      defaultClientName = detectedName
+      if (!currentOrder) currentOrder = { clientName: detectedName, items: [] }
+      else currentOrder.clientName = detectedName
+      continue
+    }
+
+    const phonePrefix = rawLine.match(/^(?:Phone|Mobile|Contact)\s*:\s*(.+)$/i)
+    if (phonePrefix) {
+      if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }
+      currentOrder.mobile = normalizeDigits(phonePrefix[1].replace(/[^\d]/g, '')).slice(-10)
+      continue
+    }
+
     // 1. Check Date
-    const dateMatch = rawLine.match(/\b(?:Date[:\s-]*)?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/i)
+    const dateMatch =
+      rawLine.match(/\b(?:Date[:\s-]*)?(\d{4}[/-]\d{1,2}[/-]\d{1,2})\b/i) ||
+      rawLine.match(/\b(?:Date[:\s-]*)?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/i)
     if (dateMatch) {
       const parsedDate = normalizeDateString(dateMatch[1])
       if (
@@ -449,13 +660,17 @@ export function parseLocalSalesText(rawText = '', clients = []) {
     }
 
     // 3. Check Quantity & SKU
-    // Handles: "1000 nung બોટલ", "4000 નંગ bottle 200ml", "4000 hajar nung bottel", "48 nung", "4800 nung"
-    const hasQty =
+    // Handles: "1000 nung બોટલ", "4000 નંગ bottle 200ml", "4000 hajar nung bottel", "48 nung", "4800 nung", "Quantity: 21 Boxes"
+    const hasExplicitQty = /\b(?:quantity|qty|boxes|cases)\s*:\s*\d+/i.test(rawLine)
+    const hasQtyUnit =
       /\d+/.test(rawLine) &&
-      /(?:nung|nang|નંગ|bottle|bottel|બોટલ|box|cases?|petli|hajar|હજાર|ml|pieces?|pcs?)/i.test(rawLine)
+      /(?:nung|nang|નંગ|bottle|bottel|બોટલ|box|boxes|cases?|petli|hajar|હજાર|pieces?|pcs?)/i.test(rawLine)
+    const hasQty = hasExplicitQty || hasQtyUnit
 
     if (hasQty) {
-      const m = rawLine.match(/(\d+)/)
+      const explicitMatch = rawLine.match(/(?:quantity|qty|boxes|cases)\s*:\s*(\d+)/i)
+      const unitMatch = rawLine.match(/(\d+)\s*(?:nung|nang|નંગ|bottle|bottel|બોટલ|box|boxes|cases?|petli|hajar|હજાર|pieces?|pcs?)/i)
+      const m = explicitMatch || unitMatch || rawLine.match(/(\d+)/)
       if (m) {
         let num = parseInt(m[1], 10)
         // Redundant colloquial "4000 hajar" vs multiplier "4 hajar"

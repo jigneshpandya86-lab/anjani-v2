@@ -657,6 +657,50 @@ describe('aiIntentRouter', () => {
     expect(result.text).toBe('')
   })
 
+  it('routes "Order for tomorrow?" to orders_list instead of drafting an order (Feedback QBsZq5EAdkaCNzuPI4EB)', () => {
+    const tm = new Date()
+    tm.setDate(tm.getDate() + 1)
+    const tmYyyy = tm.getFullYear()
+    const tmMm = String(tm.getMonth() + 1).padStart(2, '0')
+    const tmDd = String(tm.getDate()).padStart(2, '0')
+    const tomorrowStr = `${tmYyyy}-${tmMm}-${tmDd}`
+
+    const fakeStore = {
+      orders: [
+        { id: 'ord-tm', clientName: 'Maruti Caterers', status: 'Pending', date: tomorrowStr, deliveryDate: tomorrowStr },
+      ],
+    }
+
+    const res = tryLocalIntentRoute('Order for tomorrow?', fakeStore)
+    expect(res).not.toBeNull()
+    expect(res.handled).toBe(true)
+    expect(res.type).toBe('orders_list')
+    expect(res.data.orders.length).toBe(1)
+    expect(res.data.orders[0].id).toBe('ord-tm')
+  })
+
+  it('strictly filters "Today\'s orders?" and never leaks tomorrow orders (Feedback gbkpx34bt1pTIxDQqTll)', () => {
+    const tm = new Date()
+    tm.setDate(tm.getDate() + 1)
+    const tmYyyy = tm.getFullYear()
+    const tmMm = String(tm.getMonth() + 1).padStart(2, '0')
+    const tmDd = String(tm.getDate()).padStart(2, '0')
+    const tomorrowStr = `${tmYyyy}-${tmMm}-${tmDd}`
+
+    const fakeStore = {
+      orders: [
+        { id: 'ord-tm', clientName: 'Maruti Caterers', status: 'Pending', date: tomorrowStr, deliveryDate: tomorrowStr },
+      ],
+    }
+
+    const res = tryLocalIntentRoute("Today's orders?", fakeStore)
+    expect(res).not.toBeNull()
+    expect(res.handled).toBe(true)
+    expect(res.type).toBe('orders_list')
+    expect(res.data.orders.length).toBe(0)
+    expect(res.text).toContain('No delivery orders scheduled for today')
+  })
+
   it('recognizes client display names and handles "make <client> regular client" command', () => {
     const fakeStore = {
       clients: [

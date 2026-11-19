@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import { getSkuMeta } from '../constants/skus'
-import { isRetailCustomer, consolidateRetailSales, normalizeDateString, normalizeDeliveryTime, parseLocalSalesText } from '../utils/salesBatchUtils'
+import {
+  isRetailCustomer,
+  consolidateRetailSales,
+  normalizeDateString,
+  normalizeDeliveryTime,
+  parseLocalSalesText,
+  parseStructuredFormOrder,
+} from '../utils/salesBatchUtils'
 import { getRecentSkuPrice } from '../utils/orderUtils'
 
 describe('Retail Sales Batch Normalization', () => {
@@ -409,5 +416,60 @@ Maruti Caterers
     expect(normalizeDeliveryTime(undefined)).toBe('11 AM')
     expect(normalizeDeliveryTime('N/A')).toBe('11 AM')
     expect(normalizeDeliveryTime('2:30 PM')).toBe('2:30 PM')
+  })
+
+  it('correctly parses structured web form / lead orders without double-counting SKU ml (Feedback SptaF7AKxvKSncQAfOB0)', () => {
+    const rawFormText = `Hi Anjani Water, I would like to submit this request:
+
+Request: Water Order
+SKU Code: ANJ-200
+SKU / Product: Anjani Premium Water 200ml (Factory Direct Sale)
+Quantity: 21 Boxes
+Preferred time: Any time
+Required date: 2026-11-22
+Name: Atul Tiwari
+Phone: 7802023598
+Area: Gotri
+Address: Nilamber Triumph, Gotri - Vasna Road, Saiyed Vasna, Vadodara, Gujarat
+Google Maps location: https://www.google.com/maps/search/?api=1&query=22.307428896764883%2C73.1415809616383
+
+Please confirm price, stock and delivery availability.`
+
+    const structuredOrders = parseStructuredFormOrder(rawFormText, mockClients)
+    expect(structuredOrders).not.toBeNull()
+    expect(structuredOrders.length).toBe(1)
+
+    const order = structuredOrders[0]
+    expect(order.clientName).toBe('Atul Tiwari')
+    expect(order.mobile).toBe('7802023598')
+    expect(order.deliveryDate).toBe('2026-11-22')
+    expect(order.deliveryTime).toBe('11 AM')
+    expect(order.items.length).toBe(1)
+    expect(order.items[0].qty).toBe(21)
+    expect(order.items[0].sku).toBe('Anjani 200ml')
+    expect(order.mapLink).toContain('google.com/maps')
+    expect(order.address).toContain('Nilamber Triumph')
+
+    // Also verify parseLocalSalesText delegates to structured parser
+    const parsedViaLocal = parseLocalSalesText(rawFormText, mockClients)
+    expect(parsedViaLocal).not.toBeNull()
+    expect(parsedViaLocal.data.summary.totalQty).toBe(21)
+    expect(parsedViaLocal.data.sales[0].clientName).toBe('Atul Tiwari')
+  })
+
+  it('normalizeDateString clamps past years to current year and resolves relative terms (Feedback Rx2C0FJRrcNNOwwNidsg)', () => {
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const todayStr = `${currentYear}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+    expect(normalizeDateString('today')).toBe(todayStr)
+    expect(normalizeDateString('aaj')).toBe(todayStr)
+
+    // Clamps past year 2024 to current year
+    const pastDate = normalizeDateString('15-05-24')
+    expect(pastDate).toBe(`${currentYear}-05-15`)
+
+    const pastIso = normalizeDateString('2024-05-15')
+    expect(pastIso).toBe(`${currentYear}-05-15`)
   })
 })

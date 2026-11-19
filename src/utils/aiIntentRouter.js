@@ -519,12 +519,137 @@ export function tryLocalIntentRoute(query, store = {}) {
     }
   }
 
+  // =========================================================================
+  // SEQUENCE 0.5: ORDERS QUERY (TODAY, TOMORROW, OPEN / PENDING DELIVERIES)
+  // Must run BEFORE order creation so queries like "Order for tomorrow?"
+  // or "Today's orders?" never draft fake orders! (Feedbacks QBsZq5EAdkaCNzuPI4EB & gbkpx34bt1pTIxDQqTll)
+  // =========================================================================
+  const isTomorrowOrdersQuery =
+    /(?:tomorrow'?s?\s+orders?|orders?\s+(?:for\s+)?tomorrow|orders?\s+tomorrow|kal\s+(?:na|ke|naa)?\s+orders?|orders?\s+kal)/i.test(q) ||
+    /^(?:order\s+for\s+tomorrow|orders\s+for\s+tomorrow)\??$/i.test(q)
+
+  const isTodayOrdersQuery =
+    /(?:today'?s?\s+orders?|orders?\s+(?:for\s+)?today|deliveries\s+today|today\s+deliveries|aaj\s+(?:na|ke|naa)?\s+orders?|orders?\s+aaj)/i.test(q) ||
+    /^(?:order\s+for\s+today|orders\s+for\s+today)\??$/i.test(q)
+
+  const isOpenOrdersQuery =
+    /(?:open\s+orders?|pending\s+orders?|pending\s+deliver|all\s+(?:open\s+)?orders?|upcoming\s+orders?|^orders\??$)/i.test(q)
+
+  if (isTomorrowOrdersQuery || isTodayOrdersQuery || isOpenOrdersQuery) {
+    const allOrders = store.orders || []
+    const now = new Date()
+
+    if (isTomorrowOrdersQuery) {
+      const tm = new Date(now)
+      tm.setDate(tm.getDate() + 1)
+      const tmYyyy = tm.getFullYear()
+      const tmMm = String(tm.getMonth() + 1).padStart(2, '0')
+      const tmDd = String(tm.getDate()).padStart(2, '0')
+      const tomorrowStr = `${tmYyyy}-${tmMm}-${tmDd}`
+      const formatTomorrow = tm.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+
+      const tomorrowOrders = allOrders.filter((o) => {
+        const isCancelled = o.status === 'cancelled' || o.isCancelled === true
+        const isDelivered = o.status === 'delivered' || o.status === 'Delivered'
+        const matchDate = o.deliveryDate === tomorrowStr || o.date === tomorrowStr
+        return !isCancelled && !isDelivered && matchDate
+      })
+
+      if (tomorrowOrders.length > 0) {
+        return {
+          handled: true,
+          type: 'orders_list',
+          text: '',
+          data: { orders: tomorrowOrders, dateFilter: 'tomorrow', targetDate: tomorrowStr },
+        }
+      }
+      return {
+        handled: true,
+        type: 'orders_list',
+        text: `📦 **Tomorrow's Orders (${formatTomorrow})**: No delivery orders scheduled for tomorrow.`,
+        data: { orders: [] },
+        chips: [
+          { label: "📦 Today's Orders", value: "today orders" },
+          { label: '📦 All Open Orders', value: 'all open orders' },
+        ],
+      }
+    }
+
+    if (isTodayOrdersQuery) {
+      const yyyy = now.getFullYear()
+      const mm = String(now.getMonth() + 1).padStart(2, '0')
+      const dd = String(now.getDate()).padStart(2, '0')
+      const todayStr = `${yyyy}-${mm}-${dd}`
+      const formatToday = now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+
+      const todayOrders = allOrders.filter((o) => {
+        const isCancelled = o.status === 'cancelled' || o.isCancelled === true
+        const isDelivered = o.status === 'delivered' || o.status === 'Delivered'
+        const matchDate = o.deliveryDate === todayStr || o.date === todayStr
+        return !isCancelled && !isDelivered && matchDate
+      })
+
+      if (todayOrders.length > 0) {
+        return {
+          handled: true,
+          type: 'orders_list',
+          text: '',
+          data: { orders: todayOrders, dateFilter: 'today', targetDate: todayStr },
+        }
+      }
+      return {
+        handled: true,
+        type: 'orders_list',
+        text: `📦 **Today's Orders (${formatToday})**: No delivery orders scheduled for today.`,
+        data: { orders: [] },
+        chips: [
+          { label: "📦 Tomorrow's Orders", value: 'tomorrow orders' },
+          { label: '📦 All Open Orders', value: 'all open orders' },
+        ],
+      }
+    }
+
+    // General Open / Pending Orders query
+    let pendingOrders = allOrders
+      .filter((o) => {
+        const isCancelled = o.status === 'cancelled' || o.isCancelled === true
+        const isDelivered = o.status === 'delivered' || o.status === 'Delivered'
+        return !isCancelled && !isDelivered
+      })
+      .sort((a, b) => ((a.deliveryDate || a.date || '') > (b.deliveryDate || b.date || '') ? 1 : -1))
+      .slice(0, 8)
+
+    if (pendingOrders.length === 0) {
+      // If no open orders at all, fallback to recent orders for review
+      pendingOrders = allOrders.slice(0, 5)
+    }
+
+    if (pendingOrders.length === 0) {
+      return {
+        handled: true,
+        type: 'orders_list',
+        text: `📦 **Orders**: No orders found in the database yet. You can book an order by tapping **📦 Book Order** or typing *"Order 20 box Anjani 200ml for Royal Hotel"*!`,
+        data: { orders: [] },
+      }
+    }
+
+    return {
+      handled: true,
+      type: 'orders_list',
+      text: '',
+      data: { orders: pendingOrders },
+    }
+  }
+
   // ==========================================
   // SEQUENCE 1: ORDER CREATION & QUICK SALES
   // ==========================================
   const isOrderCreationIntent =
     !store.isClientMode &&
     !store.isPaymentMode &&
+    !isTomorrowOrdersQuery &&
+    !isTodayOrdersQuery &&
+    !isOpenOrdersQuery &&
     (/^(?:create\s+order|new\s+order|place\s+order|book\s+order|order\s+\d+|order\s+for)\b/i.test(q) ||
       /(?:create\s+order|new\s+order)\b/i.test(q))
 
@@ -865,70 +990,7 @@ export function tryLocalIntentRoute(query, store = {}) {
     }
   }
 
-  // 4B. Open / Pending Orders for Today
-  const orderPatterns = [
-    /open order/i,
-    /pending order/i,
-    /today order/i,
-    /today's order/i,
-    /aaj na order/i,
-    /aaj ke order/i,
-    /pending deliver/i,
-    /deliveries today/i,
-    /^orders$/i,
-  ]
 
-  if (orderPatterns.some((pattern) => pattern.test(q))) {
-    const now = new Date()
-    const yyyy = now.getFullYear()
-    const mm = String(now.getMonth() + 1).padStart(2, '0')
-    const dd = String(now.getDate()).padStart(2, '0')
-    const todayStr = `${yyyy}-${mm}-${dd}`
-
-    const allOrders = store.orders || []
-    let pendingOrders = allOrders
-      .filter((o) => {
-        const isCancelled = o.status === 'cancelled' || o.isCancelled === true
-        const isDelivered = o.status === 'delivered' || o.status === 'Delivered'
-        const isToday = o.date === todayStr || !o.date
-        return !isCancelled && !isDelivered && isToday
-      })
-      .slice(0, 8)
-
-    let isRecentFallback = false
-    if (pendingOrders.length === 0) {
-      // Fallback: check any pending/confirmed orders regardless of date
-      pendingOrders = allOrders
-        .filter((o) => {
-          const isCancelled = o.status === 'cancelled' || o.isCancelled === true
-          const isDelivered = o.status === 'delivered' || o.status === 'Delivered'
-          return !isCancelled && !isDelivered
-        })
-        .slice(0, 8)
-    }
-
-    if (pendingOrders.length === 0) {
-      // If no open orders at all, show recent orders so cards can be reviewed and actioned
-      pendingOrders = allOrders.slice(0, 5)
-      isRecentFallback = true
-    }
-
-    if (pendingOrders.length === 0) {
-      return {
-        handled: true,
-        type: 'orders_list',
-        text: `📦 **Orders**: No orders found in the database yet. You can book an order by tapping **📦 Book Order** or typing *"Order 20 box Anjani 200ml for Royal Hotel"*!`,
-        data: { orders: [] },
-      }
-    }
-
-    return {
-      handled: true,
-      type: 'orders_list',
-      text: '', // Removed per feedback ZqIaU8BhotH06GucocHS: keep card without repetitive intro lines
-      data: { orders: pendingOrders },
-    }
-  }
 
   // 4C. Outstanding / Pending Balances & Defaulters
   const outstandingPatterns = [
