@@ -57,5 +57,19 @@ service cloud.firestore {
     match /ai_feedbacks/{feedbackId} {
       allow read, write: if request.auth != null;
     }
+
+    // AI Feedback Triggers collection:
+    // - Authenticated users can dispatch on-demand feedback processing triggers
+    match /ai_feedback_triggers/{triggerId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // AI Memories collection:
+    // - Authenticated users can read active learned rules
+    // - Admins and Autonomous AI server functions manage memory rules
+    match /aiMemories/{memoryId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
   }
 }

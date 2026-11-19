@@ -456,29 +456,45 @@ export function tryLocalIntentRoute(query, store = {}) {
   // ==========================================
   // SEQUENCE 0.6: FEEDBACK STATUS & QUEUE CHECK (Zero tokens & Instant response)
   // ==========================================
-  if (/^(?:check\s+(?:for\s+)?(?:new\s+)?feedback|run\s+feedback|trigger\s+feedback|review\s+feedback|feedback\s+check)\b/i.test(q)) {
+  if (
+    /(?:(?:check|run|trigger|review|pending|status)\s+(?:for\s+)?(?:new\s+)?feedback|feedback\s+(?:check|status|pending|queue|review|run)|any\s+(?:feedback|feedbacks)\s+pending)/i.test(
+      q
+    )
+  ) {
     const list = store.aiFeedbacks || []
     const pending = list.filter(
-      (f) => f.status === 'pending_review' || f.status === 'pending_weekly_review'
+      (f) =>
+        f.status === 'pending_review' ||
+        f.status === 'pending_weekly_review' ||
+        f.status === 'pending'
     )
     if (pending.length === 0) {
       return {
         handled: true,
         type: 'feedback_status',
         data: { pendingCount: 0, pending: [] },
-        text: '✅ **Feedback Queue Status**: All caught up! There are **0 pending feedback requests** in Firestore.\n\n*(Autonomous hourly daemon schedule is active at `0 * * * *`, checking every hour automatically).*',
-        chips: [{ label: 'Submit Feedback', action: 'open_feedback_modal' }],
+        text: '✅ **Feedback Queue Status**: All caught up! There are **0 pending feedback requests** in Firestore.\n\n*(Autonomous 24/7 background listener is active in Google Cloud `asia-south1`, processing incoming feedback automatically even when Cloud Shell is closed).*',
+        chips: [
+          { label: 'Submit Feedback', action: 'open_feedback_modal' },
+          { label: 'Check Again', action: 'manual_feedback_check' },
+        ],
       }
     } else {
       const summaryLines = pending
-        .map((f, i) => `${i + 1}. **"${f.message}"**${f.attachmentUrl ? ' 📸 [Screenshot Attached]' : ''}`)
+        .map(
+          (f, i) =>
+            `${i + 1}. **"${f.message}"**${f.attachmentUrl ? ' 📸 [Screenshot Attached]' : ''}`
+        )
         .join('\n')
       return {
         handled: true,
         type: 'feedback_status',
         data: { pendingCount: pending.length, pending },
-        text: `⚡ **Found ${pending.length} Pending Feedback Request(s) in Queue**:\n\n${summaryLines}\n\n*(The hourly daemon will process these automatically, or you can ask the pair programming assistant to execute immediately).*`,
-        chips: [{ label: 'Check Again', action: 'manual_feedback_check' }],
+        text: `⚡ **Found ${pending.length} Pending Feedback Request(s) in Queue**:\n\n${summaryLines}\n\n*(Tap **Run AI Now** to trigger immediate serverless processing, or let the 24/7 background listener resolve it).*`,
+        chips: [
+          { label: '⚡ Run AI Now', action: 'manual_feedback_check' },
+          { label: 'Submit Feedback', action: 'open_feedback_modal' },
+        ],
       }
     }
   }

@@ -389,6 +389,12 @@ describe('aiIntentRouter', () => {
     expect(resEmpty.type).toBe('feedback_status')
     expect(resEmpty.text).toContain('0 pending feedback requests')
 
+    const resAnyPending = tryLocalIntentRoute('any feedback pending for processing?', emptyStore)
+    expect(resAnyPending).not.toBeNull()
+    expect(resAnyPending.handled).toBe(true)
+    expect(resAnyPending.type).toBe('feedback_status')
+    expect(resAnyPending.text).toContain('0 pending feedback requests')
+
     const pendingStore = {
       aiFeedbacks: [
         { id: 'f1', message: 'Improve order quantity update', status: 'pending_review' },
@@ -400,6 +406,11 @@ describe('aiIntentRouter', () => {
     expect(resPending.type).toBe('feedback_status')
     expect(resPending.text).toContain('Found 1 Pending Feedback Request')
     expect(resPending.text).toContain('Improve order quantity update')
+
+    const resCheck = tryLocalIntentRoute('check feedback', pendingStore)
+    expect(resCheck).not.toBeNull()
+    expect(resCheck.handled).toBe(true)
+    expect(resCheck.text).toContain('Found 1 Pending Feedback Request')
   })
 
   it('routes "Remind Nilesh for it" to staff_order_reminder when previous message was orders_list', () => {

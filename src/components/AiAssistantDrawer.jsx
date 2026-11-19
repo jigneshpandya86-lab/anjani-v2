@@ -366,10 +366,10 @@ export default function AiAssistantDrawer({
       toast.loading('Signaling autonomous AI and checking queue...', { id: 'manual-fb-check' })
       const list = (await fetchAiFeedbacks?.()) || []
       const pending = list.filter(
-        (f) => f.status === 'pending_review' || f.status === 'pending_weekly_review'
+        (f) => f.status === 'pending_review' || f.status === 'pending_weekly_review' || f.status === 'pending'
       )
 
-      // Post trigger signal directly into Firestore 'ai_feedback_triggers'
+      // 1. Post trigger signal directly into Firestore 'ai_feedback_triggers'
       try {
         await addDoc(collection(db, 'ai_feedback_triggers'), {
           status: 'pending',
@@ -384,8 +384,22 @@ export default function AiAssistantDrawer({
         console.warn('Failed to write trigger doc to Firestore:', _trigErr)
       }
 
-      if (pending.length === 0) {
-        toast.success('AI Trigger dispatched! 0 pending items in queue.', {
+      // 2. Invoke Callable Cloud Function for immediate serverless processing
+      let cloudResult = null
+      try {
+        const functions = getFunctions(app, 'asia-south1')
+        const triggerAiFeedbackProcessing = httpsCallable(functions, 'triggerAiFeedbackProcessing')
+        const resp = await triggerAiFeedbackProcessing()
+        cloudResult = resp?.data
+      } catch (callErr) {
+        console.warn('Direct callable trigger invocation failed or timed out:', callErr)
+      }
+
+      // 3. Refresh feedbacks in store
+      await fetchAiFeedbacks?.().catch(() => {})
+
+      if (!cloudResult || cloudResult.processedCount === 0) {
+        toast.success('AI Trigger active! 0 pending items in queue.', {
           id: 'manual-fb-check',
           icon: '⚡',
         })
@@ -394,7 +408,7 @@ export default function AiAssistantDrawer({
           {
             id: 'asst-' + Date.now(),
             sender: 'assistant',
-            text: `⚡ **Manual Trigger Sent to AI**:\n\nThe autonomous AI listener is active and waiting. Currently **0 pending feedback requests** in Firestore.\n\nAny feedback you submit will be processed immediately upon tapping this button!`,
+            text: `⚡ **Autonomous AI Engine Active (24/7 Serverless)**:\n\nThe autonomous background processor is active in Google Cloud. Currently **0 pending feedback requests** in Firestore.\n\nAny feedback or screenshot you submit is processed automatically in the background even if Cloud Shell is closed!`,
             type: 'feedback_status',
             chips: [{ label: 'Submit Feedback', action: 'open_feedback_modal' }],
             isLocal: true,
@@ -402,27 +416,34 @@ export default function AiAssistantDrawer({
           },
         ])
       } else {
-        toast.success(`⚡ Triggered AI for ${pending.length} feedback item(s)! AI is implementing now...`, {
+        toast.success(`⚡ Autonomous AI processed ${cloudResult.processedCount} feedback item(s)!`, {
           id: 'manual-fb-check',
-          icon: '🚀',
+          icon: '🧠',
           duration: 5000,
         })
         setShowFeedbackModal(false)
 
-        const summaryLines = pending
-          .map((f, i) => `${i + 1}. **"${f.message}"**${f.attachmentUrl ? ' 📸 [Screenshot Attached]' : ''}`)
-          .join('\n')
+        const resolutionDetails = (cloudResult.results || [])
+          .map((r, i) => {
+            const ruleText = r.appliedRule ? `\n   - **Learned Rule**: ${r.appliedRule}` : ''
+            const updatesText =
+              r.dbUpdatesApplied && r.dbUpdatesApplied.length > 0
+                ? `\n   - **Database Updated**: ${r.dbUpdatesApplied
+                    .map((u) => `${u.customer} (${JSON.stringify(u.fields)})`)
+                    .join(', ')}`
+                : ''
+            return `${i + 1}. **${r.resolutionSummary || 'Completed'}**${ruleText}${updatesText}`
+          })
+          .join('\n\n')
 
         setMessages((prev) => [
           ...prev,
           {
             id: 'asst-' + Date.now(),
             sender: 'assistant',
-            text: `🚀 **On-Demand AI Trigger Dispatched**!\n\nTriggered corrections for **${pending.length} pending feedback item(s)**:\n\n${summaryLines}\n\n*The autonomous AI developer has received your signal and is now updating code, running tests, and deploying live to \`https://app1.anjaniwater.in\` and \`https://anjaniappnew.web.app\`.*`,
+            text: `🧠 **Autonomous AI Feedback Processing Complete**!\n\nProcessed **${cloudResult.processedCount} item(s)**:\n\n${resolutionDetails}\n\n*These rules and updates have been permanently saved to AI Memory and are active right now!*`,
             type: 'feedback_status',
-            chips: [
-              { label: 'Check Again', action: 'manual_feedback_check' },
-            ],
+            chips: [{ label: 'Check Again', action: 'manual_feedback_check' }],
             isLocal: true,
             timestamp: new Date(),
           },

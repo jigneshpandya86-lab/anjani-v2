@@ -1325,6 +1325,8 @@ function formatMemoriesForPrompt(memories = []) {
     staff_rule: '🚚 Staff & Cash Custody Rules',
     operational: '⏱️ Delivery & Route Operations',
     general_rule: '📌 Business Directives',
+    ui_action_tray: '📱 Interactive UI & Action Tray Rules',
+    feedback_standard: '📝 Standard Feedback Directives',
   }
 
   const grouped = {}
@@ -4299,3 +4301,384 @@ Do not include markdown codeblocks like \`\`\`json or backticks. Just the raw JS
     return { success: false, error: error.message };
   }
 }
+
+// ============================================================================
+// 🧠 AUTONOMOUS 24/7 AI FEEDBACK PROCESSOR & CONTINUOUS LEARNING ENGINE
+// ============================================================================
+
+/**
+ * Autonomous Feedback Processor helper:
+ * Evaluates owner feedback, attached screenshot (base64/dataUrl), and chat context
+ * using Gemini 2.5 Flash via Vertex AI.
+ * - Extracts persistent operational, slang, and error-correction rules into `aiMemories`.
+ * - Executes direct database updates (e.g. marking client regular, adjusting rates).
+ * - Records UI/card code blueprints for developer roadmap review.
+ * - Updates `ai_feedbacks/{docId}` to 'completed'.
+ * - Dispatches push & in-app notifications to owner.
+ */
+async function processSingleFeedbackWithGemini(feedbackData, docId, db = admin.firestore()) {
+  logger.info(`Autonomous AI: Starting processing for feedback ${docId}...`)
+
+  const textMessage = feedbackData.message || ''
+  const rawSnippet = feedbackData.rawSnippet || ''
+  const feedbackType = feedbackData.type || 'general'
+  const rating = feedbackData.rating || 'neutral'
+
+  // Extract screenshot if provided (support base64 string or data URL)
+  let imageBase64 = feedbackData.screenshotBase64 || ''
+  let mimeType = 'image/jpeg'
+  const urlCandidate = feedbackData.screenshotDataUrl || feedbackData.attachmentUrl || ''
+  if (urlCandidate && typeof urlCandidate === 'string' && urlCandidate.startsWith('data:')) {
+    const match = urlCandidate.match(/^data:([^;]+);base64,(.+)$/)
+    if (match) {
+      mimeType = match[1]
+      imageBase64 = match[2]
+    }
+  } else if (typeof imageBase64 === 'string' && imageBase64.startsWith('data:')) {
+    const match = imageBase64.match(/^data:([^;]+);base64,(.+)$/)
+    if (match) {
+      mimeType = match[1]
+      imageBase64 = match[2]
+    }
+  }
+
+  // Fetch contextual knowledge (known clients, existing memories)
+  const knownCustomerNames = await getKnownCustomerNames()
+  const existingMemories = await getAiMemories()
+  const existingRulesSummary = existingMemories
+    .slice(0, 30)
+    .map((m) => `- [${m.category || 'general'}] ${m.rule}`)
+    .join('\n')
+
+  const prompt = `You are the Autonomous AI Learning & Operations Engine for Anjani Water System (Vadodara, Gujarat).
+Your responsibility is to autonomously analyze and resolve feedback, error corrections, and operational rules submitted by the owner/operator (Jigneshbhai).
+
+INPUT FEEDBACK:
+- Feedback Message: "${textMessage}"
+- Context Snippet: "${rawSnippet}"
+- Category: "${feedbackType}"
+- Rating: "${rating}"
+
+SYSTEM CONTEXT:
+- Known Customer Names: ${JSON.stringify(knownCustomerNames.slice(0, 100))}
+- Existing AI Rules:
+${existingRulesSummary || '(None yet)'}
+
+YOUR INSTRUCTIONS:
+1. Identify if this feedback describes an AI behavior, slang, translation, delivery timing, staff assignment, or business directive that should be permanently remembered.
+   - If yes: synthesize a clear, authoritative rule in English.
+   - Categorize it as one of: 'client_rule', 'shorthand', 'error_correction', 'staff_rule', 'operational', 'general_rule', 'ui_action_tray', 'feedback_standard'.
+2. Identify if this feedback requests updating a specific customer record in the database:
+   - For example: "make [Client] regular" -> set isRegular: true
+   - For example: "default rate for [Client] is 55" -> set defaultRate or pricing
+   - Match the targetName against known customer names.
+3. Identify if this feedback requests a UI/code feature (e.g. adding a new button or card layout):
+   - Outline a concise code blueprint with files and changes needed so the system logs the plan.
+4. Provide a friendly, concise resolution summary (in English/Gujarati) explaining what actions were taken and what the AI has learned.
+
+RESPONSE FORMAT:
+You MUST respond ONLY with a valid JSON object (enclosed in \`\`\`json ... \`\`\` or raw JSON):
+{
+  "hasMemoryRule": true,
+  "memoryRule": {
+    "category": "client_rule",
+    "rule": "Detailed rule text to be injected into AI prompt context",
+    "description": "Short explanation"
+  },
+  "dbUpdates": [
+    {
+      "collection": "customers",
+      "targetName": "Matched Customer Name",
+      "fields": {
+        "isRegular": true
+      }
+    }
+  ],
+  "codeBlueprint": {
+    "isCodeChangeRequired": false,
+    "summary": "...",
+    "files": ["src/..."],
+    "plan": "..."
+  },
+  "resolutionSummary": "Clearly summarize the rule learned and actions taken"
+}`
+
+  const parts = []
+  if (imageBase64 && typeof imageBase64 === 'string' && imageBase64.length > 50) {
+    if (imageBase64.length <= 4 * 1024 * 1024) {
+      parts.push({
+        inlineData: {
+          data: imageBase64,
+          mimeType: mimeType || 'image/jpeg',
+        },
+      })
+    }
+  }
+  parts.push({ text: prompt })
+
+  let parsed = null
+  try {
+    const res = await generativeModel.generateContent({
+      contents: [{ role: 'user', parts }],
+      generationConfig: {
+        maxOutputTokens: 1500,
+        temperature: 0.1,
+      },
+    })
+    const rawText = res.response?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    let clean = rawText.replace(/^```json\s*|\s*```$/g, '').trim()
+    parsed = JSON.parse(clean)
+  } catch (err) {
+    logger.error(`Autonomous AI: Gemini generation or parse error for feedback ${docId}:`, err)
+    // Fallback parser: treat the message directly as an error correction rule
+    parsed = {
+      hasMemoryRule: Boolean(textMessage.trim()),
+      memoryRule: {
+        category: 'error_correction',
+        rule: textMessage.trim() || 'Learned owner feedback correction',
+        description: 'Auto-recorded from owner feedback',
+      },
+      dbUpdates: [],
+      codeBlueprint: null,
+      resolutionSummary: `Learned correction: "${textMessage.slice(0, 100)}"`,
+    }
+  }
+
+  const results = {
+    docId,
+    memoryCreated: false,
+    dbUpdatesApplied: [],
+    resolutionSummary: parsed.resolutionSummary || 'Feedback processed successfully',
+  }
+
+  // 1. Persist AI Memory Rule if present
+  let appliedRuleId = null
+  if (parsed.hasMemoryRule && parsed.memoryRule?.rule) {
+    appliedRuleId = 'mem-fb-' + docId
+    const memRef = db.collection('aiMemories').doc(appliedRuleId)
+    await memRef.set(
+      {
+        id: appliedRuleId,
+        category: parsed.memoryRule.category || 'error_correction',
+        rule: parsed.memoryRule.rule,
+        description: parsed.memoryRule.description || '',
+        active: true,
+        source: 'autonomous_feedback_ai',
+        feedbackId: docId,
+        feedbackMessage: textMessage,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    )
+    results.memoryCreated = true
+    results.appliedRule = parsed.memoryRule.rule
+    results.appliedRuleId = appliedRuleId
+    cachedAiMemoriesTime = 0 // Invalidate cache so next askAnjaniAi picks it up immediately
+    logger.info(`Autonomous AI: Persisted memory rule ${appliedRuleId} for feedback ${docId}`)
+  }
+
+  // 2. Execute DB updates if requested
+  if (Array.isArray(parsed.dbUpdates) && parsed.dbUpdates.length > 0) {
+    for (const update of parsed.dbUpdates) {
+      if (update.collection === 'customers' && update.targetName && update.fields) {
+        try {
+          const custSnap = await db.collection('customers').get()
+          const targetLower = String(update.targetName).toLowerCase().trim()
+          let matchedDoc = null
+          for (const d of custSnap.docs) {
+            const data = d.data()
+            const nameLower = String(data.name || '').toLowerCase()
+            const displayLower = String(data.displayName || '').toLowerCase()
+            if (
+              nameLower === targetLower ||
+              displayLower === targetLower ||
+              nameLower.includes(targetLower) ||
+              displayLower.includes(targetLower) ||
+              targetLower.includes(nameLower)
+            ) {
+              matchedDoc = d
+              break
+            }
+          }
+          if (matchedDoc) {
+            await matchedDoc.ref.update({
+              ...update.fields,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              updatedBy: 'autonomous_feedback_ai',
+            })
+            results.dbUpdatesApplied.push({
+              customer: matchedDoc.data().name || matchedDoc.data().displayName,
+              fields: update.fields,
+            })
+            logger.info(`Autonomous AI: Updated customer ${matchedDoc.id} with fields:`, update.fields)
+          }
+        } catch (dbErr) {
+          logger.warn(`Autonomous AI: Failed to apply customer update for ${update.targetName}:`, dbErr.message)
+        }
+      }
+    }
+  }
+
+  // 3. Mark the feedback document as completed in Firestore
+  const updatePayload = {
+    status: 'completed',
+    resolutionNotes: parsed.resolutionSummary || 'Completed by Autonomous AI Engine',
+    appliedRule: results.appliedRule || null,
+    appliedRuleId: appliedRuleId || null,
+    codeBlueprint: parsed.codeBlueprint || null,
+    processedAt: admin.firestore.FieldValue.serverTimestamp(),
+    processedBy: 'gemini-2.5-flash-autonomous',
+  }
+  await db.collection('ai_feedbacks').doc(docId).update(updatePayload)
+  logger.info(`Autonomous AI: Marked feedback ${docId} as completed.`)
+
+  // 4. Send Push & In-App Notification to Owner
+  try {
+    const notifTitle = '🧠 Anjani AI Memory Updated'
+    const notifBody = parsed.resolutionSummary || `Learned new rule from feedback: "${textMessage.slice(0, 60)}"`
+    await broadcastNotification(notifBody, notifTitle, notifBody, 'ai-feedback-resolved')
+  } catch (notifErr) {
+    logger.warn('Autonomous AI: Failed to dispatch broadcast notification:', notifErr.message)
+  }
+
+  return results
+}
+
+/**
+ * Trigger 1: onDocumentCreated('ai_feedbacks/{docId}')
+ * Automatically processes new feedback in the background 24/7 without requiring Cloud Shell!
+ */
+exports.processAiFeedbackOnCreation = onDocumentCreated('ai_feedbacks/{docId}', async (event) => {
+  const snap = event.data
+  if (!snap) return
+  const data = snap.data()
+  if (!data) return
+
+  // Only process if status is pending
+  const pendingStatuses = ['pending', 'pending_review', 'pending_weekly_review']
+  if (!pendingStatuses.includes(data.status)) {
+    return
+  }
+
+  try {
+    await processSingleFeedbackWithGemini(data, event.params.docId)
+  } catch (err) {
+    logger.error(`Error in processAiFeedbackOnCreation for ${event.params.docId}:`, err)
+    await snap.ref
+      .update({
+        processingError: err.message,
+        lastProcessingAttempt: admin.firestore.FieldValue.serverTimestamp(),
+      })
+      .catch(() => {})
+  }
+})
+
+/**
+ * Trigger 2: onDocumentCreated('ai_feedback_triggers/{triggerId}')
+ * Triggered whenever the app UI writes a trigger document, e.g. when tapping "Run AI"
+ */
+exports.processAiFeedbackOnTrigger = onDocumentCreated('ai_feedback_triggers/{triggerId}', async (event) => {
+  const snap = event.data
+  if (!snap) return
+  const data = snap.data()
+  if (!data || data.status !== 'pending') return
+
+  const db = admin.firestore()
+  try {
+    const pendingSnap = await db
+      .collection('ai_feedbacks')
+      .where('status', 'in', ['pending', 'pending_review', 'pending_weekly_review'])
+      .limit(10)
+      .get()
+
+    if (pendingSnap.empty) {
+      await snap.ref.update({
+        status: 'completed',
+        processedCount: 0,
+        message: 'All feedback items are already up to date. 0 pending.',
+        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+      })
+      return
+    }
+
+    const results = []
+    for (const doc of pendingSnap.docs) {
+      const res = await processSingleFeedbackWithGemini(doc.data(), doc.id, db)
+      results.push(res)
+    }
+
+    await snap.ref.update({
+      status: 'completed',
+      processedCount: results.length,
+      results,
+      completedAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+    logger.info(`processAiFeedbackOnTrigger: Successfully processed ${results.length} feedbacks.`)
+  } catch (err) {
+    logger.error(`Error in processAiFeedbackOnTrigger for ${event.params.triggerId}:`, err)
+    await snap.ref
+      .update({
+        status: 'failed',
+        error: err.message,
+        failedAt: admin.firestore.FieldValue.serverTimestamp(),
+      })
+      .catch(() => {})
+  }
+})
+
+/**
+ * Callable Function: triggerAiFeedbackProcessing
+ * Called directly from the frontend "Run AI" button for instant synchronous processing & resolution feedback
+ */
+exports.triggerAiFeedbackProcessing = onCall(async (request) => {
+  if (!request.auth) {
+    throw new Error('Authentication required')
+  }
+
+  const db = admin.firestore()
+  const { feedbackId } = request.data || {}
+
+  try {
+    let targets = []
+    if (feedbackId) {
+      const doc = await db.collection('ai_feedbacks').doc(feedbackId).get()
+      if (doc.exists) {
+        targets.push(doc)
+      }
+    } else {
+      const snap = await db
+        .collection('ai_feedbacks')
+        .where('status', 'in', ['pending', 'pending_review', 'pending_weekly_review'])
+        .limit(15)
+        .get()
+      targets = snap.docs
+    }
+
+    if (targets.length === 0) {
+      return {
+        success: true,
+        processedCount: 0,
+        message: 'No pending feedbacks in queue. All systems up to date!',
+        results: [],
+      }
+    }
+
+    const results = []
+    for (const doc of targets) {
+      const res = await processSingleFeedbackWithGemini(doc.data(), doc.id, db)
+      results.push(res)
+    }
+
+    return {
+      success: true,
+      processedCount: results.length,
+      message: `Successfully processed ${results.length} feedback item(s) into active AI memories.`,
+      results,
+    }
+  } catch (err) {
+    logger.error('Error in triggerAiFeedbackProcessing callable:', err)
+    throw new Error(err.message || 'Failed to process feedback')
+  }
+})
+
