@@ -2981,13 +2981,17 @@ Our 5 products are: Anjani 200ml (Boxes), Bailey 250ml (Cases), Bailey 500ml (Ca
 NOTE: All walk-in, unnamed, or counter retail sales are always consolidated into a single master order/invoice for "Retail" to keep order logs clean.
 ACCOUNTS & CASH CUSTODY: Delivery staff Nilesh and Hiteshbhai collect cash on routes. Cash can be handed over partially or fully to Counter (Jigneshbhai) or Bank. Staff expenses (e.g. diesel, vehicle repairs) are debited from their cash custody.
 STAFF TASKS: Annapurna tracks real delivery, jar collection, and customer follow-up tasks in the Jobs database. If asked about staff tasks or daily work for Nilesh or Hiteshbhai: ONLY refer to the actual registered tasks in our system shown in the ACTIVE STAFF TASKS context below. If there are no active tasks, state clearly that there are currently no pending tasks in the Anjani Water system. NEVER invent, hallucinate, or suggest general office, generic corporate, or hypothetical tasks.
-ORDER DELIVERY REMINDERS & FOLLOW-UPS: If the user asks to remind or message Nilesh, Hiteshbhai, or the driver about pending/open orders (e.g. "Remind Nilesh for it", "Remind driver", "Nilesh ne message karo"), treat this as an immediate delivery reminder for the open order(s), NOT a generic office task. State that an SMS/WhatsApp delivery reminder can be dispatched directly to Nilesh via MacroDroid.`
+ORDER DELIVERY REMINDERS & FOLLOW-UPS: If the user asks to remind or message Nilesh, Hiteshbhai, or the driver about pending/open orders (e.g. "Remind Nilesh for it", "Remind driver", "Nilesh ne message karo"), treat this as an immediate delivery reminder for the open order(s), NOT a generic office task. State that an SMS/WhatsApp delivery reminder can be dispatched directly to Nilesh via MacroDroid.
+FOLLOW-UP COMMANDS: When the user asks follow-up questions or commands (e.g. "update date as tomorrow", "change time to 11 AM", "reschedule for tomorrow", "what is the location?", "remind Nilesh"), resolve them using the active client or order referenced in the conversation history.`
 
       const safeHistory = Array.isArray(conversationHistory)
-        ? conversationHistory.slice(-3).map((m) => ({
-            role: m.sender === 'user' ? 'user' : 'model',
-            parts: [{ text: String(m.text || '').slice(0, 300) }],
-          }))
+        ? conversationHistory
+            .filter((m) => m && m.text && String(m.text).trim().length > 0)
+            .slice(-5)
+            .map((m) => ({
+              role: m.sender === 'user' ? 'user' : 'model',
+              parts: [{ text: String(m.text || '').slice(0, 500) }],
+            }))
         : []
 
       const parts = [{ text: `${systemPrompt}${contextInjections}\n\nUser: ${rawText.slice(0, 500)}` }]

@@ -373,6 +373,271 @@ export function parseQuantityUpdateIntent(query, store = {}) {
 }
 
 /**
+ * Parses queries intending to reschedule, postpone, or update delivery date for an order.
+ * E.g., "Update date as tomorrow", "Change date to tomorrow", "Reschedule for tomorrow",
+ * "Postpone to tomorrow", "Kal no order karo", "Update date as today".
+ *
+ * @param {string} rawQ
+ * @param {Object} store
+ * @returns {Object|null}
+ */
+export function parseDateUpdateIntent(rawQ, store = {}) {
+  if (!rawQ || typeof rawQ !== 'string') return null
+  const normQ = rawQ.trim().toLowerCase()
+
+  // Guard: Not creating a brand new order like "order 30 box tomorrow" or "new order tomorrow"
+  if (/(?:create\s+order|new\s+order|place\s+order|book\s+order|\border\s+\d+|\b\d+\s*box)\b/i.test(normQ)) {
+    return null
+  }
+
+  // Guard: Not a location update
+  if (/(?:maps?\.app\.goo\.gl|google\.com\/maps)/i.test(normQ) || /(?:this\s+is\s+location|update\s+location)/i.test(normQ)) {
+    return null
+  }
+
+  const isDateUpdatePattern =
+    /(?:update|change|reschedule|postpone|shift|move|badlo|karo)\s*(?:the\s*)?(?:delivery\s*)?(?:order\s*)?date\b/i.test(normQ) ||
+    /(?:delivery\s*)?(?:order\s*)?date\s*(?:update|change|badlo|karo)\b/i.test(normQ) ||
+    /^(?:update|change|shift|move)\s+(?:date|delivery\s+date|order\s+date)?\s*(?:as|to|for|mate)\s*(?:tomorrow|today|kal|aaje|\d{1,2})/i.test(normQ) ||
+    /^(?:reschedule|postpone|shift)\s*(?:order|delivery|it|this)?\s*(?:as|to|for|mate)?\s*(?:tomorrow|today|kal|aaje|\d{1,2})/i.test(normQ) ||
+    /^(?:reschedule|postpone)\s*(?:order|delivery|it|this)?\s*$/i.test(normQ) ||
+    /^(?:kal|tomorrow)\s+(?:no\s+order\s+karo|delivery\s+karjo|karjo|karo)$/i.test(normQ) ||
+    /^(?:aaje|today)\s+(?:no\s+order\s+karo|delivery\s+karjo|karjo|karo)$/i.test(normQ) ||
+    /^(?:tarikh|date)\s+(?:change|badlo|update)\s*(?:karo|karjo)?$/i.test(normQ)
+
+  if (!isDateUpdatePattern) return null
+
+  const now = new Date()
+  let targetDate = null
+  let targetDateLabel = ''
+
+  if (/(?:tomorrow|kal|aavtikal|aavtikale)/i.test(normQ)) {
+    const tm = new Date(now)
+    tm.setDate(tm.getDate() + 1)
+    const tmYyyy = tm.getFullYear()
+    const tmMm = String(tm.getMonth() + 1).padStart(2, '0')
+    const tmDd = String(tm.getDate()).padStart(2, '0')
+    targetDate = `${tmYyyy}-${tmMm}-${tmDd}`
+    targetDateLabel = `Tomorrow (${tm.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })})`
+  } else if (/(?:today|aaj|aaje)/i.test(normQ)) {
+    const yyyy = now.getFullYear()
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    const dd = String(now.getDate()).padStart(2, '0')
+    targetDate = `${yyyy}-${mm}-${dd}`
+    targetDateLabel = `Today (${now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })})`
+  } else {
+    const isoMatch = normQ.match(/\b(\d{4})-(\d{2})-(\d{2})\b/)
+    if (isoMatch) {
+      targetDate = `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`
+      targetDateLabel = targetDate
+    } else {
+      const ddmmyyyy = normQ.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/)
+      if (ddmmyyyy) {
+        const d = String(parseInt(ddmmyyyy[1], 10)).padStart(2, '0')
+        const m = String(parseInt(ddmmyyyy[2], 10)).padStart(2, '0')
+        const y = ddmmyyyy[3] ? (ddmmyyyy[3].length === 2 ? `20${ddmmyyyy[3]}` : ddmmyyyy[3]) : String(now.getFullYear())
+        targetDate = `${y}-${m}-${d}`
+        targetDateLabel = targetDate
+      } else {
+        const monthNames = {
+          jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+          jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+        }
+        const monMatch = normQ.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*(?:\s+(\d{4}))?\b/i)
+        if (monMatch) {
+          const d = String(parseInt(monMatch[1], 10)).padStart(2, '0')
+          const m = monthNames[monMatch[2].toLowerCase().slice(0, 3)] || '11'
+          const y = monMatch[3] || String(now.getFullYear())
+          targetDate = `${y}-${m}-${d}`
+          targetDateLabel = `${monMatch[1]} ${monMatch[2].slice(0, 3)}`
+        }
+      }
+    }
+  }
+
+  // 2. Extract client & order context
+  let matchedClient = matchClientFromText(rawQ, store.clients || [])
+  let contextOrder = null
+
+  if (!matchedClient && Array.isArray(store.recentMessages)) {
+    const ctx = extractContextualClientAndOrder(store.recentMessages, store.clients || [])
+    if (ctx.clientName || ctx.order) {
+      matchedClient = ctx.client
+      contextOrder = ctx.order
+    }
+  }
+
+  // Check recentMessages backward for orders_list or order_draft if contextOrder is missing
+  if (!contextOrder && Array.isArray(store.recentMessages)) {
+    for (let i = store.recentMessages.length - 1; i >= 0; i--) {
+      const m = store.recentMessages[i]
+      if (m.type === 'orders_list' && Array.isArray(m.data?.orders) && m.data.orders.length > 0) {
+        contextOrder = m.data.orders[0]
+        break
+      }
+      if (m.data?.order) {
+        contextOrder = m.data.order
+        break
+      }
+      if (m.type === 'order_draft' && m.data) {
+        contextOrder = m.data
+        break
+      }
+    }
+  }
+
+  // If client matched but order not found yet, check store.orders
+  if (matchedClient && !contextOrder && Array.isArray(store.orders)) {
+    const clientNameNorm = (matchedClient.displayName || matchedClient.name || '').toLowerCase()
+    contextOrder = store.orders.find((o) => {
+      const isCancelled = o.status === 'cancelled' || o.isCancelled === true
+      const isDelivered = o.status === 'delivered' || o.status === 'Delivered'
+      const matchName = (o.clientName || o.name || '').toLowerCase().includes(clientNameNorm)
+      return !isCancelled && !isDelivered && matchName
+    })
+  }
+
+  const clientName = matchedClient?.displayName || matchedClient?.name || contextOrder?.clientName || contextOrder?.name || null
+
+  const tm = new Date(now)
+  tm.setDate(tm.getDate() + 1)
+  const tmStr = `${tm.getFullYear()}-${String(tm.getMonth() + 1).padStart(2, '0')}-${String(tm.getDate()).padStart(2, '0')}`
+  const tmLabel = `Tomorrow (${tm.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })})`
+
+  return {
+    handled: true,
+    type: 'update_date',
+    data: {
+      targetDate,
+      targetDateLabel: targetDateLabel || targetDate,
+      client: matchedClient,
+      clientName,
+      order: contextOrder,
+      rawQuery: rawQ,
+    },
+    text: targetDate
+      ? (clientName
+          ? `📅 Reschedule delivery for **${clientName}** to **${targetDateLabel || targetDate}**?`
+          : `📅 Reschedule delivery date to **${targetDateLabel || targetDate}**?`)
+      : (clientName
+          ? `📅 When would you like to reschedule the delivery for **${clientName}**?`
+          : `📅 When would you like to reschedule the delivery?`),
+    chips: targetDate
+      ? [
+          {
+            label: `Confirm: Move to ${targetDateLabel || targetDate} ✓`,
+            action: 'apply_order_date',
+            date: targetDate,
+            data: { targetDate, order: contextOrder, clientName },
+          },
+          { label: 'View Orders', action: 'view_orders' },
+        ]
+      : [
+          {
+            label: tmLabel,
+            action: 'apply_order_date',
+            date: tmStr,
+            data: { targetDate: tmStr, order: contextOrder, clientName },
+          },
+          { label: 'View Orders', action: 'view_orders' },
+        ],
+  }
+}
+
+/**
+ * Parses queries intending to update delivery time for an order.
+ * E.g., "Update time as 11 AM", "Deliver at 4 PM", "Time 11 AM karjo".
+ *
+ * @param {string} rawQ
+ * @param {Object} store
+ * @returns {Object|null}
+ */
+export function parseTimeUpdateIntent(rawQ, store = {}) {
+  if (!rawQ || typeof rawQ !== 'string') return null
+  const normQ = rawQ.trim().toLowerCase()
+
+  // Guard: Not creating a brand new order like "order 30 box tomorrow 11 am"
+  if (/(?:create\s+order|new\s+order|place\s+order|book\s+order|\border\s+\d+|\b\d+\s*box)\b/i.test(normQ)) {
+    return null
+  }
+
+  const timeMatch =
+    normQ.match(/(?:update|change|set|deliver\s*at|at)?\s*(?:the\s*)?(?:delivery\s*)?time\s*(?:as|to|is|for)?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i) ||
+    normQ.match(/\btime\s*[:=]?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i) ||
+    normQ.match(/^(?:deliver|dispatch|delivery)\s+(?:at|by)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i) ||
+    normQ.match(/^(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s+(?:time\s+karjo|time\s+karo|deliver\s+karjo)$/i)
+
+  if (!timeMatch || !timeMatch[1]) return null
+
+  const rawTimeStr = timeMatch[1].trim()
+  if (!/^(?:\d{1,2}:\d{2}|\d{1,2}\s*(?:am|pm)|\d{1,2}:\d{2}\s*(?:am|pm))$/i.test(rawTimeStr)) {
+    return null
+  }
+
+  const targetTime = rawTimeStr.toUpperCase()
+
+  let matchedClient = matchClientFromText(rawQ, store.clients || [])
+  let contextOrder = null
+
+  if (!matchedClient && Array.isArray(store.recentMessages)) {
+    const ctx = extractContextualClientAndOrder(store.recentMessages, store.clients || [])
+    if (ctx.clientName || ctx.order) {
+      matchedClient = ctx.client
+      contextOrder = ctx.order
+    }
+  }
+
+  if (!contextOrder && Array.isArray(store.recentMessages)) {
+    for (let i = store.recentMessages.length - 1; i >= 0; i--) {
+      const m = store.recentMessages[i]
+      if (m.type === 'orders_list' && Array.isArray(m.data?.orders) && m.data.orders.length > 0) {
+        contextOrder = m.data.orders[0]
+        break
+      }
+      if (m.data?.order) {
+        contextOrder = m.data.order
+        break
+      }
+      if (m.type === 'order_draft' && m.data) {
+        contextOrder = m.data
+        break
+      }
+    }
+  }
+
+  if (matchedClient && !contextOrder && Array.isArray(store.orders)) {
+    const clientNameNorm = (matchedClient.displayName || matchedClient.name || '').toLowerCase()
+    contextOrder = store.orders.find((o) => {
+      const isCancelled = o.status === 'cancelled' || o.isCancelled === true
+      const isDelivered = o.status === 'delivered' || o.status === 'Delivered'
+      const matchName = (o.clientName || o.name || '').toLowerCase().includes(clientNameNorm)
+      return !isCancelled && !isDelivered && matchName
+    })
+  }
+
+  const clientName = matchedClient?.displayName || matchedClient?.name || contextOrder?.clientName || contextOrder?.name || null
+
+  return {
+    handled: true,
+    type: 'update_time',
+    data: {
+      time: targetTime,
+      client: matchedClient,
+      clientName,
+      order: contextOrder,
+      rawQuery: rawQ,
+    },
+    text: clientName
+      ? `⏰ Delivery time for **${clientName}** updated to **${targetTime}**.`
+      : `⏰ Order delivery time updated to **${targetTime}**.`,
+    chips: [
+      { label: `Set to ${targetTime} ✓`, action: 'apply_order_time', time: targetTime, data: { time: targetTime, order: contextOrder, clientName } },
+      { label: 'View Orders', action: 'view_orders' },
+    ],
+  }
+}
+
+/**
  * Constructs a human-like, polite delivery reminder SMS/WhatsApp message for delivery staff.
  *
  * @param {Object} options
@@ -452,6 +717,22 @@ export function tryLocalIntentRoute(query, store = {}) {
   const qtyUpdateRoute = parseQuantityUpdateIntent(rawQ, store)
   if (qtyUpdateRoute && qtyUpdateRoute.handled) {
     return qtyUpdateRoute
+  }
+
+  // ==========================================
+  // SEQUENCE 0.55: ORDER DATE RESCHEDULE UPDATE (Zero tokens & Instant response)
+  // ==========================================
+  const dateUpdateRoute = parseDateUpdateIntent(rawQ, store)
+  if (dateUpdateRoute && dateUpdateRoute.handled) {
+    return dateUpdateRoute
+  }
+
+  // ==========================================
+  // SEQUENCE 0.58: ORDER DELIVERY TIME UPDATE (Zero tokens & Instant response)
+  // ==========================================
+  const timeUpdateRoute = parseTimeUpdateIntent(rawQ, store)
+  if (timeUpdateRoute && timeUpdateRoute.handled) {
+    return timeUpdateRoute
   }
 
   // ==========================================
@@ -564,17 +845,33 @@ export function tryLocalIntentRoute(query, store = {}) {
         rawText: rawQ,
       },
       text:
-        `📍 **Location Detected for ${clientDisplayName}**:\n\n` +
-        (effectiveMapLink ? `• **Google Maps**: [Open Map Location](${effectiveMapLink})\n` : '') +
-        (coordsStr ? `• **Coordinates**: \`${coordsStr}\`\n` : '') +
-        (targetOrder
-          ? `• **Associated Order**: Order #${targetOrder.id?.slice(-6) || 'Pending'} (${targetOrder.date || 'Active'})\n`
-          : '') +
-        `\n*AI has recognized this as a location update. No duplicate order was created.*`,
+        `📍 **Location Saved for ${clientDisplayName}**${targetOrder ? ` (Order #${targetOrder.id?.slice(-6) || 'Pending'})` : ''}:\n` +
+        `• [Open Map Location](${effectiveMapLink})` +
+        (coordsStr ? ` • \`${coordsStr}\`` : ''),
       chips: [
         targetOrder
-          ? { label: `Save to ${clientDisplayName}'s Order`, action: 'save_order_location' }
-          : { label: `Save to ${clientDisplayName}`, action: 'save_client_location' },
+          ? {
+              label: `Saved to ${clientDisplayName}'s Order ✓`,
+              action: 'save_order_location',
+              data: {
+                mapLink: effectiveMapLink,
+                lat: parsedLoc?.lat || null,
+                lng: parsedLoc?.lng || null,
+                client: matchedClient,
+                order: targetOrder,
+              },
+            }
+          : {
+              label: `Saved to ${clientDisplayName} ✓`,
+              action: 'save_client_location',
+              data: {
+                mapLink: effectiveMapLink,
+                lat: parsedLoc?.lat || null,
+                lng: parsedLoc?.lng || null,
+                client: matchedClient,
+                order: targetOrder,
+              },
+            },
         { label: 'View Orders', action: 'view_orders' },
       ],
     }

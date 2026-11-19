@@ -763,6 +763,101 @@ export default function AiAssistantDrawer({
       handleDeliverOrder(chip.order)
       return
     }
+    if (chip.action === 'save_order_location' || chip.action === 'save_client_location') {
+      const { mapLink, lat, lng, client, order } = chip.data || {}
+      if (order?.id) {
+        try {
+          await updateOrder(order.id, {
+            mapLink: mapLink || '',
+            location: mapLink || order.location || '',
+            locationLat: lat ?? null,
+            locationLng: lng ?? null,
+          })
+          toast.success(`Location saved to Order #${order.id.slice(-6)}!`)
+        } catch (err) {
+          toast.error('Failed to save location to order: ' + err.message)
+        }
+      }
+      if (client?.id) {
+        try {
+          await updateClient(client.id, {
+            mapLink: mapLink || '',
+            location: mapLink || client.location || '',
+            locationLat: lat ?? null,
+            locationLng: lng ?? null,
+          })
+          toast.success(`Location saved to ${client.displayName || client.name}!`)
+        } catch (err) {
+          toast.error('Failed to save location to client: ' + err.message)
+        }
+      }
+      return
+    }
+    if (chip.action === 'apply_order_date') {
+      const targetDate = chip.date || chip.data?.targetDate
+      const targetOrder = chip.order || chip.data?.order
+      const clientName = chip.data?.clientName || targetOrder?.clientName || targetOrder?.name
+      if (targetOrder?.id && targetDate) {
+        try {
+          await updateOrder(targetOrder.id, {
+            date: targetDate,
+            deliveryDate: targetDate,
+          })
+          toast.success(`Order rescheduled to ${targetDate}`)
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: `📅 **Order Rescheduled**: Moved **${clientName || 'Order'}** to **${targetDate}**.`,
+              type: 'update_date_confirm',
+              isLocal: true,
+              timestamp: new Date(),
+            },
+          ])
+        } catch (err) {
+          toast.error('Failed to reschedule order: ' + err.message)
+        }
+      }
+      return
+    }
+    if (chip.action === 'apply_order_time') {
+      const targetTime = chip.time || chip.data?.time
+      const targetOrder = chip.order || chip.data?.order
+      const clientName = chip.data?.clientName || targetOrder?.clientName || targetOrder?.name
+      if (targetOrder?.id && targetTime) {
+        try {
+          await updateOrder(targetOrder.id, {
+            time: targetTime,
+            deliveryTime: targetTime,
+          })
+          toast.success(`Delivery time set to ${targetTime}`)
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: `⏰ **Delivery Time Updated**: Set to **${targetTime}** for **${clientName || 'Order'}**.`,
+              type: 'update_time_confirm',
+              isLocal: true,
+              timestamp: new Date(),
+            },
+          ])
+        } catch (err) {
+          toast.error('Failed to update delivery time: ' + err.message)
+        }
+      }
+      return
+    }
+    if (chip.action === 'view_orders') {
+      if (onNavigateTab) {
+        onNavigateTab('orders')
+        onClose?.()
+      } else {
+        handleSend('orders')
+      }
+      return
+    }
     if (chip.action === 'manual_feedback_check') {
       handleTriggerFeedbackCheck()
       return
@@ -1138,6 +1233,212 @@ export default function AiAssistantDrawer({
           setActiveCardSheet(null)
           localRoute.data.action?.onSelect?.()
           return
+        }
+
+        if (localRoute.type === 'location_update') {
+          const { mapLink, lat, lng, client, order } = localRoute.data || {}
+          let savedTarget = ''
+
+          if (order?.id) {
+            try {
+              await updateOrder(order.id, {
+                mapLink: mapLink || '',
+                location: mapLink || order.location || '',
+                locationLat: lat ?? null,
+                locationLng: lng ?? null,
+              })
+              savedTarget = `Order #${order.id.slice(-6)}`
+            } catch (err) {
+              console.error('Failed to auto-save order location:', err)
+            }
+          }
+
+          if (client?.id) {
+            try {
+              await updateClient(client.id, {
+                mapLink: mapLink || '',
+                location: mapLink || client.location || '',
+                locationLat: lat ?? null,
+                locationLng: lng ?? null,
+              })
+              if (!savedTarget) {
+                savedTarget = client.displayName || client.name
+              }
+            } catch (err) {
+              console.error('Failed to auto-save client location:', err)
+            }
+          }
+
+          toast.success(savedTarget ? `Location saved to ${savedTarget}!` : 'Location saved!')
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: localRoute.text,
+              type: localRoute.type,
+              data: localRoute.data,
+              chips: localRoute.chips,
+              isLocal: true,
+              timestamp: new Date(),
+            },
+          ])
+          return
+        }
+
+        if (localRoute.type === 'update_date') {
+          const { targetDate, targetDateLabel, order, client, clientName } = localRoute.data || {}
+          let targetOrder = order
+
+          if (!targetOrder) {
+            for (let i = messages.length - 1; i >= 0; i--) {
+              const m = messages[i]
+              if (m.type === 'orders_list' && Array.isArray(m.data?.orders) && m.data.orders.length > 0) {
+                targetOrder = clientName
+                  ? (m.data.orders.find((o) => (o.clientName || o.name)?.toLowerCase().includes(clientName.toLowerCase())) || m.data.orders[0])
+                  : m.data.orders[0]
+                break
+              }
+              if (m.type === 'order_draft' && m.data) {
+                targetOrder = m.data
+                break
+              }
+              if (m.data?.order) {
+                targetOrder = m.data.order
+                break
+              }
+            }
+          }
+
+          if (targetOrder?.id && targetDate) {
+            try {
+              await updateOrder(targetOrder.id, {
+                date: targetDate,
+                deliveryDate: targetDate,
+              })
+
+              const updatedOrderObj = {
+                ...targetOrder,
+                date: targetDate,
+                deliveryDate: targetDate,
+              }
+
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  if (msg.type === 'orders_list' && Array.isArray(msg.data?.orders)) {
+                    const updatedOrders = msg.data.orders.map((o) =>
+                      o.id === targetOrder.id ? updatedOrderObj : o
+                    )
+                    return { ...msg, data: { ...msg.data, orders: updatedOrders } }
+                  }
+                  if (msg.type === 'order_draft' && msg.data?.id === targetOrder.id) {
+                    return { ...msg, data: updatedOrderObj }
+                  }
+                  return msg
+                })
+              )
+
+              toast.success(`Order date updated to ${targetDateLabel || targetDate}`)
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `📅 **Order Rescheduled**: Moved **${targetOrder.clientName || targetOrder.name || clientName || 'Order'}**'s delivery to **${targetDateLabel || targetDate}**.`,
+                  type: 'update_date_confirm',
+                  data: { order: updatedOrderObj, date: targetDate },
+                  chips: [
+                    { label: "📦 Tomorrow's Orders", value: 'tomorrow orders' },
+                    { label: "📦 Today's Orders", value: 'today orders' },
+                    { label: 'View Orders', action: 'view_orders' },
+                  ],
+                  isLocal: true,
+                  timestamp: new Date(),
+                },
+              ])
+              return
+            } catch (err) {
+              console.error('Failed to reschedule order:', err)
+              toast.error('Failed to update order date')
+            }
+          }
+        }
+
+        if (localRoute.type === 'update_time') {
+          const { time, order, client, clientName } = localRoute.data || {}
+          let targetOrder = order
+
+          if (!targetOrder) {
+            for (let i = messages.length - 1; i >= 0; i--) {
+              const m = messages[i]
+              if (m.type === 'orders_list' && Array.isArray(m.data?.orders) && m.data.orders.length > 0) {
+                targetOrder = clientName
+                  ? (m.data.orders.find((o) => (o.clientName || o.name)?.toLowerCase().includes(clientName.toLowerCase())) || m.data.orders[0])
+                  : m.data.orders[0]
+                break
+              }
+              if (m.type === 'order_draft' && m.data) {
+                targetOrder = m.data
+                break
+              }
+              if (m.data?.order) {
+                targetOrder = m.data.order
+                break
+              }
+            }
+          }
+
+          if (targetOrder?.id && time) {
+            try {
+              await updateOrder(targetOrder.id, {
+                time: time,
+                deliveryTime: time,
+              })
+
+              const updatedOrderObj = {
+                ...targetOrder,
+                time: time,
+                deliveryTime: time,
+              }
+
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  if (msg.type === 'orders_list' && Array.isArray(msg.data?.orders)) {
+                    const updatedOrders = msg.data.orders.map((o) =>
+                      o.id === targetOrder.id ? updatedOrderObj : o
+                    )
+                    return { ...msg, data: { ...msg.data, orders: updatedOrders } }
+                  }
+                  if (msg.type === 'order_draft' && msg.data?.id === targetOrder.id) {
+                    return { ...msg, data: updatedOrderObj }
+                  }
+                  return msg
+                })
+              )
+
+              toast.success(`Delivery time updated to ${time}`)
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `⏰ **Delivery Time Updated**: Set delivery time to **${time}** for **${targetOrder.clientName || targetOrder.name || clientName || 'Order'}**.`,
+                  type: 'update_time_confirm',
+                  data: { order: updatedOrderObj, time },
+                  chips: [
+                    { label: 'View Orders', action: 'view_orders' },
+                  ],
+                  isLocal: true,
+                  timestamp: new Date(),
+                },
+              ])
+              return
+            } catch (err) {
+              console.error('Failed to update order time:', err)
+              toast.error('Failed to update order time')
+            }
+          }
         }
 
         if (localRoute.type === 'update_price') {
@@ -1779,10 +2080,20 @@ export default function AiAssistantDrawer({
         imageBase64: filePayload?.base64 || null,
         mimeType: filePayload?.mimeType || 'image/jpeg',
         mode: apiMode,
-        conversationHistory: messages.slice(-3).map((m) => ({
-          sender: m.sender,
-          text: m.text,
-        })),
+        conversationHistory: messages.slice(-5).map((m) => {
+          let content = m.text || ''
+          if (!content && m.type === 'orders_list' && Array.isArray(m.data?.orders)) {
+            content = `[Orders displayed: ${m.data.orders.map((o) => `${o.clientName || o.name || 'Order'} (${o.qty || 1} boxes ${o.sku || '200ml'}, date: ${o.date || o.deliveryDate || 'today'}, location: ${o.location || o.address || 'none'})`).join('; ')}]`
+          } else if (!content && m.type === 'order_draft' && m.data) {
+            content = `[Order draft displayed: ${m.data.clientName || 'Customer'} - ${m.data.qty || 1} boxes ${m.data.sku || '200ml'}, date: ${m.data.deliveryDate || m.data.date}]`
+          } else if (!content && m.type === 'retail_sales' && Array.isArray(m.data?.sales)) {
+            content = `[Sales batch displayed: ${m.data.sales.map((s) => `${s.clientName}: ${s.totalQty || 1} boxes`).join(', ')}]`
+          }
+          return {
+            sender: m.sender,
+            text: content || (m.sender === 'user' ? 'User message' : 'Assistant response'),
+          }
+        }),
       })
 
       const resData = response.data || {}

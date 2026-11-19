@@ -432,8 +432,8 @@ describe('aiIntentRouter', () => {
     expect(result).not.toBeNull()
     expect(result.handled).toBe(true)
     expect(result.type).toBe('location_update')
-    expect(result.text).toContain('Location Detected for Maruti caterers')
-    expect(result.text).toContain('No duplicate order was created')
+    expect(result.text).toContain('Location Saved for Maruti caterers')
+    expect(result.text).toContain('[Open Map Location]')
     expect(result.data.mapLink).toBe('https://maps.app.goo.gl/DGYmDSZJb7YwMu1D9')
     expect(result.data.order?.id).toBe('ord-maruti-1')
   })
@@ -840,6 +840,70 @@ describe('aiIntentRouter', () => {
     expect(res3.data.deliveryTime).toBe('4 PM')
     expect(res3.data.deliveryDate).toBe(tomorrowStr)
     expect(res3.data.address).toBe('Jashan Lawns')
+  })
+
+  it('routes "Update date as tomorrow" to update_date with contextual order from previous orders_list (Feedback 13MqWHESzA7yEqnizl83)', () => {
+    const tm = new Date()
+    tm.setDate(tm.getDate() + 1)
+    const tmYyyy = tm.getFullYear()
+    const tmMm = String(tm.getMonth() + 1).padStart(2, '0')
+    const tmDd = String(tm.getDate()).padStart(2, '0')
+    const tomorrowStr = `${tmYyyy}-${tmMm}-${tmDd}`
+
+    const fakeStore = {
+      clients: [{ id: 'c-afzal', name: 'Afzal Mansuri', displayName: 'Afzal Mansuri' }],
+      recentMessages: [
+        {
+          id: 'msg-prev',
+          sender: 'assistant',
+          type: 'orders_list',
+          data: {
+            orders: [
+              {
+                id: 'GIvkcCrDjDHan1UnRsSB',
+                clientName: 'Afzal Mansuri',
+                clientId: 'c-afzal',
+                qty: 60,
+                sku: 'Anjani 200ml',
+                date: new Date().toISOString().split('T')[0],
+                status: 'Confirmed',
+              },
+            ],
+          },
+        },
+      ],
+    }
+
+    // 1. "Update date as tomorrow"
+    const res = tryLocalIntentRoute('Update date as tomorrow', fakeStore)
+    expect(res).not.toBeNull()
+    expect(res.handled).toBe(true)
+    expect(res.type).toBe('update_date')
+    expect(res.data.targetDate).toBe(tomorrowStr)
+    expect(res.data.clientName).toBe('Afzal Mansuri')
+    expect(res.data.order?.id).toBe('GIvkcCrDjDHan1UnRsSB')
+    expect(res.text).toContain('Afzal Mansuri')
+    expect(res.text).toContain('Reschedule delivery')
+
+    // 2. "Reschedule for tomorrow"
+    const res2 = tryLocalIntentRoute('Reschedule for tomorrow', fakeStore)
+    expect(res2.handled).toBe(true)
+    expect(res2.type).toBe('update_date')
+    expect(res2.data.targetDate).toBe(tomorrowStr)
+
+    // 3. "Postpone to tomorrow"
+    const res3 = tryLocalIntentRoute('Postpone to tomorrow', fakeStore)
+    expect(res3.handled).toBe(true)
+    expect(res3.type).toBe('update_date')
+    expect(res3.data.targetDate).toBe(tomorrowStr)
+
+    // 4. "Update time as 11 AM"
+    const res4 = tryLocalIntentRoute('Update time as 11 AM', fakeStore)
+    expect(res4.handled).toBe(true)
+    expect(res4.type).toBe('update_time')
+    expect(res4.data.time).toBe('11 AM')
+    expect(res4.data.clientName).toBe('Afzal Mansuri')
+    expect(res4.data.order?.id).toBe('GIvkcCrDjDHan1UnRsSB')
   })
 })
 
