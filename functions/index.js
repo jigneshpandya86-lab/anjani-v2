@@ -1737,6 +1737,24 @@ exports.askAnjaniAi = onCall(async (request) => {
     throw new Error('Authentication required')
   }
 
+  // Strict token budget guard: max 300 requests/day per user (caps daily costs to ~₹4/day maximum)
+  const uid = request.auth.uid || 'anonymous'
+  const todayDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+  const userRateKey = `${uid}_${todayDateStr}`
+
+  if (!global.aiRequestCounter) {
+    global.aiRequestCounter = new Map()
+  }
+  if (global.aiRequestCounter.size > 2000) {
+    global.aiRequestCounter.clear()
+  }
+  const currentUsage = global.aiRequestCounter.get(userRateKey) || 0
+  const DAILY_MAX_REQUESTS = 300
+  if (currentUsage >= DAILY_MAX_REQUESTS) {
+    throw new Error(`Daily AI token budget limit reached (${DAILY_MAX_REQUESTS} requests/day). Limit resets at midnight IST.`)
+  }
+  global.aiRequestCounter.set(userRateKey, currentUsage + 1)
+
   const {
     text,
     imageBase64,
@@ -1762,15 +1780,15 @@ exports.askAnjaniAi = onCall(async (request) => {
   const skuSlangBlock = formatSkuSlangForPrompt()
   const clientNames =
     Array.isArray(knownClients) && knownClients.length > 0
-      ? knownClients
-      : await getKnownCustomerNames()
+      ? knownClients.slice(0, 100)
+      : (await getKnownCustomerNames()).slice(0, 100)
   const knownClientsBlock = formatKnownClientsForPrompt(clientNames)
   const activeTasks = await getActiveStaffTasks()
   const tasksBlock = formatActiveTasksForPrompt(activeTasks)
   const contextInjections = `${memoriesBlock}${skuSlangBlock}${knownClientsBlock}${tasksBlock}`
   const primaryModelName = aiSettings.activeModel || 'gemini-2.5-flash-lite'
   const fallbackModelName = aiSettings.fallbackModel || 'gemini-2.5-flash'
-  const chatMaxTokens = Math.min(Number(aiSettings.maxOutputTokens) || 800, 1500)
+  const chatMaxTokens = 500 // Strict output token limit for operational agent
   const jsonMaxTokens = 3500
   const temperature = Number(aiSettings.temperature) || 0.15
 
@@ -2964,47 +2982,98 @@ ${rawText.slice(0, 3000)}`
       }
 
 
-      // General conversational chat reply
+      // General operational intent agent (Strict token ceiling: 500 maxOutputTokens)
       const model = vertexAI.getGenerativeModel({
         model: modelName,
         generationConfig: {
-          maxOutputTokens: chatMaxTokens,
-          temperature,
-          responseMimeType: 'text/plain',
+          maxOutputTokens: 500,
+          temperature: 0.1,
+          responseMimeType: 'application/json',
         },
       })
 
-      const systemPrompt = `You are the concise and helpful AI Assistant for Annapurna Foods (distributor for Anjani & Bailey Packaged Drinking Water in Vadodara, owned by Jignesh Pandya).
-Help with water orders, stock, clients, accounts, cash custody, and inquiries in English, Gujarati, or Hindi.
-Keep your answer clear, polite, and under 120 words.
-Our 5 products are: Anjani 200ml (Boxes), Bailey 250ml (Cases), Bailey 500ml (Cases), Bailey 1 Liter (Cases), Bailey 2 Liter (Cases).
-NOTE: All walk-in, unnamed, or counter retail sales are always consolidated into a single master order/invoice for "Retail" to keep order logs clean.
-ACCOUNTS & CASH CUSTODY: Delivery staff Nilesh and Hiteshbhai collect cash on routes. Cash can be handed over partially or fully to Counter (Jigneshbhai) or Bank. Staff expenses (e.g. diesel, vehicle repairs) are debited from their cash custody.
-STAFF TASKS: Annapurna tracks real delivery, jar collection, and customer follow-up tasks in the Jobs database. If asked about staff tasks or daily work for Nilesh or Hiteshbhai: ONLY refer to the actual registered tasks in our system shown in the ACTIVE STAFF TASKS context below. If there are no active tasks, state clearly that there are currently no pending tasks in the Anjani Water system. NEVER invent, hallucinate, or suggest general office, generic corporate, or hypothetical tasks.
-ORDER DELIVERY REMINDERS & FOLLOW-UPS: If the user asks to remind or message Nilesh, Hiteshbhai, or the driver about pending/open orders (e.g. "Remind Nilesh for it", "Remind driver", "Nilesh ne message karo"), treat this as an immediate delivery reminder for the open order(s), NOT a generic office task. State that an SMS/WhatsApp delivery reminder can be dispatched directly to Nilesh via MacroDroid.
-FOLLOW-UP COMMANDS: When the user asks follow-up questions or commands (e.g. "update date as tomorrow", "change time to 11 AM", "reschedule for tomorrow", "what is the location?", "remind Nilesh"), resolve them using the active client or order referenced in the conversation history.`
+      const now = new Date()
+      // Real-time IST date stamps for 100% deterministic relative date understanding
+      const istToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now)
+      const tmDate = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+      const istTomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(tmDate)
+      const dayAfterDate = new Date(now.getTime() + 48 * 60 * 60 * 1000)
+      const istDayAfter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dayAfterDate)
+
+      const operationalAgentPrompt = `You are an expert operations AI assistant for Annapurna Foods (distributor for Anjani & Bailey Packaged Drinking Water in Vadodara, owned by Jignesh Pandya).
+Current Date: ${istToday} (Today). Tomorrow is: ${istTomorrow}. Day after tomorrow is: ${istDayAfter}.
+The user is speaking or typing operational requests in English, Gujarati, Hindi, or Gujlish.
+
+Our 5 canonical water SKUs are:
+1. "Anjani 200ml" (unit: Box)
+2. "Bailey 250ml" (unit: Case / Box)
+3. "Bailey 500ml" (unit: Case / Box)
+4. "Bailey 1 Liter" (unit: Case / Box)
+5. "Bailey 2 Liter" (unit: Case / Box)
+
+Classify the user intent and output strict JSON:
+{
+  "type": "orders_query" | "order_create" | "location_update" | "update_date" | "update_time" | "update_price" | "update_qty" | "staff_reminder" | "chat_reply",
+  "text": string (Concise 1-sentence reply in English/Gujlish, under 25 words),
+  "data": {
+    "dateFilter": "today" | "tomorrow" | "all" | "specific",
+    "targetDate": "${istToday}" | "${istTomorrow}" | "YYYY-MM-DD",
+    "clientName": string,
+    "status": "open" | "all",
+    "mapLink": string,
+    "locationText": string,
+    "targetDateLabel": string,
+    "time": string,
+    "rate": number,
+    "qty": number,
+    "date": "YYYY-MM-DD",
+    "deliveryDate": "YYYY-MM-DD",
+    "location": string,
+    "items": [{ "sku": "Anjani 200ml", "qty": number, "rate": number }],
+    "staffName": "Nilesh" | "Hiteshbhai"
+  }
+}
+
+CRITICAL RULES:
+1. "today's pending orders", "today's open orders", "pending orders today": type: "orders_query", dateFilter: "today", targetDate: "${istToday}".
+2. "tomorrow's orders", "tomorrow's pending orders", "orders for tomorrow": type: "orders_query", dateFilter: "tomorrow", targetDate: "${istTomorrow}".
+3. Location update with map URL (e.g. "https://maps... this is location for tomorrow's maruti caterers order"): type: "location_update", clientName: "Maruti Caterers", dateFilter: "tomorrow", targetDate: "${istTomorrow}", mapLink: "https://...".
+4. Follow-up commands: When user says "update date as tomorrow", "change date to tomorrow", "update time to 11 AM", or "remind Nilesh", infer the client name from the conversation history if not explicitly stated.
+5. Order booking (e.g. "Kamleshbhai 30 box tomorrow 11 AM"): type: "order_create", clientName: "Kamleshbhai", date: "${istTomorrow}", deliveryDate: "${istTomorrow}", time: "11 AM", items: [{ sku: "Anjani 200ml", qty: 30, rate: 130 }].
+6. General conversational inquiries: type: "chat_reply", text: concise reply under 40 words.`
 
       const safeHistory = Array.isArray(conversationHistory)
         ? conversationHistory
             .filter((m) => m && m.text && String(m.text).trim().length > 0)
-            .slice(-5)
+            .slice(-4)
             .map((m) => ({
               role: m.sender === 'user' ? 'user' : 'model',
-              parts: [{ text: String(m.text || '').slice(0, 500) }],
+              parts: [{ text: String(m.text || '').slice(0, 300) }],
             }))
         : []
 
-      const parts = [{ text: `${systemPrompt}${contextInjections}\n\nUser: ${rawText.slice(0, 500)}` }]
+      const parts = [{ text: `${operationalAgentPrompt}${contextInjections}\n\nUser: ${rawText.slice(0, 800)}` }]
 
       const res = await model.generateContent({
         contents: [...safeHistory, { role: 'user', parts }],
       })
 
-      const replyText = res.response.candidates[0].content.parts[0].text.trim()
-      return {
-        type: 'chat_reply',
-        modelUsed: modelName,
-        text: replyText,
+      const rawJson = res.response.candidates[0].content.parts[0].text.trim()
+      try {
+        const parsedData = parseStructuredJson(rawJson)
+        return {
+          type: parsedData.type || 'chat_reply',
+          modelUsed: modelName,
+          text: parsedData.text || '',
+          data: parsedData.data || {},
+        }
+      } catch (jsonErr) {
+        logger.warn('Failed to parse operational response as JSON, returning plain text:', jsonErr.message)
+        return {
+          type: 'chat_reply',
+          modelUsed: modelName,
+          text: rawJson,
+        }
       }
     }
   }

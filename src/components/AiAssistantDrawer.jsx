@@ -51,6 +51,7 @@ import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
 import { findBestExistingClientMatch, findMatchingClient } from '../utils/clientMatchingUtils'
 import { ensureEnglishText, sanitizeClientForEnglish, isMerchantOrSelfName } from '../utils/textUtils'
+import { extractGoogleMapsUrl } from '../utils/locationUtils'
 import { getRecentSkuPrice, formatPaymentNarration } from '../utils/orderUtils'
 import {
   getMainMenuMessage,
@@ -2393,6 +2394,286 @@ export default function AiAssistantDrawer({
               modelUsed: resData.modelUsed,
               rawSummary: accountsData.summary,
             },
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'orders_query' || resData.type === 'orders_list') {
+        const { dateFilter, targetDate, clientName, status } = resData.data || {}
+        const allOrders = orders || []
+
+        const filtered = allOrders.filter((o) => {
+          const st = (o.status || '').toLowerCase()
+          const isCancelled = st === 'cancelled' || o.isCancelled === true
+          const isDelivered = st === 'delivered'
+          if (status === 'open' && (isCancelled || isDelivered)) return false
+          if (clientName) {
+            const cn = (o.clientName || o.name || '').toLowerCase()
+            if (!cn.includes(clientName.toLowerCase())) return false
+          }
+          if (targetDate) {
+            const od = o.deliveryDate || o.date || o.orderDate || ''
+            return od.startsWith(targetDate)
+          }
+          return !isCancelled && !isDelivered
+        })
+
+        if (filtered.length > 0) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: resData.text || '',
+              type: 'orders_list',
+              data: { orders: filtered, dateFilter, targetDate },
+              timestamp: new Date(),
+            },
+          ])
+        } else {
+          const label = dateFilter === 'tomorrow' ? "Tomorrow's" : dateFilter === 'today' ? "Today's" : ''
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: `📦 **${label} Orders**: No delivery orders scheduled for ${label ? label.toLowerCase() : 'this date'}.`,
+              type: 'orders_list',
+              data: { orders: [], dateFilter, targetDate },
+              chips: [
+                { label: "📦 Today's Orders", value: 'today orders' },
+                { label: "📦 Tomorrow's Orders", value: 'tomorrow orders' },
+                { label: '📦 All Open Orders', value: 'all open orders' },
+              ],
+              timestamp: new Date(),
+            },
+          ])
+        }
+      } else if (resData.type === 'location_update') {
+        const { clientName, targetDate, mapLink, locationText } = resData.data || {}
+        const effectiveMapLink = mapLink || extractGoogleMapsUrl(locationText || '') || ''
+        
+        let targetClient = clientName ? findMatchingClient(clientName, clients)?.client : null
+        let targetOrder = null
+
+        const activeOrders = (orders || []).filter((o) => {
+          const st = (o.status || '').toLowerCase()
+          return st !== 'cancelled' && st !== 'delivered' && o.isCancelled !== true
+        })
+
+        if (targetClient || clientName) {
+          const normName = (targetClient?.displayName || targetClient?.name || clientName || '').toLowerCase()
+          const clientOrders = activeOrders.filter((o) => {
+            const idMatch = targetClient?.id && o.clientId === targetClient.id
+            const nameMatch = (o.clientName || o.name || '').toLowerCase().includes(normName)
+            return idMatch || nameMatch
+          })
+
+          if (clientOrders.length > 0) {
+            if (targetDate) {
+              targetOrder = clientOrders.find((o) => {
+                const od = o.deliveryDate || o.date || o.orderDate || ''
+                return od.startsWith(targetDate)
+              })
+            }
+            if (!targetOrder) {
+              clientOrders.sort((a, b) => (a.deliveryDate || a.date || '').localeCompare(b.deliveryDate || b.date || ''))
+              targetOrder = clientOrders[0]
+            }
+          }
+        }
+
+        let savedTarget = ''
+        if (targetOrder?.id && effectiveMapLink) {
+          try {
+            await updateOrder(targetOrder.id, {
+              mapLink: effectiveMapLink,
+              location: effectiveMapLink,
+            })
+            savedTarget = `Order #${targetOrder.id.slice(-6)}`
+          } catch (e) {
+            console.error('Failed to update order location:', e)
+          }
+        }
+
+        if (targetClient?.id && effectiveMapLink) {
+          try {
+            await updateClient(targetClient.id, {
+              mapLink: effectiveMapLink,
+              location: effectiveMapLink,
+            })
+            if (!savedTarget) savedTarget = targetClient.displayName || targetClient.name
+          } catch (e) {
+            console.error('Failed to update client location:', e)
+          }
+        }
+
+        toast.success(savedTarget ? `Location saved to ${savedTarget}!` : 'Location saved!')
+        const displayName = targetClient?.displayName || targetClient?.name || clientName || 'Order'
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `📍 **Location Saved for ${displayName}**${targetOrder ? ` (Order #${targetOrder.id?.slice(-6)})` : ''}:\n• [Open Map Location](${effectiveMapLink})`,
+            type: 'location_update',
+            data: { mapLink: effectiveMapLink, client: targetClient, order: targetOrder },
+            chips: [
+              { label: `Saved to ${displayName} ✓`, action: 'view_orders' },
+              { label: 'View Orders', action: 'view_orders' },
+            ],
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'update_date') {
+        const { clientName, targetDate, targetDateLabel } = resData.data || {}
+        let targetOrder = null
+
+        const activeOrders = (orders || []).filter((o) => {
+          const st = (o.status || '').toLowerCase()
+          return st !== 'cancelled' && st !== 'delivered' && o.isCancelled !== true
+        })
+
+        if (clientName) {
+          const normName = clientName.toLowerCase()
+          targetOrder = activeOrders.find((o) => (o.clientName || o.name || '').toLowerCase().includes(normName))
+        }
+
+        if (!targetOrder && Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            if (m.type === 'orders_list' && Array.isArray(m.data?.orders) && m.data.orders.length > 0) {
+              targetOrder = m.data.orders[0]
+              break
+            }
+            if (m.data?.order) {
+              targetOrder = m.data.order
+              break
+            }
+          }
+        }
+
+        if (targetOrder?.id && targetDate) {
+          try {
+            await updateOrder(targetOrder.id, {
+              date: targetDate,
+              deliveryDate: targetDate,
+            })
+            toast.success(`Rescheduled to ${targetDateLabel || targetDate}!`)
+          } catch (e) {
+            console.error('Failed to update order date:', e)
+          }
+        }
+
+        const name = targetOrder?.clientName || targetOrder?.name || clientName || 'Customer'
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `📅 Rescheduled delivery for **${name}** to **${targetDateLabel || targetDate}** ✓`,
+            type: 'update_date',
+            data: { order: targetOrder, targetDate, targetDateLabel },
+            chips: [
+              { label: `Rescheduled to ${targetDateLabel || targetDate} ✓`, action: 'view_orders' },
+              { label: 'View Orders', action: 'view_orders' },
+            ],
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'update_time') {
+        const { clientName, time } = resData.data || {}
+        let targetOrder = null
+
+        const activeOrders = (orders || []).filter((o) => {
+          const st = (o.status || '').toLowerCase()
+          return st !== 'cancelled' && st !== 'delivered' && o.isCancelled !== true
+        })
+
+        if (clientName) {
+          const normName = clientName.toLowerCase()
+          targetOrder = activeOrders.find((o) => (o.clientName || o.name || '').toLowerCase().includes(normName))
+        }
+
+        if (!targetOrder && Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            if (m.type === 'orders_list' && Array.isArray(m.data?.orders) && m.data.orders.length > 0) {
+              targetOrder = m.data.orders[0]
+              break
+            }
+            if (m.data?.order) {
+              targetOrder = m.data.order
+              break
+            }
+          }
+        }
+
+        if (targetOrder?.id && time) {
+          try {
+            await updateOrder(targetOrder.id, {
+              time,
+              deliveryTime: time,
+            })
+            toast.success(`Delivery time updated to ${time}!`)
+          } catch (e) {
+            console.error('Failed to update order time:', e)
+          }
+        }
+
+        const name = targetOrder?.clientName || targetOrder?.name || clientName || 'Customer'
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `⏰ Updated delivery time for **${name}** to **${time}** ✓`,
+            type: 'update_time',
+            data: { order: targetOrder, time },
+            chips: [
+              { label: `Time ${time} ✓`, action: 'view_orders' },
+              { label: 'View Orders', action: 'view_orders' },
+            ],
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'order_create' || resData.type === 'order_draft') {
+        const draftData = resData.data || {}
+        const clientMatch = draftData.clientName ? findMatchingClient(draftData.clientName, clients)?.client : null
+        const draftOrder = {
+          clientId: clientMatch?.id || '',
+          clientName: clientMatch?.displayName || clientMatch?.name || draftData.clientName || 'Customer',
+          mobile: clientMatch?.mobile || draftData.mobile || '',
+          date: draftData.deliveryDate || draftData.date || new Date().toISOString().split('T')[0],
+          deliveryDate: draftData.deliveryDate || draftData.date || new Date().toISOString().split('T')[0],
+          time: draftData.time || '11 AM',
+          deliveryTime: draftData.time || '11 AM',
+          location: draftData.location || draftData.address || clientMatch?.address || '',
+          address: draftData.address || draftData.location || clientMatch?.address || '',
+          items: Array.isArray(draftData.items) && draftData.items.length > 0
+            ? draftData.items
+            : [{ sku: 'Anjani 200ml', qty: Number(draftData.qty) || 10, rate: Number(draftData.rate) || 130 }],
+          rate: Number(draftData.rate) || 130,
+          totalQty: Array.isArray(draftData.items)
+            ? draftData.items.reduce((s, it) => s + Number(it.qty || 0), 0)
+            : Number(draftData.qty) || 10,
+          totalAmount: Array.isArray(draftData.items)
+            ? draftData.items.reduce((s, it) => s + (Number(it.qty || 0) * Number(it.rate || 130)), 0)
+            : (Number(draftData.qty) || 10) * (Number(draftData.rate) || 130),
+        }
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: resData.text || `📦 **Drafted Order for ${draftOrder.clientName}**`,
+            type: 'order_draft',
+            data: draftOrder,
+            chips: [
+              { label: 'Confirm & Book Order', action: 'book_order', data: draftOrder },
+              { label: 'Edit Draft', action: 'edit_draft', data: draftOrder },
+            ],
             timestamp: new Date(),
           },
         ])
