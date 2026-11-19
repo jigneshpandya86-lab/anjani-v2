@@ -4520,10 +4520,13 @@ You MUST respond ONLY with a valid JSON object (enclosed in \`\`\`json ... \`\`\
     }
   }
 
-  // 3. Mark the feedback document as completed in Firestore
+  // 3. Mark the feedback document in Firestore
+  const isCodeRequired = Boolean(parsed.codeBlueprint?.isCodeChangeRequired)
+  const finalStatus = isCodeRequired ? 'code_fix_queued' : 'completed'
+
   const updatePayload = {
-    status: 'completed',
-    resolutionNotes: parsed.resolutionSummary || 'Completed by Autonomous AI Engine',
+    status: finalStatus,
+    resolutionNotes: parsed.resolutionSummary || 'Processed by Autonomous AI Engine',
     appliedRule: results.appliedRule || null,
     appliedRuleId: appliedRuleId || null,
     codeBlueprint: parsed.codeBlueprint || null,
@@ -4531,12 +4534,16 @@ You MUST respond ONLY with a valid JSON object (enclosed in \`\`\`json ... \`\`\
     processedBy: 'gemini-2.5-flash-autonomous',
   }
   await db.collection('ai_feedbacks').doc(docId).update(updatePayload)
-  logger.info(`Autonomous AI: Marked feedback ${docId} as completed.`)
+  logger.info(`Autonomous AI: Marked feedback ${docId} as ${finalStatus}.`)
 
   // 4. Send Push & In-App Notification to Owner
   try {
-    const notifTitle = '🧠 Anjani AI Memory Updated'
-    const notifBody = parsed.resolutionSummary || `Learned new rule from feedback: "${textMessage.slice(0, 60)}"`
+    const notifTitle = isCodeRequired
+      ? '📋 Feedback Analyzed (Code Fix Queued)'
+      : '🧠 AI Memory Rule Active (Immediate)'
+    const notifBody = isCodeRequired
+      ? `AI diagnosed issue: "${textMessage.slice(0, 50)}...". Memory rule saved, code deployment queued.`
+      : (parsed.resolutionSummary || `Learned new rule from feedback: "${textMessage.slice(0, 60)}"`)
     await broadcastNotification(notifBody, notifTitle, notifBody, 'ai-feedback-resolved')
   } catch (notifErr) {
     logger.warn('Autonomous AI: Failed to dispatch broadcast notification:', notifErr.message)
@@ -4680,5 +4687,35 @@ exports.triggerAiFeedbackProcessing = onCall(async (request) => {
     logger.error('Error in triggerAiFeedbackProcessing callable:', err)
     throw new Error(err.message || 'Failed to process feedback')
   }
+})
+
+/**
+ * Callable Function: notifyCorrectionDeployed
+ * Dispatches a post-deployment push notification confirming that code fixes have been deployed live to hosting.
+ */
+exports.notifyCorrectionDeployed = onCall(async (request) => {
+  if (!request.auth) {
+    throw new Error('Authentication required')
+  }
+  const {
+    title = '✅ Correction Deployed & Live',
+    message = 'Code update has been tested and deployed live.',
+    feedbackId,
+  } = request.data || {}
+  const db = admin.firestore()
+
+  if (feedbackId) {
+    await db
+      .collection('ai_feedbacks')
+      .doc(feedbackId)
+      .update({
+        status: 'completed',
+        deployedAt: admin.firestore.FieldValue.serverTimestamp(),
+      })
+      .catch(() => {})
+  }
+
+  const res = await broadcastNotification(message, title, message, 'ai-code-deployed')
+  return { success: true, notification: res }
 })
 
