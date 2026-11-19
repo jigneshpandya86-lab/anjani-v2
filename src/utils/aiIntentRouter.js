@@ -489,12 +489,21 @@ export function parseDateUpdateIntent(rawQ, store = {}) {
   // If client matched but order not found yet, check store.orders
   if (matchedClient && !contextOrder && Array.isArray(store.orders)) {
     const clientNameNorm = (matchedClient.displayName || matchedClient.name || '').toLowerCase()
-    contextOrder = store.orders.find((o) => {
-      const isCancelled = o.status === 'cancelled' || o.isCancelled === true
-      const isDelivered = o.status === 'delivered' || o.status === 'Delivered'
+    const activeClientOrders = store.orders.filter((o) => {
+      const st = (o.status || '').toLowerCase()
+      const isCancelled = st === 'cancelled' || o.isCancelled === true
+      const isDelivered = st === 'delivered'
       const matchName = (o.clientName || o.name || '').toLowerCase().includes(clientNameNorm)
       return !isCancelled && !isDelivered && matchName
     })
+    if (activeClientOrders.length > 0) {
+      activeClientOrders.sort((a, b) => {
+        const da = a.deliveryDate || a.date || ''
+        const db = b.deliveryDate || b.date || ''
+        return da.localeCompare(db)
+      })
+      contextOrder = activeClientOrders[0]
+    }
   }
 
   const clientName = matchedClient?.displayName || matchedClient?.name || contextOrder?.clientName || contextOrder?.name || null
@@ -607,12 +616,21 @@ export function parseTimeUpdateIntent(rawQ, store = {}) {
 
   if (matchedClient && !contextOrder && Array.isArray(store.orders)) {
     const clientNameNorm = (matchedClient.displayName || matchedClient.name || '').toLowerCase()
-    contextOrder = store.orders.find((o) => {
-      const isCancelled = o.status === 'cancelled' || o.isCancelled === true
-      const isDelivered = o.status === 'delivered' || o.status === 'Delivered'
+    const activeClientOrders = store.orders.filter((o) => {
+      const st = (o.status || '').toLowerCase()
+      const isCancelled = st === 'cancelled' || o.isCancelled === true
+      const isDelivered = st === 'delivered'
       const matchName = (o.clientName || o.name || '').toLowerCase().includes(clientNameNorm)
       return !isCancelled && !isDelivered && matchName
     })
+    if (activeClientOrders.length > 0) {
+      activeClientOrders.sort((a, b) => {
+        const da = a.deliveryDate || a.date || ''
+        const db = b.deliveryDate || b.date || ''
+        return da.localeCompare(db)
+      })
+      contextOrder = activeClientOrders[0]
+    }
   }
 
   const clientName = matchedClient?.displayName || matchedClient?.name || contextOrder?.clientName || contextOrder?.name || null
@@ -801,26 +819,63 @@ export function tryLocalIntentRoute(query, store = {}) {
   if (isLocationUpdateIntent && !hasExplicitOrderQty) {
     const parsedLoc = parseGoogleMapsLocation(rawQ)
     const effectiveMapLink = mapUrl || parsedLoc?.mapLink || ''
-    const matchedClient = matchClientFromText(rawQ, store.clients || [])
-    const isTomorrow = /(?:tomorrow|kal|આવતીકાલ)/i.test(rawQ)
+    let matchedClient = matchClientFromText(rawQ, store.clients || [])
+    const isTomorrow = /(?:tomorrow|kal|kale|કાલે|કાલ|આવતીકાલ)/i.test(rawQ)
+    const isToday = /(?:today|aaj|aaje|આજે|આજ)/i.test(rawQ)
+
+    const now = new Date()
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const tm = new Date(now)
+    tm.setDate(tm.getDate() + 1)
+    const tomorrowStr = `${tm.getFullYear()}-${String(tm.getMonth() + 1).padStart(2, '0')}-${String(tm.getDate()).padStart(2, '0')}`
+
+    const targetDateStr = isTomorrow ? tomorrowStr : isToday ? todayStr : null
+
+    // Fallback: check contextual client or order from recentMessages if missing in raw query
+    let contextOrder = null
+    if (!matchedClient && Array.isArray(store.recentMessages)) {
+      const ctx = extractContextualClientAndOrder(store.recentMessages, store.clients || [])
+      matchedClient = ctx.client
+      contextOrder = ctx.order
+    }
 
     // Find if there is an existing order for this client
-    let targetOrder = null
-    if (Array.isArray(store.orders) && store.orders.length > 0) {
-      const activeOrders = store.orders.filter(
-        (o) => o.status !== 'Cancelled' && o.status !== 'Delivered'
-      )
-      if (matchedClient) {
-        targetOrder =
-          activeOrders.find((o) => {
-            const clientMatch = o.clientId === matchedClient.id || o.clientName === matchedClient.name
-            if (!clientMatch) return false
-            if (isTomorrow) return o.deliveryDate?.includes('tomorrow') || o.date === 'tomorrow'
-            return true
-          }) ||
-          activeOrders.find(
-            (o) => o.clientId === matchedClient.id || o.clientName === matchedClient.name
-          )
+    let targetOrder = contextOrder
+    const allOrders = store.orders || []
+    const activeOrders = allOrders.filter((o) => {
+      const st = (o.status || '').toLowerCase()
+      return st !== 'cancelled' && st !== 'delivered' && o.isCancelled !== true
+    })
+
+    if (matchedClient) {
+      const clientNameNorm = (matchedClient.displayName || matchedClient.name || '').toLowerCase()
+      const clientOrders = activeOrders.filter((o) => {
+        const idMatch = matchedClient.id && o.clientId === matchedClient.id
+        const nameMatch = (o.clientName || o.name || '').toLowerCase().includes(clientNameNorm)
+        return idMatch || nameMatch
+      })
+
+      if (clientOrders.length > 0) {
+        if (targetDateStr) {
+          // Priority 1: Match order whose deliveryDate/date matches the specified target date
+          const matchedByDate = clientOrders.find((o) => {
+            const od = o.deliveryDate || o.date || o.orderDate || ''
+            return od.startsWith(targetDateStr)
+          })
+          if (matchedByDate) {
+            targetOrder = matchedByDate
+          }
+        }
+
+        // Priority 2: If no targetDate or no date match, pick earliest upcoming active order
+        if (!targetOrder || (targetDateStr && !(targetOrder.deliveryDate || targetOrder.date || '').startsWith(targetDateStr))) {
+          clientOrders.sort((a, b) => {
+            const da = a.deliveryDate || a.date || ''
+            const db = b.deliveryDate || b.date || ''
+            return da.localeCompare(db)
+          })
+          targetOrder = clientOrders[0]
+        }
       }
     }
 
@@ -918,16 +973,28 @@ export function tryLocalIntentRoute(query, store = {}) {
   // Must run BEFORE order creation so queries like "Order for tomorrow?"
   // or "Today's orders?" never draft fake orders! (Feedbacks QBsZq5EAdkaCNzuPI4EB & gbkpx34bt1pTIxDQqTll)
   // =========================================================================
+  const hasOrderCreationKeywords =
+    /\b(?:create\s+order|new\s+order|place\s+order|book\s+order|\border\s+\d+|\border\s+for\s+[a-z0-9]+\s+\d+)\b/i.test(q)
+  const hasExplicitQtyOrSku =
+    /(?:\b\d+\s*(?:nung|nang|નંગ|box|boxes|crate|crates|case|cases|petli|petly|patli|bhav|ભાવ|rate)\b)/i.test(q)
+  const isOrderBooking = hasOrderCreationKeywords || hasExplicitQtyOrSku
+
   const isTomorrowOrdersQuery =
-    /(?:tomorrow'?s?\s+orders?|orders?\s+(?:for\s+)?tomorrow|orders?\s+tomorrow|kal\s+(?:na|ke|naa)?\s+orders?|orders?\s+kal)/i.test(q) ||
-    /^(?:order\s+for\s+tomorrow|orders\s+for\s+tomorrow)\??$/i.test(q)
+    !isOrderBooking &&
+    (/(?:tomorrow'?s?\s+(?:open\s+|pending\s+)?(?:orders?|deliveries)|(?:orders?|deliveries)\s+(?:for\s+)?tomorrow|(?:orders?|deliveries)\s+tomorrow|kal\s+(?:na|ke|naa)?\s+(?:open\s+|pending\s+)?(?:orders?|deliveries)|(?:orders?|deliveries)\s+kal)/i.test(q) ||
+      /^(?:orders?\s+(?:for\s+)?tomorrow|tomorrow'?s?\s+(?:open\s+|pending\s+)?orders?|tomorrow\s+pending\s+orders?|pending\s+orders?\s+tomorrow|open\s+orders?\s+tomorrow)\??$/i.test(q) ||
+      (/(?:tomorrow|kal|kale|કાલે|કાલ)/i.test(q) && /(?:orders?|pending|open\s+orders?|deliveries)/i.test(q)))
 
   const isTodayOrdersQuery =
-    /(?:today'?s?\s+orders?|orders?\s+(?:for\s+)?today|deliveries\s+today|today\s+deliveries|aaj\s+(?:na|ke|naa)?\s+orders?|orders?\s+aaj)/i.test(q) ||
-    /^(?:order\s+for\s+today|orders\s+for\s+today)\??$/i.test(q)
+    !isOrderBooking &&
+    (/(?:today'?s?\s+(?:open\s+|pending\s+)?(?:orders?|deliveries)|(?:orders?|deliveries)\s+(?:for\s+)?today|(?:orders?|deliveries)\s+today|today'?s?\s+deliveries|aaj\s+(?:na|ke|naa)?\s+(?:open\s+|pending\s+)?(?:orders?|deliveries)|(?:orders?|deliveries)\s+aaj)/i.test(q) ||
+      /^(?:orders?\s+(?:for\s+)?today|today'?s?\s+(?:open\s+|pending\s+)?orders?|today\s+pending\s+orders?|pending\s+orders?\s+today|open\s+orders?\s+today)\??$/i.test(q) ||
+      (/(?:today|aaj|aaje|આજે|આજ)/i.test(q) && /(?:orders?|pending|open\s+orders?|deliveries)/i.test(q)))
 
   const isOpenOrdersQuery =
-    /(?:open\s+orders?|pending\s+orders?|pending\s+deliver|all\s+(?:open\s+)?orders?|upcoming\s+orders?|^orders\??$)/i.test(q)
+    !isOrderBooking &&
+    (/(?:open\s+orders?|pending\s+orders?|pending\s+deliver|all\s+(?:open\s+)?orders?|upcoming\s+orders?|^orders\??$)/i.test(q) ||
+      /^(?:pending\s+orders?|open\s+orders?)\??$/i.test(q))
 
   if (isTomorrowOrdersQuery || isTodayOrdersQuery || isOpenOrdersQuery) {
     const allOrders = store.orders || []
@@ -943,9 +1010,11 @@ export function tryLocalIntentRoute(query, store = {}) {
       const formatTomorrow = tm.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 
       const tomorrowOrders = allOrders.filter((o) => {
-        const isCancelled = o.status === 'cancelled' || o.isCancelled === true
-        const isDelivered = o.status === 'delivered' || o.status === 'Delivered'
-        const matchDate = o.deliveryDate === tomorrowStr || o.date === tomorrowStr
+        const st = (o.status || '').toLowerCase()
+        const isCancelled = st === 'cancelled' || o.isCancelled === true
+        const isDelivered = st === 'delivered'
+        const od = o.deliveryDate || o.date || o.orderDate || ''
+        const matchDate = od.startsWith(tomorrowStr)
         return !isCancelled && !isDelivered && matchDate
       })
 
@@ -961,7 +1030,7 @@ export function tryLocalIntentRoute(query, store = {}) {
         handled: true,
         type: 'orders_list',
         text: `📦 **Tomorrow's Orders (${formatTomorrow})**: No delivery orders scheduled for tomorrow.`,
-        data: { orders: [] },
+        data: { orders: [], dateFilter: 'tomorrow', targetDate: tomorrowStr },
         chips: [
           { label: "📦 Today's Orders", value: "today orders" },
           { label: '📦 All Open Orders', value: 'all open orders' },
@@ -977,9 +1046,11 @@ export function tryLocalIntentRoute(query, store = {}) {
       const formatToday = now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 
       const todayOrders = allOrders.filter((o) => {
-        const isCancelled = o.status === 'cancelled' || o.isCancelled === true
-        const isDelivered = o.status === 'delivered' || o.status === 'Delivered'
-        const matchDate = o.deliveryDate === todayStr || o.date === todayStr
+        const st = (o.status || '').toLowerCase()
+        const isCancelled = st === 'cancelled' || o.isCancelled === true
+        const isDelivered = st === 'delivered'
+        const od = o.deliveryDate || o.date || o.orderDate || ''
+        const matchDate = od.startsWith(todayStr)
         return !isCancelled && !isDelivered && matchDate
       })
 
@@ -991,14 +1062,33 @@ export function tryLocalIntentRoute(query, store = {}) {
           data: { orders: todayOrders, dateFilter: 'today', targetDate: todayStr },
         }
       }
+
+      const tm = new Date(now)
+      tm.setDate(tm.getDate() + 1)
+      const tmStr = `${tm.getFullYear()}-${String(tm.getMonth() + 1).padStart(2, '0')}-${String(tm.getDate()).padStart(2, '0')}`
+      const tomorrowCount = allOrders.filter((o) => {
+        const st = (o.status || '').toLowerCase()
+        const isCancelled = st === 'cancelled' || o.isCancelled === true
+        const isDelivered = st === 'delivered'
+        const od = o.deliveryDate || o.date || o.orderDate || ''
+        return !isCancelled && !isDelivered && od.startsWith(tmStr)
+      }).length
+
+      const openCount = allOrders.filter((o) => {
+        const st = (o.status || '').toLowerCase()
+        const isCancelled = st === 'cancelled' || o.isCancelled === true
+        const isDelivered = st === 'delivered'
+        return !isCancelled && !isDelivered
+      }).length
+
       return {
         handled: true,
         type: 'orders_list',
         text: `📦 **Today's Orders (${formatToday})**: No delivery orders scheduled for today.`,
-        data: { orders: [] },
+        data: { orders: [], dateFilter: 'today', targetDate: todayStr },
         chips: [
-          { label: "📦 Tomorrow's Orders", value: 'tomorrow orders' },
-          { label: '📦 All Open Orders', value: 'all open orders' },
+          { label: `📦 Tomorrow's Orders${tomorrowCount ? ` (${tomorrowCount})` : ''}`, value: 'tomorrow orders' },
+          { label: `📦 All Open Orders${openCount ? ` (${openCount})` : ''}`, value: 'all open orders' },
         ],
       }
     }
@@ -1006,8 +1096,9 @@ export function tryLocalIntentRoute(query, store = {}) {
     // General Open / Pending Orders query
     let pendingOrders = allOrders
       .filter((o) => {
-        const isCancelled = o.status === 'cancelled' || o.isCancelled === true
-        const isDelivered = o.status === 'delivered' || o.status === 'Delivered'
+        const st = (o.status || '').toLowerCase()
+        const isCancelled = st === 'cancelled' || o.isCancelled === true
+        const isDelivered = st === 'delivered'
         return !isCancelled && !isDelivered
       })
       .sort((a, b) => ((a.deliveryDate || a.date || '') > (b.deliveryDate || b.date || '') ? 1 : -1))

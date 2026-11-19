@@ -905,5 +905,100 @@ describe('aiIntentRouter', () => {
     expect(res4.data.clientName).toBe('Afzal Mansuri')
     expect(res4.data.order?.id).toBe('GIvkcCrDjDHan1UnRsSB')
   })
+
+  it('correctly filters today vs tomorrow for open/pending orders queries', () => {
+    const now = new Date()
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const tm = new Date(now)
+    tm.setDate(tm.getDate() + 1)
+    const tomorrowStr = `${tm.getFullYear()}-${String(tm.getMonth() + 1).padStart(2, '0')}-${String(tm.getDate()).padStart(2, '0')}`
+
+    const fakeStore = {
+      clients: [{ id: 'c1', name: 'Maruti Caterers' }],
+      orders: [
+        {
+          id: 'ord-tomorrow',
+          clientName: 'Maruti Caterers',
+          clientId: 'c1',
+          date: tomorrowStr,
+          deliveryDate: tomorrowStr,
+          status: 'Confirmed',
+          qty: 84,
+        },
+      ],
+    }
+
+    // 1. "Today's pending orders?" should not return tomorrow orders
+    const resTodayPending = tryLocalIntentRoute("Today's pending orders?", fakeStore)
+    expect(resTodayPending.handled).toBe(true)
+    expect(resTodayPending.type).toBe('orders_list')
+    expect(resTodayPending.data.orders).toHaveLength(0)
+    expect(resTodayPending.text).toContain('No delivery orders scheduled for today')
+    expect(resTodayPending.chips.some((c) => c.value === 'tomorrow orders')).toBe(true)
+
+    // 2. "Today's open orders"
+    const resTodayOpen = tryLocalIntentRoute("Today's open orders", fakeStore)
+    expect(resTodayOpen.handled).toBe(true)
+    expect(resTodayOpen.data.orders).toHaveLength(0)
+
+    // 3. "Tomorrow's pending orders"
+    const resTmPending = tryLocalIntentRoute("Tomorrow's pending orders", fakeStore)
+    expect(resTmPending.handled).toBe(true)
+    expect(resTmPending.type).toBe('orders_list')
+    expect(resTmPending.data.orders).toHaveLength(1)
+    expect(resTmPending.data.orders[0].id).toBe('ord-tomorrow')
+
+    // 4. "Tomorrow's open orders"
+    const resTmOpen = tryLocalIntentRoute("Tomorrow's open orders", fakeStore)
+    expect(resTmOpen.handled).toBe(true)
+    expect(resTmOpen.data.orders).toHaveLength(1)
+    expect(resTmOpen.data.orders[0].id).toBe('ord-tomorrow')
+  })
+
+  it('selects the correct order by date when saving location for tomorrow', () => {
+    const now = new Date()
+    const tm = new Date(now)
+    tm.setDate(tm.getDate() + 1)
+    const tomorrowStr = `${tm.getFullYear()}-${String(tm.getMonth() + 1).padStart(2, '0')}-${String(tm.getDate()).padStart(2, '0')}`
+    const dayAfter = new Date(now)
+    dayAfter.setDate(dayAfter.getDate() + 2)
+    const dayAfterStr = `${dayAfter.getFullYear()}-${String(dayAfter.getMonth() + 1).padStart(2, '0')}-${String(dayAfter.getDate()).padStart(2, '0')}`
+
+    const fakeStore = {
+      clients: [{ id: 'c-maruti', name: 'Maruti Caterers', displayName: 'Maruti Caterers' }],
+      orders: [
+        {
+          id: 'ord-dayafter',
+          clientName: 'Maruti Caterers',
+          clientId: 'c-maruti',
+          date: dayAfterStr,
+          deliveryDate: dayAfterStr,
+          status: 'Confirmed',
+          qty: 84,
+        },
+        {
+          id: 'ord-tomorrow',
+          clientName: 'Maruti Caterers',
+          clientId: 'c-maruti',
+          date: tomorrowStr,
+          deliveryDate: tomorrowStr,
+          status: 'Confirmed',
+          qty: 84,
+        },
+      ],
+    }
+
+    const query =
+      'https://maps.app.goo.gl/zhy35VaFNRsV6jhq7?g_st=ac This is the location for tomorrow\'s maruti caterers order'
+    const res = tryLocalIntentRoute(query, fakeStore)
+
+    expect(res).not.toBeNull()
+    expect(res.handled).toBe(true)
+    expect(res.type).toBe('location_update')
+    expect(res.data.mapLink).toBe('https://maps.app.goo.gl/zhy35VaFNRsV6jhq7?g_st=ac')
+    expect(res.data.order).not.toBeNull()
+    expect(res.data.order.id).toBe('ord-tomorrow')
+    expect(res.text).toContain('Maruti Caterers')
+  })
 })
 
