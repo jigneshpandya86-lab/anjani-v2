@@ -60,6 +60,7 @@ import {
   executeFlowSave,
   FLOW_TYPES,
   MAIN_MENU_CHIPS,
+  MAIN_MENU_GROUPS,
 } from '../utils/chatbotFlowEngine'
 import {
   checkIsDayTime,
@@ -3591,21 +3592,36 @@ export default function AiAssistantDrawer({
         {/* Message Thread */}
         <div ref={messagesContainerRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50/50">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-start text-center pt-0 pb-2 px-1 text-gray-700 select-none space-y-2">
-              {/* Main Menu Action Chips (2-column layout on both mobile and desktop) */}
-              <div className="w-full max-w-sm grid grid-cols-2 gap-1.5 sm:gap-2 text-left">
-                {MAIN_MENU_CHIPS.map((chip) => (
-                  <button
-                    key={chip.id}
-                    type="button"
-                    onClick={() => handleChipClick(chip)}
-                    className={`p-2 sm:p-2.5 rounded-xl border text-[11px] sm:text-xs font-bold flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer shadow-2xs hover:scale-[1.02] active:scale-95 ${
-                      chip.color || 'bg-white text-gray-800 border-gray-200 hover:bg-gray-50'
-                    }`}
-                  >
-                    <span className="truncate">{chip.label}</span>
-                  </button>
-                ))}
+            <div className="flex flex-col items-center justify-start text-center pt-0 pb-2 px-1 text-gray-700 select-none space-y-2.5">
+              {/* Grouped Main Menu Quick Action Cards (Feedback tlO7mZsbuOd1QWs4NEXb) */}
+              <div className="w-full max-w-sm space-y-2 text-left">
+                {MAIN_MENU_GROUPS.map((group) => {
+                  const groupChips = MAIN_MENU_CHIPS.filter((c) => group.chipIds.includes(c.id))
+                  return (
+                    <div
+                      key={group.title}
+                      className="bg-white/90 rounded-xl p-2 border border-gray-200/70 shadow-2xs space-y-1.5"
+                    >
+                      <div className="text-[10px] font-bold tracking-wider text-gray-500 uppercase px-0.5">
+                        {group.title}
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {groupChips.map((chip) => (
+                          <button
+                            key={chip.id}
+                            type="button"
+                            onClick={() => handleChipClick(chip)}
+                            className={`p-2 rounded-lg border text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs hover:scale-[1.02] active:scale-95 ${
+                              chip.color || 'bg-white text-gray-800 border-gray-200 hover:bg-gray-50'
+                            }`}
+                          >
+                            <span className="truncate">{chip.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           ) : (

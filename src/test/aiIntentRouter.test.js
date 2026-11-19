@@ -273,6 +273,38 @@ describe('aiIntentRouter', () => {
     expect(res.data.text).toContain('collect empty jars')
   })
 
+  it('handles conversational task requests like "Ask nilesh to call Bhavesh" without triggering cash custody (Feedback iD3c2mV8AbJL64dc58a3)', () => {
+    const fakeStore = {
+      accountsSummary: { nilesh: 0, hiteshbhai: 0, counter: 0, bank: 0 },
+      staffList: [
+        { id: 'nilesh', name: 'Nilesh', mobile: '7990943652' },
+        { id: 'hiteshbhai', name: 'Hiteshbhai', mobile: '7778077617' },
+      ],
+    }
+    const res = tryLocalIntentRoute('Ask nilesh to call Bhavesh', fakeStore)
+    expect(res).not.toBeNull()
+    expect(res.handled).toBe(true)
+    expect(res.type).toBe('staff_task_draft')
+    expect(res.type).not.toBe('accounts_summary')
+    expect(res.data.assignedTo).toBe('nilesh')
+    expect(res.data.assignedStaffName).toBe('Nilesh')
+    expect(res.data.text.toLowerCase()).toBe('call bhavesh')
+
+    // Tell Hitesh variation
+    const resHitesh = tryLocalIntentRoute('Tell hitesh to deliver 10 jars to Radhe', fakeStore)
+    expect(resHitesh).not.toBeNull()
+    expect(resHitesh.type).toBe('staff_task_draft')
+    expect(resHitesh.data.assignedTo).toBe('hiteshbhai')
+    expect(resHitesh.data.assignedStaffName).toBe('Hiteshbhai')
+    expect(resHitesh.data.text.toLowerCase()).toBe('deliver 10 jars to radhe')
+
+    // Cash queries should still route cleanly to accounts_summary
+    const resCash = tryLocalIntentRoute('nilesh cash', fakeStore)
+    expect(resCash).not.toBeNull()
+    expect(resCash.type).toBe('accounts_summary')
+    expect(resCash.data.specificAccount).toBe('nilesh')
+  })
+
   it('handles price and rate update commands locally with zero tokens', () => {
     const fakeStore = {
       clients: [{ id: 'c1', name: 'Maruti Caterers', mobile: '9825012345', rate: 130 }],

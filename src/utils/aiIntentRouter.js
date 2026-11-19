@@ -1728,8 +1728,8 @@ export function tryLocalIntentRoute(query, store = {}) {
 
   // 4D. Staff Cash Custody & Accounts Overview (Nilesh, Hiteshbhai, Counter, Bank)
   const cashCustodyPatterns = [
-    /nilesh/i,
-    /hitesh/i,
+    /(?:nilesh|hitesh)\s*(?:nu\s+|no\s+|paase\s+|ke\s+paas\s+)?(?:cash|rokhad|rokda|custody|hath\s+ma|paase|hisaab|bal|balance)\b/i,
+    /(?:cash|custody|balance|hisaab|rokhad|rokda|collection)\s+(?:with|of|by|for)?\s*(?:nilesh|hitesh)\b/i,
     /cash in hand/i,
     /staff cash/i,
     /cash custody/i,
@@ -1798,7 +1798,10 @@ export function tryLocalIntentRoute(query, store = {}) {
   // ==========================================
   const isTaskCreation =
     /(?:assign\s+ta[sk]k?s?|create\s+ta[sk]k?s?|new\s+ta[sk]k?s?|add\s+ta[sk]k?s?|follow\s*up\s+ta[sk]k?s?|ta[sk]k?\s+for|kaam\s+aapo|kaam\s+sopo)\b/i.test(q) ||
-    (/(?:remind|follow\s*up\s+with)\s+(?:nilesh|hitesh|staff|driver)\b/i.test(q) && /(?:to|about|for|regarding)\b/i.test(q))
+    (/(?:remind|follow\s*up\s+with)\s+(?:nilesh|hitesh|staff|driver)\b/i.test(q) && /(?:to|about|for|regarding)\b/i.test(q)) ||
+    (/(?:ask|tell|kaho|bolo|janavo)\s+(?:nilesh|hitesh|staff|driver)\b/i.test(q) && /(?:to|ke|mate|for|about)\b/i.test(q)) ||
+    /^(?:ask|tell|kaho|bolo)\s+(?:nilesh|hitesh|staff|driver)\s+/i.test(q) ||
+    /^(?:nilesh|hitesh|staff|driver)\s*(?:ne|ko)?\s*(?:kaho|bolo|tell|ask)\s+/i.test(q)
 
   if (isTaskCreation) {
     const isFollowUp = /(?:follow\s*up|reminder|recheck|revisit)\b/i.test(q)
@@ -1829,6 +1832,8 @@ export function tryLocalIntentRoute(query, store = {}) {
     let taskText = rawQ
       .replace(/^(?:assign\s+ta[sk]k?s?\s+to|create\s+ta[sk]k?s?\s+for|new\s+ta[sk]k?s?\s+for|add\s+ta[sk]k?s?\s+for|follow\s*up\s+ta[sk]k?s?\s+for|ta[sk]k?\s+for|kaam\s+aapo|kaam\s+sopo)\s+/i, '')
       .replace(/^(?:remind|follow\s*up\s+with)\s+(?:nilesh|hitesh|staff|driver)\s+(?:to|about|for|regarding)\s+/i, '')
+      .replace(/^(?:ask|tell|say\s+to|kaho|bolo|janavo)\s+(?:nilesh|hitesh|staff|driver)\s+(?:to|ke|mate|for|about)?\s*/i, '')
+      .replace(/^(?:nilesh|hitesh|staff|driver)\s*(?:ne|ko)?\s*(?:kaho|bolo|tell|ask)\s+(?:to|ke|mate|for|about)?\s*/i, '')
       .replace(/^(?:nilesh|hiteshbhai|hitesh)\s*(?:ne|ko)?\s*(?:ta[sk]k?s?|kaam)?\s*[:=]?\s*/i, '')
       .replace(/\b(?:by\s+tomorrow|tomorrow|by\s+today|today|kale|kal)\b/gi, '')
       .replace(/^[;:,-\s]+/, '')

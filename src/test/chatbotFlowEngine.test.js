@@ -18,6 +18,7 @@ import {
   getPopularRatesForSku,
   FLOW_TYPES,
   MAIN_MENU_CHIPS,
+  MAIN_MENU_GROUPS,
 } from '../utils/chatbotFlowEngine'
 
 describe('WhatsApp-Style Chatbot Flow Engine', () => {
@@ -52,6 +53,27 @@ describe('WhatsApp-Style Chatbot Flow Engine', () => {
     expect(menu.chips.some((c) => c.flow === FLOW_TYPES.PAYMENT)).toBe(true)
     expect(menu.chips.some((c) => c.flow === FLOW_TYPES.CASH_HANDOVER)).toBe(true)
     expect(menu.chips.some((c) => c.flow === FLOW_TYPES.STAFF_ADVANCE)).toBe(true)
+  })
+
+  it('groups related main menu quick options into 5 logical categories (Feedback tlO7mZsbuOd1QWs4NEXb)', () => {
+    expect(MAIN_MENU_GROUPS).toHaveLength(5)
+    
+    // Group 1: Orders & Deliveries
+    const ordersGroup = MAIN_MENU_GROUPS.find((g) => g.title.includes('Orders'))
+    expect(ordersGroup).toBeDefined()
+    expect(ordersGroup.chipIds).toContain('flow_order')
+    expect(ordersGroup.chipIds).toContain('quick_orders')
+
+    // Group 2: Staff Tasks & Follow-up
+    const tasksGroup = MAIN_MENU_GROUPS.find((g) => g.title.includes('Tasks'))
+    expect(tasksGroup).toBeDefined()
+    expect(tasksGroup.chipIds).toContain('flow_task')
+    expect(tasksGroup.chipIds).toContain('quick_tasks')
+
+    // All chips are covered across groups
+    const totalGroupedChips = MAIN_MENU_GROUPS.flatMap((g) => g.chipIds)
+    expect(totalGroupedChips).toHaveLength(MAIN_MENU_CHIPS.length)
+    expect(new Set(totalGroupedChips).size).toBe(MAIN_MENU_CHIPS.length)
   })
 
   describe('1. Expense Flow', () => {

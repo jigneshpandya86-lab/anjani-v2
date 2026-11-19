@@ -36,16 +36,48 @@ export const FLOW_TYPES = {
 }
 
 export const MAIN_MENU_CHIPS = [
-  { id: 'quick_orders', label: '📦 Orders & Deliveries', action: 'query_orders', color: 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100' },
-  { id: 'flow_task', label: '📋 Assign Staff Task', flow: FLOW_TYPES.STAFF_TASK, color: 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100' },
-  { id: 'quick_tasks', label: '⏰ Staff Tasks & Follow-up', action: 'query_tasks', color: 'bg-cyan-50 text-cyan-700 border-cyan-200 hover:bg-cyan-100' },
-  { id: 'flow_expense', label: '💸 Record Expense', flow: FLOW_TYPES.EXPENSE, color: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100' },
-  { id: 'flow_order', label: '📦 Book Order', flow: FLOW_TYPES.ORDER, color: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' },
-  { id: 'flow_payment', label: '💰 Receive Payment (Jama)', flow: FLOW_TYPES.PAYMENT, color: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' },
-  { id: 'flow_cash', label: '🤝 Cash Handover', flow: FLOW_TYPES.CASH_HANDOVER, color: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' },
-  { id: 'flow_staff', label: '🚚 Staff Advance', flow: FLOW_TYPES.STAFF_ADVANCE, color: 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100' },
-  { id: 'quick_stock', label: '📊 Check Stock', action: 'query_stock', color: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' },
-  { id: 'quick_dues', label: '💳 Outstanding Dues', action: 'query_dues', color: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' },
+  // 1. Orders & Deliveries
+  { id: 'flow_order', label: '📦 Book Order', flow: FLOW_TYPES.ORDER, category: 'Orders & Deliveries', color: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' },
+  { id: 'quick_orders', label: '📦 Orders & Deliveries', action: 'query_orders', category: 'Orders & Deliveries', color: 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100' },
+
+  // 2. Staff Tasks & Follow-up
+  { id: 'flow_task', label: '📋 Assign Staff Task', flow: FLOW_TYPES.STAFF_TASK, category: 'Staff Tasks & Follow-up', color: 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100' },
+  { id: 'quick_tasks', label: '⏰ Staff Tasks & Follow-up', action: 'query_tasks', category: 'Staff Tasks & Follow-up', color: 'bg-cyan-50 text-cyan-700 border-cyan-200 hover:bg-cyan-100' },
+
+  // 3. Billing & Expenses
+  { id: 'flow_payment', label: '💰 Receive Payment (Jama)', flow: FLOW_TYPES.PAYMENT, category: 'Billing & Expenses', color: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' },
+  { id: 'flow_expense', label: '💸 Record Expense', flow: FLOW_TYPES.EXPENSE, category: 'Billing & Expenses', color: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100' },
+
+  // 4. Route Cash & Staff Advance
+  { id: 'flow_cash', label: '🤝 Cash Handover', flow: FLOW_TYPES.CASH_HANDOVER, category: 'Route Cash & Staff Advance', color: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' },
+  { id: 'flow_staff', label: '🚚 Staff Advance', flow: FLOW_TYPES.STAFF_ADVANCE, category: 'Route Cash & Staff Advance', color: 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100' },
+
+  // 5. Reports & Stock
+  { id: 'quick_dues', label: '💳 Outstanding Dues', action: 'query_dues', category: 'Reports & Stock', color: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' },
+  { id: 'quick_stock', label: '📊 Check Stock', action: 'query_stock', category: 'Reports & Stock', color: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' },
+]
+
+export const MAIN_MENU_GROUPS = [
+  {
+    title: 'Orders & Dispatch',
+    chipIds: ['flow_order', 'quick_orders'],
+  },
+  {
+    title: 'Staff Tasks & Operations',
+    chipIds: ['flow_task', 'quick_tasks'],
+  },
+  {
+    title: 'Payments & Expenses',
+    chipIds: ['flow_payment', 'flow_expense'],
+  },
+  {
+    title: 'Cash & Staff Advances',
+    chipIds: ['flow_cash', 'flow_staff'],
+  },
+  {
+    title: 'Reports & Balances',
+    chipIds: ['quick_dues', 'quick_stock'],
+  },
 ]
 
 export const EXPENSE_CATEGORIES = [

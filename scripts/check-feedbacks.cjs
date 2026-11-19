@@ -5,7 +5,7 @@ const https = require('https');
 const cfg = JSON.parse(fs.readFileSync(path.join(process.env.HOME, '.config/configstore/firebase-tools.json'), 'utf8'));
 const token = cfg.tokens.access_token;
 
-const req = https.request('https://firestore.googleapis.com/v1/projects/anjaniappnew/databases/(default)/documents/ai_feedbacks?pageSize=30', {
+const req = https.request('https://firestore.googleapis.com/v1/projects/anjaniappnew/databases/(default)/documents/ai_feedbacks?pageSize=300', {
   headers: {
     'Authorization': 'Bearer ' + token
   }
