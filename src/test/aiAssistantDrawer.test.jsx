@@ -738,4 +738,38 @@ describe('AiAssistantDrawer', () => {
 
     unmount()
   })
+
+  it('prompts user for customer and quantity when typing Book Order without rendering dummy order card', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'chat_reply',
+        text: 'Sure! Please specify the customer name and quantity (e.g. "Kamleshbhai 30 box tomorrow 11 AM").',
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Book Order' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Please specify the customer name and quantity/i)
+      ).toBeInTheDocument()
+    })
+
+    // Verify NO dummy order draft card was created
+    expect(screen.queryByText(/Confirm & Book Order/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('Total (0 units):')).not.toBeInTheDocument()
+
+    unmount()
+  })
 })

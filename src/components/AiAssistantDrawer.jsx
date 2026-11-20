@@ -1150,6 +1150,13 @@ export default function AiAssistantDrawer({
           },
         ])
       }
+      return
+    }
+
+    // 6. Universal fallback: send chip value, text, or label directly to AI agent
+    const promptToSend = chip.value || chip.text || chip.label
+    if (promptToSend) {
+      handleSend(promptToSend)
     }
   }
 
@@ -1927,6 +1934,33 @@ export default function AiAssistantDrawer({
       } else if (resData.type === 'order_create' || resData.type === 'order_draft') {
         const draftData = resData.data || {}
         const clientMatch = draftData.clientName ? findMatchingClient(draftData.clientName, clients)?.client : null
+        const rawClient = (draftData.clientName || '').toLowerCase().trim()
+        const isPlaceholderClient = !rawClient || rawClient === 'customer' || rawClient === 'client'
+
+        const hasExplicitItems =
+          (Array.isArray(draftData.items) && draftData.items.some((it) => Number(it.qty) > 0)) ||
+          Number(draftData.qty) > 0
+
+        // If no explicit customer or zero items, do not generate a dummy placeholder card
+        if ((isPlaceholderClient && !clientMatch) || !hasExplicitItems) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text:
+                resData.text ||
+                'Sure! Please specify the customer name and quantity (e.g. "Kamleshbhai 30 box tomorrow 11 AM").',
+              chips: [
+                { label: '📦 Orders & Deliveries', action: 'query_orders' },
+                { label: '📊 Check Stock', action: 'query_stock' },
+              ],
+              timestamp: new Date(),
+            },
+          ])
+          return
+        }
+
         const draftOrder = {
           clientId: clientMatch?.id || '',
           clientName: clientMatch?.displayName || clientMatch?.name || draftData.clientName || 'Customer',
@@ -3055,17 +3089,14 @@ export default function AiAssistantDrawer({
         {/* Message Thread */}
         <div ref={messagesContainerRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50/50">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-start text-center pt-0 pb-2 px-1 text-gray-700 select-none space-y-2.5">
-              {/* Grouped Main Menu Quick Action Cards (Feedback tlO7mZsbuOd1QWs4NEXb) */}
-              <div className="w-full max-w-sm space-y-2 text-left">
+            <div className="flex flex-col items-center justify-start text-center pt-0 pb-1 px-1 text-gray-700 select-none">
+              {/* Single-Card Compact Menu (Fits 100% on one page without scrolling) */}
+              <div className="w-full max-w-sm bg-white rounded-xl p-2 border border-gray-200/90 shadow-2xs space-y-1.5 text-left">
                 {MAIN_MENU_GROUPS.map((group) => {
                   const groupChips = MAIN_MENU_CHIPS.filter((c) => group.chipIds.includes(c.id))
                   return (
-                    <div
-                      key={group.title}
-                      className="bg-white/90 rounded-xl p-2 border border-gray-200/70 shadow-2xs space-y-1.5"
-                    >
-                      <div className="text-[10px] font-bold tracking-wider text-gray-500 uppercase px-0.5">
+                    <div key={group.title} className="space-y-0.5">
+                      <div className="text-[9px] font-black tracking-wider text-gray-400 uppercase px-0.5">
                         {group.title}
                       </div>
                       <div className="grid grid-cols-2 gap-1.5">
@@ -3074,7 +3105,7 @@ export default function AiAssistantDrawer({
                             key={chip.id}
                             type="button"
                             onClick={() => handleChipClick(chip)}
-                            className={`p-2 rounded-lg border text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs hover:scale-[1.02] active:scale-95 ${
+                            className={`h-7 px-2 rounded-lg border text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs hover:scale-[1.01] active:scale-95 ${
                               chip.color || 'bg-white text-gray-800 border-gray-200 hover:bg-gray-50'
                             }`}
                           >
