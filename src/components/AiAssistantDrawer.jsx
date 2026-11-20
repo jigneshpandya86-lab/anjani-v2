@@ -137,6 +137,8 @@ export default function AiAssistantDrawer({
   const fetchAiFeedbacks = useClientStore((state) => state.fetchAiFeedbacks)
   const clearAllAiFeedbacks = useClientStore((state) => state.clearAllAiFeedbacks)
   const aiFeedbacks = useClientStore((state) => state.aiFeedbacks)
+  const leads = useClientStore((state) => state.leads || [])
+  const fetchLeads = useClientStore((state) => state.fetchLeads)
 
   const [activeChatbotFlow, setActiveChatbotFlow] = useState(null)
 
@@ -237,9 +239,13 @@ export default function AiAssistantDrawer({
   }, [showLangMenu])
 
   useEffect(() => {
-    const unsub = fetchJobs?.()
-    return () => unsub?.()
-  }, [fetchJobs])
+    const unsubJobs = fetchJobs?.()
+    const unsubLeads = fetchLeads?.()
+    return () => {
+      unsubJobs?.()
+      unsubLeads?.()
+    }
+  }, [fetchJobs, fetchLeads])
 
   const handleOpenFeedbackForMessage = (msg) => {
     let snippet = ''
@@ -1132,6 +1138,19 @@ export default function AiAssistantDrawer({
       } else {
         handleSend('accounts')
       }
+      return
+    }
+    if (chip.action === 'view_leads') {
+      if (onNavigateTab) {
+        onNavigateTab('leads')
+        onClose?.()
+      } else {
+        handleSend('Show prospective leads')
+      }
+      return
+    }
+    if (chip.action === 'trigger_lead_discovery') {
+      handleSend('discover new leads with AI')
       return
     }
     if (chip.action === 'confirm_latest_payment') {
@@ -2797,7 +2816,14 @@ export default function AiAssistantDrawer({
         const numAmount = Number(amount) || 0
         if (numAmount > 0) {
           try {
-            const expDate = date ? new Date(date) : new Date()
+            let expDate = new Date()
+            if (date && typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
+              const [y, m, d] = date.trim().split('-').map(Number)
+              const now = new Date()
+              if (!(y === now.getFullYear() && m === (now.getMonth() + 1) && d === now.getDate())) {
+                expDate = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds())
+              }
+            }
             const effAcc = accountId || (paymentMode === 'online' ? 'bank' : 'counter')
             const expPayload = {
               amount: numAmount,
@@ -2932,7 +2958,14 @@ export default function AiAssistantDrawer({
           }
 
           if (targetNew > 0) {
-            const expDate = date ? new Date(date) : new Date()
+            let expDate = new Date()
+            if (date && typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
+              const [y, m, d] = date.trim().split('-').map(Number)
+              const now = new Date()
+              if (!(y === now.getFullYear() && m === (now.getMonth() + 1) && d === now.getDate())) {
+                expDate = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds())
+              }
+            }
             const effAcc = accountId || 'counter'
             const effCat = category || 'Miscellaneous'
             const effNote = note || effCat
@@ -3143,6 +3176,146 @@ export default function AiAssistantDrawer({
         } catch (err) {
           console.error('Failed to query expenses:', err)
           toast.error('Failed to query expenses')
+        }
+      } else if (resData.type === 'record_transfer') {
+        const { fromAccountId, toAccountId, amount, notes, date } = resData.data || {}
+        const numAmount = Number(amount) || 0
+        if (numAmount > 0) {
+          try {
+            const fromAcc = fromAccountId || 'nilesh'
+            const toAcc = toAccountId || 'counter'
+            let transferDate = new Date()
+            if (date && typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
+              const [y, m, d] = date.trim().split('-').map(Number)
+              const now = new Date()
+              if (!(y === now.getFullYear() && m === (now.getMonth() + 1) && d === now.getDate())) {
+                transferDate = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds())
+              }
+            }
+            await recordAccountTransfer({
+              fromAccountId: fromAcc,
+              toAccountId: toAcc,
+              amount: numAmount,
+              notes: notes || 'Cash Handover',
+              date: transferDate,
+            })
+            const fromMeta = getAccountMeta(fromAcc)
+            const toMeta = getAccountMeta(toAcc)
+            const fromName = fromMeta?.shortLabel || fromMeta?.name || fromAcc
+            const toName = toMeta?.shortLabel || toMeta?.name || toAcc
+            toast.success(`Handover of ₹${numAmount.toLocaleString('en-IN')} from ${fromName} to ${toName} recorded!`)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `🤝 **Cash Handover Recorded: ₹${numAmount.toLocaleString('en-IN')}**\n• From: **${fromName}**\n• To: **${toName}**\n• Narration: *${notes || 'Route cash handover'}*\nAccount balances synchronized ✓`,
+                type: 'cash_handover',
+                chips: [{ label: 'View Accounts', action: 'view_ledger' }],
+                timestamp: new Date(),
+              },
+            ])
+          } catch (err) {
+            toast.error('Failed to record cash handover: ' + err.message)
+          }
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: 'Please specify the handover amount (e.g. *"Nilesh handed over 5000 cash to counter"*).',
+              type: 'cash_handover',
+              timestamp: new Date(),
+            },
+          ])
+        }
+      } else if (resData.type === 'add_stock') {
+        const { sku, qty, narration } = resData.data || {}
+        const parsedQty = Number(qty) || 0
+        if (parsedQty > 0) {
+          try {
+            const targetSku = sku || 'Anjani 200ml'
+            await addStockBatch(
+              [{ sku: targetSku, qty: parsedQty, rate: 0 }],
+              narration || 'Stock Inward'
+            )
+            toast.success(`Inwarded ${parsedQty} boxes of ${targetSku}!`)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `📥 **Stock Inward Recorded**:\n• Product: **${targetSku}**\n• Quantity Inwarded: **${parsedQty} boxes**\n• Narration: *${narration || 'Stock Inward'}*\nLive warehouse stock updated ✓`,
+                type: 'stock_inward',
+                chips: [{ label: 'Check Stock', action: 'query_stock' }],
+                timestamp: new Date(),
+              },
+            ])
+          } catch (err) {
+            toast.error('Failed to record stock inward: ' + err.message)
+          }
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: 'Please specify the quantity of boxes inwarded (e.g. *"Add stock 200 boxes of Anjani 200ml from factory"*).',
+              type: 'stock_inward',
+              timestamp: new Date(),
+            },
+          ])
+        }
+      } else if (resData.type === 'query_leads') {
+        const { area } = resData.data || {}
+        let leadList = leads || []
+        if (area) {
+          const norm = area.toLowerCase().trim()
+          leadList = leadList.filter((l) => (l.area || '').toLowerCase().includes(norm) || (l.name || '').toLowerCase().includes(norm))
+        }
+        const displayLeads = leadList.slice(0, 8)
+        const leadSummary = displayLeads.length > 0
+          ? displayLeads.map((l, i) => `${i + 1}. **${l.name || 'Business'}** (${l.area || 'Vadodara'}) - 📞 ${l.mobile || 'N/A'}${l.business_type ? ` [${l.business_type}]` : ''}`).join('\n')
+          : 'No prospective leads found matching that criteria.'
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `🎯 **Prospective B2B Leads (${leadList.length} total)**:\n${leadSummary}\n\nTap below to explore leads or discover new ones:`,
+            type: 'leads_summary',
+            chips: [
+              { label: 'View Leads Tab', action: 'view_leads' },
+              { label: 'Discover New Leads', action: 'trigger_lead_discovery' },
+            ],
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'discover_leads') {
+        try {
+          const fns = getFunctions(app, 'asia-south1')
+          const triggerFn = httpsCallable(fns, 'triggerBaileyLeadDiscovery')
+          toast.loading('Running AI Lead Discovery Radar...', { id: 'lead-scan' })
+          const result = await triggerFn({ corridor: resData.data?.corridor || 'all' })
+          toast.dismiss('lead-scan')
+          const count = result.data?.addedCount ?? 0
+          toast.success(`Discovered ${count} new leads!`)
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: `✨ **AI Lead Discovery Complete!**\n• Newly added prospects: **${count}**\n• Target Product: Bailey Packaged Drinking Water\n• Deduplication applied against existing clients ✓`,
+              type: 'leads_discovery',
+              chips: [{ label: 'View Leads Tab', action: 'view_leads' }],
+              timestamp: new Date(),
+            },
+          ])
+        } catch (err) {
+          toast.dismiss('lead-scan')
+          toast.error('Lead discovery failed: ' + err.message)
         }
       } else if (resData.type === 'update_date') {
         const { clientName, targetDate, targetDateLabel } = resData.data || {}

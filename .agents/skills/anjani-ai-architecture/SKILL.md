@@ -90,3 +90,23 @@ When adding or improving AI behavior:
 - **Anti-Confusion Order Guard:** When the user specifies an expense, petty cash, or labor note (e.g. *"Record Expense of 500 Rs for Loader"*, *"Petrol kharch 300"*, *"Chai pani 120"*), the AI strictly prevents invoking `create_order` and never creates an order draft for words like "Loader", "Petrol", or "Labor".
 - **Dynamic Account Balance Synchronization:** Adding an expense debits the selected account (`counter`, `bank`, `nilesh`, `hiteshbhai`) in `accounts_summary`. Editing an expense recalculates the deltas and adjusts account balances accordingly. Deleting or cancelling an expense automatically credits back the debited amount to restore the account balance.
 - **Reporting & Telemetry (`query_expenses`):** Calculates real-time totals, category breakdowns, and individual expense logs for today, yesterday, this week, or this month.
+
+---
+
+## 9. Universal Cash Handover & Account Transfers A to Z (`record_transfer`, `query_accounts`)
+- **Direct Handover Logging:** Supports natural language commands for staff driver cash handovers and internal account deposits (e.g. *"Nilesh handed over 5000 cash to counter"*, *"Transfer 10000 from counter to bank"*).
+- **Balance Synchronization:** Invokes `recordAccountTransfer`, debiting the source account (e.g. `nilesh` custody) and crediting the target account (e.g. `counter` cash drawer) in real time.
+- **Custody Telemetry:** `query_accounts` inspects current cash in transit with drivers.
+
+---
+
+## 10. Universal Stock Inventory Engine A to Z (`add_stock`, `query_stock`)
+- **Inward Stock Receiving:** Supports recording inward stock batches from plant or factory (e.g. *"Add stock 200 boxes Anjani 200ml from factory"*, *"Inward 100 boxes Bailey 500ml"*).
+- **Warehouse Synchronization:** Invokes `addStockBatch`, incrementing live SKU balances and total warehouse units in `meta/stockSummary`.
+- **Live Inventory Telemetry:** `query_stock` reports current stock on hand across all 5 canonical SKUs.
+
+---
+
+## 11. Prospective B2B Leads Engine A to Z (`query_leads`, `discover_leads`)
+- **Lead Exploration (`query_leads`):** Allows users to search and list commercial leads discovered by AI radar (*"Show leads"*, *"Prospective clients in Manjalpur"*).
+- **AI Radar Discovery (`discover_leads`):** Triggers Vertex AI Gemini 2.5 radar on Google Cloud (`triggerBaileyLeadDiscovery`) directly from chat to scan corridors in Vadodara and onboard verified leads with deduplication against existing clients.

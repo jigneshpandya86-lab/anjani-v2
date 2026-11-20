@@ -209,6 +209,18 @@ All water products are defined centrally in `src/constants/skus.js`:
    - Strict anti-confusion guard prevents creating an order draft when an expense, petty cash, or labor note is specified.
    - Automatically debits or credits the designated account balance (`counter`, `bank`, or staff route cash) in `accounts_summary`.
 
+6. **Universal Cash Handover & Account Transfers A to Z (`record_transfer`, `query_accounts`):**
+   - Direct conversational logging for delivery staff cash handovers and bank deposits (e.g. *"Nilesh handed over 5000 cash to counter"*, *"Transfer 10000 from counter to bank"*).
+   - Atomically records the transfer and synchronizes source and destination balances in `accounts_summary`.
+
+7. **Universal Stock Inventory Engine A to Z (`add_stock`, `query_stock`):**
+   - Inward warehouse stock receiving from plant / factory (e.g. *"Add stock 200 boxes Anjani 200ml from factory"*).
+   - Real-time stock telemetry across all 5 canonical SKUs (`query_stock`).
+
+8. **Prospective B2B Leads Engine A to Z (`query_leads`, `discover_leads`):**
+   - Explores and lists active B2B prospect leads discovered by AI radar (`query_leads`).
+   - Triggers on-demand AI radar scanning (`discover_leads` calling `triggerBaileyLeadDiscovery`) to onboard new verified leads across Vadodara corridors.
+
 ---
 
 ## Commands & Verification Workflow

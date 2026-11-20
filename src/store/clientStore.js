@@ -484,7 +484,21 @@ export const useClientStore = create((set, get) => ({
     const numAmount = Number(amount)
     if (!numAmount || numAmount <= 0) throw new Error('Valid expense amount is required')
     const targetAccountId = accountId || 'counter'
-    const entryDate = date instanceof Date ? date : (date ? new Date(date) : new Date())
+    let entryDate = new Date()
+    if (date instanceof Date && !isNaN(date.getTime())) {
+      entryDate = date
+    } else if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
+      const [y, m, d] = date.trim().split('-').map(Number)
+      const now = new Date()
+      if (y === now.getFullYear() && m === (now.getMonth() + 1) && d === now.getDate()) {
+        entryDate = now
+      } else {
+        entryDate = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds())
+      }
+    } else if (date) {
+      const parsed = new Date(date)
+      if (!isNaN(parsed.getTime())) entryDate = parsed
+    }
     const payload = {
       amount: numAmount,
       category: category || 'Miscellaneous',

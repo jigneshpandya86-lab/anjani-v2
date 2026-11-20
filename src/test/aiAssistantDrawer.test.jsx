@@ -61,6 +61,8 @@ const mockDeletePayment = vi.fn()
 const mockAddExpense = vi.fn()
 const mockDeleteAccountExpense = vi.fn()
 const mockUpdateAccountExpense = vi.fn()
+const mockAddStockBatch = vi.fn()
+const mockRecordAccountTransfer = vi.fn()
 const mockAddOrder = vi.fn()
 const mockUpdateOrder = vi.fn()
 let mockOrders = [
@@ -97,7 +99,7 @@ vi.mock('../store/clientStore', () => ({
       stockSummary: {},
       stockTotal: 0,
       stockEntries: [],
-      addStockBatch: vi.fn(),
+      addStockBatch: mockAddStockBatch,
       createBatchSales: vi.fn(),
       createBatchAccountEntries: vi.fn(),
       updateOrder: mockUpdateOrder,
@@ -109,12 +111,16 @@ vi.mock('../store/clientStore', () => ({
       addExpense: mockAddExpense,
       deleteAccountExpense: mockDeleteAccountExpense,
       updateAccountExpense: mockUpdateAccountExpense,
-      recordAccountTransfer: vi.fn(),
+      recordAccountTransfer: mockRecordAccountTransfer,
       recordStaffAdvance: vi.fn(),
       staffList: [
         { id: 'nilesh', name: 'Nilesh', mobile: '7990943652' },
         { id: 'hiteshbhai', name: 'Hiteshbhai', mobile: '7778077617' },
       ],
+      leads: [
+        { id: 'lead-1', name: 'Krishna Hotel', area: 'Manjalpur', mobile: '9988776655', business_type: 'Hotel' },
+      ],
+      fetchLeads: vi.fn(),
       accountsSummary: { balances: {} },
       jobs: [
         {
@@ -1789,6 +1795,120 @@ describe('AiAssistantDrawer', () => {
     await waitFor(() => {
       expect(screen.getByText(/Expense Summary/i)).toBeInTheDocument()
       expect(screen.getByText(/₹1,000/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('records cash handover when record_transfer is invoked', async () => {
+    mockRecordAccountTransfer.mockResolvedValueOnce({ id: 'transfer-123' })
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'record_transfer',
+        data: {
+          fromAccountId: 'nilesh',
+          toAccountId: 'counter',
+          amount: 5000,
+          notes: 'Nilesh route cash handover',
+          date: '2026-11-20',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Handover 5000 from Nilesh to Counter' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockRecordAccountTransfer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fromAccountId: 'nilesh',
+          toAccountId: 'counter',
+          amount: 5000,
+          notes: 'Nilesh route cash handover',
+        })
+      )
+      expect(screen.getByText(/Cash Handover Recorded/i)).toBeInTheDocument()
+      expect(screen.getByText(/₹5,000/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('records inward stock when add_stock is invoked', async () => {
+    mockAddStockBatch.mockResolvedValueOnce({ id: 'stock-456' })
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'add_stock',
+        data: {
+          sku: 'Anjani 200ml',
+          qty: 200,
+          narration: 'Plant delivery',
+          date: '2026-11-20',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Add stock 200 boxes Anjani 200ml from factory' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockAddStockBatch).toHaveBeenCalledWith(
+        [{ sku: 'Anjani 200ml', qty: 200, rate: 0 }],
+        'Plant delivery'
+      )
+      expect(screen.getByText(/Stock Inward Recorded/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/200 boxes/i).length).toBeGreaterThanOrEqual(1)
+    })
+
+    unmount()
+  })
+
+  it('queries leads and displays matching results when query_leads is invoked', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'query_leads',
+        data: {
+          area: 'Manjalpur',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Show leads in Manjalpur' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(screen.getByText(/Prospective B2B Leads/i)).toBeInTheDocument()
+      expect(screen.getByText(/Krishna Hotel/i)).toBeInTheDocument()
     })
 
     unmount()

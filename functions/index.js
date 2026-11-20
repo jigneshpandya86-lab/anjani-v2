@@ -3072,6 +3072,67 @@ ${rawText.slice(0, 3000)}`
               accountId: { type: 'STRING', description: 'Specific account to filter by (e.g. "counter", "bank", "nilesh")' },
             },
           },
+        },
+        {
+          name: 'record_transfer',
+          description:
+            'Records a cash handover or internal account transfer (e.g. "Nilesh handed over 5000 cash to counter", "Hiteshbhai cash handover 3000", "Transfer 10000 from counter to bank", "Deposit 5000 into bank").',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              fromAccountId: {
+                type: 'STRING',
+                enum: ['nilesh', 'hiteshbhai', 'counter', 'bank'],
+                description: 'Source account or staff handing over cash (e.g. "nilesh", "hiteshbhai", "counter")',
+              },
+              toAccountId: {
+                type: 'STRING',
+                enum: ['counter', 'bank', 'nilesh', 'hiteshbhai'],
+                description: 'Destination account receiving cash (defaults to "counter" for staff handover, or "bank" for bank deposits)',
+              },
+              amount: { type: 'NUMBER', description: 'Transfer amount in INR (e.g. 5000)' },
+              notes: { type: 'STRING', description: 'Narration or note (e.g. "Route cash handover", "Bank deposit")' },
+              date: { type: 'STRING', description: 'Date in YYYY-MM-DD format (defaults to today)' },
+            },
+            required: ['amount'],
+          },
+        },
+        {
+          name: 'add_stock',
+          description:
+            'Records inward stock received at warehouse from factory/plant or adds new stock inventory (e.g. "Add stock 200 boxes Anjani 200ml received from factory", "Inward 100 boxes Bailey 500ml", "Add 50 boxes 1 Liter stock").',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              sku: { type: 'STRING', description: 'Product SKU (e.g. "Anjani 200ml", "Bailey 500ml", "Bailey 1 Liter", "Bailey 250ml")' },
+              qty: { type: 'NUMBER', description: 'Quantity of boxes inwarded (e.g. 200)' },
+              narration: { type: 'STRING', description: 'Inward note or supplier name (e.g. "Factory Delivery", "Plant Inward")' },
+            },
+            required: ['qty'],
+          },
+        },
+        {
+          name: 'query_leads',
+          description:
+            'Queries and lists prospective B2B client leads (hotels, restaurants, caterers, snack outlets) discovered by AI radar. Used for queries like "Show leads", "Show prospective clients", "List leads in Manjalpur", "B2B leads".',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              area: { type: 'STRING', description: 'Optional area or corridor filter (e.g. "Manjalpur", "Alkapuri", "Harni")' },
+              business_type: { type: 'STRING', description: 'Optional business category filter' },
+            },
+          },
+        },
+        {
+          name: 'discover_leads',
+          description:
+            'Triggers the AI lead discovery radar to find new prospective commercial customers and snack outlets in Vadodara corridors. Used for commands like "Discover new leads", "Find new leads with AI", "Run lead discovery".',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              corridor: { type: 'STRING', description: 'Specific corridor or zone to scan (e.g. "Vadodara Central", "Alkapuri", "Makarpura")' },
+            },
+          },
         }
       ]
 
@@ -3309,6 +3370,57 @@ RUNTIME CONTEXT:
               targetDate: args.targetDate || (args.dateFilter === 'yesterday' ? '' : istToday),
               category: args.category || '',
               accountId: args.accountId || '',
+            },
+          }
+        }
+
+        if (returnType === 'record_transfer') {
+          return {
+            type: 'record_transfer',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              fromAccountId: args.fromAccountId || 'nilesh',
+              toAccountId: args.toAccountId || 'counter',
+              amount: Number(args.amount) || 0,
+              notes: args.notes || '',
+              date: args.date || istToday,
+            },
+          }
+        }
+
+        if (returnType === 'add_stock') {
+          return {
+            type: 'add_stock',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              sku: args.sku || 'Anjani 200ml',
+              qty: Number(args.qty) || 0,
+              narration: args.narration || 'Stock Inward',
+            },
+          }
+        }
+
+        if (returnType === 'query_leads') {
+          return {
+            type: 'query_leads',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              area: args.area || '',
+              business_type: args.business_type || '',
+            },
+          }
+        }
+
+        if (returnType === 'discover_leads') {
+          return {
+            type: 'discover_leads',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              corridor: args.corridor || '',
             },
           }
         }
