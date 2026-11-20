@@ -2017,6 +2017,23 @@ exports.askAnjaniAi = onCall(async (request) => {
     }
   }
 
+  const loadSkillInstructions = () => {
+    try {
+      const skillPath = path.join(__dirname, 'skills/anjani-operations/SKILL.md');
+      return fs.readFileSync(skillPath, 'utf8');
+    } catch (skillErr) {
+      logger.warn('Failed to load SKILL.md from disk:', skillErr.message);
+      return '';
+    }
+  };
+
+  const now = new Date();
+  const istToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now);
+  const tmDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const istTomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(tmDate);
+  const dayAfterDate = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+  const istDayAfter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dayAfterDate);
+
   const tryGenerate = async (modelName) => {
     if (imageBase64) {
       const model = vertexAI.getGenerativeModel({
@@ -2026,391 +2043,27 @@ exports.askAnjaniAi = onCall(async (request) => {
           temperature,
           responseMimeType: 'application/json',
         },
-      })
+      });
 
-      const documentOcrPrompt = `You are an expert document and invoice OCR AI for Annapurna Foods, authorized water distributor in Vadodara, Gujarat (owned by Jignesh Pandya).
-Analyze this image. It is either:
-1. "retail_sales": A handwritten retail sales notepad, diary page, dispatch memo, or daily customer delivery note containing multiple customer orders, quantities, and payment notes.
-2. "vendor_bill": A vendor delivery challan, factory tax invoice, or supplier stock inward receipt.
-3. "accounts_cash": A staff cash settlement slip, daily cash sheet, handover note, customer collection slip, or route expense memo.
-4. "create_client": A customer bill book, estimate book, cash memo header, visiting card, business card, shop signboard, contact card, or customer pamphlet.
+      const skillInstructions = loadSkillInstructions();
+      const isAudio = mimeType && mimeType.startsWith('audio/');
+      const userTextPrompt = text ? `\nUSER SPECIFIC INSTRUCTION / NOTE: "${text}"\n` : '';
+      const modeHint = mode && mode !== 'auto' ? `\nUSER FOCUSED INTENT: "${mode}"\n` : '';
 
-Map all water products EXCLUSIVELY to our 5 canonical SKUs:
-1. "Anjani 200ml" (unit: Box)
-2. "Bailey 250ml" (unit: Case / Box)
-3. "Bailey 500ml" (unit: Case / Box)
-4. "Bailey 1 Liter" (unit: Case / Box)
-5. "Bailey 2 Liter" (unit: Case / Box)
+      const multimodalPrompt = `${skillInstructions}
 
-If it is a retail sales notepad / customer delivery list:
-IMPORTANT RULES:
-1. RETAIL CONSOLIDATION: All walk-in, cash counter, unnamed, or retail customer sales MUST BE CONSOLIDATED INTO A SINGLE order with "clientName": "Retail". NEVER create multiple separate "Retail" sales entries. Regular named business customers (e.g., specific shop names like "Jay Ambe Provision", "Rohitbhai") each get their own separate order.
-2. DIFFERENT RATES MUST REMAIN SEPARATE LINE ITEMS: If the same SKU is sold at different rates (for example: "Bailey 1 Liter 10 @ 120" and "Bailey 1 Liter 5 @ 125"), DO NOT merge them! Keep each distinct rate as its own item in the "items" array with its exact qty and rate. Only combine items if BOTH the SKU and the unit rate are identical.
-3. EXTRACT ADDRESS / DELIVERY LOCATION: If an address, delivery location, road, area, or landmark is visible or mentioned for a customer (e.g. 'Waghodia Road', 'Manjalpur', 'Opposite Bank'), ALWAYS extract it into the 'address' field in clean English Title Case.
-4. MULTI-DATE / CATERING / EVENT ORDERS: If a document or note lists multiple dates, shifts (sanje/evening, savare/morning), or venues (e.g. Party Plots), each date/event represents a SEPARATE ORDER for that client. Generate an individual entry in the "sales" array for EACH date/event, populating "date" (YYYY-MM-DD), "deliveryTime" (when "sanje" or evening set "4 PM"; when "savare" or morning set "9 AM"; when no time defined set "11 AM"), and "address" (e.g. "Balaji Party Plot Harni Road Vadodara").
+---
+RUNTIME CONTEXT:
+- Current Date: ${istToday} (Today). Tomorrow is: ${istTomorrow}. Day after tomorrow is: ${istDayAfter}.
+- Known Active Clients: ${(knownClients || []).slice(0, 150).join(', ')}
+- Available Internal Accounts: "nilesh" (delivery staff), "hiteshbhai" (delivery staff), "counter" (drawer / Jigneshbhai), "bank" (Bank / UPI).
+${modeHint}${userTextPrompt}${contextInjections}
 
-Return strict JSON:
-{
-  "docType": "retail_sales",
-  "summary": {
-    "totalOrders": number,
-    "totalQty": number,
-    "date": string (YYYY-MM-DD or as written)
-  },
-  "sales": [
-    {
-      "clientName": string (customer or shop name; for unknown, walk-in, or unnamed retail buyers, use "Retail"),
-      "mobile": string (if written, else ""),
-      "address": string (delivery address, road, area, or landmark in English if mentioned, else ""),
-      "date": string (order or event date in YYYY-MM-DD if specified, else ""),
-      "deliveryDate": string (delivery/event date in YYYY-MM-DD if specified, else ""),
-      "deliveryTime": string (delivery shift/time: set "4 PM" for sanje/evening, "9 AM" for savare/morning, "11 AM" if no time defined, else specific time written),
-      "items": [
-        {
-          "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",
-          "qty": number (positive integer),
-          "rate": number (unit rate if written, else 0),
-          "unit": "Box" | "Case / Box"
-        }
-      ],
-      "totalAmount": number (total amount if stated, else 0),
-      "paymentMode": "cash" | "online" | "credit" (cash if cash/rokda/paid, online if gpay/upi, credit if udhar/baaki/due/pending or unspecified),
-      "amountCollected": number (if cash/online, else 0),
-      "notes": string
-    }
-  ]
-}
+TASK INSTRUCTION:
+Analyze this attached ${isAudio ? 'audio recording' : 'photo, document, or payment screenshot'}.
+Adhere strictly to the unified operations skill instructions and multimodal OCR rules above.
+Return a single valid JSON object strictly matching the schema for the detected docType (retail_sales, accounts_cash, receive_payment, create_client, compound_action, or vendor_bill).`;
 
-If it is a staff cash handover / collection / accounts note:
-Available accounts: "nilesh" (delivery staff), "hiteshbhai" (delivery staff), "counter" (drawer / Jigneshbhai), "bank" (Bank / UPI).
-Return strict JSON:
-{
-  "docType": "accounts_cash",
-  "summary": {
-    "totalInward": number,
-    "totalOutward": number,
-    "entryCount": number,
-    "date": string (YYYY-MM-DD or as written)
-  },
-  "entries": [
-    {
-      "type": "transfer" | "collection" | "expense",
-      "fromAccount": "nilesh" | "hiteshbhai" | "counter" | "bank",
-      "toAccount": "counter" | "bank" | "nilesh" | "hiteshbhai",
-      "accountId": "nilesh" | "hiteshbhai" | "counter" | "bank",
-      "clientName": string (customer or shop name if collection, else ""),
-      "category": string (e.g. "Fuel / Petrol", "Vehicle Maintenance", "Tea / Refreshments", "General"),
-      "amount": number,
-      "notes": string
-    }
-  ]
-}
-
-If it is a vendor inward delivery bill / factory challan:
-Return strict JSON:
-{
-  "docType": "vendor_bill",
-  "vendorName": string,
-  "billNumber": string,
-  "billDate": string,
-  "items": [
-    {
-      "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",
-      "qty": number,
-      "unit": "Box" | "Case / Box"
-    }
-  ],
-  "totalAmount": number,
-  "notes": string
-}
-
-If it is a payment receipt, UPI payment screenshot (Google Pay, PhonePe, Paytm, BHIM, Bank transfer), cheque, or slip:
-CRITICAL DIRECTION RULE - MONEY OUT (EXPENSE / STAFF TRANSFER) VS MONEY IN (CUSTOMER PAYMENT):
-1. OUTGOING PAYMENT (EXPENSE / STAFF TRANSFER / ADVANCE):
-   - When money is sent or debited FROM Jignesh Pandya / Jigneshkumar K Pandya / Annapurna Foods (e.g. "From: JIGNESHKUMAR K PANDYA", "Debited from Axis Bank")
-   - OR when money is sent TO delivery staff (e.g. "To: nilesh vaniya", "To: Nilesh", "To: Hiteshbhai", "To: VANIYA NIILARKUMAR RAVAJIBHAI"), petrol pump, garage/repair, food, or vendor
-   - OR when user prompt/caption mentions "This is for expenses", "expense", "kharch", "petrol", "diesel", "advance", or "transfer":
-   -> THIS IS AN EXPENSE OR STAFF ACCOUNT TRANSFER!
-   Return strict JSON:
-   {
-     "docType": "accounts_cash",
-     "summary": {
-       "totalInward": 0,
-       "totalOutward": number (payment amount),
-       "entryCount": 1,
-       "date": string (YYYY-MM-DD or today)
-     },
-     "entries": [
-       {
-         "type": "expense",
-         "fromAccount": "bank",
-         "toAccount": "nilesh",
-         "accountId": "nilesh",
-         "clientName": string (e.g. "Nilesh Vaniya"),
-         "category": "Staff Advance / Route Expenses",
-         "amount": number (positive payment amount),
-         "notes": string (e.g. "Google Pay sent to Nilesh Vaniya for expenses")
-       }
-     ]
-   }
-
-2. INCOMING PAYMENT (CUSTOMER COLLECTION):
-   - When a customer paid money TO Annapurna Foods / Jignesh Pandya ("Paid to Annapurna Foods", "To: Annapurna Foods", "From: <Customer>"):
-   - Annapurna Foods and Jignesh Pandya are the RECEIVER / PAYEE / MERCHANT. You MUST NEVER extract "Annapurna Foods" or "Jignesh Pandya" as the payerName!
-   - The CUSTOMER / PAYER is the SENDER who paid the money! Look at "From:", "Debited from:", "Paid by:", or the sender's UPI handle / account name.
-   Return strict JSON:
-   {
-     "docType": "receive_payment",
-     "payerName": string (Customer or sender name from "From:". NEVER "Annapurna Foods"),
-     "mobile": string (CRITICAL: Extract 10-digit mobile number from sender UPI ID under "From:" e.g. 9825012345@okaxis, digits 0-9 only),
-     "amount": number,
-     "paymentMode": "online" | "cash" | "cheque",
-     "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
-     "utr": string,
-     "date": string,
-     "notes": string
-   }
-
-If the user specifies compound actions (such as "client plus order plus payment", "create client and order", "order and payment", or asks to onboard client and book order alongside a payment receipt/screenshot):
-CRITICAL SENDER VS RECEIVER (PAYEE) RULE:
-- Annapurna Foods and Jignesh Pandya are the RECEIVER / BENEFICIARY / MERCHANT.
-- NEVER set "client.name" or "payment.payerName" to "Annapurna Foods", "Anjani Water", or "Jignesh Pandya"!
-- The CLIENT is the SENDER who paid, found under "From:", "Debited from:", or sender UPI ID.
-Return strict JSON:
-{
-  "docType": "compound_action",
-  "client": {
-    "name": string (Customer or shop business name from "From:" in English Title Case. NEVER "Annapurna Foods"),
-    "contactPerson": string,
-    "mobile": string (CRITICAL: Look closely at sender UPI ID under "From:" e.g. 9825012345@okaxis; extract 10-digit mobile number, digits 0-9 only),
-    "address": string,
-    "location": string
-  },
-  "order": {
-    "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",
-    "qty": number (Calculate integer boxes from totalAmount / rate, or default to 10 if total is around 1300),
-    "rate": number (unit rate, CRITICAL: default strictly to 130 Rs per box only if not explicitly specified),
-    "totalAmount": number (Total order value in INR, should match payment amount),
-    "address": string
-  },
-  "payment": {
-    "payerName": string (Sender name from "From:". NEVER "Annapurna Foods"),
-    "amount": number,
-    "paymentMode": "online" | "cash",
-    "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
-    "utr": string,
-    "date": string,
-    "notes": string
-  }
-}
-
-If it is a customer bill book, estimate book, cash memo header, visiting card, business card, shop signboard, contact card, or retail customer pamphlet:
-Return strict JSON:
-{
-  "docType": "create_client",
-  "name": string,
-  "contactPerson": string,
-  "mobile": string,
-  "alternateMobile": string,
-  "address": string,
-  "location": string,
-  "rate": number,
-  "notes": string
-}
-CRITICAL REQUIREMENT: ALL CLIENT INFORMATION ("name", "contactPerson", "address", "location", "notes") MUST BE IN ENGLISH (Latin alphabet / Roman script) ONLY, even if the card, signboard, or paper is in Gujarati, Hindi, Marathi, or any other language! Translate descriptive words and transliterate shop/person/area names into clean English Title Case. Convert all Indic digits (૦-૯ or ०-९) to standard digits 0-9. NEVER return Gujarati or Devanagari characters in client fields.`
-
-      let ocrPrompt = documentOcrPrompt
-
-      if (mode === 'compound_action') {
-        ocrPrompt = `You are an expert multi-entity OCR AI for Annapurna Foods, authorized water distributor in Vadodara, Gujarat (owned by Jignesh Pandya).
-The user wants to process a COMPOUND ACTION (Client + Order + Payment) from this document, photo, or payment screenshot.
-
-CRITICAL SENDER VS RECEIVER (PAYEE) RULE (MANDATORY):
-- Annapurna Foods and Jignesh Pandya are the RECEIVER / BENEFICIARY / MERCHANT (the business receiving the money).
-- You MUST NEVER, UNDER ANY CIRCUMSTANCES, extract "Annapurna Foods", "Anjani Water", or "Jignesh Pandya" as the "client.name" or "payment.payerName"!
-- The CLIENT / PAYER is the CUSTOMER / SENDER who made the payment!
-- In Google Pay (GPay), PhonePe, Paytm, or UPI receipts:
-  * "Paid to Annapurna Foods" or "To: Annapurna Foods" is the RECEIVER. COMPLETELY IGNORE this as the customer name!
-  * The actual customer/client details are under "From:", "Debited from:", "Paid by:", or the sender's account/UPI details.
-  * Look for "From: <Customer Name>" or sender UPI ID (e.g. 9825012345@okaxis, 9876543210@paytm).
-  * Extract the 10-digit mobile number from the sender's UPI ID or phone into "client.mobile".
-  * If no customer name is visible under "From:" (only UPI ID like 9825012345@okaxis), set "name" to the name in UPI handle or leave empty. NEVER set it to "Annapurna Foods"!
-
-CRITICAL RULES:
-1. CLIENT: Look for customer/shop name under "From:" and 10-digit mobile number. Look closely at sender UPI ID (e.g. 9825012345@okaxis, 9876543210@paytm, 9825012345@upi) to extract the 10-digit mobile number if present (digits 0-9 only). Return all client text strictly in English Title Case. NEVER return "Annapurna Foods".
-2. ORDER: Default product SKU MUST BE "Anjani 200ml" only if nothing is provided or specified otherwise. Default unit rate MUST BE 130 Rs per box only if not explicitly specified. Calculate order qty from payment amount / 130 (e.g. 1300 Rs = 10 boxes, 2600 Rs = 20 boxes, 650 Rs = 5 boxes).
-3. PAYMENT: Extract payment amount in INR, paymentMode ("online" | "cash"), onlineProvider ("GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank"), UTR / reference number, and date. Payer name MUST be the customer/sender ("From:"), NEVER "Annapurna Foods".
-
-Return strict JSON:
-{
-  "docType": "compound_action",
-  "client": {
-    "name": string (Customer or shop business name from "From:" in English Title Case. NEVER "Annapurna Foods"),
-    "contactPerson": string,
-    "mobile": string (CRITICAL: Extract 10-digit mobile number from sender UPI ID under "From:" or text, digits 0-9 only),
-    "address": string,
-    "location": string
-  },
-  "order": {
-    "sku": "Anjani 200ml" (CRITICAL: default strictly to "Anjani 200ml" only if nothing is provided),
-    "qty": number (Calculate integer boxes from totalAmount / rate, or default to 10 if total is around 1300),
-    "rate": number (unit rate, CRITICAL: default strictly to 130 Rs per box only if not explicitly specified),
-    "totalAmount": number (Total order value in INR, should match payment amount),
-    "address": string
-  },
-  "payment": {
-    "payerName": string (Sender name from "From:". NEVER "Annapurna Foods"),
-    "amount": number,
-    "paymentMode": "online" | "cash",
-    "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
-    "utr": string,
-    "date": string,
-    "notes": string
-  }
-}`
-      } else if (mode === 'create_client') {
-        ocrPrompt = `You are an expert customer onboarding and OCR AI for Annapurna Foods, authorized water distributor in Vadodara, Gujarat (owned by Jignesh Pandya).
-The user wants to ONBOARD / CREATE A NEW CLIENT from this photo.
-The photo is a customer document or shop photo:
-- A customer's bill book, estimate book, cash memo, invoice header, or receipt pad (common in Hindi, Gujarati, or English, showing shop/business name, proprietor name, address, GSTIN, phone numbers).
-- A visiting card, business card, trade pamphlet, or leaflet.
-- A shop signboard, banner, flex board, or shop front.
-
-CRITICAL INSTRUCTION:
-Do NOT create an order, sale, or bill! Extract the SHOP/CUSTOMER details to register them as a new client in the client master.
-Look at the top masthead / header / title of the bill book or card to find the shop name, owner name, phone number, and address.
-
-Return strict JSON:
-{
-  "docType": "create_client",
-  "name": string (Shop, store, hotel, or customer business name in English Title Case. Extracted from the bill book masthead or card header),
-  "contactPerson": string (Owner, proprietor, or contact person name in English),
-  "mobile": string (Primary 10-digit mobile number, digits 0-9 only),
-  "alternateMobile": string (Secondary phone number if present, digits 0-9 only),
-  "address": string (Shop address, market, street, or area in English),
-  "location": string (Landmark, city, or area in English, e.g. 'Manjalpur', 'Karelibaug', 'Waghodia Road', 'Vadodara'),
-  "rate": number (Default 200ml rate per unit if written on slip, else 0),
-  "notes": string (in English, include GSTIN or bill book details if found)
-}
-
-CRITICAL REQUIREMENT: ALL CLIENT INFORMATION ("name", "contactPerson", "address", "location", "notes") MUST BE RETURNED IN ENGLISH (Latin alphabet / Roman script) ONLY!
-Even if the bill book, signboard, or card is in Hindi (देवनागरी), Gujarati (ગુજરાતી), or Marathi:
-- Transliterate and translate all business names, person names, and addresses into clean English in Title Case (e.g. 'श्री गणेश किराना स्टोर' -> 'Shree Ganesh Kirana Store', 'अशोक कुमार' -> 'Ashok Kumar', 'माणेक चौक' -> 'Manek Chowk', 'सब्जी मंडी' -> 'Vegetable Market').
-- Convert any Hindi (०-९) or Gujarati (૦-૯) numerals into standard English digits (0-9).
-- NEVER return Devanagari or Gujarati characters in client fields.
-- Do NOT generate orders, sales, or bills. The ONLY goal is onboarding this business as a new client.`
-      } else if (mode === 'receive_payment') {
-        ocrPrompt = `You are an expert payment and accounts transaction OCR AI for Annapurna Foods in Vadodara, Gujarat.
-Analyze this photo (UPI screenshot from Google Pay, PhonePe, Paytm, BHIM, Bank transfer receipt, cash counter slip, or cheque).
-
-CRITICAL DIRECTION RULE - MONEY OUT (EXPENSE / STAFF TRANSFER) VS MONEY IN (CUSTOMER COLLECTION):
-1. OUTGOING PAYMENT (EXPENSE / STAFF ADVANCE / TRANSFER):
-   - When money was debited FROM Jigneshkumar K Pandya / Annapurna Foods (e.g. "From: JIGNESHKUMAR K PANDYA", "Debited from Axis Bank")
-   - OR sent TO delivery staff (Nilesh Vaniya, Hiteshbhai), fuel station, garage/repair, food, or vendor
-   - OR when user prompt/caption mentions "This is for expenses", "expense", "kharch", "petrol", "diesel", "advance", or "transfer":
-   -> THIS IS AN OUTGOING EXPENSE OR STAFF CASH ADVANCE!
-   Return strict JSON:
-   {
-     "docType": "accounts_cash",
-     "summary": { "totalInward": 0, "totalOutward": number (amount in INR), "entryCount": 1, "date": string (YYYY-MM-DD or as shown) },
-     "entries": [
-       {
-         "type": "expense",
-         "fromAccount": "bank",
-         "toAccount": "nilesh",
-         "accountId": "nilesh",
-         "clientName": string (e.g. "Nilesh Vaniya"),
-         "category": "Staff Advance / Route Expenses",
-         "amount": number (positive payment amount in INR),
-         "notes": string (e.g. "Google Pay sent to Nilesh Vaniya for expenses")
-       }
-     ]
-   }
-
-2. INCOMING PAYMENT (CUSTOMER COLLECTION):
-   - Only when a customer paid Annapurna Foods / Jignesh Pandya ("Paid to Annapurna Foods", "From: <Customer>"):
-   - Annapurna Foods and Jignesh Pandya are the RECEIVER / PAYEE / MERCHANT. NEVER extract "Annapurna Foods" as the payerName!
-   - Payer is the customer under "From:".
-   Return strict JSON:
-   {
-     "docType": "receive_payment",
-     "payerName": string (Customer or sender name from "From:". NEVER "Annapurna Foods"),
-     "mobile": string (10-digit mobile from sender UPI ID if present),
-     "amount": number (Total payment amount in INR),
-     "paymentMode": "online" | "cash" | "cheque",
-     "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
-     "utr": string (UPI transaction ID, UTR, reference number, or cheque number),
-     "date": string (YYYY-MM-DD or as shown),
-     "notes": string
-   }`
-      }
-
-      const isAudio = mimeType && mimeType.startsWith('audio/')
-      if (isAudio) {
-        if (mode === 'create_client') {
-          ocrPrompt = `You are an expert customer onboarding and transcription AI for Annapurna Foods in Vadodara, Gujarat (owned by Jignesh Pandya).
-Listen to this audio voice note or recording spoken in Gujarati, Hindi, English, or mixed language.
-The user is dictating or forwarding customer details for onboarding a new client.
-Extract into strict JSON:
-{
-  "docType": "create_client",
-  "name": string (Shop, business, or customer name in English Title Case),
-  "contactPerson": string (Owner or contact person name in English),
-  "mobile": string (10-digit mobile number, digits 0-9 only),
-  "alternateMobile": string (digits 0-9 only),
-  "address": string (Shop address/area in English),
-  "location": string (Landmark/area in English, e.g. 'Manjalpur', 'Karelibaug'),
-  "rate": number (Default 200ml rate if mentioned, else 0),
-  "notes": string (in English)
-}
-CRITICAL REQUIREMENT: Return all client fields strictly in English (Latin alphabet). Transliterate Gujarati/Hindi names into English Title Case.`
-        } else if (mode === 'receive_payment') {
-          ocrPrompt = `You are an accounts and payment assistant for Annapurna Foods in Vadodara, Gujarat.
-Listen to this audio recording or WhatsApp voice note spoken in Gujarati, Hindi, or English.
-The speaker is reporting a payment received.
-Parse into strict JSON:
-{
-  "docType": "receive_payment",
-  "payerName": string (Customer or shop name who paid),
-  "amount": number (Payment amount in INR),
-  "paymentMode": "online" | "cash" | "cheque",
-  "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
-  "utr": string (UTR, reference number, or cheque no if mentioned, else ""),
-  "date": string (YYYY-MM-DD or today),
-  "notes": string
-}`
-        } else {
-          ocrPrompt = `You are an expert sales and operational voice assistant for Annapurna Foods, authorized water distributor in Vadodara, Gujarat (owned by Jignesh Pandya).
-Listen to this audio recording or WhatsApp voice note spoken in Gujarati, Hindi, or English.
-The speaker is placing water orders, dictating sales, or reporting operational notes.
-Map all water items exclusively to our 5 canonical SKUs: "Anjani 200ml", "Bailey 250ml", "Bailey 500ml", "Bailey 1 Liter", "Bailey 2 Liter".
-Return strict JSON:
-{
-  "docType": "retail_sales",
-  "summary": { "totalOrders": number, "totalQty": number, "date": string },
-  "sales": [
-    {
-      "clientName": string (Shop or customer name in English, or "Retail"),
-      "mobile": string,
-      "items": [
-        {
-          "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",
-          "qty": number,
-          "rate": number,
-          "unit": "Box" | "Case / Box"
-        }
-      ],
-      "totalAmount": number,
-      "paymentMode": "cash" | "online" | "credit",
-      "amountCollected": number,
-      "notes": string
-    }
-  ]
-}`
-        }
-      }
-
-      const userTextPrompt = text ? `\n\nUSER SPECIFIC INSTRUCTION: "${text}"\n` : ''
       const parts = [
         {
           inlineData: {
@@ -2418,12 +2071,12 @@ Return strict JSON:
             mimeType: mimeType || 'image/jpeg',
           },
         },
-        { text: ocrPrompt + userTextPrompt + contextInjections },
-      ]
+        { text: multimodalPrompt },
+      ];
 
       const res = await model.generateContent({
         contents: [{ role: 'user', parts }],
-      })
+      });
 
       const rawJson = res.response.candidates[0].content.parts[0].text.trim()
       const parsedData = parseStructuredJson(rawJson)
@@ -3262,22 +2915,8 @@ ${rawText.slice(0, 3000)}`
         }
       ]
 
-      const now = new Date()
-      // Real-time IST date stamps for 100% deterministic relative date understanding
-      const istToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now)
-      const tmDate = new Date(now.getTime() + 24 * 60 * 60 * 1000)
-      const istTomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(tmDate)
-      const dayAfterDate = new Date(now.getTime() + 48 * 60 * 60 * 1000)
-      const istDayAfter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dayAfterDate)
-
       // Authoritative Single Skill instructions for Anjani Operations (SKILL.md)
-      let skillInstructions = ''
-      try {
-        const skillPath = path.join(__dirname, 'skills/anjani-operations/SKILL.md')
-        skillInstructions = fs.readFileSync(skillPath, 'utf8')
-      } catch (skillErr) {
-        logger.warn('Failed to load SKILL.md from disk:', skillErr.message)
-      }
+      const skillInstructions = loadSkillInstructions();
 
       const operationalAgentPrompt = `${skillInstructions}
 
