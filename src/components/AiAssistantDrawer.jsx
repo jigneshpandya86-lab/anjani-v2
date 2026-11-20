@@ -169,6 +169,7 @@ export default function AiAssistantDrawer({
   const [sendingReminderId, setSendingReminderId] = useState(null)
   const [editingReminderTexts, setEditingReminderTexts] = useState({})
   const [editingReminderIds, setEditingReminderIds] = useState({})
+  const [sentClientMessages, setSentClientMessages] = useState({})
   const [activeCardSheet, setActiveCardSheet] = useState(null)
   const lastActiveCardActionsRef = useRef([])
 
@@ -1960,6 +1961,35 @@ export default function AiAssistantDrawer({
               { label: 'Confirm & Book Order', action: 'book_order', data: draftOrder },
               { label: 'Edit Draft', action: 'edit_draft', data: draftOrder },
             ],
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'client_message') {
+        const clientMsgData = resData.data || {}
+        const rawClientName = clientMsgData.clientName || 'Customer'
+        const matchedClient = (clients || []).find((c) => {
+          const cName = (c.name || '').toLowerCase()
+          const qName = rawClientName.toLowerCase()
+          return cName.includes(qName) || qName.includes(cName)
+        })
+        const finalClientName = matchedClient?.name || rawClientName
+        const clientPhone = matchedClient?.mobile || matchedClient?.phone || ''
+        const draftMsg = clientMsgData.message || resData.text || `Hi ${finalClientName}, regarding your Anjani Water order: please confirm your delivery status.`
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: '',
+            type: 'client_message_draft',
+            data: {
+              clientName: finalClientName,
+              clientId: matchedClient?.id || null,
+              clientPhone,
+              message: draftMsg,
+              channel: clientMsgData.channel || 'auto',
+            },
             timestamp: new Date(),
           },
         ])
@@ -5056,6 +5086,133 @@ export default function AiAssistantDrawer({
                               }
                               className="text-gray-400 hover:text-teal-600 p-0.5 rounded cursor-pointer shrink-0 transition-colors"
                               title="Edit task text"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* 6B. Interactive Customer Message Draft Card */}
+                {msg.type === 'client_message_draft' && msg.data && (() => {
+                  const currentDraftText =
+                    editingDraftTexts[msg.id] !== undefined
+                      ? editingDraftTexts[msg.id]
+                      : (msg.data.message || '')
+                  const isEditingDraft = Boolean(editingDraftIds[msg.id])
+                  const isSent = Boolean(sentClientMessages[msg.id])
+                  const cleanPhone = normalizeIndianPhone(msg.data.clientPhone)
+                  const displayPhone =
+                    cleanPhone && cleanPhone.length === 12 && cleanPhone.startsWith('91')
+                      ? `+91 ${cleanPhone.slice(2)}`
+                      : cleanPhone
+
+                  return (
+                    <div className="mt-2 bg-white border border-blue-200 hover:border-blue-400 rounded-xl p-2.5 space-y-1.5 text-xs text-gray-800 shadow-2xs transition-all">
+                      {/* Line 1: Customer Name, Phone, and Action Buttons */}
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="shrink-0 px-2 py-0.5 rounded text-[11px] font-black uppercase bg-blue-100 text-blue-800 flex items-center gap-1">
+                            <User className="w-3 h-3 text-blue-600" />
+                            {msg.data.clientName}
+                          </span>
+                          <span className="shrink-0 text-[11px] text-gray-500 font-medium">
+                            {displayPhone ? displayPhone : 'No phone'}
+                          </span>
+                        </div>
+
+                        {!isSent ? (
+                          <div className="flex items-center gap-1 shrink-0">
+                            {/* WhatsApp */}
+                            <button
+                              type="button"
+                              aria-label="WhatsApp Customer"
+                              title="Send WhatsApp to Customer"
+                              onClick={() => {
+                                if (!cleanPhone) {
+                                  toast.error('No phone number saved for ' + msg.data.clientName)
+                                  return
+                                }
+                                const waUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(currentDraftText)}`
+                                window.open(waUrl, '_blank')
+                                setSentClientMessages((prev) => ({ ...prev, [msg.id]: true }))
+                                toast.success(`WhatsApp opened for ${msg.data.clientName}!`, { icon: '💬' })
+                              }}
+                              className="h-7 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                              <span>WhatsApp</span>
+                            </button>
+
+                            {/* Direct SMS */}
+                            <button
+                              type="button"
+                              aria-label="SMS Customer"
+                              title="Send Direct SMS to Customer"
+                              onClick={async () => {
+                                if (!cleanPhone) {
+                                  toast.error('No mobile number for ' + msg.data.clientName)
+                                  return
+                                }
+                                try {
+                                  await sendBackgroundSms({
+                                    phone: cleanPhone,
+                                    message: currentDraftText,
+                                  })
+                                  setSentClientMessages((prev) => ({ ...prev, [msg.id]: true }))
+                                  toast.success(`SMS sent to ${msg.data.clientName}!`, { icon: '📲' })
+                                } catch (smsErr) {
+                                  toast.error('Failed to send SMS: ' + smsErr.message)
+                                }
+                              }}
+                              className="h-7 px-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              <span>SMS</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            ✓ Message Sent
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Line 2: Message Quote or Inline Edit */}
+                      {isEditingDraft ? (
+                        <div className="flex items-center gap-1 pt-1">
+                          <input
+                            type="text"
+                            value={currentDraftText}
+                            onChange={(e) =>
+                              setEditingDraftTexts((prev) => ({ ...prev, [msg.id]: e.target.value }))
+                            }
+                            className="flex-1 px-2 py-1 bg-gray-50 rounded border border-blue-300 text-gray-900 font-semibold text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingDraftIds((prev) => ({ ...prev, [msg.id]: false }))
+                            }
+                            className="px-2.5 py-1 bg-blue-600 text-white text-[10px] font-bold rounded cursor-pointer transition-colors shrink-0"
+                          >
+                            ✓ Save
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-1.5 pt-0.5 text-gray-900 font-medium text-xs bg-gray-50/70 p-1.5 rounded-lg border border-gray-100">
+                          <span className="truncate flex-1 italic text-gray-700">"{currentDraftText}"</span>
+                          {!isSent && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditingDraftIds((prev) => ({ ...prev, [msg.id]: true }))
+                              }
+                              className="text-gray-400 hover:text-blue-600 p-0.5 rounded cursor-pointer shrink-0 transition-colors"
+                              title="Edit message draft"
                             >
                               <Edit2 className="w-3 h-3" />
                             </button>

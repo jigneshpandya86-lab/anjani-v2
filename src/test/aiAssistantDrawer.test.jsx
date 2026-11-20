@@ -45,12 +45,22 @@ const mockAddAiFeedback = vi.fn(() => Promise.resolve({ id: 'fb-new', status: 'p
 const mockMarkAiFeedbackReviewed = vi.fn(() => Promise.resolve())
 const mockDeleteAiFeedback = vi.fn(() => Promise.resolve())
 
+export const mockSendBackgroundSms = vi.fn(() => Promise.resolve({ success: true }))
+vi.mock('../services/leadSmsService', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    sendBackgroundSms: (...args) => mockSendBackgroundSms(...args),
+  }
+})
+
 vi.mock('../store/clientStore', () => ({
   useClientStore: (selector) => {
     const state = {
       clients: [
         { id: 'c1', name: 'Jay Ambe' },
         { id: 'c2', name: 'Rohitbhai' },
+        { id: 'c3', name: 'Bhaveshbhai', mobile: '9876543210' },
       ],
       orders: [
         {
@@ -683,6 +693,47 @@ describe('AiAssistantDrawer', () => {
           screenshotBase64: 'mock-base64',
         })
       )
+    })
+
+    unmount()
+  })
+
+  it('renders interactive customer message draft card when AI returns client_message intent', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'client_message',
+        text: 'Drafted cancellation inquiry message for Bhaveshbhai',
+        data: {
+          clientName: 'Bhaveshbhai',
+          channel: 'sms',
+          message: 'Hi Bhaveshbhai, regarding your Anjani Water order: do you want to cancel the order? Please confirm.',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+        onOpenPaymentModal={() => {}}
+        onOpenOrderModal={() => {}}
+        onOpenAddClient={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, {
+      target: { value: 'Can you send SMS directly to Bhaveshbhai? To cancel the order?' },
+    })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Bhaveshbhai/i).length).toBeGreaterThanOrEqual(2)
+      expect(screen.getByText('+91 9876543210')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /SMS Customer/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /WhatsApp Customer/i })).toBeInTheDocument()
     })
 
     unmount()

@@ -71,9 +71,9 @@ export const normalizeIndianPhone = (phone) => {
   return cleanPhone
 }
 
-export const sendBackgroundSms = async ({ macroUrl, phone, message }) => {
+export const sendBackgroundSms = async ({ macroUrl, phone, mobile, message }) => {
   const url = macroUrl || DEFAULT_MACRO_URL
-  const normalizedPhone = normalizeIndianPhone(phone)
+  const normalizedPhone = normalizeIndianPhone(phone || mobile)
   if (!normalizedPhone || normalizedPhone.length < 10) {
     throw new Error('Invalid phone number for SMS')
   }
