@@ -3068,11 +3068,11 @@ ${rawText.slice(0, 3000)}`
         },
         {
           name: 'send_client_message',
-          description: 'Drafts or sends a message to an external customer/client via WhatsApp or SMS (e.g. delivery confirmation, inquiry to cancel, payment reminder). NEVER assign customer messages to driver staff.',
+          description: 'Drafts or sends a direct message to an external customer or internal staff member (e.g. Nilesh, Hiteshbhai, Bhaveshbhai) via WhatsApp or SMS.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              clientName: { type: 'STRING', description: 'Name of the external customer (e.g. Bhaveshbhai, Maruti Caterers)' },
+              clientName: { type: 'STRING', description: 'Name of the customer or staff recipient (e.g. Bhaveshbhai, Maruti Caterers, Nilesh)' },
               message: { type: 'STRING', description: 'Polite drafted message in Gujarati or English' },
               channel: { type: 'STRING', enum: ['sms', 'whatsapp', 'auto'], description: 'Delivery channel' }
             },

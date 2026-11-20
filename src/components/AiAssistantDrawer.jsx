@@ -2274,8 +2274,21 @@ export default function AiAssistantDrawer({
           const qName = rawClientName.toLowerCase()
           return cName.includes(qName) || qName.includes(cName)
         })
-        const finalClientName = matchedClient?.name || rawClientName
-        const clientPhone = matchedClient?.mobile || matchedClient?.phone || ''
+        const matchedStaff = !matchedClient
+          ? (staffList || []).find((s) => {
+              const sName = (s.name || '').toLowerCase()
+              const qName = rawClientName.toLowerCase()
+              return sName.includes(qName) || qName.includes(sName)
+            })
+          : null
+
+        const finalClientName = matchedClient?.name || matchedStaff?.name || rawClientName
+        const clientPhone =
+          matchedClient?.mobile ||
+          matchedClient?.phone ||
+          matchedStaff?.mobile ||
+          (rawClientName.toLowerCase().includes('nilesh') ? '7990943652' : '') ||
+          (rawClientName.toLowerCase().includes('hitesh') ? '7778077617' : '')
         const draftMsg = clientMsgData.message || resData.text || `Hi ${finalClientName}, regarding your Anjani Water order: please confirm your delivery status.`
 
         setMessages((prev) => [
