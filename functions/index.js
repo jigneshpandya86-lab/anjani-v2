@@ -3058,7 +3058,10 @@ ${rawText.slice(0, 3000)}`
                 description: 'List of customer or caterer names whose orders are marked as delivered',
                 items: { type: 'STRING' }
               },
-              targetDate: { type: 'STRING', description: 'Target date (YYYY-MM-DD)' }
+              targetDate: {
+                type: 'STRING',
+                description: 'Target delivery date (YYYY-MM-DD). If user mentions "today" or "today\'s orders", pass today\'s date. Never mark future/tomorrow orders when user asks for today.'
+              }
             },
             required: ['clientNames']
           }
@@ -3221,6 +3224,13 @@ RUNTIME CONTEXT:
             if (qty > 0) {
               args.items = [{ sku: 'Anjani 200ml', qty: qty, rate: 130 }]
             }
+          }
+        }
+
+        // Default mark_orders_delivered targetDate to istToday if unspecified
+        if (returnType === 'mark_orders_delivered') {
+          if (!args.targetDate) {
+            args.targetDate = istToday
           }
         }
 

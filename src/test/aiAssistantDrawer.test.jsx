@@ -41,6 +41,15 @@ vi.mock('../utils/aiImageHelper', () => ({
 const mockAddClient = vi.fn()
 const mockAddPayment = vi.fn()
 const mockAddOrder = vi.fn()
+const mockUpdateOrder = vi.fn()
+let mockOrders = [
+  {
+    id: 'o1',
+    clientId: 'c1',
+    status: 'Delivered',
+    items: [{ sku: 'Bailey 500ml', rate: 85, qty: 10 }],
+  },
+]
 const mockAddAiFeedback = vi.fn(() => Promise.resolve({ id: 'fb-new', status: 'pending_weekly_review' }))
 const mockMarkAiFeedbackReviewed = vi.fn(() => Promise.resolve())
 const mockDeleteAiFeedback = vi.fn(() => Promise.resolve())
@@ -62,21 +71,14 @@ vi.mock('../store/clientStore', () => ({
         { id: 'c2', name: 'Rohitbhai' },
         { id: 'c3', name: 'Bhaveshbhai', mobile: '9876543210' },
       ],
-      orders: [
-        {
-          id: 'o1',
-          clientId: 'c1',
-          status: 'Delivered',
-          items: [{ sku: 'Bailey 500ml', rate: 85, qty: 10 }],
-        },
-      ],
+      orders: mockOrders,
       stockSummary: {},
       stockTotal: 0,
       stockEntries: [],
       addStockBatch: vi.fn(),
       createBatchSales: vi.fn(),
       createBatchAccountEntries: vi.fn(),
-      updateOrder: vi.fn(),
+      updateOrder: mockUpdateOrder,
       addClient: mockAddClient,
       addPayment: mockAddPayment,
       addOrder: mockAddOrder,
@@ -822,13 +824,27 @@ describe('AiAssistantDrawer', () => {
     unmount()
   })
 
-  it('marks orders delivered when AI returns mark_orders_delivered intent', async () => {
+  it('marks orders delivered for today and strictly avoids tomorrow orders', async () => {
+    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+    const tomorrowDate = new Date(Date.now() + 24 * 60 * 60 * 1000)
+    const tomorrowStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(tomorrowDate)
+
+    // Setup mock orders: Maruti Caterers has an order today AND tomorrow
+    mockOrders.length = 0
+    mockOrders.push(
+      // Note: Tomorrow's order is first in array (descending sort simulation)
+      { id: 'ord-tomorrow', clientName: 'Maruti Caterers', status: 'Confirmed', date: tomorrowStr, deliveryDate: tomorrowStr },
+      { id: 'ord-today', clientName: 'Maruti Caterers', status: 'Confirmed', date: todayStr, deliveryDate: todayStr },
+      { id: 'ord-kamlesh-today', clientName: 'Kamleshbhai', status: 'Confirmed', date: todayStr, deliveryDate: todayStr }
+    )
+
     mockHttpsCallableResponse.mockResolvedValueOnce({
       data: {
         type: 'mark_orders_delivered',
         text: 'Marked orders as delivered',
         data: {
           clientNames: ['Kamleshbhai', 'Maruti Caterers'],
+          targetDate: todayStr,
         },
       },
     })
@@ -849,9 +865,11 @@ describe('AiAssistantDrawer', () => {
     await fireEvent.submit(form)
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/Could not find open pending orders for/i)
-      ).toBeInTheDocument()
+      // Must update today's orders
+      expect(mockUpdateOrder).toHaveBeenCalledWith('ord-today', expect.objectContaining({ status: 'Delivered' }))
+      expect(mockUpdateOrder).toHaveBeenCalledWith('ord-kamlesh-today', expect.objectContaining({ status: 'Delivered' }))
+      // Must NEVER update tomorrow's order!
+      expect(mockUpdateOrder).not.toHaveBeenCalledWith('ord-tomorrow', expect.anything())
     })
 
     unmount()

@@ -2114,39 +2114,68 @@ export default function AiAssistantDrawer({
           ])
         }
       } else if (resData.type === 'mark_orders_delivered') {
-        const { clientNames = [] } = resData.data || {}
+        const { clientNames = [], targetDate } = resData.data || {}
         const namesToProcess = Array.isArray(clientNames) ? clientNames : (clientNames ? [clientNames] : [])
         const markedClients = []
+        const skippedDetails = []
+
+        const istToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+        const effectiveDate = targetDate || istToday
 
         for (const cName of namesToProcess) {
           const norm = (cName || '').toLowerCase().trim()
-          const match = (orders || []).find((o) => {
+          // Strictly match open orders for this client on the effective target date
+          const clientMatches = (orders || []).filter((o) => {
             const st = (o.status || '').toLowerCase()
             const isOpen = st !== 'cancelled' && st !== 'delivered' && o.isCancelled !== true
             const oName = (o.clientName || o.name || '').toLowerCase()
-            return isOpen && oName.includes(norm)
+            if (!isOpen || !oName.includes(norm)) return false
+            const od = o.deliveryDate || o.date || o.orderDate || ''
+            return od.startsWith(effectiveDate)
           })
-          if (match) {
-            try {
-              await updateOrder(match.id, {
-                status: 'Delivered',
-                deliveredAt: new Date().toISOString(),
-              })
-              markedClients.push(match.clientName || cName)
-            } catch (err) {
-              console.error('Failed to mark order as delivered:', err)
+
+          if (clientMatches.length > 0) {
+            for (const match of clientMatches) {
+              try {
+                await updateOrder(match.id, {
+                  status: 'Delivered',
+                  deliveredAt: new Date().toISOString(),
+                })
+                markedClients.push(match.clientName || cName)
+              } catch (err) {
+                console.error('Failed to mark order as delivered:', err)
+              }
+            }
+          } else {
+            // Check if open orders exist on other dates (e.g. tomorrow) to avoid silent wrong deliveries
+            const otherOpenOrders = (orders || []).filter((o) => {
+              const st = (o.status || '').toLowerCase()
+              const isOpen = st !== 'cancelled' && st !== 'delivered' && o.isCancelled !== true
+              const oName = (o.clientName || o.name || '').toLowerCase()
+              return isOpen && oName.includes(norm)
+            })
+            if (otherOpenOrders.length > 0) {
+              const dates = [...new Set(otherOpenOrders.map((o) => o.deliveryDate || o.date || 'other date'))].join(', ')
+              skippedDetails.push(`**${cName}** has open order for **${dates}**, but none for **${effectiveDate}**`)
+            } else {
+              skippedDetails.push(`No open pending orders found for **${cName}**`)
             }
           }
         }
 
-        if (markedClients.length > 0) {
-          toast.success(`Marked ${markedClients.join(' & ')} as Delivered!`)
+        const distinctMarked = [...new Set(markedClients)]
+        if (distinctMarked.length > 0) {
+          toast.success(`Marked ${distinctMarked.join(' & ')} as Delivered!`)
+          let replyText = `✅ Marked today's (${effectiveDate}) order${distinctMarked.length > 1 ? 's' : ''} for **${distinctMarked.join('** and **')}** as **Delivered**! 🚚💨`
+          if (skippedDetails.length > 0) {
+            replyText += `\n\n⚠️ ${skippedDetails.join('\n⚠️ ')}`
+          }
           setMessages((prev) => [
             ...prev,
             {
               id: 'asst-' + Date.now(),
               sender: 'assistant',
-              text: `✅ Marked today's order${markedClients.length > 1 ? 's' : ''} for **${markedClients.join('** and **')}** as **Delivered**! 🚚💨`,
+              text: replyText,
               type: 'mark_orders_delivered',
               chips: [
                 { label: '📦 View Remaining Orders', action: 'query_orders' },
@@ -2161,7 +2190,7 @@ export default function AiAssistantDrawer({
             {
               id: 'asst-' + Date.now(),
               sender: 'assistant',
-              text: `Could not find open pending orders for **${namesToProcess.join(', ')}** today. They may already be marked as Delivered or not booked yet.`,
+              text: `Could not find open pending orders for **${namesToProcess.join(', ')}** for today (${effectiveDate}).\n\n${skippedDetails.map((d) => `ℹ️ ${d}`).join('\n')}`,
               type: 'mark_orders_delivered',
               chips: [
                 { label: '📦 View All Orders', action: 'query_orders' },
