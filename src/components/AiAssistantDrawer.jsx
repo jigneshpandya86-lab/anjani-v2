@@ -2683,6 +2683,50 @@ export default function AiAssistantDrawer({
           console.error('Failed to edit payment:', err)
           toast.error('Failed to edit payment')
         }
+      } else if (resData.type === 'record_expense') {
+        const { amount, category, note, accountId, date } = resData.data || {}
+        const numAmount = Number(amount) || 0
+        if (numAmount > 0) {
+          try {
+            const expDate = date ? new Date(date) : new Date()
+            const expPayload = {
+              amount: numAmount,
+              category: category || 'Miscellaneous',
+              note: note ? String(note).trim() : '',
+              accountId: accountId || 'counter',
+              date: expDate,
+            }
+            const savedExp = await addExpense(expPayload)
+            toast.success(`Expense of ₹${numAmount} recorded successfully!`)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `💸 **Expense Recorded: ₹${numAmount.toLocaleString('en-IN')}**\n• Category: **${expPayload.category}**\n• Details: **${expPayload.note || 'Operational expense'}**\n• Paid from: **${expPayload.accountId === 'counter' ? 'Counter Cash' : expPayload.accountId === 'bank' ? 'Bank Account' : expPayload.accountId}**\nAccount balance updated ✓`,
+                type: 'record_expense',
+                data: savedExp,
+                chips: [
+                  { label: 'View Accounts', action: 'view_ledger' },
+                ],
+                timestamp: new Date(),
+              },
+            ])
+          } catch (err) {
+            toast.error('Failed to record expense: ' + err.message)
+          }
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: 'Please specify the expense amount (e.g. *"Record expense of 500 Rs for Loader"*).',
+              type: 'record_expense',
+              timestamp: new Date(),
+            },
+          ])
+        }
       } else if (resData.type === 'update_date') {
         const { clientName, targetDate, targetDateLabel } = resData.data || {}
         let targetOrder = null

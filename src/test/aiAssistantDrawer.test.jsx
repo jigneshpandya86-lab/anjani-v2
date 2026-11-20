@@ -58,6 +58,7 @@ const mockAddClient = vi.fn()
 const mockUpdateClient = vi.fn()
 const mockAddPayment = vi.fn()
 const mockDeletePayment = vi.fn()
+const mockAddExpense = vi.fn()
 const mockAddOrder = vi.fn()
 const mockUpdateOrder = vi.fn()
 let mockOrders = [
@@ -103,7 +104,7 @@ vi.mock('../store/clientStore', () => ({
       addPayment: mockAddPayment,
       deletePayment: mockDeletePayment,
       addOrder: mockAddOrder,
-      addExpense: vi.fn(),
+      addExpense: mockAddExpense,
       recordAccountTransfer: vi.fn(),
       recordStaffAdvance: vi.fn(),
       staffList: [
@@ -1582,6 +1583,48 @@ describe('AiAssistantDrawer', () => {
 
     expect(await screen.findByText(/Payment Draft Cancelled/i)).toBeInTheDocument()
     expect(screen.getByText(/No payment was recorded to ledger/i)).toBeInTheDocument()
+
+    unmount()
+  })
+
+  it('records operational expense when record_expense is invoked for Loader', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'record_expense',
+        data: {
+          amount: 500,
+          category: 'Loading / Labor',
+          note: 'Loader',
+          accountId: 'counter',
+          date: '2026-11-20',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Record Expense of 500 Rs for Loader' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockAddExpense).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount: 500,
+          category: 'Loading / Labor',
+          note: 'Loader',
+          accountId: 'counter',
+        })
+      )
+      expect(screen.getByText(/Expense Recorded: ₹500/i)).toBeInTheDocument()
+    })
 
     unmount()
   })

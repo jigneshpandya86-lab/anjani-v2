@@ -2973,6 +2973,105 @@ ${rawText.slice(0, 3000)}`
               reason: { type: 'STRING', description: 'Reason for cancellation' },
             },
           },
+        },
+        {
+          name: 'record_expense',
+          description:
+            'Records an operational, factory, vehicle, labor, or route expense (e.g. "Record Expense of 500 Rs for Loader", "Petrol kharch 300", "Tea and snacks 150", "Tempo puncture 200", "Diesel 1200 paid from bank"). NEVER create an order when the user specifies an expense, kharch, or labor!',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              amount: {
+                type: 'NUMBER',
+                description: 'Expense amount in INR (e.g. 500)',
+              },
+              category: {
+                type: 'STRING',
+                description: 'Expense category (e.g. "Fuel / Transport", "Maintenance", "Food & Refreshments", "Loading / Labor", "Electricity", "Rent", "Raw Material", "Packaging", "Salary", "Miscellaneous")',
+              },
+              note: {
+                type: 'STRING',
+                description: 'Details or reason for expense (e.g. "Loader", "Tempo diesel", "Chai pani")',
+              },
+              accountId: {
+                type: 'STRING',
+                enum: ['counter', 'bank', 'nilesh', 'hiteshbhai'],
+                description: 'Account or cash source from which expense was paid (defaults to "counter" for cash, "bank" for online/UPI, or staff name)',
+              },
+              paymentMode: {
+                type: 'STRING',
+                enum: ['cash', 'online', 'cheque'],
+                description: 'Payment mode (cash, online, cheque)',
+              },
+              date: {
+                type: 'STRING',
+                description: 'Date of expense in YYYY-MM-DD format (defaults to today)',
+              },
+            },
+            required: ['amount'],
+          },
+        },
+        {
+          name: 'edit_expense',
+          description:
+            'Modifies an existing recorded business expense in Firestore or updates an active unconfirmed expense draft in chat (amount, category, account, note, or date). Used for corrections like "Edit expense to 600", "Change diesel expense to 700", "Change account to bank", "Make it 500".',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              amount: { type: 'NUMBER', description: 'New or corrected expense amount' },
+              newAmount: { type: 'NUMBER', description: 'Corrected expense amount' },
+              oldAmount: { type: 'NUMBER', description: 'Existing expense amount' },
+              category: {
+                type: 'STRING',
+                description: 'Corrected expense category (e.g. "Fuel / Transport", "Maintenance", "Food & Refreshments", "Miscellaneous", "Loading / Labor")',
+              },
+              accountId: {
+                type: 'STRING',
+                enum: ['counter', 'bank', 'nilesh', 'hiteshbhai'],
+                description: 'Corrected account from which expense is paid',
+              },
+              note: { type: 'STRING', description: 'Corrected note or reason for expense' },
+              date: { type: 'STRING', description: 'Corrected date in YYYY-MM-DD format' },
+              expenseId: { type: 'STRING', description: 'Expense document ID if known' },
+              changes: {
+                type: 'STRING',
+                description: 'Human-readable description of modification, e.g. "Edit to 600"',
+              },
+            },
+          },
+        },
+        {
+          name: 'cancel_expense',
+          description:
+            'Cancels or deletes a recorded expense from Firestore and credits the account balance back, or cancels an active unconfirmed expense draft in chat. Used for commands like "Cancel expense 500", "Delete petrol expense", "Discard expense".',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              amount: { type: 'NUMBER', description: 'Expense amount to cancel' },
+              category: { type: 'STRING', description: 'Category of expense to cancel (e.g. "Fuel / Transport")' },
+              accountId: { type: 'STRING', description: 'Account from which expense was paid (defaults to "counter")' },
+              expenseId: { type: 'STRING', description: 'Expense document ID if known' },
+              reason: { type: 'STRING', description: 'Reason for cancellation' },
+            },
+          },
+        },
+        {
+          name: 'query_expenses',
+          description:
+            'Queries and calculates business expense totals, breakdowns by category and account, and lists individual expense records for a time period. Used for queries like "Show today\'s expenses", "Ketlo kharch thayo aaje", "What did we spend on petrol this month?", "Total expenses this week".',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              dateFilter: {
+                type: 'STRING',
+                enum: ['today', 'yesterday', 'this_week', 'this_month', 'all', 'custom'],
+                description: 'Time window to query expenses for (defaults to "today")',
+              },
+              targetDate: { type: 'STRING', description: 'Specific target date in YYYY-MM-DD' },
+              category: { type: 'STRING', description: 'Specific category to filter by (e.g. "Fuel / Transport")' },
+              accountId: { type: 'STRING', description: 'Specific account to filter by (e.g. "counter", "bank", "nilesh")' },
+            },
+          },
         }
       ]
 
@@ -3144,6 +3243,72 @@ RUNTIME CONTEXT:
               amount: Number(args.amount) || 0,
               paymentId: args.paymentId || '',
               reason: args.reason || '',
+            },
+          }
+        }
+
+        if (returnType === 'record_expense') {
+          const accountId = args.accountId || (args.paymentMode === 'online' ? 'bank' : 'counter')
+          return {
+            type: 'record_expense',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              amount: Number(args.amount) || 0,
+              category: args.category || 'Miscellaneous',
+              note: args.note || '',
+              accountId,
+              paymentMode: args.paymentMode || (accountId === 'bank' ? 'online' : 'cash'),
+              date: args.date || istToday,
+            },
+          }
+        }
+
+        if (returnType === 'edit_expense') {
+          const effNewAmount = Number(args.newAmount) || Number(args.amount) || 0
+          return {
+            type: 'edit_expense',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              amount: effNewAmount,
+              newAmount: effNewAmount,
+              oldAmount: Number(args.oldAmount) || 0,
+              category: args.category || '',
+              accountId: args.accountId || '',
+              note: args.note || '',
+              date: args.date || '',
+              expenseId: args.expenseId || '',
+              changes: args.changes || rawText || '',
+            },
+          }
+        }
+
+        if (returnType === 'cancel_expense') {
+          return {
+            type: 'cancel_expense',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              amount: Number(args.amount) || 0,
+              category: args.category || '',
+              accountId: args.accountId || 'counter',
+              expenseId: args.expenseId || '',
+              reason: args.reason || '',
+            },
+          }
+        }
+
+        if (returnType === 'query_expenses') {
+          return {
+            type: 'query_expenses',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              dateFilter: args.dateFilter || 'today',
+              targetDate: args.targetDate || (args.dateFilter === 'yesterday' ? '' : istToday),
+              category: args.category || '',
+              accountId: args.accountId || '',
             },
           }
         }

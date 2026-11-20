@@ -82,3 +82,10 @@ When adding or improving AI behavior:
 - **Conversational Draft Modification:** When a pending payment receipt card is shown in chat and user issues a follow-up correction (e.g. *"Edit to 2"*, *"Make it 5000"*, *"Change mode to cash"*), `edit_payment` infers the active customer and active draft from recent messages, modifies the in-memory draft card in place, and awaits user confirmation without failing or requiring re-entry.
 - **Ledger Synchronization:** Deleting or editing recorded payments automatically reverses or recalculates the customer's outstanding balance and account ledger.
 - **Typed & 1-Tap Confirmation:** Unconfirmed drafts can be committed with a single tap on the "Confirm & Record Payment" chip or by typing *"Confirm"*, *"Confirm payment"*, *"Record payment"*, or *"Haan"*.
+
+---
+
+## 8. Universal Expense & Route Spending Engine (`record_expense`)
+- **Direct Expense Logging:** Supports recording operational, vehicle, factory, loader/labor, and route expenses (e.g. *"Record Expense of 500 Rs for Loader"*, *"Petrol kharch 300"*, *"Tea and snacks 150"*) via `record_expense`.
+- **Anti-Confusion Order Guard:** When the user specifies an expense, petty cash, or labor note, the AI strictly prevents invoking `create_order` and never creates an order draft for words like "Loader", "Petrol", or "Labor".
+- **Ledger & Account Debiting:** Persists to Firestore `expenses` collection via `addExpense` and debits the designated account balance (`counter`, `bank`, or delivery staff custody) in real time.

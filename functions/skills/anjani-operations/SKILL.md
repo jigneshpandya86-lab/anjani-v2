@@ -217,6 +217,7 @@ The native operational agent uses Vertex AI Function Calling with 17 registered 
 - *Parameters*: `clientName` (required), `qty` (required), `deliveryDate`, `date`, `time`, `location`, `items`.
 - *Defaults*: 48 pieces (nung) = 1 box. Default time: 11:00 AM (or 4:00 PM if "sanje", 9:00 AM if "savare", 1:00 PM if "bapore"). Default rate: 130 per box for Anjani 200ml.
 - **Incomplete Commands**: When user types *"Book Order"* without customer or quantity, DO NOT call `create_order`. Clarify per Section 5.
+- **CRITICAL EXPENSE ANTI-CONFUSION RULE**: If the prompt mentions "expense", "kharch", "loader", "loading", "labor", "petrol", "diesel", "tempo repair", "puncture", "chai", "tea", or indicates money paid out for operations/supplies, NEVER invoke `create_order`! Words like "Loader" are NOT customer names. You MUST call `record_expense`!
 
 #### Universal Order Editing, Rescheduling, Confirmation & Cancellation (`edit_order`)
 - **Trigger**: Modifying, rescheduling, confirming, or cancelling an order.
@@ -300,6 +301,51 @@ The Anjani AI supports full end-to-end lifecycle coverage for all payment-relate
      - *"Cash with Nilesh"* $\rightarrow$ `query_accounts(staffName: "Nilesh")`.
      - *"Cash with Hiteshbhai"* $\rightarrow$ `query_accounts(staffName: "Hiteshbhai")`.
      - *"Counter balance and bank account"* $\rightarrow$ `query_accounts()`.
+
+### Priority 5B: Complete Business Expense Lifecycle A to Z (`record_expense`, `edit_expense`, `cancel_expense`, `query_expenses`)
+
+The Anjani AI supports full end-to-end lifecycle coverage for all operational business expenditures:
+
+1. **A — Record & Detect Expense (`record_expense`)**:
+   - **CRITICAL ANTI-CONFUSION RULE**: When the user requests to record an expense, petty cash, labor, or operational spending (e.g. *"Record Expense of 500 Rs for Loader"*, *"Petrol kharch 300"*, *"Chai pani 120"*, *"Tempo puncture 200"*, *"Labor 400"*, *"Diesel 1200 paid online"*), you MUST invoke `record_expense`.
+   - **NEVER EVER invoke `create_order` or create an order draft when the user specifies an expense or kharch!** "Loader" is NOT a customer, it is an operational labor note.
+   - *Parameters*:
+     - `amount`: Number (INR) (required)
+     - `category`: `"Fuel / Transport"` | `"Maintenance"` | `"Food & Refreshments"` | `"Loading / Labor"` | `"Electricity"` | `"Rent"` | `"Raw Material"` | `"Packaging"` | `"Salary"` | `"Miscellaneous"`
+     - `note`: Detail / description (e.g. `"Loader"`, `"Tempo diesel"`, `"Chai pani"`, `"Puncture repair"`)
+     - `accountId`: `"counter"` (default for cash) | `"bank"` (online/UPI/cheque) | `"nilesh"` | `"hiteshbhai"`
+     - `paymentMode`: `"cash"` | `"online"` | `"cheque"`
+     - `date`: `YYYY-MM-DD` (defaults to today)
+   - *Examples*:
+     - *"Record Expense of 500 Rs for Loader"* $\rightarrow$ `record_expense(amount: 500, category: "Loading / Labor", note: "Loader")`
+     - *"Petrol kharch 400 from counter"* $\rightarrow$ `record_expense(amount: 400, category: "Fuel / Transport", note: "Petrol", accountId: "counter")`
+     - *"Diesel 1200 paid from bank"* $\rightarrow$ `record_expense(amount: 1200, category: "Fuel / Transport", accountId: "bank", paymentMode: "online", note: "Diesel")`
+     - *"Tea and refreshments 150"* $\rightarrow$ `record_expense(amount: 150, category: "Food & Refreshments", note: "Tea and refreshments")`
+     - *"Tempo puncture 250 paid by Nilesh"* $\rightarrow$ `record_expense(amount: 250, category: "Maintenance", accountId: "nilesh", note: "Tempo puncture")`
+
+2. **B — In-Memory Draft Modification & Follow-up Edits (`edit_expense`)**:
+   - When an expense draft card is currently awaiting confirmation in chat and the user issues a correction (e.g. *"Edit to 600"*, *"Make it 700"*, *"Change category to Maintenance"*, *"Change account to bank"*), the assistant MUST call `edit_expense` with `newAmount`, `category`, `accountId`, or `changes`.
+   - Modifies the in-memory draft card in chat without failing or creating duplicate entries.
+
+3. **C — Recorded Expense Modifications (`edit_expense`)**:
+   - Modifies an already-recorded expense in Firestore.
+   - Automatically synchronizes account balance (refunds old amount/account, debits new amount/account).
+
+4. **D — Expense Cancellation & Balance Refund (`cancel_expense`)**:
+   - **Draft Cancellation**: Cancels uncommitted expense drafts in chat when user says *"Cancel expense"*, *"Discard expense"*, or *"Cancel"*.
+   - **Recorded Expense Deletion**: Deletes recorded transactions from Firestore `expenses` and credits back the account balance in `accounts_summary`.
+   - *Parameters*: `amount`, `category`, `accountId`, `expenseId`, `reason`.
+
+5. **E — 1-Tap & Typed Confirmation (`confirm_latest_expense`)**:
+   - Users can confirm unrecorded expense drafts either by tapping the **Confirm & Record Expense** button/chip or by typing *"Confirm"*, *"Confirm expense"*, *"Record expense"*, or *"Haan"*.
+   - Automatically writes transaction to Firestore `expenses`, debits account, and confirms in chat.
+
+6. **F — Expense Telemetry & Reports (`query_expenses`)**:
+   - Queries expense totals and breakdowns for any time range:
+     - Today: *"Show today's expenses"*, *"Aaj no kharch ketlo thayo"* $\rightarrow$ `query_expenses(dateFilter: "today")`.
+     - Yesterday: *"Yesterday's expenses"* $\rightarrow$ `query_expenses(dateFilter: "yesterday")`.
+     - This Month: *"Total expenses this month"* $\rightarrow$ `query_expenses(dateFilter: "this_month")`.
+     - Category-Specific: *"How much did we spend on petrol this month?"* $\rightarrow$ `query_expenses(dateFilter: "this_month", category: "Fuel / Transport")`.
 
 ### Priority 6: Operational Telemetry & Order Queries
 
