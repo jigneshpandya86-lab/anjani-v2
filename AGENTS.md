@@ -182,6 +182,20 @@ All water products are defined centrally in `src/constants/skus.js`:
 
 ---
 
+## AI Natural Language & Tool Calling Architecture (`askAnjaniAi`)
+
+1. **Zero Client-Side Regex for Natural Language:**
+   - Never add regex matchers in `AiAssistantDrawer.jsx` or client code to interpret user queries.
+   - 100% of natural language queries (English, Gujarati, Hinglish) route directly to the backend Cloud Function `askAnjaniAi` (Gemini 2.5 Tool Calling Agent).
+
+2. **Strict Date Isolation for Order Inquiries (`orders_query`):**
+   - When the user asks for tomorrow's or today's orders (*"tomorrow's order"*, *"kale ketla order chhe"*, *"today orders"*), Gemini calls `query_orders({ dateFilter: "tomorrow" | "today", targetDate: "YYYY-MM-DD" })`.
+   - Backend normalizes missing `targetDate` using real-time IST timestamps.
+   - Frontend `AiAssistantDrawer.jsx` strictly matches `o.deliveryDate || o.date` against `effectiveTargetDate`.
+   - **Zero Leakage / Fallthrough Rule:** When `dateFilter` is set to `'tomorrow'` or `'today'`, the filter MUST NOT fall through to return all open orders across other dates. If no orders exist for that day, an empty list with an informative badge is rendered.
+
+---
+
 ## Commands & Verification Workflow
 - **Unit Tests:** `npm test` (`vitest run`)
 - **Lint Check:** `npm run lint` (`eslint .`)

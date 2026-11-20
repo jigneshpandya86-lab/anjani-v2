@@ -1702,6 +1702,18 @@ export default function AiAssistantDrawer({
         const { dateFilter, targetDate, clientName, status } = resData.data || {}
         const allOrders = orders || []
 
+        // Resolve effective target date if dateFilter is today/tomorrow
+        let effectiveTargetDate = targetDate
+        if (!effectiveTargetDate) {
+          const now = new Date()
+          if (dateFilter === 'tomorrow') {
+            const tm = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+            effectiveTargetDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(tm)
+          } else if (dateFilter === 'today') {
+            effectiveTargetDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now)
+          }
+        }
+
         const filtered = allOrders.filter((o) => {
           const st = (o.status || '').toLowerCase()
           const isCancelled = st === 'cancelled' || o.isCancelled === true
@@ -1711,9 +1723,12 @@ export default function AiAssistantDrawer({
             const cn = (o.clientName || o.name || '').toLowerCase()
             if (!cn.includes(clientName.toLowerCase())) return false
           }
-          if (targetDate) {
-            const od = o.deliveryDate || o.date || o.orderDate || ''
-            return od.startsWith(targetDate)
+          if (effectiveTargetDate) {
+            const od = String(o.deliveryDate || o.date || o.orderDate || '')
+            return od.startsWith(effectiveTargetDate)
+          }
+          if (dateFilter === 'tomorrow' || dateFilter === 'today') {
+            return false // Strict date match required: never leak all open orders!
           }
           return !isCancelled && !isDelivered
         })
@@ -1726,7 +1741,7 @@ export default function AiAssistantDrawer({
               sender: 'assistant',
               text: resData.text || '',
               type: 'orders_list',
-              data: { orders: filtered, dateFilter, targetDate },
+              data: { orders: filtered, dateFilter, targetDate: effectiveTargetDate },
               timestamp: new Date(),
             },
           ])
@@ -1739,7 +1754,7 @@ export default function AiAssistantDrawer({
               sender: 'assistant',
               text: `📦 **${label} Orders**: No delivery orders scheduled for ${label ? label.toLowerCase() : 'this date'}.`,
               type: 'orders_list',
-              data: { orders: [], dateFilter, targetDate },
+              data: { orders: [], dateFilter, targetDate: effectiveTargetDate },
               chips: [
                 { label: "📦 Today's Orders", value: 'today orders' },
                 { label: "📦 Tomorrow's Orders", value: 'tomorrow orders' },

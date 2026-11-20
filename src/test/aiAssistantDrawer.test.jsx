@@ -1095,4 +1095,53 @@ describe('AiAssistantDrawer', () => {
 
     unmount()
   })
+
+  it('strictly isolates orders when querying tomorrow orders and never leaks open orders', async () => {
+    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+    const tomorrowDate = new Date(Date.now() + 24 * 60 * 60 * 1000)
+    const tomorrowStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(tomorrowDate)
+
+    // Setup orders: only today has orders, tomorrow has zero orders
+    mockOrders.length = 0
+    mockOrders.push(
+      { id: 'ord-today-1', clientName: 'Maruti Caterers', status: 'Pending', date: todayStr, deliveryDate: todayStr },
+      { id: 'ord-today-2', clientName: 'Kamleshbhai', status: 'Confirmed', date: todayStr, deliveryDate: todayStr }
+    )
+
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'orders_query',
+        text: 'Showing orders for tomorrow',
+        data: {
+          dateFilter: 'tomorrow',
+          targetDate: tomorrowStr,
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, {
+      target: { value: "tomorrow's order" },
+    })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      // Must show zero orders empty state for tomorrow
+      expect(screen.getByText(/No delivery orders scheduled for tomorrow/i)).toBeInTheDocument()
+      // Must NEVER display today's pending orders
+      expect(screen.queryByText(/Maruti Caterers/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Kamleshbhai/i)).not.toBeInTheDocument()
+    })
+
+    unmount()
+  })
 })

@@ -58,3 +58,11 @@ When adding or improving AI behavior:
 1. **Update Cloud Function Prompt:** Add the new structured intent in `functions/index.js` under `operationalAgentPrompt` with examples in English, Gujarati, and Hinglish.
 2. **Update Client Response Handler:** In `src/components/AiAssistantDrawer.jsx`, add `else if (resData.type === 'your_intent')` to render the interactive UI card or trigger store updates.
 3. **Never add a regex in the client to bypass Gemini.**
+
+---
+
+## 5. Strict Date Isolation for Order Queries (`orders_query`)
+- **Strict Matching Mandatory:** When user asks for tomorrow's or today's orders (`dateFilter === 'tomorrow'` or `'today'`), both backend and client MUST strictly isolate orders matching that exact target date (`YYYY-MM-DD` in IST).
+- **Zero Fallthrough / Leakage:** If no orders exist for tomorrow or today, the system MUST show an empty state (*"No delivery orders scheduled for tomorrow"*). It must NEVER fall through to display all active/open orders across other dates.
+- **Backend Normalization:** `functions/index.js` injects IST dates into the system prompt and normalizes `args.targetDate` and `args.dateFilter` so the client receives the exact date.
+- **Client Defense-in-Depth:** In `AiAssistantDrawer.jsx`, if `effectiveTargetDate` is set, `od.startsWith(effectiveTargetDate)` is required; if `dateFilter === 'tomorrow' || dateFilter === 'today'`, any order missing that date returns `false` (no fallthrough).

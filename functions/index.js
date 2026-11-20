@@ -2989,6 +2989,22 @@ RUNTIME CONTEXT:
           }
         }
 
+        // Strict date isolation and normalization for orders_query
+        if (returnType === 'orders_query') {
+          const rawQ = String(rawText || '').toLowerCase()
+          if (args.dateFilter === 'tomorrow' || (!args.targetDate && !args.dateFilter && /tomorrow|kale|kal\b/i.test(rawQ))) {
+            args.dateFilter = 'tomorrow'
+            args.targetDate = istTomorrow
+          } else if (args.dateFilter === 'today' || (!args.targetDate && !args.dateFilter && /today|aaje|aaj\b/i.test(rawQ))) {
+            args.dateFilter = 'today'
+            args.targetDate = istToday
+          } else if (args.targetDate === istTomorrow) {
+            args.dateFilter = 'tomorrow'
+          } else if (args.targetDate === istToday) {
+            args.dateFilter = 'today'
+          }
+        }
+
         if (returnType === 'create_client') {
           return {
             type: 'create_client',

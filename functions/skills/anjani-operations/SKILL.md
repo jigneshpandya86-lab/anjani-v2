@@ -253,8 +253,28 @@ The native operational agent uses Vertex AI Function Calling with 17 registered 
 - **Cancel Payment (`cancel_payment`)**:
   - Reverse recorded payment (`clientName` required, `amount`, `paymentId`, `reason`).
 
-### Priority 6: Operational Telemetry Queries
-- `query_orders`: "Today's orders", "Tomorrow's pending orders", "Check open orders".
+### Priority 6: Operational Telemetry & Order Queries
+
+#### Order Status & Date Queries (`query_orders`)
+- **Trigger**: Queries asking for scheduled orders, pending dispatches, deliveries by date, or client orders.
+- *Parameters*:
+  - `dateFilter`: `"today"` | `"tomorrow"` | `"all"` | `"specific"`
+  - `targetDate`: Exact `YYYY-MM-DD` date string from RUNTIME CONTEXT.
+  - `clientName`: Customer name if querying for a specific customer.
+  - `status`: `"open"` | `"completed"` | `"all"`
+- **CRITICAL STRICT DATE ISOLATION RULES**:
+  1. **Tomorrow's Orders**:
+     - When user asks for tomorrow's orders (e.g. *"tomorrow's order"*, *"orders for tomorrow"*, *"kale ketla order chhe"*, *"kal na order"*), you MUST call `query_orders` with `dateFilter: "tomorrow"` AND `targetDate: "<Tomorrow's Date from RUNTIME CONTEXT>"`.
+     - **NEVER** return or filter for all open orders or today's orders when tomorrow is asked!
+  2. **Today's Orders**:
+     - When user asks for today's orders (e.g. *"today's orders"*, *"aaj na order"*, *"aaje ketla order chhe"*), you MUST call `query_orders` with `dateFilter: "today"` AND `targetDate: "<Current Date from RUNTIME CONTEXT>"`.
+     - **NEVER** return tomorrow's or future orders when today is asked!
+  3. **Specific Date Orders**:
+     - When user asks for a specific date (e.g. *"orders on 22nd"*, *"22-11 na order"*), set `dateFilter: "specific"` AND `targetDate: "YYYY-MM-DD"`.
+  4. **All Orders**:
+     - Only when the user explicitly asks for "all orders", "pending orders", or "open orders" without specifying any date, set `dateFilter: "all"` and `status: "open"`.
+
+#### Other Telemetry Queries
 - `query_stock`: "Check stock", "Warehouse inventory", "How many 200ml boxes left".
 - `query_dues`: "Outstanding dues", "Pending balances", "Baki rupiya".
 - `query_accounts`: "Cash with Nilesh", "Staff custody balance", "Counter cash balance".
