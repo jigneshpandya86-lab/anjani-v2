@@ -114,26 +114,37 @@ All water products are defined centrally in `src/constants/skus.js`:
   - `importantFields` includes `sku` and `product`.
   - Notification SMS and push alert format includes `SKU: ${resolved.sku || 'Anjani 200ml'}` and `${sQty} ${sSku} for ${sName}`.
 - `sendOrderReminder`: Daily reminder SMS includes SKU.
-- `askAnjaniAi`: OnCall callable function using Vertex AI (`@google-cloud/vertexai`) in `us-central1`. Supports multimodal vendor bill OCR and context-aware business chat with token optimization and dynamic model fallback.
-- Deploy command: `npx firebase deploy --only functions:askAnjaniAi` or `npx firebase deploy --only functions`.
+- `askAnjaniAi`: OnCall callable function in region `asia-south1`. Uses Gemini 2.5 (`gemini-2.5-flash-lite` primary with `gemini-2.5-flash` fallback) with structured JSON Tool Calling / Operational Intent Classification.
+  - Strict Token & Budget Guards: 300 requests/day per user ceiling (< ₹4/day maximum cost) and strict `maxOutputTokens: 500`.
+  - Structured Intent Actions: `orders_query`, `order_create`, `staff_reminder`, `accounts_query`, `stock_query`, `dues_query`, `tasks_query`, `location_update`, `update_date`, `update_time`, `update_price`, `update_qty`, `chat_reply`.
+  - Multimodal Vision: High-precision vendor bill OCR, payment receipt verification, and customer onboarding card scanning.
+- Deploy command: `firebase deploy --only functions:askAnjaniAi` or `firebase deploy --only functions`.
 
 ---
 
-## AI Assistant & Multimodal Vendor Bill Scanning (`src/components/AiAssistantDrawer.jsx`)
-1. **Zero-Token Local Intent Router (`src/utils/aiIntentRouter.js`):**
-   - Intercepts routine queries for stock status, open deliveries, and customer outstanding balances.
-   - Generates interactive cards directly from `clientStore` in milliseconds consuming **0 API tokens (100% free)**.
-2. **Client-Side Image Downsampler (`src/utils/aiImageHelper.js`):**
+## AI Assistant Architecture (`src/components/AiAssistantDrawer.jsx`)
+1. **CRITICAL ARCHITECTURAL RULE: NEVER USE REGEX FOR NATURAL LANGUAGE UNDERSTANDING.**
+   - All conversational text typed by the user (English, Gujarati, Hindi, Hinglish) flows DIRECTLY to `askAnjaniAi` (Gemini Tool Calling Agent).
+   - NEVER add natural language regex patterns, regex keyword interceptors, or manual grammar parsers in client-side code.
+   - When new natural language features or commands are added:
+     1. Add the tool/intent schema in `functions/index.js` (`operationalAgentPrompt`).
+     2. Add the structured intent handler in `src/components/AiAssistantDrawer.jsx` (`resData.type === 'your_new_intent'`).
+2. **Deterministic Client-Side Actions (0ms Latency, 0 Tokens):**
+   - **Interactive Chatbot Flows (`src/utils/chatbotFlowEngine.js`):** Multi-step clickable chip questionnaires for `flow_order`, `flow_task`, `flow_payment`, `flow_expense`, `flow_cash`, `flow_staff`.
+   - **Main Menu Quick Chips:** 5 categorized domain sections (Orders & Dispatch, Staff Tasks & Operations, Payments & Expenses, Cash & Staff Advances, Reports & Balances). Direct chip clicks execute instant client-side queries without calling the LLM.
+   - **Numbered Card Action Selection:** When an order card or draft sheet is open with numbered options (`[1] Confirm [2] Reschedule [3] Cancel`), typing `1`, `2`, or `3` triggers that button directly.
+   - **Utility Autocomplete:** Typing `/` opens the SKU rate menu; typing `@` opens the customer picker.
+3. **Client-Side Image Downsampler (`src/utils/aiImageHelper.js`):**
    - High-resolution vendor invoice/challan photos are resized via HTML5 Canvas to max 1280px JPEG (~150KB) in the browser before sending.
    - Keeps multimodal vision token consumption fixed at ~258 tokens (~₹0.001 INR per scan).
-3. **Strict SKU Mapping & 1-Tap Inward:**
+4. **Strict SKU Mapping & 1-Tap Inward:**
    - Multimodal OCR is constrained to Annapurna's 5 exact warehouse SKUs: `Anjani 200ml`, `Bailey 250ml`, `Bailey 500ml`, `Bailey 1 Liter`, and `Bailey 2 Liter`.
    - Renders an interactive confirmation card with quantity steppers (`+` / `-`).
    - "Confirm & Inward to Stock" invokes `addStockBatch()` to record a batch inward transaction in Firestore `collection('stock')` and update `meta/stockSummary`.
-4. **Dynamic Model Upgrades (`SettingsTab.jsx` & Firestore `config/aiSettings`):**
+5. **Dynamic Model Upgrades (`SettingsTab.jsx` & Firestore `config/aiSettings`):**
    - Configurable in `SettingsTab` under the "AI & Models" sub-tab.
    - Primary model defaults to `gemini-2.5-flash-lite`, with fallback to `gemini-2.5-flash`.
-   - Supports custom model names (e.g. future releases) and token caps (`maxOutputTokens: 600`) without redeploying code.
+   - Supports custom model names and token caps without redeploying code.
 
 ---
 
