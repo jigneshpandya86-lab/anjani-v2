@@ -2124,28 +2124,52 @@ Return strict JSON:
   "notes": string
 }
 
-If it is a customer payment receipt, UPI payment screenshot (Google Pay, PhonePe, Paytm, BHIM, Bank transfer), or cheque:
-CRITICAL SENDER VS RECEIVER (PAYEE) RULE:
-- Annapurna Foods and Jignesh Pandya are the RECEIVER / PAYEE / MERCHANT (the owner receiving the payment).
-- You MUST NEVER extract "Annapurna Foods", "Anjani Water", or "Jignesh Pandya" (or any variation) as the payerName or customer name!
-- The CUSTOMER / PAYER is the SENDER who paid the money! Look at "From:", "Debited from:", "Paid by:", or the sender's UPI handle / account name.
-- In Google Pay (GPay):
-  * "Paid to Annapurna Foods" -> Annapurna Foods is the RECEIVER. DO NOT EXTRACT AS PAYER!
-  * "From: <Customer Name>" -> This is the PAYER! Extract this customer name into "payerName".
-  * If "From:" shows a phone number or UPI ID (e.g. 9825012345@okaxis), extract the 10-digit mobile number into "mobile".
-  * If the sender's name is not shown, leave payerName empty or use the name from UPI handle, NEVER "Annapurna Foods"!
-Return strict JSON:
-{
-  "docType": "receive_payment",
-  "payerName": string (Customer or sender name from "From:". NEVER "Annapurna Foods"),
-  "mobile": string (CRITICAL: Extract 10-digit mobile number from sender UPI ID under "From:" e.g. 9825012345@okaxis, digits 0-9 only),
-  "amount": number,
-  "paymentMode": "online" | "cash" | "cheque",
-  "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
-  "utr": string,
-  "date": string,
-  "notes": string
-}
+If it is a payment receipt, UPI payment screenshot (Google Pay, PhonePe, Paytm, BHIM, Bank transfer), cheque, or slip:
+CRITICAL DIRECTION RULE - MONEY OUT (EXPENSE / STAFF TRANSFER) VS MONEY IN (CUSTOMER PAYMENT):
+1. OUTGOING PAYMENT (EXPENSE / STAFF TRANSFER / ADVANCE):
+   - When money is sent or debited FROM Jignesh Pandya / Jigneshkumar K Pandya / Annapurna Foods (e.g. "From: JIGNESHKUMAR K PANDYA", "Debited from Axis Bank")
+   - OR when money is sent TO delivery staff (e.g. "To: nilesh vaniya", "To: Nilesh", "To: Hiteshbhai", "To: VANIYA NIILARKUMAR RAVAJIBHAI"), petrol pump, garage/repair, food, or vendor
+   - OR when user prompt/caption mentions "This is for expenses", "expense", "kharch", "petrol", "diesel", "advance", or "transfer":
+   -> THIS IS AN EXPENSE OR STAFF ACCOUNT TRANSFER!
+   Return strict JSON:
+   {
+     "docType": "accounts_cash",
+     "summary": {
+       "totalInward": 0,
+       "totalOutward": number (payment amount),
+       "entryCount": 1,
+       "date": string (YYYY-MM-DD or today)
+     },
+     "entries": [
+       {
+         "type": "expense",
+         "fromAccount": "bank",
+         "toAccount": "nilesh",
+         "accountId": "nilesh",
+         "clientName": string (e.g. "Nilesh Vaniya"),
+         "category": "Staff Advance / Route Expenses",
+         "amount": number (positive payment amount),
+         "notes": string (e.g. "Google Pay sent to Nilesh Vaniya for expenses")
+       }
+     ]
+   }
+
+2. INCOMING PAYMENT (CUSTOMER COLLECTION):
+   - When a customer paid money TO Annapurna Foods / Jignesh Pandya ("Paid to Annapurna Foods", "To: Annapurna Foods", "From: <Customer>"):
+   - Annapurna Foods and Jignesh Pandya are the RECEIVER / PAYEE / MERCHANT. You MUST NEVER extract "Annapurna Foods" or "Jignesh Pandya" as the payerName!
+   - The CUSTOMER / PAYER is the SENDER who paid the money! Look at "From:", "Debited from:", "Paid by:", or the sender's UPI handle / account name.
+   Return strict JSON:
+   {
+     "docType": "receive_payment",
+     "payerName": string (Customer or sender name from "From:". NEVER "Annapurna Foods"),
+     "mobile": string (CRITICAL: Extract 10-digit mobile number from sender UPI ID under "From:" e.g. 9825012345@okaxis, digits 0-9 only),
+     "amount": number,
+     "paymentMode": "online" | "cash" | "cheque",
+     "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
+     "utr": string,
+     "date": string,
+     "notes": string
+   }
 
 If the user specifies compound actions (such as "client plus order plus payment", "create client and order", "order and payment", or asks to onboard client and book order alongside a payment receipt/screenshot):
 CRITICAL SENDER VS RECEIVER (PAYEE) RULE:
@@ -2276,28 +2300,49 @@ Even if the bill book, signboard, or card is in Hindi (देवनागरी)
 - NEVER return Devanagari or Gujarati characters in client fields.
 - Do NOT generate orders, sales, or bills. The ONLY goal is onboarding this business as a new client.`
       } else if (mode === 'receive_payment') {
-        ocrPrompt = `You are an expert payment receipt and UPI OCR AI for Annapurna Foods in Vadodara, Gujarat.
-The user wants to RECORD A PAYMENT from this photo (UPI screenshot from Google Pay, PhonePe, Paytm, BHIM, Bank transfer receipt, cash counter slip, or cheque).
+        ocrPrompt = `You are an expert payment and accounts transaction OCR AI for Annapurna Foods in Vadodara, Gujarat.
+Analyze this photo (UPI screenshot from Google Pay, PhonePe, Paytm, BHIM, Bank transfer receipt, cash counter slip, or cheque).
 
-CRITICAL SENDER VS RECEIVER (PAYEE) RULE:
-- Annapurna Foods and Jignesh Pandya are the RECEIVER / PAYEE / MERCHANT.
-- You MUST NEVER extract "Annapurna Foods", "Anjani Water", or "Jignesh Pandya" as the payerName!
-- The PAYER is the SENDER who sent the money ("From: ...", "Debited from: ...", or sender UPI ID).
-- In Google Pay: "Paid to Annapurna Foods" is the RECEIVER. Payer is under "From: <Customer Name>".
-- If "From:" contains a 10-digit mobile number in the UPI ID (e.g. 9825012345@okaxis), extract that 10-digit number into "mobile".
+CRITICAL DIRECTION RULE - MONEY OUT (EXPENSE / STAFF TRANSFER) VS MONEY IN (CUSTOMER COLLECTION):
+1. OUTGOING PAYMENT (EXPENSE / STAFF ADVANCE / TRANSFER):
+   - When money was debited FROM Jigneshkumar K Pandya / Annapurna Foods (e.g. "From: JIGNESHKUMAR K PANDYA", "Debited from Axis Bank")
+   - OR sent TO delivery staff (Nilesh Vaniya, Hiteshbhai), fuel station, garage/repair, food, or vendor
+   - OR when user prompt/caption mentions "This is for expenses", "expense", "kharch", "petrol", "diesel", "advance", or "transfer":
+   -> THIS IS AN OUTGOING EXPENSE OR STAFF CASH ADVANCE!
+   Return strict JSON:
+   {
+     "docType": "accounts_cash",
+     "summary": { "totalInward": 0, "totalOutward": number (amount in INR), "entryCount": 1, "date": string (YYYY-MM-DD or as shown) },
+     "entries": [
+       {
+         "type": "expense",
+         "fromAccount": "bank",
+         "toAccount": "nilesh",
+         "accountId": "nilesh",
+         "clientName": string (e.g. "Nilesh Vaniya"),
+         "category": "Staff Advance / Route Expenses",
+         "amount": number (positive payment amount in INR),
+         "notes": string (e.g. "Google Pay sent to Nilesh Vaniya for expenses")
+       }
+     ]
+   }
 
-Return strict JSON:
-{
-  "docType": "receive_payment",
-  "payerName": string (Customer or sender name from "From:". NEVER "Annapurna Foods"),
-  "mobile": string (10-digit mobile from sender UPI ID if present),
-  "amount": number (Total payment amount in INR),
-  "paymentMode": "online" | "cash" | "cheque",
-  "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
-  "utr": string (UPI transaction ID, UTR, reference number, or cheque number),
-  "date": string (YYYY-MM-DD or as shown),
-  "notes": string
-}`
+2. INCOMING PAYMENT (CUSTOMER COLLECTION):
+   - Only when a customer paid Annapurna Foods / Jignesh Pandya ("Paid to Annapurna Foods", "From: <Customer>"):
+   - Annapurna Foods and Jignesh Pandya are the RECEIVER / PAYEE / MERCHANT. NEVER extract "Annapurna Foods" as the payerName!
+   - Payer is the customer under "From:".
+   Return strict JSON:
+   {
+     "docType": "receive_payment",
+     "payerName": string (Customer or sender name from "From:". NEVER "Annapurna Foods"),
+     "mobile": string (10-digit mobile from sender UPI ID if present),
+     "amount": number (Total payment amount in INR),
+     "paymentMode": "online" | "cash" | "cheque",
+     "onlineProvider": "GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank",
+     "utr": string (UPI transaction ID, UTR, reference number, or cheque number),
+     "date": string (YYYY-MM-DD or as shown),
+     "notes": string
+   }`
       }
 
       const isAudio = mimeType && mimeType.startsWith('audio/')
@@ -2458,11 +2503,25 @@ Return strict JSON:
       }
 
       if (
-        mode === 'receive_payment' ||
+        parsedData.docType === 'accounts_cash' ||
+        mode === 'accounts_cash' ||
+        (Array.isArray(parsedData.entries) && parsedData.entries.length > 0)
+      ) {
+        return {
+          type: 'accounts_cash',
+          modelUsed: modelName,
+          data: parsedData,
+        }
+      }
+
+      if (
+        (mode === 'receive_payment' ||
         parsedData.docType === 'receive_payment' ||
         (Number(parsedData.amount || parsedData.payment?.amount) > 0 &&
           (parsedData.payerName || parsedData.payment?.payerName || parsedData.utr || parsedData.payment?.utr) &&
-          !Array.isArray(parsedData.sales))
+          !Array.isArray(parsedData.sales))) &&
+        parsedData.docType !== 'accounts_cash' &&
+        !Array.isArray(parsedData.entries)
       ) {
         const rawPayment = parsedData.payment ? { ...parsedData.payment } : { ...parsedData }
         const cleanPayment = {

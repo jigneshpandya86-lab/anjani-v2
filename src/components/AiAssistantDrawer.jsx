@@ -1181,7 +1181,8 @@ export default function AiAssistantDrawer({
     const isPayment = isPaymentMode
     const isClient = isClientMode
     const isAccounts = isAccountsMode
-    const isOnlyPayment = isPayment && !isClient && !isSales && !isAccounts
+    const hasExpenseKeyword = /(?:expense|expenses|kharch|petrol|diesel|advance|handover|transfer)\b/i.test(query)
+    const isOnlyPayment = isPayment && !isClient && !isSales && !isAccounts && !hasExpenseKeyword
 
     if (!query && !filePayload) return
 
@@ -1324,7 +1325,9 @@ export default function AiAssistantDrawer({
       ].filter(Boolean)
 
       let apiMode = 'auto'
-      if (isOnlyPayment) {
+      if (hasExpenseKeyword || isAccounts) {
+        apiMode = 'accounts_cash'
+      } else if (isOnlyPayment) {
         apiMode = 'receive_payment'
       } else if (activeModes.length >= 2) {
         apiMode = 'compound_action'
@@ -1402,7 +1405,7 @@ export default function AiAssistantDrawer({
 
       const resData = response.data || {}
 
-      if (isOnlyPayment) {
+      if (isOnlyPayment && resData.type !== 'accounts_cash') {
         let payData = {}
         if (resData.type === 'compound_action') {
           const compData = resData.data || {}
