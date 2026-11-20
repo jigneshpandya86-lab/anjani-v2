@@ -31,8 +31,6 @@ import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage'
 import { app } from '../firebase-config'
 import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 import { getNormalizedOrderStatus } from '../utils/orderUtils'
-import CardActionSheet from './CardActionSheet'
-import { getOrderCardActions } from '../utils/cardActionRegistry'
 import { checkIsDayTime } from '../services/taskService'
 import { sendBackgroundSms } from '../services/leadSmsService'
 
@@ -54,82 +52,8 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
   const [showPeriodPicker, setShowPeriodPicker] = useState(false)
   const [uploadingProofOrderId, setUploadingProofOrderId] = useState('')
   const [statusUpdatingOrderId, setStatusUpdatingOrderId] = useState('')
-  const [activeCardSheet, setActiveCardSheet] = useState(null)
   const proofInputRefs = useRef({})
   const storage = getStorage(app)
-
-  const openOrderSecondaryMenu = useCallback(
-    (ord) => {
-      if (!ord) return
-      const clientName = ord.clientName || ord.name || 'Customer'
-      const qty = ord.qty || ord.totalQty || 1
-      const sku = ord.sku || ord.product || '200ml'
-      const addr = ord.address ? `📍 ${ord.address}` : ''
-      const time = ord.time || ord.deliveryTime ? `⏰ ${ord.time || ord.deliveryTime}` : ''
-
-      const actions = getOrderCardActions({
-        order: ord,
-        handlers: {
-          onRemindStaff: async (targetOrder) => {
-            const daytime = checkIsDayTime()
-            if (!daytime.isDayTime) {
-              const confirmSend = window.confirm(
-                `⚠️ Outside Daytime Hours (${daytime.istTimeStr})\n\nSend SMS to Nilesh anyway?`
-              )
-              if (!confirmSend) return
-            }
-            const reminderMsg = `Nileshbhai, ${targetOrder.clientName || 'Customer'} nu ${targetOrder.qty || 1} box ${targetOrder.sku || 'Anjani 200ml'} delivery baki chhe.${targetOrder.address ? ' 📍 ' + targetOrder.address : ''}${targetOrder.time ? ' ⏰ ' + targetOrder.time : ''}. Dispatch kari dejo. - Anjani Water`
-            try {
-              await sendBackgroundSms({
-                phone: '7990943652',
-                message: reminderMsg,
-              })
-              toast.success('Delivery reminder SMS sent to Nilesh! 📲', { icon: '📲' })
-            } catch (err) {
-              toast.error('Failed to send SMS: ' + err.message)
-            }
-          },
-          onWhatsAppStaff: (targetOrder) => {
-            const reminderMsg = `Nileshbhai, ${targetOrder.clientName || 'Customer'} nu ${targetOrder.qty || 1} box ${targetOrder.sku || 'Anjani 200ml'} delivery baki chhe.${targetOrder.address ? ' 📍 ' + targetOrder.address : ''}${targetOrder.time ? ' ⏰ ' + targetOrder.time : ''}. Dispatch kari dejo. - Anjani Water`
-            window.open(
-              `https://api.whatsapp.com/send?phone=917990943652&text=${encodeURIComponent(reminderMsg)}`,
-              '_blank'
-            )
-            toast.success('WhatsApp opened for Nilesh! 💬')
-          },
-          onMarkDelivered: async (targetOrder) => {
-            try {
-              setStatusUpdatingOrderId(targetOrder.id)
-              await updateOrder(targetOrder.id, {
-                status: 'Delivered',
-                deliveredAt: new Date().toISOString(),
-              })
-              toast.success('Order marked as Delivered! 🚚')
-            } catch (err) {
-              toast.error('Failed to update status: ' + err.message)
-            } finally {
-              setStatusUpdatingOrderId('')
-            }
-          },
-          onEditOrder: (targetOrder) => onEdit?.(targetOrder),
-          onShareInvoice: (targetOrder) => onShareInvoice?.(targetOrder),
-        },
-      })
-
-      setActiveCardSheet({
-        type: 'order',
-        title: 'Order Card',
-        subtitle: `${clientName} • ${qty}x ${sku}`,
-        itemSummary: {
-          title: clientName,
-          detail: [addr, time].filter(Boolean).join(' • ') || 'Today Delivery',
-          badge: `${qty}x ${sku}`,
-        },
-        actions,
-      })
-    },
-    [onEdit, onShareInvoice, updateOrder]
-  )
 
   const handleLoadOlder = useCallback(async () => {
     try {
@@ -919,8 +843,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
           return (
             <div
               key={order.id}
-              onClick={() => openOrderSecondaryMenu(order)}
-              className={`bg-white rounded-2xl p-4 sm:p-5 shadow-sm border transition-all cursor-pointer hover:border-amber-400 hover:shadow-md ${
+              className={`bg-white rounded-2xl p-4 sm:p-5 shadow-sm border transition-all ${
                 isConfirmed
                   ? 'border-blue-200 ring-1 ring-blue-100'
                   : isPending
@@ -948,17 +871,6 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
                         </>
                       )}
                     </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        openOrderSecondaryMenu(order)
-                      }}
-                      className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-                      title="Open WhatsApp Banking Quick Actions"
-                    >
-                      ⚡ Actions (1-6)
-                    </button>
                   {order.items && order.items.length > 1 ? (
                     <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border border-purple-200 bg-purple-50 text-purple-800">
                       {order.items.length} SKUs
@@ -1031,7 +943,10 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
                 {userRole === 'admin' && (
                   <button
                     type="button"
-                    onClick={() => onRecordPayment?.(order)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onRecordPayment?.(order)
+                    }}
                     className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-200 text-[9px] font-black tracking-wide uppercase active:scale-95 transition-all cursor-pointer shadow-2xs"
                     title="Record payment"
                   >
@@ -1042,7 +957,10 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
                 {/* Allow Nilesh and delivery staff as well as admin to take invoice PDF copies */}
                 <button
                   type="button"
-                  onClick={() => onShareInvoice?.(order)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onShareInvoice?.(order)
+                  }}
                   className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border border-indigo-200 text-[10px] font-black tracking-wide uppercase active:scale-95 transition-all cursor-pointer shadow-2xs"
                   title="Invoice PDF / WhatsApp"
                   aria-label="Invoice PDF"
@@ -1308,16 +1226,6 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
           )}
         </div>
       </div>
-
-      {/* WhatsApp Banking-Style Secondary Action Sheet for Order Cards */}
-      <CardActionSheet
-        isOpen={Boolean(activeCardSheet)}
-        onClose={() => setActiveCardSheet(null)}
-        title={activeCardSheet?.title || 'Order Card'}
-        subtitle={activeCardSheet?.subtitle}
-        itemSummary={activeCardSheet?.itemSummary}
-        actions={activeCardSheet?.actions || []}
-      />
     </div>
   )
 }
