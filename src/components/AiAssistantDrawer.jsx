@@ -498,7 +498,7 @@ export default function AiAssistantDrawer({
         screenshotBase64: feedbackImage?.base64 || null,
         rawSnippet: feedbackSnippet || (recentChat.length > 0 ? recentChat[recentChat.length - 1].text : ''),
         recentChat,
-        sessionRef: 'conversation://2aca385b-885b-44b6-a062-4ffe8fbd20fb',
+        sessionRef: 'conversation://2fe98da8-c236-4285-8f51-3bc6624c743b',
         url: typeof window !== 'undefined' ? window.location.href : '',
         status: 'pending_review',
         submittedAt: new Date().toISOString(),
