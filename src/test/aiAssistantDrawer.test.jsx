@@ -772,4 +772,53 @@ describe('AiAssistantDrawer', () => {
 
     unmount()
   })
+
+  it('renders interactive order edit card when AI invokes edit_order intent', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'edit_order',
+        text: 'Found order for Bhaveshbhai',
+        data: {
+          clientName: 'Bhaveshbhai',
+          order: {
+            id: 'ord-123',
+            clientName: 'Bhaveshbhai',
+            qty: 30,
+            date: 'Today',
+            time: '11 AM',
+            address: 'Vadodara',
+            status: 'Pending',
+          },
+        },
+      },
+    })
+
+    const handleOpenOrderModal = vi.fn()
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+        onOpenOrderModal={handleOpenOrderModal}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Bhaveshbhai' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(screen.getByText(/What would you like to update/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /✏️ Full Edit/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /📅 Reschedule to Tomorrow/i })).toBeInTheDocument()
+    })
+
+    // Clicking Full Edit invokes onOpenOrderModal
+    fireEvent.click(screen.getByRole('button', { name: /✏️ Full Edit/i }))
+    expect(handleOpenOrderModal).toHaveBeenCalled()
+
+    unmount()
+  })
 })

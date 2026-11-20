@@ -2984,15 +2984,142 @@ ${rawText.slice(0, 3000)}`
       }
 
 
-      // General operational intent agent (Token ceiling: 1200 maxOutputTokens)
-      const model = vertexAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: {
-          maxOutputTokens: 1200,
-          temperature: 0.15,
-          responseMimeType: 'application/json',
+      const ANJANI_FUNCTION_DECLARATIONS = [
+        {
+          name: 'edit_order',
+          description: 'Searches, views, or modifies an existing water delivery order (quantity, delivery date, time, location, price, or cancellation) for a customer.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              clientName: { type: 'STRING', description: 'Customer or caterer name whose order is being viewed or modified' },
+              changes: { type: 'STRING', description: 'Specific modification requested, e.g. "change quantity to 50 boxes", "postpone to tomorrow", "change time to 11 AM", "cancel order"' },
+              fieldToUpdate: { type: 'STRING', enum: ['quantity', 'date', 'time', 'location', 'cancel', 'select'], description: 'The specific attribute to update' },
+              newValue: { type: 'STRING', description: 'The new value for the attribute' },
+              targetDate: { type: 'STRING', description: 'Order date if known (YYYY-MM-DD)' }
+            },
+            required: ['clientName']
+          }
         },
-      })
+        {
+          name: 'create_order',
+          description: 'Books or creates a new water delivery order for a customer with specified items and quantity. NEVER call if quantity or items are missing.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              clientName: { type: 'STRING', description: 'Customer or caterer name' },
+              qty: { type: 'INTEGER', description: 'Total quantity of boxes' },
+              deliveryDate: { type: 'STRING', description: 'Delivery date (YYYY-MM-DD)' },
+              date: { type: 'STRING', description: 'Order date (YYYY-MM-DD)' },
+              time: { type: 'STRING', description: 'Delivery time, e.g. 11 AM, 4 PM' },
+              location: { type: 'STRING', description: 'Delivery venue or address' },
+              items: {
+                type: 'ARRAY',
+                description: 'Line items',
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    sku: { type: 'STRING', description: 'Product SKU, e.g. Anjani 200ml, Bailey 500ml' },
+                    qty: { type: 'INTEGER', description: 'Quantity' },
+                    rate: { type: 'NUMBER', description: 'Rate per box or bottle' }
+                  }
+                }
+              }
+            },
+            required: ['clientName', 'qty']
+          }
+        },
+        {
+          name: 'query_orders',
+          description: 'Queries, lists, or filters delivery orders by date, customer, or status.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              dateFilter: { type: 'STRING', enum: ['today', 'tomorrow', 'all', 'specific'], description: 'Date filter' },
+              targetDate: { type: 'STRING', description: 'Target date (YYYY-MM-DD)' },
+              clientName: { type: 'STRING', description: 'Filter by specific customer name' },
+              status: { type: 'STRING', enum: ['open', 'completed', 'all'], description: 'Order status filter' }
+            }
+          }
+        },
+        {
+          name: 'send_client_message',
+          description: 'Drafts or sends a message to an external customer/client via WhatsApp or SMS (e.g. delivery confirmation, inquiry to cancel, payment reminder). NEVER assign customer messages to driver staff.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              clientName: { type: 'STRING', description: 'Name of the external customer (e.g. Bhaveshbhai, Maruti Caterers)' },
+              message: { type: 'STRING', description: 'Polite drafted message in Gujarati or English' },
+              channel: { type: 'STRING', enum: ['sms', 'whatsapp', 'auto'], description: 'Delivery channel' }
+            },
+            required: ['clientName', 'message']
+          }
+        },
+        {
+          name: 'staff_reminder',
+          description: 'Assigns an operational delivery task, route errand, or empty jar collection to internal delivery staff (Nilesh or Hiteshbhai). NEVER use for external customers.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              staffName: { type: 'STRING', enum: ['Nilesh', 'Hiteshbhai', 'all'], description: 'Staff driver name' },
+              message: { type: 'STRING', description: 'Task description in Gujarati or English' }
+            },
+            required: ['staffName', 'message']
+          }
+        },
+        {
+          name: 'query_stock',
+          description: 'Checks warehouse inventory and current stock balances for water SKUs.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              sku: { type: 'STRING', description: 'Specific SKU name or "all"' }
+            }
+          }
+        },
+        {
+          name: 'query_accounts',
+          description: 'Inquires about route cash custody with staff (e.g. Nilesh), counter cash balance, or staff advances.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              staffName: { type: 'STRING', description: 'Staff name (e.g. Nilesh) or empty for counter balance' }
+            }
+          }
+        },
+        {
+          name: 'query_dues',
+          description: 'Inquires about customer outstanding dues, balances, or pending ledgers.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              clientName: { type: 'STRING', description: 'Customer name or empty for all' }
+            }
+          }
+        },
+        {
+          name: 'query_tasks',
+          description: 'Views active driver delivery tasks and follow-up errands for staff.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              staffName: { type: 'STRING', enum: ['Nilesh', 'Hiteshbhai', 'all'], description: 'Staff name' }
+            }
+          }
+        },
+        {
+          name: 'location_update',
+          description: 'Updates delivery GPS location or map link for an order.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              clientName: { type: 'STRING', description: 'Customer name' },
+              mapLink: { type: 'STRING', description: 'Google Maps link or location address' },
+              targetDate: { type: 'STRING', description: 'Target date (YYYY-MM-DD)' }
+            },
+            required: ['clientName', 'mapLink']
+          }
+        }
+      ]
 
       const now = new Date()
       // Real-time IST date stamps for 100% deterministic relative date understanding
@@ -3018,37 +3145,76 @@ RUNTIME CONTEXT:
 - Current Date: ${istToday} (Today). Tomorrow is: ${istTomorrow}. Day after tomorrow is: ${istDayAfter}.
 - Known Active Clients: ${(knownClients || []).slice(0, 150).join(', ')}`
 
+      // General operational intent agent with Native Function Calling (Tools API)
+      const model = vertexAI.getGenerativeModel({
+        model: modelName,
+        systemInstruction: {
+          role: 'system',
+          parts: [{ text: `${operationalAgentPrompt}${contextInjections}` }],
+        },
+        tools: [{ functionDeclarations: ANJANI_FUNCTION_DECLARATIONS }],
+        generationConfig: {
+          maxOutputTokens: 1200,
+          temperature: 0.1,
+        },
+      })
+
       const safeHistory = Array.isArray(conversationHistory)
         ? conversationHistory
             .filter((m) => m && m.text && String(m.text).trim().length > 0)
-            .slice(-4)
+            .slice(-6)
             .map((m) => ({
               role: m.sender === 'user' ? 'user' : 'model',
-              parts: [{ text: String(m.text || '').slice(0, 300) }],
+              parts: [{ text: String(m.text || '').slice(0, 400) }],
             }))
         : []
 
-      const parts = [{ text: `${operationalAgentPrompt}${contextInjections}\n\nUser: ${rawText.slice(0, 800)}` }]
-
       const res = await model.generateContent({
-        contents: [...safeHistory, { role: 'user', parts }],
+        contents: [...safeHistory, { role: 'user', parts: [{ text: rawText.slice(0, 800) }] }],
       })
 
-      const rawJson = res.response.candidates[0].content.parts[0].text.trim()
-      try {
-        const parsedData = parseStructuredJson(rawJson)
-        return {
-          type: parsedData.type || 'chat_reply',
-          modelUsed: modelName,
-          text: parsedData.text || '',
-          data: parsedData.data || {},
+      const candidate = res.response?.candidates?.[0]?.content
+      const candidateParts = candidate?.parts || []
+      const funcCallPart = candidateParts.find((p) => p.functionCall)
+      const textPart = candidateParts.find((p) => p.text)
+
+      if (funcCallPart && funcCallPart.functionCall) {
+        const fc = funcCallPart.functionCall
+        let returnType = fc.name
+        // Normalize tool names to client-expected action types
+        if (returnType === 'create_order') returnType = 'order_create'
+        if (returnType === 'send_client_message') returnType = 'client_message'
+        if (returnType === 'query_accounts') returnType = 'accounts_query'
+        if (returnType === 'query_stock') returnType = 'stock_query'
+        if (returnType === 'query_dues') returnType = 'dues_query'
+        if (returnType === 'query_tasks') returnType = 'tasks_query'
+        if (returnType === 'query_orders') returnType = 'orders_query'
+
+        const args = fc.args || {}
+
+        // Populate items array if not present on order_create
+        if (returnType === 'order_create') {
+          if (!args.items || !Array.isArray(args.items) || args.items.length === 0) {
+            const qty = Number(args.qty) || 0
+            if (qty > 0) {
+              args.items = [{ sku: 'Anjani 200ml', qty: qty, rate: 130 }]
+            }
+          }
         }
-      } catch (jsonErr) {
-        logger.warn('Failed to parse operational response as JSON, returning plain text:', jsonErr.message)
+
+        return {
+          type: returnType,
+          modelUsed: modelName,
+          text: textPart?.text || '',
+          data: args,
+        }
+      } else {
+        const plainText = textPart?.text || ''
         return {
           type: 'chat_reply',
           modelUsed: modelName,
-          text: rawJson,
+          text: plainText,
+          data: {},
         }
       }
     }

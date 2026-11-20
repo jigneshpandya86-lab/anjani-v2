@@ -1153,6 +1153,14 @@ export default function AiAssistantDrawer({
       return
     }
 
+    if (chip.action === 'open_order_modal') {
+      const ord = chip.order || chip.data
+      if (ord && onOpenOrderModal) {
+        onOpenOrderModal(ord)
+        return
+      }
+    }
+
     // 6. Universal fallback: send chip value, text, or label directly to AI agent
     const promptToSend = chip.value || chip.text || chip.label
     if (promptToSend) {
@@ -1847,6 +1855,10 @@ export default function AiAssistantDrawer({
           }
         }
 
+        if (!targetOrder && resData.data?.order) {
+          targetOrder = resData.data.order
+        }
+
         if (targetOrder?.id && targetDate) {
           try {
             await updateOrder(targetOrder.id, {
@@ -1903,6 +1915,10 @@ export default function AiAssistantDrawer({
           }
         }
 
+        if (!targetOrder && resData.data?.order) {
+          targetOrder = resData.data.order
+        }
+
         if (targetOrder?.id && time) {
           try {
             await updateOrder(targetOrder.id, {
@@ -1931,6 +1947,172 @@ export default function AiAssistantDrawer({
             timestamp: new Date(),
           },
         ])
+      } else if (resData.type === 'edit_order' || resData.type === 'order_edit') {
+        const { clientName, changes, fieldToUpdate, newValue } = resData.data || {}
+        let targetOrder = null
+
+        const activeOrders = (orders || []).filter((o) => {
+          const st = (o.status || '').toLowerCase()
+          return st !== 'cancelled' && st !== 'delivered' && o.isCancelled !== true
+        })
+
+        if (clientName) {
+          const normName = clientName.toLowerCase().trim()
+          targetOrder = activeOrders.find((o) => (o.clientName || o.name || '').toLowerCase().includes(normName))
+        }
+
+        if (!targetOrder && Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            if (m.type === 'orders_list' && Array.isArray(m.data?.orders) && m.data.orders.length > 0) {
+              targetOrder = m.data.orders[0]
+              break
+            }
+            if (m.data?.order) {
+              targetOrder = m.data.order
+              break
+            }
+          }
+        }
+
+        if (!targetOrder && resData.data?.order) {
+          targetOrder = resData.data.order
+        }
+
+        if (targetOrder) {
+          const name = targetOrder.clientName || targetOrder.name || clientName || 'Customer'
+          const currentQty = targetOrder.qty || targetOrder.totalQty || 0
+          const currentDate = targetOrder.deliveryDate || targetOrder.date || 'Today'
+          const currentTime = targetOrder.deliveryTime || targetOrder.time || '11 AM'
+          const currentLoc = targetOrder.address || targetOrder.location || 'Vadodara'
+
+          // If specific inline changes were requested
+          if (fieldToUpdate === 'date' && newValue) {
+            try {
+              await updateOrder(targetOrder.id, { date: newValue, deliveryDate: newValue })
+              toast.success(`Rescheduled to ${newValue}!`)
+            } catch (e) {
+              console.error('Failed to update date:', e)
+            }
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `📅 Rescheduled order for **${name}** to **${newValue}** ✓`,
+                type: 'order_edit',
+                chips: [{ label: 'View Orders', action: 'view_orders' }],
+                timestamp: new Date(),
+              },
+            ])
+            return
+          }
+
+          if (fieldToUpdate === 'time' && newValue) {
+            try {
+              await updateOrder(targetOrder.id, { time: newValue, deliveryTime: newValue })
+              toast.success(`Delivery time updated to ${newValue}!`)
+            } catch (e) {
+              console.error('Failed to update time:', e)
+            }
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `⏰ Updated delivery time for **${name}** to **${newValue}** ✓`,
+                type: 'order_edit',
+                chips: [{ label: 'View Orders', action: 'view_orders' }],
+                timestamp: new Date(),
+              },
+            ])
+            return
+          }
+
+          if (fieldToUpdate === 'quantity' && newValue) {
+            const numQty = parseInt(newValue, 10)
+            if (numQty > 0) {
+              try {
+                const rate = targetOrder.rate || 130
+                await updateOrder(targetOrder.id, {
+                  qty: numQty,
+                  totalQty: numQty,
+                  totalAmount: numQty * rate,
+                })
+                toast.success(`Quantity updated to ${numQty} boxes!`)
+              } catch (e) {
+                console.error('Failed to update qty:', e)
+              }
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `📦 Updated quantity for **${name}** to **${numQty} boxes** ✓`,
+                  type: 'order_edit',
+                  chips: [{ label: 'View Orders', action: 'view_orders' }],
+                  timestamp: new Date(),
+                },
+              ])
+              return
+            }
+          }
+
+          if (fieldToUpdate === 'cancel' || (changes && changes.toLowerCase().includes('cancel'))) {
+            try {
+              await updateOrder(targetOrder.id, { status: 'cancelled', isCancelled: true })
+              toast.success(`Order for ${name} cancelled!`)
+            } catch (e) {
+              console.error('Failed to cancel order:', e)
+            }
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `❌ Order for **${name}** has been cancelled ✓`,
+                type: 'order_edit',
+                chips: [{ label: 'View Orders', action: 'view_orders' }],
+                timestamp: new Date(),
+              },
+            ])
+            return
+          }
+
+          // General order edit card with 1-tap quick actions
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: `I found **${name}**'s active order:\n• **${currentQty} boxes** (${targetOrder.sku || 'Anjani 200ml'})\n• Date: **${currentDate}** at **${currentTime}**\n• Location: ${currentLoc}\n\nWhat would you like to update?`,
+              type: 'order_edit',
+              data: { order: targetOrder },
+              chips: [
+                { label: '✏️ Full Edit', action: 'open_order_modal', data: targetOrder },
+                { label: '📅 Reschedule to Tomorrow', value: `update date of ${name} to tomorrow` },
+                { label: '⏰ Change to 4 PM', value: `update time of ${name} to 4 PM` },
+                { label: '❌ Cancel Order', value: `cancel order for ${name}` },
+              ],
+              timestamp: new Date(),
+            },
+          ])
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: `No open active order found for **${clientName || 'this customer'}**. Would you like to view all orders or book a new one?`,
+              type: 'order_edit',
+              chips: [
+                { label: '📦 Orders & Deliveries', action: 'query_orders' },
+                { label: `📦 Book Order for ${clientName || 'Customer'}`, value: `${clientName || 'Customer'} 30 box tomorrow 11 AM` },
+              ],
+              timestamp: new Date(),
+            },
+          ])
+        }
       } else if (resData.type === 'order_create' || resData.type === 'order_draft') {
         const draftData = resData.data || {}
         const clientMatch = draftData.clientName ? findMatchingClient(draftData.clientName, clients)?.client : null
