@@ -1173,6 +1173,18 @@ export const useClientStore = create((set, get) => ({
     }
   },
 
+  clearAllAiFeedbacks: async () => {
+    try {
+      const snap = await getDocs(collection(db, 'ai_feedbacks'))
+      const deletePromises = snap.docs.map((d) => deleteDoc(d.ref))
+      await Promise.all(deletePromises)
+      set({ aiFeedbacks: [] })
+    } catch (err) {
+      console.error('Failed to clear all AI feedbacks:', err)
+      throw err
+    }
+  },
+
   fetchLeads: () => {
     leadsSubscriberCount++
     if (leadsUnsubscribe) return leadsUnsubscribe

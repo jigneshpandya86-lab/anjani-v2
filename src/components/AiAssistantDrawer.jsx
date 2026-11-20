@@ -133,6 +133,7 @@ export default function AiAssistantDrawer({
   const aiMemories = useClientStore((state) => state.aiMemories)
   const addAiFeedback = useClientStore((state) => state.addAiFeedback)
   const fetchAiFeedbacks = useClientStore((state) => state.fetchAiFeedbacks)
+  const clearAllAiFeedbacks = useClientStore((state) => state.clearAllAiFeedbacks)
   const aiFeedbacks = useClientStore((state) => state.aiFeedbacks)
 
   const [activeChatbotFlow, setActiveChatbotFlow] = useState(null)
@@ -571,6 +572,7 @@ export default function AiAssistantDrawer({
             chips: [
               { label: 'Submit Feedback', action: 'open_feedback_modal' },
               { label: 'Check Again', action: 'manual_feedback_check' },
+              { label: '🗑️ Clear Queue', action: 'clear_all_feedback', isDestructive: true },
             ],
             isLocal: true,
             timestamp: new Date(),
@@ -583,6 +585,41 @@ export default function AiAssistantDrawer({
       })
     } finally {
       setIsCheckingFeedback(false)
+    }
+  }
+
+  const handleClearAllFeedbacks = async () => {
+    try {
+      toast.loading('Clearing all AI feedbacks from Firebase...', { id: 'clear-fb' })
+      await clearAllAiFeedbacks?.()
+      setReportedBadOutputs({})
+      try {
+        if (typeof window !== 'undefined' && window.sessionStorage) {
+          window.sessionStorage.removeItem('anjani_bad_outputs')
+        }
+      } catch {
+        // ignore
+      }
+      toast.success('All AI feedbacks have been cleared from Firebase!', { id: 'clear-fb' })
+      setShowFeedbackModal(false)
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: 'asst-' + Date.now(),
+          sender: 'assistant',
+          text: `🗑️ **All AI Feedbacks Cleared**\n\nThe feedback queue in Firebase has been completely cleared. You now have a fresh slate!`,
+          type: 'feedback_status',
+          chips: [
+            { label: 'Submit Feedback', action: 'open_feedback_modal' },
+            { label: 'Check Queue', action: 'manual_feedback_check' },
+          ],
+          isLocal: true,
+          timestamp: new Date(),
+        },
+      ])
+    } catch (err) {
+      console.error('Failed to clear feedbacks:', err)
+      toast.error('Failed to clear feedbacks: ' + (err.message || 'Error'), { id: 'clear-fb' })
     }
   }
 
@@ -1025,6 +1062,10 @@ export default function AiAssistantDrawer({
     }
     if (chip.action === 'open_feedback_modal') {
       setShowFeedbackModal(true)
+      return
+    }
+    if (chip.action === 'clear_all_feedback') {
+      handleClearAllFeedbacks()
       return
     }
     if (chip.action === 'query_orders') {
@@ -3735,16 +3776,28 @@ export default function AiAssistantDrawer({
 
               {/* Submit & Manual Trigger buttons */}
               <div className="flex items-center justify-between pt-1">
-                <button
-                  type="button"
-                  onClick={handleTriggerFeedbackCheck}
-                  disabled={isCheckingFeedback}
-                  className="px-2.5 py-1 bg-[#ff9900] hover:bg-orange-500 text-gray-950 rounded-lg text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1 disabled:opacity-50"
-                  title="Trigger AI to process feedback queue immediately"
-                >
-                  <Zap size={12} className={isCheckingFeedback ? 'animate-spin' : 'fill-current'} />
-                  <span>Run AI Now</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleTriggerFeedbackCheck}
+                    disabled={isCheckingFeedback}
+                    className="px-2.5 py-1 bg-[#ff9900] hover:bg-orange-500 text-gray-950 rounded-lg text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                    title="Trigger AI to process feedback queue immediately"
+                  >
+                    <Zap size={12} className={isCheckingFeedback ? 'animate-spin' : 'fill-current'} />
+                    <span>Run AI Now</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Clear all feedback records from Firebase"
+                    onClick={handleClearAllFeedbacks}
+                    className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1 transition-colors"
+                    title="Clear all feedback records from Firebase to start fresh"
+                  >
+                    <Trash2 size={12} />
+                    <span className="hidden sm:inline">Clear Queue</span>
+                  </button>
+                </div>
 
                 <div className="flex gap-2">
                   <button

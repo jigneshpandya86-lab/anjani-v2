@@ -71,6 +71,7 @@ let mockOrders = [
 const mockAddAiFeedback = vi.fn(() => Promise.resolve({ id: 'fb-new', status: 'pending_weekly_review' }))
 const mockMarkAiFeedbackReviewed = vi.fn(() => Promise.resolve())
 const mockDeleteAiFeedback = vi.fn(() => Promise.resolve())
+const mockClearAllAiFeedbacks = vi.fn(() => Promise.resolve())
 
 export const mockSendBackgroundSms = vi.fn(() => Promise.resolve({ success: true }))
 vi.mock('../services/leadSmsService', async (importOriginal) => {
@@ -148,6 +149,7 @@ vi.mock('../store/clientStore', () => ({
       addAiFeedback: mockAddAiFeedback,
       markAiFeedbackReviewed: mockMarkAiFeedbackReviewed,
       deleteAiFeedback: mockDeleteAiFeedback,
+      clearAllAiFeedbacks: mockClearAllAiFeedbacks,
     }
     return selector ? selector(state) : state
   },
@@ -1203,6 +1205,34 @@ describe('AiAssistantDrawer', () => {
 
     // Verify visual update to Reported state
     expect(screen.getByText(/Reported 👎/i)).toBeInTheDocument()
+
+    unmount()
+  })
+
+  it('allows user to clear all existing AI feedbacks from the App UI', async () => {
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    // Open feedback modal
+    const feedbackBtn = screen.getByRole('button', { name: /AI Feedback/i })
+    fireEvent.click(feedbackBtn)
+
+    // Clear Queue button should be present in the modal
+    const clearBtn = screen.getByRole('button', { name: /Clear all feedback records from Firebase/i })
+    expect(clearBtn).toBeInTheDocument()
+
+    // Click Clear Queue
+    fireEvent.click(clearBtn)
+
+    await waitFor(() => {
+      expect(mockClearAllAiFeedbacks).toHaveBeenCalled()
+      expect(screen.getByText(/All AI Feedbacks Cleared/i)).toBeInTheDocument()
+    })
 
     unmount()
   })
