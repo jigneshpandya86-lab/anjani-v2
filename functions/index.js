@@ -2936,32 +2936,43 @@ ${rawText.slice(0, 3000)}`
         },
         {
           name: 'edit_payment',
-          description: 'Modifies an existing customer payment (amount, payment mode, or date).',
+          description:
+            'Modifies an existing customer payment or active payment draft (amount, payment mode, or date). Used for corrections like "Edit to 2", "Change Maruti payment to 2000", "Change mode to Cash".',
           parameters: {
             type: 'OBJECT',
             properties: {
-              clientName: { type: 'STRING', description: 'Customer or shop name' },
-              oldAmount: { type: 'NUMBER', description: 'Existing payment amount' },
+              clientName: {
+                type: 'STRING',
+                description: 'Customer or shop name (infer from recent context if omitted in follow-up)',
+              },
+              amount: { type: 'NUMBER', description: 'New or corrected payment amount' },
               newAmount: { type: 'NUMBER', description: 'Corrected payment amount' },
+              oldAmount: { type: 'NUMBER', description: 'Existing payment amount' },
               paymentMode: { type: 'STRING', enum: ['cash', 'online', 'cheque'], description: 'Payment mode' },
-              paymentId: { type: 'STRING', description: 'Payment transaction ID if known' }
+              paymentId: { type: 'STRING', description: 'Payment transaction ID if known' },
+              changes: {
+                type: 'STRING',
+                description: 'Human-readable description of modification, e.g. "Edit to 2"',
+              },
             },
-            required: ['clientName']
-          }
+          },
         },
         {
           name: 'cancel_payment',
-          description: 'Cancels or deletes a recorded customer payment transaction and reverses the ledger.',
+          description:
+            'Cancels or deletes a recorded customer payment transaction and reverses the ledger.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              clientName: { type: 'STRING', description: 'Customer or shop name whose payment is to be cancelled' },
+              clientName: {
+                type: 'STRING',
+                description: 'Customer or shop name whose payment is to be cancelled (infer from context if omitted)',
+              },
               amount: { type: 'NUMBER', description: 'Payment amount to cancel' },
               paymentId: { type: 'STRING', description: 'Payment transaction ID if known' },
-              reason: { type: 'STRING', description: 'Reason for cancellation' }
+              reason: { type: 'STRING', description: 'Reason for cancellation' },
             },
-            required: ['clientName']
-          }
+          },
         }
       ]
 
@@ -3106,16 +3117,19 @@ RUNTIME CONTEXT:
         }
 
         if (returnType === 'edit_payment') {
+          const effNewAmount = Number(args.newAmount) || Number(args.amount) || 0
           return {
             type: 'edit_payment',
             modelUsed: modelName,
             text: textPart?.text || '',
             data: {
               clientName: args.clientName || '',
+              amount: effNewAmount,
+              newAmount: effNewAmount,
               oldAmount: Number(args.oldAmount) || 0,
-              newAmount: Number(args.newAmount) || 0,
-              paymentMode: args.paymentMode || 'online',
+              paymentMode: args.paymentMode || '',
               paymentId: args.paymentId || '',
+              changes: args.changes || rawText || '',
             },
           }
         }

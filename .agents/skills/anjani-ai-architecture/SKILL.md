@@ -74,3 +74,11 @@ When adding or improving AI behavior:
 - **Universal Multi-Field Patch Engine:** `edit_order` supports updating ANY order property (`qty`, `rate`, `date`, `time`, `location`, `sku`, `paymentMode`, `notes`, `status`) or MULTIPLE properties simultaneously via `updates: { ... }` or `fieldToUpdate`/`newValue`.
 - **Zero Fallthrough Dropouts:** All incoming fields are normalized and applied directly to Firestore via `updateOrder(targetOrder.id, patch)`. The client NEVER asks *"What would you like to update?"* when any field modification was specified.
 - **Support Both GPS Links and Text Venues:** Location updates accept both full Google Maps navigation URLs and text venues / party plot names (e.g. *"P G Party Plot Harni"*).
+
+---
+
+## 7. Universal Payment Lifecycle Engine A to Z (`receive_payment`, `edit_payment`, `cancel_payment`)
+- **End-to-End Coverage:** Supports receiving collections (`receive_payment`), draft editing before confirmation (`edit_payment`), recorded payment modification in Firestore (`edit_payment`), payment cancellation and ledger reversal (`cancel_payment`), 1-tap/typed confirmation (`confirm_latest_payment`), dues inquiries (`query_dues`), and staff route cash balances (`query_accounts`).
+- **Conversational Draft Modification:** When a pending payment receipt card is shown in chat and user issues a follow-up correction (e.g. *"Edit to 2"*, *"Make it 5000"*, *"Change mode to cash"*), `edit_payment` infers the active customer and active draft from recent messages, modifies the in-memory draft card in place, and awaits user confirmation without failing or requiring re-entry.
+- **Ledger Synchronization:** Deleting or editing recorded payments automatically reverses or recalculates the customer's outstanding balance and account ledger.
+- **Typed & 1-Tap Confirmation:** Unconfirmed drafts can be committed with a single tap on the "Confirm & Record Payment" chip or by typing *"Confirm"*, *"Confirm payment"*, *"Record payment"*, or *"Haan"*.

@@ -1056,6 +1056,77 @@ export default function AiAssistantDrawer({
       }
       return
     }
+    if (chip.action === 'view_ledger') {
+      if (onNavigateTab) {
+        onNavigateTab('accounts')
+        onClose?.()
+      } else {
+        handleSend('accounts')
+      }
+      return
+    }
+    if (chip.action === 'confirm_latest_payment') {
+      let unconfirmedDraft = null
+      if (Array.isArray(messages)) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+          const m = messages[i]
+          if (m.type === 'receive_payment' && m.data && !recordedPayments[m.paymentId || m.id]) {
+            unconfirmedDraft = m
+            break
+          }
+        }
+      }
+      if (unconfirmedDraft) {
+        const matchedCli = clients?.find((c) => c.id === unconfirmedDraft.data.clientId) || findBestExistingClientMatch(unconfirmedDraft.data.clientName, clients)
+        const resolvedClientId = matchedCli?.id || unconfirmedDraft.data.clientId
+        const resolvedClientName = matchedCli?.displayName || matchedCli?.name || unconfirmedDraft.data.clientName || 'Customer'
+        const amount = Number(unconfirmedDraft.data.amount) || 0
+        if (resolvedClientId && amount > 0) {
+          try {
+            const pDate = new Date()
+            const extraNote = unconfirmedDraft.data.utr ? `UPI Ref: ${unconfirmedDraft.data.utr}` : ''
+            const narration = formatPaymentNarration(resolvedClientName, pDate, extraNote)
+            const savedPay = await addPayment({
+              clientId: resolvedClientId,
+              clientName: resolvedClientName,
+              amount,
+              type: 'payment',
+              method: unconfirmedDraft.data.method || 'online',
+              accountId:
+                unconfirmedDraft.data.accountId ||
+                (unconfirmedDraft.data.method === 'cash' ? 'counter' : 'bank'),
+              narration,
+              note: extraNote || narration,
+              date: pDate,
+            })
+            const payKey = unconfirmedDraft.paymentId || unconfirmedDraft.id
+            setRecordedPayments((prev) => ({
+              ...prev,
+              [payKey]: savedPay || unconfirmedDraft.data,
+            }))
+            toast.success(`Payment of ₹${amount.toLocaleString('en-IN')} recorded successfully!`)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `✅ **Payment Recorded & Confirmed**:\n• Customer: **${resolvedClientName}**\n• Amount: **₹${amount.toLocaleString('en-IN')}**\n• Mode: **${unconfirmedDraft.data.method || 'online'}**\n• Account: **${unconfirmedDraft.data.method === 'cash' ? 'Counter Cash' : 'Bank'}**\nLedger updated ✓`,
+                type: 'payment_confirmed',
+                chips: [{ label: 'View Ledger', action: 'view_ledger' }],
+                timestamp: new Date(),
+              },
+            ])
+          } catch (err) {
+            toast.error('Failed to record payment: ' + err.message)
+          }
+        } else {
+          toast.error('Please select customer and amount before confirming')
+        }
+      } else {
+        toast.info('No pending payment draft to confirm.')
+      }
+      return
+    }
     if (chip.action === 'manual_feedback_check') {
       handleTriggerFeedbackCheck()
       return
@@ -1442,6 +1513,68 @@ export default function AiAssistantDrawer({
         setInputMessage('')
         return
       }
+
+      // Quick confirmation for pending payment draft (e.g. typing "confirm", "confirm payment", "record payment", "haan")
+      if (/^(confirm|confirm payment|record payment|save payment|yes confirm|haan|confirm kar do|confirm karo|save kar do)$/i.test(lowerQ)) {
+        let unconfirmedDraft = null
+        if (Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            if (m.type === 'receive_payment' && m.data && !recordedPayments[m.paymentId || m.id]) {
+              unconfirmedDraft = m
+              break
+            }
+          }
+        }
+        if (unconfirmedDraft) {
+          const matchedCli = clients?.find((c) => c.id === unconfirmedDraft.data.clientId) || findBestExistingClientMatch(unconfirmedDraft.data.clientName, clients)
+          const resolvedClientId = matchedCli?.id || unconfirmedDraft.data.clientId
+          const resolvedName = matchedCli?.displayName || matchedCli?.name || unconfirmedDraft.data.clientName || 'Customer'
+          const amount = Number(unconfirmedDraft.data.amount) || 0
+          if (resolvedClientId && amount > 0) {
+            setInputMessage('')
+            const pDate = new Date()
+            const extraNote = unconfirmedDraft.data.utr ? `UPI Ref: ${unconfirmedDraft.data.utr}` : ''
+            const narration = formatPaymentNarration(resolvedName, pDate, extraNote)
+            try {
+              const savedPay = await addPayment({
+                clientId: resolvedClientId,
+                clientName: resolvedName,
+                amount,
+                type: 'payment',
+                method: unconfirmedDraft.data.method || 'online',
+                accountId:
+                  unconfirmedDraft.data.accountId ||
+                  (unconfirmedDraft.data.method === 'cash' ? 'counter' : 'bank'),
+                narration,
+                note: extraNote || narration,
+                date: pDate,
+              })
+              const payKey = unconfirmedDraft.paymentId || unconfirmedDraft.id
+              setRecordedPayments((prev) => ({
+                ...prev,
+                [payKey]: savedPay || unconfirmedDraft.data,
+              }))
+              toast.success(`Payment of ₹${amount.toLocaleString('en-IN')} recorded successfully!`)
+              setMessages((prev) => [
+                ...prev,
+                { id: 'usr-' + Date.now(), sender: 'user', text: query, timestamp: new Date() },
+                {
+                  id: 'asst-' + (Date.now() + 1),
+                  sender: 'assistant',
+                  text: `✅ **Payment Confirmed & Recorded**:\n• Customer: **${resolvedName}**\n• Amount: **₹${amount.toLocaleString('en-IN')}**\n• Mode: **${unconfirmedDraft.data.method || 'online'}**\n• Account: **${unconfirmedDraft.data.method === 'cash' ? 'Counter Cash' : 'Bank'}**\nLedger updated ✓`,
+                  type: 'payment_confirmed',
+                  chips: [{ label: 'View Ledger', action: 'view_ledger' }],
+                  timestamp: new Date(),
+                },
+              ])
+              return
+            } catch (err) {
+              toast.error('Failed to record payment: ' + err.message)
+            }
+          }
+        }
+      }
     }
 
     // WhatsApp Banking Numeric Quick Shortcut (e.g. typing "1", "2", "3")
@@ -1787,11 +1920,23 @@ export default function AiAssistantDrawer({
           payData.payerName = ''
         }
 
+        let rawPayerName = (payData.payerName || '').trim()
+        // Contextual lookback if payerName is empty
+        if (!rawPayerName && Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            const nameCandidate = m.data?.clientName || m.data?.payerName || m.data?.client?.name
+            if (nameCandidate) {
+              rawPayerName = nameCandidate
+              break
+            }
+          }
+        }
+
         const targetMobile = (payData.mobile || '').replace(/\D/g, '')
-        const rawPayerName = (payData.payerName || '').trim()
         const matched = findBestExistingClientMatch(rawPayerName, clients, { mobile: targetMobile })
         const clientId = matched?.id || ''
-        const clientName = matched?.name || rawPayerName || (targetMobile ? `Customer (${targetMobile.slice(-4)})` : 'Select Client')
+        const clientName = matched?.displayName || matched?.name || rawPayerName || (targetMobile ? `Customer (${targetMobile.slice(-4)})` : 'Select Client')
         setMessages((prev) => [
           ...prev,
           {
@@ -1813,6 +1958,10 @@ export default function AiAssistantDrawer({
               notes: payData.notes || '',
               modelUsed: resData.modelUsed,
             },
+            chips: [
+              { label: 'Confirm & Record Payment', action: 'confirm_latest_payment' },
+              { label: 'View Ledger', action: 'view_ledger' },
+            ],
             timestamp: new Date(),
           },
         ])
@@ -2269,6 +2418,48 @@ export default function AiAssistantDrawer({
         let targetClient = clientName ? findBestExistingClientMatch(clientName, clients) : null
         const targetAmount = Number(amount) || 0
 
+        // Contextual lookback if targetClient is missing
+        if (!targetClient && Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            const nameCandidate = m.data?.clientName || m.data?.payerName || m.data?.client?.name
+            if (nameCandidate) {
+              targetClient = findBestExistingClientMatch(nameCandidate, clients)
+              if (targetClient) break
+            }
+          }
+        }
+
+        // Check if there is an unconfirmed payment draft in chat
+        let unconfirmedDraft = null
+        if (Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            if (m.type === 'receive_payment' && m.data && !recordedPayments[m.paymentId || m.id]) {
+              unconfirmedDraft = m
+              break
+            }
+          }
+        }
+
+        if (unconfirmedDraft) {
+          const clientTitle = targetClient?.displayName || targetClient?.name || unconfirmedDraft.data.clientName || 'Customer'
+          const draftAmt = Number(unconfirmedDraft.data.amount || targetAmount || 0)
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: `❌ **Payment Draft Cancelled**:\n• Customer: **${clientTitle}**\n• Draft Amount: **₹${draftAmt.toLocaleString('en-IN')}**\nNo payment was recorded to ledger.`,
+              type: 'cancel_payment',
+              chips: [{ label: 'View Ledger', action: 'view_ledger' }],
+              timestamp: new Date(),
+            },
+          ])
+          toast.success(`Payment draft for ${clientTitle} cancelled!`)
+          return
+        }
+
         try {
           let foundPayment = null
           if (paymentId) {
@@ -2315,7 +2506,7 @@ export default function AiAssistantDrawer({
               {
                 id: 'asst-' + Date.now(),
                 sender: 'assistant',
-                text: `No matching payment record found for **${clientName || 'customer'}**${targetAmount > 0 ? ` of ₹${targetAmount}` : ''} to cancel.`,
+                text: `No matching payment record found for **${clientName || targetClient?.name || 'customer'}**${targetAmount > 0 ? ` of ₹${targetAmount}` : ''} to cancel.`,
                 type: 'cancel_payment',
                 chips: [{ label: 'View Payments', action: 'view_ledger' }],
                 timestamp: new Date(),
@@ -2327,11 +2518,78 @@ export default function AiAssistantDrawer({
           toast.error('Failed to cancel payment')
         }
       } else if (resData.type === 'edit_payment') {
-        const { clientName, oldAmount, newAmount, paymentMode, paymentId } = resData.data || {}
+        const { clientName, oldAmount, newAmount, amount, paymentMode, paymentId, changes } = resData.data || {}
         let targetClient = clientName ? findBestExistingClientMatch(clientName, clients) : null
+        let targetNew = Number(newAmount) || Number(amount) || 0
         const targetOld = Number(oldAmount) || 0
-        const targetNew = Number(newAmount) || 0
 
+        // Extract amount from changes if targetNew is 0 (e.g. "Edit to 2" -> 2)
+        if (targetNew <= 0 && changes) {
+          const numMatch = String(changes).match(/(?:to|as|amount|rs|₹)?\s*(\d+(?:\.\d+)?)/i)
+          if (numMatch) targetNew = parseFloat(numMatch[1])
+        }
+
+        // Contextual lookback if targetClient is missing
+        if (!targetClient && Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            const nameCandidate = m.data?.clientName || m.data?.payerName || m.data?.client?.name
+            if (nameCandidate) {
+              targetClient = findBestExistingClientMatch(nameCandidate, clients)
+              if (targetClient) break
+            }
+          }
+        }
+
+        // STEP 1: Check for an unconfirmed payment draft card in recent chat messages
+        let unconfirmedDraft = null
+        if (Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            if (m.type === 'receive_payment' && m.data && !recordedPayments[m.paymentId || m.id]) {
+              unconfirmedDraft = m
+              break
+            }
+          }
+        }
+
+        if (unconfirmedDraft && targetNew > 0) {
+          const finalClientName = targetClient?.displayName || targetClient?.name || unconfirmedDraft.data.clientName || 'Customer'
+          const finalClientId = targetClient?.id || unconfirmedDraft.data.clientId || ''
+          const finalMethod = (paymentMode && ['cash', 'online', 'cheque'].includes(paymentMode))
+            ? paymentMode
+            : unconfirmedDraft.data.method || 'online'
+          const finalAccountId = finalMethod === 'cash' ? 'counter' : 'bank'
+
+          // Render updated draft card
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: `💰 **Payment Receipt Detected: ₹${targetNew.toLocaleString('en-IN')}**\nReview transaction and tap **Confirm & Record Payment**:`,
+              type: 'receive_payment',
+              paymentId: 'pay-' + Date.now(),
+              data: {
+                ...unconfirmedDraft.data,
+                amount: targetNew,
+                clientName: finalClientName,
+                clientId: finalClientId,
+                method: finalMethod,
+                accountId: finalAccountId,
+              },
+              chips: [
+                { label: 'Confirm & Record Payment', action: 'confirm_latest_payment' },
+                { label: 'View Ledger', action: 'view_ledger' },
+              ],
+              timestamp: new Date(),
+            },
+          ])
+          toast.success(`Payment draft updated to ₹${targetNew}!`)
+          return
+        }
+
+        // STEP 2: If no unconfirmed draft in chat, search Firestore for an existing recorded payment
         try {
           let foundPayment = null
           if (paymentId) {
@@ -2378,6 +2636,34 @@ export default function AiAssistantDrawer({
                 type: 'edit_payment',
                 data: { clientId: targetClient?.id, newAmount: targetNew },
                 chips: [{ label: 'View Ledger', action: 'view_ledger' }],
+                timestamp: new Date(),
+              },
+            ])
+            return
+          }
+
+          // STEP 3: Fallback if neither found
+          const clientTitle = targetClient?.displayName || targetClient?.name || clientName || 'Customer'
+          if (targetClient && targetNew > 0) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `No prior payment found for **${clientTitle}** to edit. Would you like to record a new payment of **₹${targetNew.toLocaleString('en-IN')}**?`,
+                type: 'receive_payment',
+                paymentId: 'pay-' + Date.now(),
+                data: {
+                  clientName: clientTitle,
+                  clientId: targetClient.id,
+                  amount: targetNew,
+                  method: paymentMode || 'online',
+                  accountId: paymentMode === 'cash' ? 'counter' : 'bank',
+                },
+                chips: [
+                  { label: 'Confirm & Record Payment', action: 'confirm_latest_payment' },
+                  { label: 'View Ledger', action: 'view_ledger' },
+                ],
                 timestamp: new Date(),
               },
             ])

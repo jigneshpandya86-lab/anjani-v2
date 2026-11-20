@@ -199,6 +199,11 @@ All water products are defined centrally in `src/constants/skus.js`:
    - Client drawer and backend support updating ANY single attribute or MULTIPLE attributes simultaneously via `updates: { qty, rate, date, time, location, sku, paymentMode, notes, status }` or `fieldToUpdate`/`newValue`.
    - Never falls through to ask *"What would you like to update?"* when any field or modification was specified. Persists atomically via `updateOrder` and `updateClient`.
 
+4. **Universal Payment Lifecycle Engine A to Z (`receive_payment`, `edit_payment`, `cancel_payment`):**
+   - End-to-end support for recording collections (`receive_payment`), in-memory draft card editing before confirmation (`edit_payment`), recorded payment modification (`edit_payment`), payment cancellation with ledger reversal (`cancel_payment`), 1-tap/typed confirmation (`confirm_latest_payment`), dues inquiries (`query_dues`), and staff route cash balances (`query_accounts`).
+   - Unconfirmed drafts in chat are modified seamlessly when users issue follow-up corrections like *"Edit to 2"*, *"Make it 5000"*, or *"Change mode to cash"*.
+   - Can be confirmed by tapping **Confirm & Record Payment** or typing *"Confirm"* / *"Confirm payment"*.
+
 ---
 
 ## Commands & Verification Workflow

@@ -1396,4 +1396,193 @@ describe('AiAssistantDrawer', () => {
 
     unmount()
   })
+
+  it('updates unconfirmed payment draft amount when edit_payment is invoked with Edit to 2', async () => {
+    // 1. Initial receive_payment returns draft for Jay Ambe with ₹1
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'receive_payment',
+        data: {
+          payerName: 'Jay Ambe',
+          amount: 1,
+          paymentMode: 'online',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: '1 Rs' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    expect(await screen.findByText(/Payment Receipt Detected: ₹1/i)).toBeInTheDocument()
+
+    // 2. User says "Edit to 2", backend returns edit_payment
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'edit_payment',
+        data: {
+          amount: 2,
+          changes: 'Edit to 2',
+        },
+      },
+    })
+
+    fireEvent.change(input, { target: { value: 'Edit to 2' } })
+    await fireEvent.submit(form)
+
+    // Draft card should now show ₹2
+    expect(await screen.findByText(/Payment Receipt Detected: ₹2/i)).toBeInTheDocument()
+
+    unmount()
+  })
+
+  it('confirms pending payment when user types confirm payment', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'receive_payment',
+        data: {
+          payerName: 'Jay Ambe',
+          amount: 1500,
+          paymentMode: 'online',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Jay Ambe 1500 online' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    expect(await screen.findByText(/Payment Receipt Detected: ₹1,500/i)).toBeInTheDocument()
+
+    // Now user types "confirm payment"
+    fireEvent.change(input, { target: { value: 'confirm payment' } })
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockAddPayment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientId: 'c1',
+          clientName: 'Jay Ambe',
+          amount: 1500,
+          method: 'online',
+        })
+      )
+      expect(screen.getByText(/Payment Confirmed & Recorded/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('confirms pending payment when user clicks Confirm & Record Payment chip', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'receive_payment',
+        data: {
+          payerName: 'Jay Ambe',
+          amount: 3000,
+          paymentMode: 'cash',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Jay Ambe paid 3000 cash' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    expect(await screen.findByText(/Payment Receipt Detected: ₹3,000/i)).toBeInTheDocument()
+
+    // Find and click the "Confirm & Record Payment" button
+    const confirmButtons = await screen.findAllByRole('button', { name: /Confirm & Record Payment/i })
+    expect(confirmButtons.length).toBeGreaterThanOrEqual(1)
+    await fireEvent.click(confirmButtons[0])
+
+    await waitFor(() => {
+      expect(mockAddPayment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientId: 'c1',
+          clientName: 'Jay Ambe',
+          amount: 3000,
+          method: 'cash',
+          accountId: 'counter',
+        })
+      )
+      expect(screen.getByText(/Payment Recorded & Confirmed/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('cancels unconfirmed payment draft when cancel_payment is invoked', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'receive_payment',
+        data: {
+          payerName: 'Jay Ambe',
+          amount: 500,
+          paymentMode: 'online',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Jay Ambe 500' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    expect(await screen.findByText(/Payment Receipt Detected: ₹500/i)).toBeInTheDocument()
+
+    // User cancels the draft
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'cancel_payment',
+        data: {
+          clientName: 'Jay Ambe',
+          amount: 500,
+        },
+      },
+    })
+
+    fireEvent.change(input, { target: { value: 'cancel payment' } })
+    await fireEvent.submit(form)
+
+    expect(await screen.findByText(/Payment Draft Cancelled/i)).toBeInTheDocument()
+    expect(screen.getByText(/No payment was recorded to ledger/i)).toBeInTheDocument()
+
+    unmount()
+  })
 })

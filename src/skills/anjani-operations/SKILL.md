@@ -263,13 +263,43 @@ The native operational agent uses Vertex AI Function Calling with 17 registered 
 - **Customer Agreed Price Updates (`update_price`)**:
   - Set custom rate per box for a client (`rate` required, `clientName`, `sku`). E.g. *"Update price for Maruti Caterers to 140"*, *"bhav 140 karo for Ramesh"*.
 
-### Priority 5: Customer Payments (`receive_payment`, `edit_payment`, `cancel_payment`)
-- **Record Payment (`receive_payment`)**:
-  - Customer collection (`payerName` required, `amount` required, `paymentMode`, `onlineProvider`, `utr`, `date`, `notes`). E.g. *"Received ₹1500 from Ramesh Store via GPay"*.
-- **Edit Payment (`edit_payment`)**:
-  - Modify recorded amount or payment mode (`clientName` required, `oldAmount`, `newAmount`, `paymentMode`, `paymentId`).
-- **Cancel Payment (`cancel_payment`)**:
-  - Reverse recorded payment (`clientName` required, `amount`, `paymentId`, `reason`).
+### Priority 5: Complete Customer Payment Lifecycle A to Z (`receive_payment`, `edit_payment`, `cancel_payment`, `query_dues`, `query_accounts`)
+
+The Anjani AI supports full end-to-end lifecycle coverage for all payment-related actions:
+
+1. **A — Record & Detect Payment (`receive_payment`)**:
+   - Captures customer collections in Cash, UPI (GPay, PhonePe, Paytm, BHIM), Bank Transfer, or Cheque.
+   - *Parameters*: `payerName` (customer name), `amount` (INR), `paymentMode` (`"cash" | "online" | "cheque"`), `onlineProvider` (`"GPay" | "PhonePe" | "Paytm" | "UPI" | "Bank"`), `utr` (UTR/Cheque ref), `date` (`YYYY-MM-DD`), `notes`.
+   - *Conversational Multi-Step Flow*: If the user mentions a customer name alone (e.g. *"Jay Ambe"*), assistant prompts for amount (*"How much did Jay Ambe pay?"*). When the user replies with the amount (*"1 Rs"*, *"5000"*), assistant triggers `receive_payment` with `payerName: "Jay Ambe"` and `amount: 1`.
+
+2. **B — In-Memory Draft Modification & Follow-up Edits (`edit_payment`)**:
+   - **CRITICAL**: When a payment draft card is currently awaiting confirmation in chat and the user issues a correction (e.g. *"Edit to 2"*, *"Make it 5000"*, *"Change payment mode to cash"*, *"Change to 1500"*), the assistant MUST call `edit_payment` with `newAmount` or `changes`.
+   - **Contextual Grounding**: If `clientName` is not explicitly stated in the follow-up correction (e.g. user just says *"Edit to 2"*), infer the customer from recent conversation context. Do NOT fail or require the client name if an active draft or recent customer is present!
+   - Supports editing draft amount, payment mode, or date before committing to Firestore.
+
+3. **C — Recorded Transaction Modifications (`edit_payment`)**:
+   - Modifies an already-recorded payment in Firestore.
+   - Reverses the previous amount in the customer's balance and ledger, applying the new amount.
+
+4. **D — Payment Cancellation & Ledger Reversal (`cancel_payment`)**:
+   - **Draft Cancellation**: Cancels uncommitted payment drafts in chat when the user says *"Cancel payment draft"*, *"Cancel"*, or *"Discard payment"*.
+   - **Recorded Payment Deletion**: Deletes recorded transactions from Firestore and reverses customer outstanding dues and ledger balances.
+   - *Parameters*: `clientName` (infer from context if omitted), `amount`, `paymentId`, `reason`.
+
+5. **E — 1-Tap & Typed Confirmation (`confirm_latest_payment`)**:
+   - Users can confirm unrecorded draft cards either by tapping the **Confirm & Record Payment** chip button or by typing *"Confirm"*, *"Confirm payment"*, *"Record payment"*, or *"Haan"*.
+   - Automatically writes transaction to Firestore, updates ledger, and confirms receipt.
+
+6. **F — Outstanding Dues & Customer Receivables (`query_dues`)**:
+   - Inquires about outstanding dues:
+     - Specific client: *"What are Maruti Caterers dues?"* $\rightarrow$ `query_dues(clientName: "Maruti Caterers")`.
+     - Market-wide: *"Total pending dues"*, *"Outstanding list"* $\rightarrow$ `query_dues()`.
+
+7. **G — Staff Route Cash Custody & Counter Accounts (`query_accounts`)**:
+   - Inquires about staff cash in transit:
+     - *"Cash with Nilesh"* $\rightarrow$ `query_accounts(staffName: "Nilesh")`.
+     - *"Cash with Hiteshbhai"* $\rightarrow$ `query_accounts(staffName: "Hiteshbhai")`.
+     - *"Counter balance and bank account"* $\rightarrow$ `query_accounts()`.
 
 ### Priority 6: Operational Telemetry & Order Queries
 
