@@ -40,7 +40,7 @@ import {
   Copy,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, addDoc, serverTimestamp, getDocs, query as firestoreQuery, where, orderBy, limit } from 'firebase/firestore'
 import toast from 'react-hot-toast'
 import { app, db } from '../firebase-config'
 import { useClientStore } from '../store/clientStore'
@@ -114,6 +114,7 @@ export default function AiAssistantDrawer({
   const updateClient = useClientStore((state) => state.updateClient)
   const addClient = useClientStore((state) => state.addClient)
   const addPayment = useClientStore((state) => state.addPayment)
+  const deletePayment = useClientStore((state) => state.deletePayment)
   const addOrder = useClientStore((state) => state.addOrder)
   const addExpense = useClientStore((state) => state.addExpense)
   const recordAccountTransfer = useClientStore((state) => state.recordAccountTransfer)
@@ -1894,6 +1895,286 @@ export default function AiAssistantDrawer({
             },
           ])
         }
+      } else if (resData.type === 'edit_client') {
+        const { clientName, fieldToUpdate, newValue, active } = resData.data || {}
+        let targetClient = null
+        if (clientName) {
+          targetClient = findBestExistingClientMatch(clientName, clients)
+        }
+        if (!targetClient && Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            if (m.data?.clientName || m.data?.client?.name) {
+              const prevName = m.data?.clientName || m.data?.client?.name
+              targetClient = findBestExistingClientMatch(prevName, clients)
+              if (targetClient) break
+            }
+          }
+        }
+
+        if (targetClient) {
+          const clientTitle = targetClient.displayName || targetClient.name
+          try {
+            if (fieldToUpdate === 'inactive' || active === false) {
+              await updateClient(targetClient.id, { active: false })
+              toast.success(`${clientTitle} marked as Inactive!`)
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `👤 Client **${clientTitle}** has been marked as **Inactive** ✓`,
+                  type: 'edit_client',
+                  data: { clientId: targetClient.id, active: false },
+                  chips: [{ label: 'View Clients', action: 'view_client' }],
+                  timestamp: new Date(),
+                },
+              ])
+            } else if (fieldToUpdate === 'active' || active === true) {
+              await updateClient(targetClient.id, { active: true })
+              toast.success(`${clientTitle} marked as Active!`)
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `👤 Client **${clientTitle}** has been marked as **Active** ✓`,
+                  type: 'edit_client',
+                  data: { clientId: targetClient.id, active: true },
+                  chips: [{ label: 'View Clients', action: 'view_client' }],
+                  timestamp: new Date(),
+                },
+              ])
+            } else if (fieldToUpdate === 'mobile') {
+              const cleanMobile = String(newValue || '').replace(/\D/g, '')
+              await updateClient(targetClient.id, { mobile: cleanMobile })
+              toast.success(`Mobile for ${clientTitle} updated to ${cleanMobile}!`)
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `📱 Updated mobile for **${clientTitle}** to **${cleanMobile}** ✓`,
+                  type: 'edit_client',
+                  data: { clientId: targetClient.id, mobile: cleanMobile },
+                  chips: [{ label: 'View Clients', action: 'view_client' }],
+                  timestamp: new Date(),
+                },
+              ])
+            } else if (fieldToUpdate === 'address' || fieldToUpdate === 'location') {
+              await updateClient(targetClient.id, { [fieldToUpdate]: newValue })
+              toast.success(`Address for ${clientTitle} updated!`)
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `📍 Updated address for **${clientTitle}** to **${newValue}** ✓`,
+                  type: 'edit_client',
+                  data: { clientId: targetClient.id, [fieldToUpdate]: newValue },
+                  chips: [{ label: 'View Clients', action: 'view_client' }],
+                  timestamp: new Date(),
+                },
+              ])
+            } else if (fieldToUpdate === 'contactPerson') {
+              await updateClient(targetClient.id, { contactPerson: newValue })
+              toast.success(`Contact person for ${clientTitle} updated!`)
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `👤 Updated contact person for **${clientTitle}** to **${newValue}** ✓`,
+                  type: 'edit_client',
+                  data: { clientId: targetClient.id, contactPerson: newValue },
+                  chips: [{ label: 'View Clients', action: 'view_client' }],
+                  timestamp: new Date(),
+                },
+              ])
+            } else if (fieldToUpdate === 'rate') {
+              const numRate = Number(newValue) || 0
+              if (numRate > 0) {
+                await updateClient(targetClient.id, { rate: numRate })
+                toast.success(`Rate for ${clientTitle} updated to ₹${numRate}!`)
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: 'asst-' + Date.now(),
+                    sender: 'assistant',
+                    text: `💰 Updated rate for **${clientTitle}** to **₹${numRate}/box** ✓`,
+                    type: 'edit_client',
+                    data: { clientId: targetClient.id, rate: numRate },
+                    chips: [{ label: 'View Clients', action: 'view_client' }],
+                    timestamp: new Date(),
+                  },
+                ])
+              }
+            } else {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `Client **${clientTitle}** found. What detail would you like to edit? (e.g. phone, address, rate, or mark inactive)`,
+                  type: 'edit_client',
+                  chips: [
+                    { label: 'Mark Inactive', value: `mark ${clientTitle} inactive` },
+                    { label: 'Update Phone', value: `update phone of ${clientTitle}` },
+                  ],
+                  timestamp: new Date(),
+                },
+              ])
+            }
+          } catch (err) {
+            console.error('Failed to update client profile:', err)
+            toast.error('Failed to update client')
+          }
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: `Could not find client **${clientName || 'specified'}**. Please check the client name or tap below:`,
+              type: 'edit_client',
+              chips: [{ label: '👥 View Clients', action: 'view_client' }],
+              timestamp: new Date(),
+            },
+          ])
+        }
+      } else if (resData.type === 'cancel_payment') {
+        const { clientName, amount, paymentId } = resData.data || {}
+        let targetClient = clientName ? findBestExistingClientMatch(clientName, clients) : null
+        const targetAmount = Number(amount) || 0
+
+        try {
+          let foundPayment = null
+          if (paymentId) {
+            foundPayment = { id: paymentId, amount: targetAmount }
+          } else if (targetClient) {
+            const q = firestoreQuery(
+              collection(db, 'payments'),
+              where('clientId', '==', targetClient.id),
+              orderBy('createdAt', 'desc'),
+              limit(10)
+            )
+            const snap = await getDocs(q)
+            if (!snap.empty) {
+              if (targetAmount > 0) {
+                const matchDoc = snap.docs.find((d) => Number(d.data().amount) === targetAmount)
+                if (matchDoc) foundPayment = { id: matchDoc.id, ...matchDoc.data() }
+              }
+              if (!foundPayment) {
+                foundPayment = { id: snap.docs[0].id, ...snap.docs[0].data() }
+              }
+            }
+          }
+
+          if (foundPayment) {
+            await deletePayment(foundPayment.id)
+            const clientTitle = targetClient?.displayName || targetClient?.name || clientName || 'Customer'
+            const cancelledAmt = foundPayment.amount || targetAmount
+            toast.success(`Payment of ₹${cancelledAmt} cancelled!`)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `🗑️ **Payment Cancelled**:\n• Customer: **${clientTitle}**\n• Amount: **₹${Number(cancelledAmt).toLocaleString('en-IN')}**\n• Ledger & outstanding balance have been reversed ✓`,
+                type: 'cancel_payment',
+                data: { paymentId: foundPayment.id, clientName: clientTitle, amount: cancelledAmt },
+                chips: [{ label: 'View Ledger', action: 'view_ledger' }],
+                timestamp: new Date(),
+              },
+            ])
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `No matching payment record found for **${clientName || 'customer'}**${targetAmount > 0 ? ` of ₹${targetAmount}` : ''} to cancel.`,
+                type: 'cancel_payment',
+                chips: [{ label: 'View Payments', action: 'view_ledger' }],
+                timestamp: new Date(),
+              },
+            ])
+          }
+        } catch (err) {
+          console.error('Failed to cancel payment:', err)
+          toast.error('Failed to cancel payment')
+        }
+      } else if (resData.type === 'edit_payment') {
+        const { clientName, oldAmount, newAmount, paymentMode, paymentId } = resData.data || {}
+        let targetClient = clientName ? findBestExistingClientMatch(clientName, clients) : null
+        const targetOld = Number(oldAmount) || 0
+        const targetNew = Number(newAmount) || 0
+
+        try {
+          let foundPayment = null
+          if (paymentId) {
+            foundPayment = { id: paymentId, amount: targetOld }
+          } else if (targetClient) {
+            const q = firestoreQuery(
+              collection(db, 'payments'),
+              where('clientId', '==', targetClient.id),
+              orderBy('createdAt', 'desc'),
+              limit(10)
+            )
+            const snap = await getDocs(q)
+            if (!snap.empty) {
+              if (targetOld > 0) {
+                const matchDoc = snap.docs.find((d) => Number(d.data().amount) === targetOld)
+                if (matchDoc) foundPayment = { id: matchDoc.id, ...matchDoc.data() }
+              }
+              if (!foundPayment) {
+                foundPayment = { id: snap.docs[0].id, ...snap.docs[0].data() }
+              }
+            }
+          }
+
+          if (foundPayment && targetNew > 0) {
+            await deletePayment(foundPayment.id)
+            const clientTitle = targetClient?.displayName || targetClient?.name || clientName || 'Customer'
+            await addPayment({
+              clientId: targetClient?.id || foundPayment.clientId,
+              clientName: clientTitle,
+              amount: targetNew,
+              method: paymentMode || foundPayment.method || 'online',
+              accountId: (paymentMode === 'cash' || foundPayment.method === 'cash') ? 'counter' : 'bank',
+              date: new Date().toISOString().slice(0, 10),
+              notes: `Edited from ₹${foundPayment.amount || targetOld} to ₹${targetNew}`,
+            })
+
+            toast.success(`Payment updated to ₹${targetNew}!`)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `✏️ **Payment Updated**:\n• Customer: **${clientTitle}**\n• Previous Amount: **₹${Number(foundPayment.amount || targetOld).toLocaleString('en-IN')}**\n• New Amount: **₹${Number(targetNew).toLocaleString('en-IN')}**\n• Ledger & customer balance updated ✓`,
+                type: 'edit_payment',
+                data: { clientId: targetClient?.id, newAmount: targetNew },
+                chips: [{ label: 'View Ledger', action: 'view_ledger' }],
+                timestamp: new Date(),
+              },
+            ])
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `Please specify the corrected payment amount and customer (e.g. *"Change Maruti payment from 1500 to 2000"*).`,
+                type: 'edit_payment',
+                timestamp: new Date(),
+              },
+            ])
+          }
+        } catch (err) {
+          console.error('Failed to edit payment:', err)
+          toast.error('Failed to edit payment')
+        }
       } else if (resData.type === 'update_date') {
         const { clientName, targetDate, targetDateLabel } = resData.data || {}
         let targetOrder = null
@@ -2151,6 +2432,31 @@ export default function AiAssistantDrawer({
               ])
               return
             }
+          }
+
+          if (
+            fieldToUpdate === 'confirm' ||
+            (fieldToUpdate === 'status' && String(newValue).toLowerCase() === 'confirmed') ||
+            (changes && /(?:confirm|confirmed|pakku|manjoor)/i.test(changes))
+          ) {
+            try {
+              await updateOrder(targetOrder.id, { status: 'Confirmed' })
+              toast.success(`Order for ${name} confirmed!`)
+            } catch (e) {
+              console.error('Failed to confirm order:', e)
+            }
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `✅ Order for **${name}** has been **Confirmed** ✓`,
+                type: 'order_edit',
+                chips: [{ label: 'View Orders', action: 'view_orders' }],
+                timestamp: new Date(),
+              },
+            ])
+            return
           }
 
           if (fieldToUpdate === 'cancel' || (changes && changes.toLowerCase().includes('cancel'))) {

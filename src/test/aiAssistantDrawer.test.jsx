@@ -13,6 +13,22 @@ vi.mock('../firebase-config', () => ({
 const mockUploadBytes = vi.fn(() => Promise.resolve({ ref: {} }))
 const mockGetDownloadURL = vi.fn(() => Promise.resolve('https://storage.googleapis.com/test-bucket/screenshot.png'))
 
+const mockGetDocs = vi.fn(() => Promise.resolve({
+  empty: false,
+  docs: [{ id: 'pay-123', data: () => ({ id: 'pay-123', amount: 1500, clientId: 'c3', method: 'online' }) }]
+}))
+
+vi.mock('firebase/firestore', () => ({
+  collection: vi.fn(() => ({})),
+  addDoc: vi.fn(),
+  serverTimestamp: vi.fn(),
+  getDocs: (...args) => mockGetDocs(...args),
+  query: vi.fn(() => ({})),
+  where: vi.fn(() => ({})),
+  orderBy: vi.fn(() => ({})),
+  limit: vi.fn(() => ({})),
+}))
+
 vi.mock('firebase/storage', () => ({
   getStorage: vi.fn(() => ({})),
   ref: vi.fn(() => ({})),
@@ -41,6 +57,7 @@ vi.mock('../utils/aiImageHelper', () => ({
 const mockAddClient = vi.fn()
 const mockUpdateClient = vi.fn()
 const mockAddPayment = vi.fn()
+const mockDeletePayment = vi.fn()
 const mockAddOrder = vi.fn()
 const mockUpdateOrder = vi.fn()
 let mockOrders = [
@@ -83,6 +100,7 @@ vi.mock('../store/clientStore', () => ({
       updateClient: mockUpdateClient,
       addClient: mockAddClient,
       addPayment: mockAddPayment,
+      deletePayment: mockDeletePayment,
       addOrder: mockAddOrder,
       addExpense: vi.fn(),
       recordAccountTransfer: vi.fn(),
@@ -956,6 +974,123 @@ describe('AiAssistantDrawer', () => {
         totalAmount: 1400,
       }))
       expect(screen.getByText(/Updated price for \*\*Bhaveshbhai\*\*\'s order to \*\*₹140\/box\*\*/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('marks client as inactive when edit_client specifies inactive', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'edit_client',
+        text: 'Client marked inactive',
+        data: {
+          clientName: 'Bhaveshbhai',
+          fieldToUpdate: 'inactive',
+          active: false,
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, {
+      target: { value: 'Mark Bhaveshbhai as inactive' },
+    })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockUpdateClient).toHaveBeenCalledWith('c3', expect.objectContaining({ active: false }))
+      expect(screen.getByText(/marked as \*\*Inactive\*\*/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('confirms order when edit_order specifies confirm', async () => {
+    mockOrders.length = 0
+    mockOrders.push({
+      id: 'ord-confirm-1',
+      clientName: 'Bhaveshbhai',
+      status: 'Pending',
+      qty: 15,
+      rate: 130,
+    })
+
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'edit_order',
+        text: 'Order confirmed',
+        data: {
+          clientName: 'Bhaveshbhai',
+          fieldToUpdate: 'confirm',
+          newValue: 'Confirmed',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, {
+      target: { value: 'Confirm Bhaveshbhai order' },
+    })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockUpdateOrder).toHaveBeenCalledWith('ord-confirm-1', expect.objectContaining({ status: 'Confirmed' }))
+      expect(screen.getByText(/Order for \*\*Bhaveshbhai\*\* has been \*\*Confirmed\*\*/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('cancels payment when AI returns cancel_payment', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'cancel_payment',
+        text: 'Payment cancelled',
+        data: {
+          clientName: 'Bhaveshbhai',
+          amount: 1500,
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, {
+      target: { value: 'Cancel payment of 1500 for Bhaveshbhai' },
+    })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockDeletePayment).toHaveBeenCalledWith('pay-123')
+      expect(screen.getByText(/Payment Cancelled/i)).toBeInTheDocument()
+      expect(screen.getByText(/Ledger & outstanding balance have been reversed/i)).toBeInTheDocument()
     })
 
     unmount()

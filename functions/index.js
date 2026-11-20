@@ -2961,7 +2961,7 @@ ${rawText.slice(0, 3000)}`
             properties: {
               clientName: { type: 'STRING', description: 'Customer or caterer name whose order is being viewed or modified' },
               changes: { type: 'STRING', description: 'Specific modification requested, e.g. "change quantity to 50 boxes", "postpone to tomorrow", "change time to 11 AM", "cancel order"' },
-              fieldToUpdate: { type: 'STRING', enum: ['quantity', 'date', 'time', 'location', 'cancel', 'select'], description: 'The specific attribute to update' },
+              fieldToUpdate: { type: 'STRING', enum: ['quantity', 'date', 'time', 'location', 'price', 'confirm', 'cancel', 'select'], description: 'The specific attribute to update' },
               newValue: { type: 'STRING', description: 'The new value for the attribute' },
               targetDate: { type: 'STRING', description: 'Order date if known (YYYY-MM-DD)' }
             },
@@ -3153,6 +3153,53 @@ ${rawText.slice(0, 3000)}`
             },
             required: ['rate']
           }
+        },
+        {
+          name: 'edit_client',
+          description: 'Updates an existing customer profile: phone number, address, contact person, default rate, or active/inactive status.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              clientName: { type: 'STRING', description: 'Customer or shop name' },
+              fieldToUpdate: {
+                type: 'STRING',
+                enum: ['rate', 'mobile', 'address', 'location', 'contactPerson', 'active', 'inactive'],
+                description: 'The attribute to update'
+              },
+              newValue: { type: 'STRING', description: 'The new value for the field' },
+              active: { type: 'BOOLEAN', description: 'Set false to mark client inactive, true for active' }
+            },
+            required: ['clientName']
+          }
+        },
+        {
+          name: 'edit_payment',
+          description: 'Modifies an existing customer payment (amount, payment mode, or date).',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              clientName: { type: 'STRING', description: 'Customer or shop name' },
+              oldAmount: { type: 'NUMBER', description: 'Existing payment amount' },
+              newAmount: { type: 'NUMBER', description: 'Corrected payment amount' },
+              paymentMode: { type: 'STRING', enum: ['cash', 'online', 'cheque'], description: 'Payment mode' },
+              paymentId: { type: 'STRING', description: 'Payment transaction ID if known' }
+            },
+            required: ['clientName']
+          }
+        },
+        {
+          name: 'cancel_payment',
+          description: 'Cancels or deletes a recorded customer payment transaction and reverses the ledger.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              clientName: { type: 'STRING', description: 'Customer or shop name whose payment is to be cancelled' },
+              amount: { type: 'NUMBER', description: 'Payment amount to cancel' },
+              paymentId: { type: 'STRING', description: 'Payment transaction ID if known' },
+              reason: { type: 'STRING', description: 'Reason for cancellation' }
+            },
+            required: ['clientName']
+          }
         }
       ]
 
@@ -3275,6 +3322,49 @@ RUNTIME CONTEXT:
               clientName: args.clientName || '',
               rate: Number(args.rate) || 0,
               sku: args.sku || 'Anjani 200ml',
+            },
+          }
+        }
+
+        if (returnType === 'edit_client') {
+          return {
+            type: 'edit_client',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              clientName: args.clientName || '',
+              fieldToUpdate: args.fieldToUpdate || '',
+              newValue: args.newValue || '',
+              active: args.active,
+            },
+          }
+        }
+
+        if (returnType === 'edit_payment') {
+          return {
+            type: 'edit_payment',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              clientName: args.clientName || '',
+              oldAmount: Number(args.oldAmount) || 0,
+              newAmount: Number(args.newAmount) || 0,
+              paymentMode: args.paymentMode || 'online',
+              paymentId: args.paymentId || '',
+            },
+          }
+        }
+
+        if (returnType === 'cancel_payment') {
+          return {
+            type: 'cancel_payment',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              clientName: args.clientName || '',
+              amount: Number(args.amount) || 0,
+              paymentId: args.paymentId || '',
+              reason: args.reason || '',
             },
           }
         }
