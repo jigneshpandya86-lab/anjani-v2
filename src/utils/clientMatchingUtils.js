@@ -310,7 +310,16 @@ export function findMatchingClient(rawName, clients = [], options = {}) {
  */
 export function findBestExistingClientMatch(rawName, clients = [], options = {}) {
   if (!Array.isArray(clients) || clients.length === 0) return null
-  if (clients.length === 1) return clients[0]
+
+  const targetStr = String(rawName || '').trim()
+  const targetMobile = options?.mobile ? String(options.mobile).replace(/\D/g, '').slice(-10) : ''
+
+  // If no name and no mobile number was provided, there is no entity to match
+  if (!targetStr && !targetMobile) {
+    return null
+  }
+
+  if (clients.length === 1 && (targetStr || targetMobile)) return clients[0]
 
   // 1. First attempt standard multi-tier matching (exact, mobile, phonetic, substring, fuzzy)
   const standardMatch = findMatchingClient(rawName, clients, options)
@@ -319,8 +328,8 @@ export function findBestExistingClientMatch(rawName, clients = [], options = {})
   }
 
   // 2. Extract potential 10-digit mobile from rawName string if mobile option was not provided
-  if (!options.mobile && rawName && typeof rawName === 'string') {
-    const digitsOnly = rawName.replace(/\D/g, '')
+  if (!options.mobile && targetStr) {
+    const digitsOnly = targetStr.replace(/\D/g, '')
     if (digitsOnly.length >= 10) {
       const last10 = digitsOnly.slice(-10)
       const foundByPhone = clients.find((c) => {
@@ -331,7 +340,6 @@ export function findBestExistingClientMatch(rawName, clients = [], options = {})
     }
   }
 
-  const targetStr = String(rawName || '').trim()
   const targetLower = targetStr.toLowerCase()
   const targetPhonetic = getPhoneticKey(targetStr)
 
@@ -408,12 +416,15 @@ export function findBestExistingClientMatch(rawName, clients = [], options = {})
     return bestClient
   }
 
-  // Fallback: If no meaningful score (e.g. empty or unrecognized text),
+  // Fallback: If no meaningful score but non-empty text was provided,
   // pick the client with the highest outstanding balance, or the first client
-  const clientWithDue = [...clients].sort(
-    (a, b) => Number(b.outstanding || b.pendingBalance || 0) - Number(a.outstanding || a.pendingBalance || 0),
-  )[0]
+  if (targetStr && targetStr.length >= 2) {
+    const clientWithDue = [...clients].sort(
+      (a, b) => Number(b.outstanding || b.pendingBalance || 0) - Number(a.outstanding || a.pendingBalance || 0),
+    )[0]
+    return clientWithDue || clients[0]
+  }
 
-  return clientWithDue || clients[0]
+  return null
 }
 

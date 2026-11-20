@@ -219,7 +219,14 @@ describe('clientMatchingUtils', () => {
       expect(best.id).toBe('c3')
     })
 
-    it('returns null only if clients array is empty', () => {
+    it('returns null if rawName is empty, whitespace, or null without valid mobile', () => {
+      expect(findBestExistingClientMatch('', clients)).toBeNull()
+      expect(findBestExistingClientMatch('   ', clients)).toBeNull()
+      expect(findBestExistingClientMatch(null, clients)).toBeNull()
+      expect(findBestExistingClientMatch(undefined, clients)).toBeNull()
+    })
+
+    it('returns null if clients array is empty', () => {
       expect(findBestExistingClientMatch('Sandip', [])).toBeNull()
       expect(findBestExistingClientMatch('Sandip', null)).toBeNull()
     })

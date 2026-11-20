@@ -1550,6 +1550,37 @@ describe('AiAssistantDrawer', () => {
     unmount()
   })
 
+  it('does not assign a random customer when payerName is empty for payment receipt', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'receive_payment',
+        data: {
+          payerName: '',
+          amount: 1,
+          paymentMode: 'cash',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Payment received 1 Rs' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    expect(await screen.findByText(/Payment Receipt Detected: ₹1/i)).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /-- Select Client --/i })).toBeInTheDocument()
+
+    unmount()
+  })
+
   it('cancels unconfirmed payment draft when cancel_payment is invoked', async () => {
     mockHttpsCallableResponse.mockResolvedValueOnce({
       data: {

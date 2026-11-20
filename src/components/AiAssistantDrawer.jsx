@@ -1151,7 +1151,7 @@ export default function AiAssistantDrawer({
         }
       }
       if (unconfirmedDraft) {
-        const matchedCli = clients?.find((c) => c.id === unconfirmedDraft.data.clientId) || findBestExistingClientMatch(unconfirmedDraft.data.clientName, clients)
+        const matchedCli = clients?.find((c) => c.id === unconfirmedDraft.data.clientId) || (unconfirmedDraft.data.clientName ? findBestExistingClientMatch(unconfirmedDraft.data.clientName, clients) : null)
         const resolvedClientId = matchedCli?.id || unconfirmedDraft.data.clientId
         const resolvedClientName = matchedCli?.displayName || matchedCli?.name || unconfirmedDraft.data.clientName || 'Customer'
         const amount = Number(unconfirmedDraft.data.amount) || 0
@@ -1622,7 +1622,7 @@ export default function AiAssistantDrawer({
           }
         }
         if (unconfirmedDraft) {
-          const matchedCli = clients?.find((c) => c.id === unconfirmedDraft.data.clientId) || findBestExistingClientMatch(unconfirmedDraft.data.clientName, clients)
+          const matchedCli = clients?.find((c) => c.id === unconfirmedDraft.data.clientId) || (unconfirmedDraft.data.clientName ? findBestExistingClientMatch(unconfirmedDraft.data.clientName, clients) : null)
           const resolvedClientId = matchedCli?.id || unconfirmedDraft.data.clientId
           const resolvedName = matchedCli?.displayName || matchedCli?.name || unconfirmedDraft.data.clientName || 'Customer'
           const amount = Number(unconfirmedDraft.data.amount) || 0
@@ -1884,17 +1884,21 @@ export default function AiAssistantDrawer({
         const rawPayerName = (payData.payerName || '').trim()
         const targetMobile = (payData.mobile || '').replace(/\D/g, '')
 
-        const matched = findBestExistingClientMatch(rawPayerName, clients, { mobile: targetMobile })
+        const matched = (rawPayerName || targetMobile) ? findBestExistingClientMatch(rawPayerName, clients, { mobile: targetMobile }) : null
         const clientId = matched?.id || ''
-        const clientName = matched?.name || rawPayerName || (targetMobile ? `Customer (${targetMobile.slice(-4)})` : 'Select Client')
+        const clientName = matched?.displayName || matched?.name || rawPayerName || (targetMobile ? `Customer (${targetMobile.slice(-4)})` : '')
         const amount = Number(payData.amount) || 0
+
+        const assistantText = clientName
+          ? `💰 **Payment Receipt Detected: ₹${amount.toLocaleString('en-IN')}** (from **${clientName}**)\nReview transaction and tap **Confirm & Record Payment**:`
+          : `💰 **Payment Receipt Detected: ₹${amount.toLocaleString('en-IN')}**\nSelect client below and tap **Confirm & Record Payment**:`
 
         setMessages((prev) => [
           ...prev,
           {
             id: 'asst-' + Date.now(),
             sender: 'assistant',
-            text: `💰 **Payment Receipt Detected: ₹${amount.toLocaleString('en-IN')}**\nReview transaction and tap **Confirm & Record Payment**:`,
+            text: assistantText,
             type: 'receive_payment',
             paymentId: 'pay-' + Date.now(),
             data: {
@@ -2031,28 +2035,38 @@ export default function AiAssistantDrawer({
         }
 
         let rawPayerName = (payData.payerName || '').trim()
-        // Contextual lookback if payerName is empty
+        // Only perform contextual lookback if user prompt explicitly references previous entity
         if (!rawPayerName && Array.isArray(messages)) {
-          for (let i = messages.length - 1; i >= 0; i--) {
-            const m = messages[i]
-            const nameCandidate = m.data?.clientName || m.data?.payerName || m.data?.client?.name
-            if (nameCandidate) {
-              rawPayerName = nameCandidate
-              break
+          const userPromptText = String(inputMessage || '').toLowerCase()
+          const isReferential = /(?:his|her|their|same|above|this|that|ten[ua]|en[ua]|unnu|unka|inka)\b/i.test(userPromptText)
+          if (isReferential) {
+            for (let i = messages.length - 1; i >= 0; i--) {
+              const m = messages[i]
+              const nameCandidate = m.data?.clientName || m.data?.payerName || m.data?.client?.name
+              if (nameCandidate) {
+                rawPayerName = nameCandidate
+                break
+              }
             }
           }
         }
 
         const targetMobile = (payData.mobile || '').replace(/\D/g, '')
-        const matched = findBestExistingClientMatch(rawPayerName, clients, { mobile: targetMobile })
+        const matched = (rawPayerName || targetMobile) ? findBestExistingClientMatch(rawPayerName, clients, { mobile: targetMobile }) : null
         const clientId = matched?.id || ''
-        const clientName = matched?.displayName || matched?.name || rawPayerName || (targetMobile ? `Customer (${targetMobile.slice(-4)})` : 'Select Client')
+        const clientName = matched?.displayName || matched?.name || rawPayerName || (targetMobile ? `Customer (${targetMobile.slice(-4)})` : '')
+        const amount = Number(payData.amount) || 0
+
+        const assistantText = clientName
+          ? `💰 **Payment Receipt Detected: ₹${amount.toLocaleString('en-IN')}** (from **${clientName}**)\nReview transaction and tap **Confirm & Record Payment**:`
+          : `💰 **Payment Receipt Detected: ₹${amount.toLocaleString('en-IN')}**\nSelect client below and tap **Confirm & Record Payment**:`
+
         setMessages((prev) => [
           ...prev,
           {
             id: 'asst-' + Date.now(),
             sender: 'assistant',
-            text: `💰 **Payment Receipt Detected: ₹${Number(payData.amount || 0).toLocaleString('en-IN')}**\nReview transaction and tap **Confirm & Record Payment**:`,
+            text: assistantText,
             type: 'receive_payment',
             paymentId: 'pay-' + Date.now(),
             data: {

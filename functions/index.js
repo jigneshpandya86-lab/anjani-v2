@@ -2883,7 +2883,7 @@ ${rawText.slice(0, 3000)}`
               date: { type: 'STRING', description: 'Payment date (YYYY-MM-DD)' },
               notes: { type: 'STRING', description: 'Payment notes' }
             },
-            required: ['payerName', 'amount']
+            required: ['amount']
           }
         },
         {
