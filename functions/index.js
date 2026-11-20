@@ -2535,37 +2535,14 @@ Return strict JSON:
       // Text mode
       const rawText = String(text || '').trim()
 
-      // Check for price / rate update intent in text
-      const isPriceUpdateTextIntent =
-        /(?:update\s+price|change\s+price|set\s+price|update\s+rate|change\s+rate|set\s+rate|rate\s+update|price\s+update|bhav\s+badlo|bhav\s+change|rate\s+change|ભાવ\s*બદલો|રેટ\s*બદલો)\b/i.test(rawText) ||
-        /(?:rate|bhav|price|ભાવ|રેટ)\s*[:=]?\s*\d+\s*(?:karo|karjo|kari\s*aapo|કરો|કરજો|કરી\s*આપો)?/i.test(rawText) ||
-        /(?:update|change|set)\s+(?:the\s+)?(?:rate|price|bhav)\b/i.test(rawText)
-
-      if (isPriceUpdateTextIntent && !/(?:create\s+order|new\s+order|place\s+order)\b/i.test(rawText)) {
-        const rateMatch =
-          rawText.match(/(?:rate|bhav|price|ભાવ|રેટ|to|is|as|@|₹|rs\.?)\s*[:=]?\s*(\d+(?:\.\d+)?)/i) ||
-          rawText.match(/\b(\d+(?:\.\d+)?)\b/)
-        const rate = rateMatch ? parseFloat(rateMatch[1]) : 0
-        return {
-          type: 'update_price',
-          modelUsed: modelName,
-          data: {
-            rate,
-            rawText,
-          },
-          text: rate > 0
-            ? `💰 **Price Update**: Recognized command to update price to **₹${rate}**.`
-            : `💰 **Update Price**: Please specify the new rate and customer (e.g., *"update price to 140"*).`,
-        }
-      }
-
-      // Check if this is an accounts & staff cash entry
+      // Check if this is an explicit accounts & staff cash entry or pasted ledger
       const isExplicitAccounts = mode === 'accounts_cash' || mode === 'accounts'
-      const hasAccountsKeywords =
-        /(?:handover|jama|lidha|aapy[ao]|aapya|transfer|petrol|diesel|kharch|expense|hitesh|nilesh)\b/i.test(rawText) &&
-        /\d+/.test(rawText)
-      const hasSkuKeywords = /(?:200ml|250ml|500ml|1\s*l|2\s*l|peti|box\b|cases?\b)/i.test(rawText)
-      const isAccountsNotes = isExplicitAccounts || (hasAccountsKeywords && !hasSkuKeywords)
+      const isMultiLineAccounts =
+        rawText.includes('\n') &&
+        rawText.split('\n').filter((l) => l.trim().length > 0).length >= 3 &&
+        /\d+/.test(rawText) &&
+        /(?:handover|jama|lidha|aapy[ao]|transfer|petrol|diesel|kharch|expense)/i.test(rawText)
+      const isAccountsNotes = isExplicitAccounts || isMultiLineAccounts
 
       if (isAccountsNotes) {
         const model = vertexAI.getGenerativeModel({
@@ -2639,11 +2616,8 @@ ${rawText.slice(0, 3000)}`
         }
       }
 
-      // 0. Check for compound action intent in text (mode === 'compound_action' or user requested client + order + payment)
-      const isCompoundTextIntent =
-        mode === 'compound_action' ||
-        /(?:client.*order.*payment|client.*plus.*order|order.*plus.*payment|client.*plus.*payment)/i.test(rawText) ||
-        (/client/i.test(rawText) && /order/i.test(rawText) && /payment/i.test(rawText))
+      // 0. Check for compound action intent in text (only if explicit compound_action mode)
+      const isCompoundTextIntent = mode === 'compound_action'
 
       if (isCompoundTextIntent) {
         const model = vertexAI.getGenerativeModel({
@@ -2747,15 +2721,8 @@ User Text: ${rawText.slice(0, 1000)}`
         }
       }
 
-      // 1. Check for client creation intent in text (Priority 1 when in client mode or client keywords detected)
-      const isClientTextIntent =
-        mode === 'create_client' ||
-        /^(?:add|new|create)\s+(?:client|customer|party|shop)\b/i.test(rawText) ||
-        /(?:add\s+new\s+client|create\s+new\s+client)\b/i.test(rawText) ||
-        /(?:નવો|નવા|નવી)\s+(?:ગ્રાહક|કસ્ટમર|ક્લાયન્ટ|પાર્ટી|દુકાન)/i.test(rawText) ||
-        /(?:નવો\s+ગ્રાહક\s+બનાવો|નવા\s+ક્લાયન્ટ\s+ઉમેરો)/i.test(rawText) ||
-        /(?:नया|नए|नई)\s+(?:ग्राहक|कस्टमर|क्लाइंट|पार्टी|दुकान)/i.test(rawText) ||
-        /(?:नया\s+ग्राहक\s+बनाओ|नया\s+ग्राहक\s+जोड़ो)/i.test(rawText)
+      // 1. Check for client creation intent in text (only if explicit create_client mode)
+      const isClientTextIntent = mode === 'create_client'
 
       if (isClientTextIntent) {
         const model = vertexAI.getGenerativeModel({
@@ -2805,12 +2772,8 @@ User Text: ${rawText.slice(0, 1000)}`
         }
       }
 
-      // 2. Check for payment received intent in text
-      const isPaymentTextIntent =
-        mode === 'receive_payment' ||
-        (/(?:received|payment\s+received|jama\s+kary[ao]|paid|rupiya\s+malya|rupaye\s+mile)\b/i.test(rawText) &&
-          /\d+/.test(rawText) &&
-          !/(?:stock|order|delivery|invoice)\b/i.test(rawText))
+      // 2. Check for payment received intent in text (only if explicit receive_payment mode)
+      const isPaymentTextIntent = mode === 'receive_payment'
 
       if (isPaymentTextIntent) {
         const model = vertexAI.getGenerativeModel({
@@ -2874,7 +2837,6 @@ User Text: ${rawText.slice(0, 1000)}`
         !isOperationalCommand &&
         mode !== 'create_client' &&
         mode !== 'receive_payment' &&
-        !isClientTextIntent &&
         (mode === 'retail_sales' || isMultiLineSalesNotepad)
 
       if (isSalesNotes) {
@@ -3143,6 +3105,54 @@ ${rawText.slice(0, 3000)}`
             },
             required: ['clientName', 'mapLink']
           }
+        },
+        {
+          name: 'create_client',
+          description: 'Registers or adds a new customer, client, party, or shop with contact details, address, location, and default rate.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              name: { type: 'STRING', description: 'Customer or shop name in English Title Case' },
+              contactPerson: { type: 'STRING', description: 'Contact person name in English' },
+              mobile: { type: 'STRING', description: '10-digit mobile number (digits 0-9 only)' },
+              alternateMobile: { type: 'STRING', description: 'Alternate mobile number' },
+              address: { type: 'STRING', description: 'Shop address, delivery location, or landmark in English' },
+              location: { type: 'STRING', description: 'Area or neighborhood in English' },
+              rate: { type: 'NUMBER', description: 'Default rate per box (e.g. 130 or 65)' },
+              notes: { type: 'STRING', description: 'Additional notes or payment terms' }
+            },
+            required: ['name']
+          }
+        },
+        {
+          name: 'receive_payment',
+          description: 'Records a customer payment received in cash, UPI, GPay, PhonePe, Paytm, or Cheque.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              payerName: { type: 'STRING', description: 'Customer or shop name who paid. NEVER Annapurna Foods or Jignesh Pandya' },
+              amount: { type: 'NUMBER', description: 'Payment amount received in INR' },
+              paymentMode: { type: 'STRING', enum: ['cash', 'online', 'cheque'], description: 'Payment mode' },
+              onlineProvider: { type: 'STRING', enum: ['GPay', 'PhonePe', 'Paytm', 'UPI', 'Bank'], description: 'Online app or provider' },
+              utr: { type: 'STRING', description: 'UTR reference number or Cheque number' },
+              date: { type: 'STRING', description: 'Payment date (YYYY-MM-DD)' },
+              notes: { type: 'STRING', description: 'Payment notes' }
+            },
+            required: ['payerName', 'amount']
+          }
+        },
+        {
+          name: 'update_price',
+          description: 'Updates agreed product rate/price (e.g. bhav, rate) for a specific customer or party.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              clientName: { type: 'STRING', description: 'Customer or shop name whose price is being updated' },
+              rate: { type: 'NUMBER', description: 'New unit rate in INR (e.g. 135, 140)' },
+              sku: { type: 'STRING', description: 'Product SKU if specified, defaults to Anjani 200ml' }
+            },
+            required: ['rate']
+          }
         }
       ]
 
@@ -3231,6 +3241,41 @@ RUNTIME CONTEXT:
         if (returnType === 'mark_orders_delivered') {
           if (!args.targetDate) {
             args.targetDate = istToday
+          }
+        }
+
+        if (returnType === 'create_client') {
+          return {
+            type: 'create_client',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: ensureEnglishClient(args),
+          }
+        }
+
+        if (returnType === 'receive_payment') {
+          const cleanPayment = { ...args }
+          if (isMerchantName(cleanPayment.payerName)) {
+            cleanPayment.payerName = ''
+          }
+          return {
+            type: 'receive_payment',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: cleanPayment,
+          }
+        }
+
+        if (returnType === 'update_price') {
+          return {
+            type: 'update_price',
+            modelUsed: modelName,
+            text: textPart?.text || (args.rate ? `💰 Updated price to ₹${args.rate}` : ''),
+            data: {
+              clientName: args.clientName || '',
+              rate: Number(args.rate) || 0,
+              sku: args.sku || 'Anjani 200ml',
+            },
           }
         }
 

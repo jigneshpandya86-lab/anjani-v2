@@ -1827,6 +1827,73 @@ export default function AiAssistantDrawer({
             timestamp: new Date(),
           },
         ])
+      } else if (resData.type === 'update_price') {
+        const { clientName, rate, sku } = resData.data || {}
+        let targetClient = null
+        if (clientName) {
+          targetClient = findBestExistingClientMatch(clientName, clients)
+        }
+        if (!targetClient && Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            if (m.data?.clientName || m.data?.client?.name) {
+              const prevName = m.data?.clientName || m.data?.client?.name
+              targetClient = findBestExistingClientMatch(prevName, clients)
+              if (targetClient) break
+            }
+          }
+        }
+
+        const newRate = Number(rate) || 0
+        if (targetClient && newRate > 0) {
+          try {
+            await updateClient(targetClient.id, { rate: newRate })
+            const clientTitle = targetClient.displayName || targetClient.name
+            toast.success(`Rate for ${clientTitle} updated to ₹${newRate}!`)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `💰 **Rate Updated for ${clientTitle}**\n• Agreed Rate: **₹${newRate}** per box (${sku || 'Anjani 200ml'})\n• Client master profile has been updated.`,
+                type: 'update_price',
+                data: { clientId: targetClient.id, clientName: clientTitle, rate: newRate },
+                chips: [
+                  { label: `Rate ₹${newRate} Saved ✓`, action: 'view_client' },
+                  { label: 'View Orders', action: 'view_orders' },
+                ],
+                timestamp: new Date(),
+              },
+            ])
+          } catch (err) {
+            console.error('Failed to update client price:', err)
+            toast.error('Failed to update client price')
+          }
+        } else if (newRate > 0) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: `💰 **Price Update: ₹${newRate}**\nPlease specify which customer's rate to update (e.g. *"Update Maruti Caterers rate to ₹${newRate}"*).`,
+              type: 'update_price',
+              data: { rate: newRate },
+              timestamp: new Date(),
+            },
+          ])
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: `💰 **Update Price**: Please specify the new rate and customer (e.g., *"Update price to 140 for Maruti Caterers"*).`,
+              type: 'update_price',
+              data: {},
+              timestamp: new Date(),
+            },
+          ])
+        }
       } else if (resData.type === 'update_date') {
         const { clientName, targetDate, targetDateLabel } = resData.data || {}
         let targetOrder = null
@@ -2049,6 +2116,34 @@ export default function AiAssistantDrawer({
                   id: 'asst-' + Date.now(),
                   sender: 'assistant',
                   text: `📦 Updated quantity for **${name}** to **${numQty} boxes** ✓`,
+                  type: 'order_edit',
+                  chips: [{ label: 'View Orders', action: 'view_orders' }],
+                  timestamp: new Date(),
+                },
+              ])
+              return
+            }
+          }
+
+          if ((fieldToUpdate === 'price' || fieldToUpdate === 'rate') && newValue) {
+            const numRate = parseFloat(newValue)
+            if (numRate > 0) {
+              try {
+                const qty = targetOrder.qty || targetOrder.totalQty || 1
+                await updateOrder(targetOrder.id, {
+                  rate: numRate,
+                  totalAmount: qty * numRate,
+                })
+                toast.success(`Price updated to ₹${numRate} per box!`)
+              } catch (e) {
+                console.error('Failed to update rate on order:', e)
+              }
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `💰 Updated price for **${name}**'s order to **₹${numRate}/box** (Total: ₹${(targetOrder.qty || 1) * numRate}) ✓`,
                   type: 'order_edit',
                   chips: [{ label: 'View Orders', action: 'view_orders' }],
                   timestamp: new Date(),

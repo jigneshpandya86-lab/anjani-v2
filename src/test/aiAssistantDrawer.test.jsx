@@ -39,6 +39,7 @@ vi.mock('../utils/aiImageHelper', () => ({
 }))
 
 const mockAddClient = vi.fn()
+const mockUpdateClient = vi.fn()
 const mockAddPayment = vi.fn()
 const mockAddOrder = vi.fn()
 const mockUpdateOrder = vi.fn()
@@ -79,6 +80,7 @@ vi.mock('../store/clientStore', () => ({
       createBatchSales: vi.fn(),
       createBatchAccountEntries: vi.fn(),
       updateOrder: mockUpdateOrder,
+      updateClient: mockUpdateClient,
       addClient: mockAddClient,
       addPayment: mockAddPayment,
       addOrder: mockAddOrder,
@@ -870,6 +872,90 @@ describe('AiAssistantDrawer', () => {
       expect(mockUpdateOrder).toHaveBeenCalledWith('ord-kamlesh-today', expect.objectContaining({ status: 'Delivered' }))
       // Must NEVER update tomorrow's order!
       expect(mockUpdateOrder).not.toHaveBeenCalledWith('ord-tomorrow', expect.anything())
+    })
+
+    unmount()
+  })
+
+  it('updates client agreed price when AI returns update_price', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'update_price',
+        text: 'Updated price to 140',
+        data: {
+          clientName: 'Bhaveshbhai',
+          rate: 140,
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, {
+      target: { value: 'Update price for Bhaveshbhai to 140' },
+    })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockUpdateClient).toHaveBeenCalledWith('c3', expect.objectContaining({ rate: 140 }))
+      expect(screen.getByText(/Rate Updated for Bhaveshbhai/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('updates order rate when edit_order specifies fieldToUpdate price', async () => {
+    mockOrders.length = 0
+    mockOrders.push({
+      id: 'ord-bhav-1',
+      clientName: 'Bhaveshbhai',
+      status: 'Confirmed',
+      qty: 10,
+      rate: 130,
+      totalAmount: 1300,
+    })
+
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'edit_order',
+        text: 'Price updated',
+        data: {
+          clientName: 'Bhaveshbhai',
+          fieldToUpdate: 'price',
+          newValue: '140',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, {
+      target: { value: 'Change price of Bhaveshbhai order to 140' },
+    })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockUpdateOrder).toHaveBeenCalledWith('ord-bhav-1', expect.objectContaining({
+        rate: 140,
+        totalAmount: 1400,
+      }))
+      expect(screen.getByText(/Updated price for \*\*Bhaveshbhai\*\*\'s order to \*\*₹140\/box\*\*/i)).toBeInTheDocument()
     })
 
     unmount()
