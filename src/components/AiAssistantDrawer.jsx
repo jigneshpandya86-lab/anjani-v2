@@ -2113,6 +2113,63 @@ export default function AiAssistantDrawer({
             },
           ])
         }
+      } else if (resData.type === 'mark_orders_delivered') {
+        const { clientNames = [] } = resData.data || {}
+        const namesToProcess = Array.isArray(clientNames) ? clientNames : (clientNames ? [clientNames] : [])
+        const markedClients = []
+
+        for (const cName of namesToProcess) {
+          const norm = (cName || '').toLowerCase().trim()
+          const match = (orders || []).find((o) => {
+            const st = (o.status || '').toLowerCase()
+            const isOpen = st !== 'cancelled' && st !== 'delivered' && o.isCancelled !== true
+            const oName = (o.clientName || o.name || '').toLowerCase()
+            return isOpen && oName.includes(norm)
+          })
+          if (match) {
+            try {
+              await updateOrder(match.id, {
+                status: 'Delivered',
+                deliveredAt: new Date().toISOString(),
+              })
+              markedClients.push(match.clientName || cName)
+            } catch (err) {
+              console.error('Failed to mark order as delivered:', err)
+            }
+          }
+        }
+
+        if (markedClients.length > 0) {
+          toast.success(`Marked ${markedClients.join(' & ')} as Delivered!`)
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: `✅ Marked today's order${markedClients.length > 1 ? 's' : ''} for **${markedClients.join('** and **')}** as **Delivered**! 🚚💨`,
+              type: 'mark_orders_delivered',
+              chips: [
+                { label: '📦 View Remaining Orders', action: 'query_orders' },
+                { label: '📊 Check Stock', action: 'query_stock' },
+              ],
+              timestamp: new Date(),
+            },
+          ])
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: `Could not find open pending orders for **${namesToProcess.join(', ')}** today. They may already be marked as Delivered or not booked yet.`,
+              type: 'mark_orders_delivered',
+              chips: [
+                { label: '📦 View All Orders', action: 'query_orders' },
+              ],
+              timestamp: new Date(),
+            },
+          ])
+        }
       } else if (resData.type === 'order_create' || resData.type === 'order_draft') {
         const draftData = resData.data || {}
         const clientMatch = draftData.clientName ? findMatchingClient(draftData.clientName, clients)?.client : null

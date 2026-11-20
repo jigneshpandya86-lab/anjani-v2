@@ -934,7 +934,8 @@ export function tryLocalIntentRoute(query, store = {}) {
 
   // Multi-date catering / sales orders local parsing (Zero tokens & Instant response)
   const isSingleOrderCommand = /(?:create\s+order|new\s+order|place\s+order|book\s+order|\border\s+\d+|\border\s+for)\b/i.test(q)
-  if (!store.isClientMode && !store.isPaymentMode && !isSingleOrderCommand) {
+  const isOperationalCommand = /(?:mark|delivered|deliver|status|edit|cancel|reschedule|update|send|tell|ask|sms|whatsapp|today'?s|pending)\b/i.test(q)
+  if (!store.isClientMode && !store.isPaymentMode && !isSingleOrderCommand && !isOperationalCommand) {
     const isMultiOrCatering =
       rawQ.includes('\n') ||
       /(?:caterer|caterers|party\s*plot|પાર્ટી\s*પ્લોટ|nung|nang|નંગ|hajar|હજાર|sanje|savare)/i.test(

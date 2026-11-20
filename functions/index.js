@@ -2860,16 +2860,22 @@ User Text: ${rawText.slice(0, 1000)}`
         }
       }
 
-      // 3. Check for sales notes / customer orders (Only if NOT in client creation or payment mode)
+      // 3. Check for sales notes / customer orders (Only if in retail_sales mode or actual pasted multi-line sales notepad)
+      const isOperationalCommand =
+        /(?:mark|delivered|deliver|cancel|reschedule|edit|change|update|send\s*(?:sms|message)|tell\s*nilesh|ask\s*nilesh|today'?s\s*orders|pending\s*orders)/i.test(rawText)
+
+      const isMultiLineSalesNotepad =
+        rawText.includes('\n') &&
+        rawText.split('\n').filter((l) => l.trim().length > 0).length >= 2 &&
+        /\d+/.test(rawText) &&
+        /(?:sales|peti|box|case|rate|bhav|nung|botal)/i.test(rawText)
+
       const isSalesNotes =
+        !isOperationalCommand &&
         mode !== 'create_client' &&
         mode !== 'receive_payment' &&
         !isClientTextIntent &&
-        (mode === 'retail_sales' ||
-          /(?:sales|peti|box|case|bxs|qty|cash|rokda|gpay|upi|udhar|baaki|jama)\b/i.test(rawText) ||
-          /(?:200ml|250ml|500ml|1\s*l|2\s*l|anjani|bailey)/i.test(rawText) ||
-          /(?:nung|botal|bottel|bottle|બોટલ|નંગ|caterer|caterers|party\s*plot|પાર્ટી\s*પ્લોટ)\b/i.test(rawText) ||
-          (rawText.includes('\n') && /\d+/.test(rawText)))
+        (mode === 'retail_sales' || isMultiLineSalesNotepad)
 
       if (isSalesNotes) {
         const model = vertexAI.getGenerativeModel({
@@ -3039,6 +3045,22 @@ ${rawText.slice(0, 3000)}`
               clientName: { type: 'STRING', description: 'Filter by specific customer name' },
               status: { type: 'STRING', enum: ['open', 'completed', 'all'], description: 'Order status filter' }
             }
+          }
+        },
+        {
+          name: 'mark_orders_delivered',
+          description: 'Marks one or more customer delivery orders as delivered or completed for today or a specific date.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              clientNames: {
+                type: 'ARRAY',
+                description: 'List of customer or caterer names whose orders are marked as delivered',
+                items: { type: 'STRING' }
+              },
+              targetDate: { type: 'STRING', description: 'Target date (YYYY-MM-DD)' }
+            },
+            required: ['clientNames']
           }
         },
         {

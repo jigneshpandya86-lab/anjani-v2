@@ -821,4 +821,39 @@ describe('AiAssistantDrawer', () => {
 
     unmount()
   })
+
+  it('marks orders delivered when AI returns mark_orders_delivered intent', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'mark_orders_delivered',
+        text: 'Marked orders as delivered',
+        data: {
+          clientNames: ['Kamleshbhai', 'Maruti Caterers'],
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, {
+      target: { value: "Mark Kamleshbhai and Maruti Caterers today's orders as delivered" },
+    })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Could not find open pending orders for/i)
+      ).toBeInTheDocument()
+    })
+
+    unmount()
+  })
 })
