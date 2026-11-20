@@ -2982,12 +2982,12 @@ ${rawText.slice(0, 3000)}`
       }
 
 
-      // General operational intent agent (Strict token ceiling: 500 maxOutputTokens)
+      // General operational intent agent (Token ceiling: 1200 maxOutputTokens)
       const model = vertexAI.getGenerativeModel({
         model: modelName,
         generationConfig: {
-          maxOutputTokens: 500,
-          temperature: 0.1,
+          maxOutputTokens: 1200,
+          temperature: 0.15,
           responseMimeType: 'application/json',
         },
       })
@@ -3014,7 +3014,7 @@ Our 5 canonical water SKUs are:
 Classify the user intent and output strict JSON:
 {
   "type": "orders_query" | "order_create" | "location_update" | "update_date" | "update_time" | "update_price" | "update_qty" | "staff_reminder" | "accounts_query" | "stock_query" | "dues_query" | "tasks_query" | "chat_reply",
-  "text": string (Concise 1-sentence reply in English/Gujlish, under 25 words),
+  "text": string (Helpful, professional reply in English/Gujlish),
   "data": {
     "dateFilter": "today" | "tomorrow" | "all" | "specific",
     "targetDate": "${istToday}" | "${istTomorrow}" | "YYYY-MM-DD",
@@ -3047,7 +3047,10 @@ CRITICAL RULES:
 8. Stock inquiry (e.g. "Check stock", "Stock status", "Kitna stock baki hai"): type: "stock_query", data: { "sku": "all" }.
 9. Customer outstanding dues (e.g. "Outstanding dues", "Pending balances", "Baki rupiya"): type: "dues_query", data: { "clientName": "" }.
 10. Active staff tasks query (e.g. "Show staff tasks", "Nilesh na task", "What are staff tasks today?"): type: "tasks_query", data: { "staffName": "all" }.
-11. General conversational inquiries: type: "chat_reply", text: concise reply under 40 words.`
+11. General conversational inquiries & capabilities:
+    - If user greets ("Hi", "Hello", "Hey", "Namaste", "Kem cho"): type: "chat_reply", text: "Hello! I am Anjani AI, your operations assistant for Anjani & Bailey Packaged Drinking Water. How can I assist you today?"
+    - If user asks about capabilities ("What are your capabilities?", "What can you do?", "Help", "Who are you?"): type: "chat_reply", text: "I can assist you with:\n• 📦 Order Booking (voice/text & multi-date catering orders)\n• 📸 Payment Receipt & UPI OCR Scanning\n• 🚚 Staff Delivery Reminders (SMS/WhatsApp to Nilesh & Hiteshbhai)\n• 📊 Real-Time Inventory & Stock Balance\n• 💳 Customer Outstanding Dues & Ledgers\n• 🤝 Route Cash Handover & Staff Advances"
+    - Other conversational inquiries: type: "chat_reply", text: helpful operational reply under 60 words.`
 
       const safeHistory = Array.isArray(conversationHistory)
         ? conversationHistory
@@ -4733,7 +4736,9 @@ You MUST respond ONLY with a valid JSON object (enclosed in \`\`\`json ... \`\`\
           try {
             parsed = JSON.parse(attempt)
             break
-          } catch (_e) {}
+          } catch (_e) {
+            // ignore retry parse error
+          }
         }
       }
       if (!parsed) throw _pe

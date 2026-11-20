@@ -627,6 +627,17 @@ export function advanceChatbotFlow(currentFlowState, inputPayload, context = {})
           clientId = matchedClient.id
           clientName = matchedClient.name
         } else {
+          const isNonClient =
+            /^(hi|hello|hey|namaste|kem cho|help|what|who|how|why|cancel|no|yes|ok|okay)\b/i.test(queryText) ||
+            queryText.length < 2 ||
+            /\?$/.test(queryText)
+          if (isNonClient) {
+            return {
+              invalidInput: true,
+              cancelled: true,
+              text: `⚠️ Did not recognize "${queryText}" as a customer.`,
+            }
+          }
           clientName = queryText
           clientId = null
         }
@@ -660,7 +671,28 @@ export function advanceChatbotFlow(currentFlowState, inputPayload, context = {})
     }
 
     if (step === 'sku') {
-      const skuLabel = typeof inputPayload === 'object' ? (inputPayload.value || inputPayload.label) : String(inputPayload).trim()
+      let skuLabel = typeof inputPayload === 'object' ? (inputPayload.value || inputPayload.label) : String(inputPayload).trim()
+      if (typeof inputPayload === 'string') {
+        const rawLower = skuLabel.toLowerCase()
+        const matched = WATER_SKUS.find((s) =>
+          s.label.toLowerCase().includes(rawLower) ||
+          rawLower.includes(s.label.toLowerCase()) ||
+          (s.id && rawLower.includes(s.id.toLowerCase())) ||
+          (rawLower.includes('200') && s.label.includes('200')) ||
+          (rawLower.includes('250') && s.label.includes('250')) ||
+          (rawLower.includes('500') && s.label.includes('500')) ||
+          (rawLower.includes('1') && s.label.includes('1 Liter')) ||
+          (rawLower.includes('2') && s.label.includes('2 Liter'))
+        )
+        if (!matched) {
+          return {
+            invalidInput: true,
+            cancelled: true,
+            text: `⚠️ "${skuLabel}" is not a recognized water product.`,
+          }
+        }
+        skuLabel = matched.label
+      }
       const updatedData = { ...data, sku: skuLabel }
 
       return {
@@ -796,6 +828,17 @@ export function advanceChatbotFlow(currentFlowState, inputPayload, context = {})
           clientName = match.client.name
           dues = Number(match.client.balance) || 0
         } else {
+          const isNonClient =
+            /^(hi|hello|hey|namaste|kem cho|help|what|who|how|why|cancel|no|yes|ok|okay)\b/i.test(queryText) ||
+            queryText.length < 2 ||
+            /\?$/.test(queryText)
+          if (isNonClient) {
+            return {
+              invalidInput: true,
+              cancelled: true,
+              text: `⚠️ Did not recognize "${queryText}" as a customer.`,
+            }
+          }
           clientName = queryText
           clientId = null
         }

@@ -498,5 +498,37 @@ describe('WhatsApp-Style Chatbot Flow Engine', () => {
       expect(saveRes.text).toContain('Assigned to Nilesh')
       expect(saveRes.text).toContain('Nilesh')
     })
+
+    it('rejects greetings and questions as client names in order and payment flows', () => {
+      const orderFlow = startChatbotFlow(FLOW_TYPES.ORDER, mockContext)
+      const resHi = advanceChatbotFlow(orderFlow, 'Hi', mockContext)
+      expect(resHi.invalidInput).toBe(true)
+      expect(resHi.cancelled).toBe(true)
+
+      const resQuestion = advanceChatbotFlow(orderFlow, 'What are your capabilities?', mockContext)
+      expect(resQuestion.invalidInput).toBe(true)
+      expect(resQuestion.cancelled).toBe(true)
+
+      const payFlow = startChatbotFlow(FLOW_TYPES.PAYMENT, mockContext)
+      const resHello = advanceChatbotFlow(payFlow, 'Hello', mockContext)
+      expect(resHello.invalidInput).toBe(true)
+      expect(resHello.cancelled).toBe(true)
+    })
+
+    it('rejects conversational text as water SKU and requires valid canonical SKU', () => {
+      const orderFlow = startChatbotFlow(FLOW_TYPES.ORDER, mockContext)
+      const s2 = advanceChatbotFlow(orderFlow, { value: 'c_1', clientName: 'Jay Ambe' }, mockContext)
+      expect(s2.step).toBe('sku')
+
+      // Typing a non-SKU question like "What are your capabilities?" must not become a product
+      const invalidSkuRes = advanceChatbotFlow(s2, 'What are your capabilities?', mockContext)
+      expect(invalidSkuRes.invalidInput).toBe(true)
+      expect(invalidSkuRes.cancelled).toBe(true)
+
+      // Typing a valid SKU should advance to quantity
+      const validSkuRes = advanceChatbotFlow(s2, 'Anjani 200ml', mockContext)
+      expect(validSkuRes.step).toBe('qty')
+      expect(validSkuRes.data.sku).toBe('Anjani 200ml')
+    })
   })
 })

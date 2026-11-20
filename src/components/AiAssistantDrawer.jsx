@@ -1168,43 +1168,54 @@ export default function AiAssistantDrawer({
 
     if (!query && !filePayload) return
 
-    // 1. Intercept active chatbot flow input if user typed
+    // 1. If an active guided flow is running and user typed text
     if (activeChatbotFlow && !filePayload && query) {
-      const nextStep = advanceChatbotFlow(activeChatbotFlow, query, {
-        clients,
-        orders,
-        staffList,
-        accountsSummary,
-      })
+      const lowerQ = query.toLowerCase().trim()
+      const isBreakout =
+        /^(hi|hello|hey|namaste|kem cho|help|menu|main menu|cancel|stop|exit|quit|what|who|how|why|check|show|orders?|stock|dues?|tasks?|report)/i.test(lowerQ) ||
+        /\?$/.test(query.trim())
 
-      if (nextStep?.cancelled) {
+      if (isBreakout) {
+        // User is speaking to AI / changing context: break out of flow and route directly to Gemini!
         setActiveChatbotFlow(null)
-        const menu = getMainMenuMessage()
-        setMessages((prev) => [
-          ...prev,
-          { id: 'usr-' + Date.now(), sender: 'user', text: query, timestamp: new Date() },
-          { id: 'asst-' + (Date.now() + 1), sender: 'assistant', text: `${nextStep.text}\n\n${menu.text}`, chips: menu.chips, isMainMenu: true, timestamp: new Date() },
-        ])
-        setInputMessage('')
-        return
-      }
+      } else {
+        const nextStep = advanceChatbotFlow(activeChatbotFlow, query, {
+          clients,
+          orders,
+          staffList,
+          accountsSummary,
+        })
 
-      if (nextStep) {
-        setActiveChatbotFlow(nextStep)
-        setMessages((prev) => [
-          ...prev,
-          { id: 'usr-' + Date.now(), sender: 'user', text: query, timestamp: new Date() },
-          { id: 'asst-' + (Date.now() + 1), sender: 'assistant', text: nextStep.text, chips: nextStep.chips, flowState: nextStep, timestamp: new Date() },
-        ])
-        setInputMessage('')
-        return
+        if (nextStep?.cancelled || nextStep?.invalidInput) {
+          setActiveChatbotFlow(null)
+          if (nextStep?.cancelled && /^(cancel|stop|exit|quit)$/i.test(lowerQ)) {
+            const menu = getMainMenuMessage()
+            setMessages((prev) => [
+              ...prev,
+              { id: 'usr-' + Date.now(), sender: 'user', text: query, timestamp: new Date() },
+              { id: 'asst-' + (Date.now() + 1), sender: 'assistant', text: `${nextStep.text}\n\n${menu.text}`, chips: menu.chips, isMainMenu: true, timestamp: new Date() },
+            ])
+            setInputMessage('')
+            return
+          }
+          // If not an explicit cancel, fall through directly to Gemini!
+        } else if (nextStep) {
+          setActiveChatbotFlow(nextStep)
+          setMessages((prev) => [
+            ...prev,
+            { id: 'usr-' + Date.now(), sender: 'user', text: query, timestamp: new Date() },
+            { id: 'asst-' + (Date.now() + 1), sender: 'assistant', text: nextStep.text, chips: nextStep.chips, flowState: nextStep, timestamp: new Date() },
+          ])
+          setInputMessage('')
+          return
+        }
       }
     }
 
-    // 2. Intercept quick text triggers for chatbot flows
+    // 2. Menu command
     if (!filePayload && query) {
       const lowerQ = query.toLowerCase().trim()
-      if (/^(menu|bot|help|main menu)$/i.test(lowerQ)) {
+      if (/^(menu|bot|main menu)$/i.test(lowerQ)) {
         setActiveChatbotFlow(null)
         const menu = getMainMenuMessage()
         setMessages((prev) => [
@@ -1213,31 +1224,6 @@ export default function AiAssistantDrawer({
           { id: 'asst-' + (Date.now() + 1), sender: 'assistant', text: menu.text, chips: menu.chips, isMainMenu: true, timestamp: new Date() },
         ])
         setInputMessage('')
-        return
-      }
-      if (/^(expense|kharch|record expense|new expense)$/i.test(lowerQ)) {
-        setInputMessage('')
-        handleChipClick({ flow: FLOW_TYPES.EXPENSE, label: '💸 Record Expense' })
-        return
-      }
-      if (/^(new order|book order|order)$/i.test(lowerQ)) {
-        setInputMessage('')
-        handleChipClick({ flow: FLOW_TYPES.ORDER, label: '📦 Book Order' })
-        return
-      }
-      if (/^(payment|receive payment|jama|record payment)$/i.test(lowerQ)) {
-        setInputMessage('')
-        handleChipClick({ flow: FLOW_TYPES.PAYMENT, label: '💰 Receive Payment (Jama)' })
-        return
-      }
-      if (/^(cash handover|handover|cash transfer)$/i.test(lowerQ)) {
-        setInputMessage('')
-        handleChipClick({ flow: FLOW_TYPES.CASH_HANDOVER, label: '🤝 Cash Handover' })
-        return
-      }
-      if (/^(staff advance|advance|salary advance)$/i.test(lowerQ)) {
-        setInputMessage('')
-        handleChipClick({ flow: FLOW_TYPES.STAFF_ADVANCE, label: '🚚 Staff Advance' })
         return
       }
     }
@@ -2104,6 +2090,24 @@ export default function AiAssistantDrawer({
               : '📋 No pending staff tasks in the system right now.',
             type: 'staff_tasks_list',
             data: { tasks: filtered },
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'chat_reply') {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: resData.text || "Hello! I am Anjani AI, your operations assistant. How can I assist you today?",
+            chips: [
+              { label: '📦 Book Order', value: 'book order' },
+              { label: "📦 Today's Orders", value: "today's orders" },
+              { label: '📊 Check Stock', value: 'check stock' },
+              { label: '💳 Outstanding Dues', value: 'outstanding dues' },
+              { label: '📋 Staff Tasks', value: 'show staff tasks' },
+            ],
+            modelUsed: resData.modelUsed,
             timestamp: new Date(),
           },
         ])
