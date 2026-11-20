@@ -1276,7 +1276,7 @@ function App() {
       <div
         className={`flex flex-col ${
           activeTab === 'ai'
-            ? 'h-[calc(100dvh-58px-58px)] max-h-[calc(100dvh-116px)] overflow-hidden'
+            ? 'h-[calc(100dvh-116px-env(safe-area-inset-bottom,0px))] max-h-[calc(100dvh-116px-env(safe-area-inset-bottom,0px))] overflow-hidden'
             : 'min-h-screen'
         }`}
       >
@@ -1688,7 +1688,10 @@ function App() {
       />
 
       {/* Bottom Navigation (all screen sizes) */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-1 pb-3 flex justify-around items-center z-[999] shadow-[0_-10px_20px_rgba(0,0,0,0.08)]">
+      <nav
+        className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 pt-1 flex justify-around items-center z-[999] shadow-[0_-10px_20px_rgba(0,0,0,0.08)]"
+        style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0.25rem))' }}
+      >
         {navItems.map((item) => (
           <button
             key={item.id}
@@ -1714,7 +1717,8 @@ function App() {
       {activeTab === 'orders' && userRole === 'admin' && (
         <button
           onClick={() => setEditOrder({})}
-          className="fixed bottom-24 right-4 z-[998] bg-[#ff9900] text-white w-14 h-14 rounded-full shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
+          className="fixed right-4 z-[998] bg-[#ff9900] text-white w-14 h-14 rounded-full shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
+          style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }}
           aria-label="New Order"
         >
           <Plus size={24} strokeWidth={2.5} />
@@ -1725,7 +1729,8 @@ function App() {
       {activeTab === 'clients' && userRole === 'admin' && (
         <button
           onClick={() => setAddClientOpen(true)}
-          className="fixed right-4 bottom-24 z-[998] h-14 w-14 rounded-full bg-[#ff9900] text-white shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
+          className="fixed right-4 z-[998] h-14 w-14 rounded-full bg-[#ff9900] text-white shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
+          style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }}
           aria-label="Add new client"
         >
           <Plus size={24} strokeWidth={2.5} />
@@ -1739,7 +1744,8 @@ function App() {
             setPaymentPrefill(null)
             setPayClient({})
           }}
-          className="fixed right-4 bottom-24 z-[998] h-14 w-14 rounded-full bg-[#ff9900] text-white shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
+          className="fixed right-4 z-[998] h-14 w-14 rounded-full bg-[#ff9900] text-white shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
+          style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }}
           aria-label="Record payment"
         >
           <Plus size={24} strokeWidth={2.5} />
@@ -1750,7 +1756,8 @@ function App() {
       {activeTab === 'expenses' && userRole === 'admin' && (
         <button
           onClick={() => setAddExpenseOpen(true)}
-          className="fixed right-4 bottom-24 z-[998] h-14 w-14 rounded-full bg-[#ff9900] text-white shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
+          className="fixed right-4 z-[998] h-14 w-14 rounded-full bg-[#ff9900] text-white shadow-lg shadow-orange-300/50 flex items-center justify-center active:scale-95 transition-all"
+          style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }}
           aria-label="Record expense"
         >
           <Plus size={24} strokeWidth={2.5} />
