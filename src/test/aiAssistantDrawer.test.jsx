@@ -1144,4 +1144,66 @@ describe('AiAssistantDrawer', () => {
 
     unmount()
   })
+
+  it('records bad output to Firebase with complete details when tiny thumbs down button is clicked', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'chat_reply',
+        text: 'Found 12 orders across all dates',
+        data: {},
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, {
+      target: { value: "tomorrow's order" },
+    })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    // Wait for the assistant message to appear
+    await waitFor(() => {
+      expect(screen.getByText(/Found 12 orders across all dates/i)).toBeInTheDocument()
+    })
+
+    // Find the tiny Thumbs Down button on the message bubble
+    const thumbsDownBtn = screen.getByRole('button', { name: /^Report Bad Output$/i })
+    expect(thumbsDownBtn).toBeInTheDocument()
+
+    // Click the tiny thumbs down button
+    fireEvent.click(thumbsDownBtn)
+
+    // Verify addAiFeedback was called with all required bad output details
+    await waitFor(() => {
+      expect(mockAddAiFeedback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rating: 'negative',
+          category: 'bad_output',
+          tag: 'bad_output',
+          userQuery: "tomorrow's order",
+          badOutput: expect.objectContaining({
+            text: 'Found 12 orders across all dates',
+            type: 'chat_reply',
+          }),
+          runtimeContext: expect.objectContaining({
+            activeTab: 'ai',
+          }),
+          status: 'pending_review',
+        })
+      )
+    })
+
+    // Verify visual update to Reported state
+    expect(screen.getByText(/Reported 👎/i)).toBeInTheDocument()
+
+    unmount()
+  })
 })

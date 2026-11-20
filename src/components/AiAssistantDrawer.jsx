@@ -38,6 +38,7 @@ import {
   MessageSquarePlus,
   RefreshCw,
   Copy,
+  ThumbsDown,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { collection, addDoc, serverTimestamp, getDocs, query as firestoreQuery, where, orderBy, limit } from 'firebase/firestore'
@@ -145,6 +146,17 @@ export default function AiAssistantDrawer({
   const feedbackFileInputRef = useRef(null)
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false)
   const [isCheckingFeedback, setIsCheckingFeedback] = useState(false)
+  const [reportedBadOutputs, setReportedBadOutputs] = useState(() => {
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        return JSON.parse(window.sessionStorage.getItem('anjani_bad_outputs') || '{}')
+      }
+    } catch {
+      // ignore
+    }
+    return {}
+  })
+  const [isReportingBadOutput, setIsReportingBadOutput] = useState(false)
 
   const [inputMessage, setInputMessage] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
@@ -251,6 +263,152 @@ export default function AiAssistantDrawer({
     setFeedbackSnippet(snippet)
     setFeedbackType(type)
     setShowFeedbackModal(true)
+  }
+
+  const lastAssistantMessage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].sender === 'assistant') {
+        return messages[i]
+      }
+    }
+    return null
+  }, [messages])
+
+  const handleReportBadOutput = async (targetMsg) => {
+    if (!targetMsg || targetMsg.sender !== 'assistant') return
+    const msgKey = targetMsg.id || String(targetMsg.timestamp || targetMsg.text || 'msg')
+    if (reportedBadOutputs[msgKey]) {
+      toast('Output already marked as bad output.', { icon: 'ℹ️' })
+      return
+    }
+
+    setIsReportingBadOutput(true)
+    try {
+      // Find the user query that triggered this assistant message
+      const msgIndex = messages.findIndex((m) => m.id === targetMsg.id)
+      let userPromptText = ''
+      let userPromptImage = null
+      if (msgIndex > 0) {
+        for (let i = msgIndex - 1; i >= 0; i--) {
+          if (messages[i].sender === 'user') {
+            userPromptText = String(messages[i].text || '')
+            userPromptImage = messages[i].imagePreview || null
+            break
+          }
+        }
+      }
+
+      // Capture recent conversation context (last 6 messages)
+      const recentChat = (messages || [])
+        .slice(Math.max(0, msgIndex - 5), msgIndex + 1)
+        .map((m) => ({
+          sender: m.sender,
+          text: String(m.text || '').slice(0, 500),
+          type: m.type || null,
+          dataSummary: m.data ? JSON.stringify(m.data).slice(0, 300) : null,
+          timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : (m.timestamp || null),
+        }))
+
+      const now = new Date()
+      const istNow = new Intl.DateTimeFormat('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        dateStyle: 'full',
+        timeStyle: 'medium',
+      }).format(now)
+      const istToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now)
+      const istTomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(
+        new Date(now.getTime() + 24 * 60 * 60 * 1000)
+      )
+
+      let safeData = null
+      if (targetMsg.data) {
+        try {
+          safeData = JSON.parse(JSON.stringify(targetMsg.data, (k, v) => (typeof v === 'function' ? undefined : v)))
+        } catch {
+          safeData = { summary: String(targetMsg.data) }
+        }
+      }
+
+      const snippet = String(targetMsg.text || targetMsg.type || 'AI Output').slice(0, 200)
+
+      const feedbackPayload = {
+        rating: 'negative',
+        tag: 'bad_output',
+        category: 'bad_output',
+        type: targetMsg.type || 'general_response',
+        message: `Thumbs Down (Bad Output): User rejected AI output for query: "${userPromptText || 'unknown'}".`,
+        userQuery: userPromptText,
+        hasUserImage: Boolean(userPromptImage),
+        rawSnippet: snippet,
+        badOutput: {
+          id: targetMsg.id || null,
+          type: targetMsg.type || 'chat_reply',
+          text: String(targetMsg.text || '').slice(0, 1000),
+          data: safeData,
+          modelUsed: targetMsg.modelUsed || aiSettings?.activeModel || 'gemini-2.5-flash-lite',
+          timestamp: targetMsg.timestamp instanceof Date ? targetMsg.timestamp.toISOString() : (targetMsg.timestamp || null),
+        },
+        recentChat,
+        runtimeContext: {
+          istNow,
+          istToday,
+          istTomorrow,
+          url: typeof window !== 'undefined' ? window.location.href : '',
+          activeTab: 'ai',
+          totalOrders: orders?.length || 0,
+          totalClients: clients?.length || 0,
+        },
+        status: 'pending_review',
+        submittedAt: now.toISOString(),
+        sessionRef: 'conversation://2fe98da8-c236-4285-8f51-3bc6624c743b',
+      }
+
+      await addAiFeedback?.(feedbackPayload)
+
+      setReportedBadOutputs((prev) => {
+        const next = { ...prev, [msgKey]: true }
+        try {
+          if (typeof window !== 'undefined' && window.sessionStorage) {
+            window.sessionStorage.setItem('anjani_bad_outputs', JSON.stringify(next))
+          }
+        } catch {
+          // ignore storage error
+        }
+        return next
+      })
+
+      toast.success(
+        (t) => (
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <span>👎 Marked as bad output & sent to Firebase!</span>
+            <button
+              type="button"
+              onClick={() => {
+                toast.dismiss(t.id)
+                handleOpenFeedbackForMessage(targetMsg)
+              }}
+              className="font-black text-[#ff9900] underline hover:text-amber-600 shrink-0"
+            >
+              Add Note
+            </button>
+          </div>
+        ),
+        { id: `bad-out-${msgKey}`, duration: 5000, icon: '👎' }
+      )
+    } catch (err) {
+      console.error('Failed to report bad output:', err)
+      toast.error('Failed to save feedback to Firebase: ' + (err.message || 'Error'))
+    } finally {
+      setIsReportingBadOutput(false)
+    }
+  }
+
+  const handleReportLatestBadOutput = () => {
+    if (lastAssistantMessage) {
+      handleReportBadOutput(lastAssistantMessage)
+    } else {
+      toast('No AI output to report yet.', { icon: 'ℹ️' })
+    }
   }
 
   const handleClearFeedbackImage = () => {
@@ -3436,6 +3594,31 @@ export default function AiAssistantDrawer({
               <Zap className={`w-3.5 h-3.5 ${isCheckingFeedback ? 'animate-spin' : 'fill-current'}`} />
               <span className="font-extrabold text-[10px] tracking-tight">Run AI</span>
             </button>
+
+            {/* Tiny Thumbs Down Button in Header for Latest AI Output */}
+            <button
+              type="button"
+              onClick={handleReportLatestBadOutput}
+              disabled={!lastAssistantMessage || isReportingBadOutput}
+              className={`px-1.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border shadow-2xs ${
+                lastAssistantMessage && reportedBadOutputs[lastAssistantMessage?.id || lastAssistantMessage?.timestamp]
+                  ? 'bg-red-500/20 text-red-400 border-red-500/40'
+                  : 'bg-white/5 hover:bg-red-500/20 text-gray-300 hover:text-red-400 border-transparent hover:border-red-500/30 disabled:opacity-40 disabled:cursor-not-allowed'
+              }`}
+              title={
+                lastAssistantMessage
+                  ? 'Quick Thumbs Down: Record latest AI output as Bad Output to Firebase'
+                  : 'Thumbs Down: No AI output to report yet'
+              }
+              aria-label="Report Latest Bad Output"
+            >
+              <ThumbsDown className="w-3.5 h-3.5 text-red-400" />
+              <span className="hidden sm:inline font-extrabold text-[10px]">
+                {lastAssistantMessage && reportedBadOutputs[lastAssistantMessage?.id || lastAssistantMessage?.timestamp]
+                  ? 'Reported'
+                  : 'Bad Output'}
+              </span>
+            </button>
             <button
               type="button"
               onClick={() => setMessages([])}
@@ -6166,6 +6349,30 @@ export default function AiAssistantDrawer({
                         })}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Tiny Thumbs Down Button on Assistant Output */}
+                {msg.sender === 'assistant' && (
+                  <div className="mt-2 pt-1 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-400">
+                    <span className="truncate pr-1 text-[9px] text-gray-400">
+                      {msg.modelUsed ? `⚡ ${msg.modelUsed}` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label="Report Bad Output"
+                      title="Record this output as bad output (Thumbs Down) to Firebase"
+                      disabled={reportedBadOutputs[msg.id || msg.timestamp]}
+                      onClick={() => handleReportBadOutput(msg)}
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                        reportedBadOutputs[msg.id || msg.timestamp]
+                          ? 'bg-red-50 text-red-600 border border-red-200 cursor-default'
+                          : 'text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 active:scale-95'
+                      }`}
+                    >
+                      <ThumbsDown className="w-3 h-3" />
+                      <span>{reportedBadOutputs[msg.id || msg.timestamp] ? 'Reported 👎' : 'Bad output'}</span>
+                    </button>
                   </div>
                 )}
               </div>
