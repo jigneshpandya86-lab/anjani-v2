@@ -1,4 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+vi.mock('../firebase-config', () => ({
+  app: {},
+  db: {},
+  auth: {},
+  storage: {},
+}))
+
 import { tryLocalIntentRoute } from '../utils/aiIntentRouter'
 
 describe('Autonomous AI Feedback Processing Intent & Triggers', () => {
