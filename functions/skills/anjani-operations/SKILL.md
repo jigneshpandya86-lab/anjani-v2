@@ -223,9 +223,11 @@ The native operational agent uses Vertex AI Function Calling with 17 registered 
 - *Parameters*: `clientName` (required), `changes`, `fieldToUpdate` ('quantity', 'date', 'time', 'location', 'price', 'confirm', 'cancel', 'select'), `newValue`, `targetDate`.
 - *CRITICAL*: Order cancellation STRICTLY uses `edit_order` with `fieldToUpdate: "cancel"` (e.g. `edit_order(clientName: "Maruti Caterers", fieldToUpdate: "cancel", changes: "cancel order")`).
 - *Examples*:
+  - Location/Address update: *"Update location as P G Party Plot Harni"* $\rightarrow$ `edit_order(clientName: "<inferred from context>", fieldToUpdate: "location", newValue: "P G Party Plot Harni", changes: "Update location as P G Party Plot Harni")`.
   - Specific modification: *"Change Bhaveshbhai order to 50 boxes"* $\rightarrow$ `edit_order(clientName: "Bhaveshbhai", fieldToUpdate: "quantity", newValue: "50")`.
   - Confirmation: *"Confirm Maruti Caterers order"* $\rightarrow$ `edit_order(clientName: "Maruti Caterers", fieldToUpdate: "confirm", newValue: "Confirmed")`.
   - Cancellation: *"Cancel Maruti Caterers order"* $\rightarrow$ `edit_order(clientName: "Maruti Caterers", fieldToUpdate: "cancel", changes: "Customer requested cancellation")`.
+- **CRITICAL CONTEXTUAL RESOLUTION**: When an order was just displayed, listed, or discussed in the previous message (e.g. user queried tomorrow's order and saw Maruti Caterers), any follow-up modification command without an explicit customer name (e.g. *"Update location as P G Party Plot Harni"*, *"Change time to 4 PM"*, *"Make quantity 50"*) MUST resolve to that customer. NEVER ask "What would you like to update?" when the user already stated the attribute and value to change!
 
 #### Delivery Completion (`mark_orders_delivered`)
 - **Trigger**: User commands to mark one or more customer orders as delivered or completed.
@@ -233,8 +235,11 @@ The native operational agent uses Vertex AI Function Calling with 17 registered 
 - **CRITICAL RULE**: When user specifies "today's orders", targetDate MUST be today's date. NEVER mark tomorrow's or future orders when the user explicitly asked for today's orders!
 
 #### Location Updates (`location_update`)
-- **Trigger**: When a Google Maps link or location address is shared for an order.
-- *Parameters*: `clientName` (required), `mapLink` (required), `targetDate`.
+- **Trigger**: When a Google Maps link or text location address/venue (e.g. party plot, road, landmark) is shared for an order.
+- *Parameters*: `clientName` (required - infer from recent context if omitted), `mapLink` (Google Maps URL or text address / venue name), `targetDate`.
+- *Examples*:
+  - *"Update location as P G Party Plot Harni"* $\rightarrow$ `location_update(clientName: "Maruti Caterers", mapLink: "P G Party Plot Harni")`.
+  - *"https://maps.app.goo.gl/... for Maruti Caterers"* $\rightarrow$ `location_update(clientName: "Maruti Caterers", mapLink: "https://maps.app.goo.gl/...")`.
 
 ### Priority 4: Client Lifecycle (`create_client`, `edit_client`, `update_price`)
 - **Customer Registration (`create_client`)**:

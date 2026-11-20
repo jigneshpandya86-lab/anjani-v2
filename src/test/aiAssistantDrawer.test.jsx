@@ -981,6 +981,58 @@ describe('AiAssistantDrawer', () => {
     unmount()
   })
 
+  it('updates order location and address when edit_order specifies fieldToUpdate location', async () => {
+    mockOrders.length = 0
+    mockOrders.push({
+      id: 'ord-maruti-loc',
+      clientName: 'Maruti Caterers',
+      status: 'Confirmed',
+      qty: 84,
+      rate: 130,
+      location: 'To be confirmed',
+      address: 'To be confirmed',
+    })
+
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'edit_order',
+        text: 'Location updated',
+        data: {
+          clientName: 'Maruti Caterers',
+          fieldToUpdate: 'location',
+          newValue: 'P G Party Plot Harni',
+          changes: 'Update location as P G Party Plot Harni',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, {
+      target: { value: 'Update location as P G Party Plot Harni' },
+    })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockUpdateOrder).toHaveBeenCalledWith('ord-maruti-loc', expect.objectContaining({
+        location: 'P G Party Plot Harni',
+        address: 'P G Party Plot Harni',
+        deliveryAddress: 'P G Party Plot Harni',
+      }))
+      expect(screen.getByText(/Updated delivery location for \*\*Maruti Caterers\*\*\'s order to \*\*P G Party Plot Harni\*\*/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
   it('marks client as inactive when edit_client specifies inactive', async () => {
     mockHttpsCallableResponse.mockResolvedValueOnce({
       data: {

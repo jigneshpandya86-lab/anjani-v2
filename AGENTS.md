@@ -194,6 +194,11 @@ All water products are defined centrally in `src/constants/skus.js`:
    - Frontend `AiAssistantDrawer.jsx` strictly matches `o.deliveryDate || o.date` against `effectiveTargetDate`.
    - **Zero Leakage / Fallthrough Rule:** When `dateFilter` is set to `'tomorrow'` or `'today'`, the filter MUST NOT fall through to return all open orders across other dates. If no orders exist for that day, an empty list with an informative badge is rendered.
 
+3. **Contextual Order Updates & Location Handling (`edit_order`, `location_update`):**
+   - Follow-up commands such as *"Update location as P G Party Plot Harni"* resolve the customer and active order from recent message context.
+   - Client drawer supports `fieldToUpdate: 'location'` / `'address'`, immediately persisting the new venue/address to `order.location`, `order.address`, and `order.deliveryAddress`.
+   - Never falls through to ask *"What would you like to update?"* when the user already specified the location/venue.
+
 ---
 
 ## Commands & Verification Workflow

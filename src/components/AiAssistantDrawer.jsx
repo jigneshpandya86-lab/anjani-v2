@@ -508,7 +508,7 @@ export default function AiAssistantDrawer({
         feedbackImage
           ? 'Feedback & screenshot saved to Firebase! Stored for review.'
           : 'Feedback saved to Firebase! Stored for review.',
-        { icon: '📝' }
+        { icon: '📝', duration: 2500 }
       )
       setFeedbackText('')
       setFeedbackSnippet('')
@@ -1964,8 +1964,9 @@ export default function AiAssistantDrawer({
           ])
         }
       } else if (resData.type === 'location_update') {
-        const { clientName, targetDate, mapLink, locationText } = resData.data || {}
-        const effectiveMapLink = mapLink || extractGoogleMapsUrl(locationText || '') || ''
+        const { clientName, targetDate, mapLink, locationText, address, location } = resData.data || {}
+        const effectiveLoc = mapLink || extractGoogleMapsUrl(locationText || '') || locationText || address || location || ''
+        const isMapUrl = /https?:\/\/(?:maps\.|goo\.gl\/maps|maps\.app\.goo\.gl)/i.test(effectiveLoc)
         
         let targetClient = clientName ? findMatchingClient(clientName, clients)?.client : null
         let targetOrder = null
@@ -1997,25 +1998,40 @@ export default function AiAssistantDrawer({
           }
         }
 
+        // Fallback to recent message context if client was omitted
+        if (!targetOrder && Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            if (m.type === 'orders_list' && Array.isArray(m.data?.orders) && m.data.orders.length > 0) {
+              targetOrder = m.data.orders[0]
+              break
+            }
+            if (m.data?.order) {
+              targetOrder = m.data.order
+              break
+            }
+          }
+        }
+
         let savedTarget = ''
-        if (targetOrder?.id && effectiveMapLink) {
+        if (targetOrder?.id && effectiveLoc) {
           try {
-            await updateOrder(targetOrder.id, {
-              mapLink: effectiveMapLink,
-              location: effectiveMapLink,
-            })
+            const orderPatch = isMapUrl
+              ? { mapLink: effectiveLoc, location: effectiveLoc }
+              : { address: effectiveLoc, location: effectiveLoc, deliveryAddress: effectiveLoc }
+            await updateOrder(targetOrder.id, orderPatch)
             savedTarget = `Order #${targetOrder.id.slice(-6)}`
           } catch (e) {
             console.error('Failed to update order location:', e)
           }
         }
 
-        if (targetClient?.id && effectiveMapLink) {
+        if (targetClient?.id && effectiveLoc) {
           try {
-            await updateClient(targetClient.id, {
-              mapLink: effectiveMapLink,
-              location: effectiveMapLink,
-            })
+            const clientPatch = isMapUrl
+              ? { mapLink: effectiveLoc, location: effectiveLoc }
+              : { address: effectiveLoc, location: effectiveLoc }
+            await updateClient(targetClient.id, clientPatch)
             if (!savedTarget) savedTarget = targetClient.displayName || targetClient.name
           } catch (e) {
             console.error('Failed to update client location:', e)
@@ -2023,16 +2039,18 @@ export default function AiAssistantDrawer({
         }
 
         toast.success(savedTarget ? `Location saved to ${savedTarget}!` : 'Location saved!')
-        const displayName = targetClient?.displayName || targetClient?.name || clientName || 'Order'
+        const displayName = targetClient?.displayName || targetClient?.name || targetOrder?.clientName || clientName || 'Order'
 
         setMessages((prev) => [
           ...prev,
           {
             id: 'asst-' + Date.now(),
             sender: 'assistant',
-            text: `📍 **Location Saved for ${displayName}**${targetOrder ? ` (Order #${targetOrder.id?.slice(-6)})` : ''}:\n• [Open Map Location](${effectiveMapLink})`,
+            text: isMapUrl
+              ? `📍 **Location Saved for ${displayName}**${targetOrder ? ` (Order #${targetOrder.id?.slice(-6)})` : ''}:\n• [Open Map Location](${effectiveLoc})`
+              : `📍 **Delivery Address Updated for ${displayName}**${targetOrder ? ` (Order #${targetOrder.id?.slice(-6)})` : ''}:\n• **${effectiveLoc}** ✓`,
             type: 'location_update',
-            data: { mapLink: effectiveMapLink, client: targetClient, order: targetOrder },
+            data: { mapLink: isMapUrl ? effectiveLoc : null, address: effectiveLoc, client: targetClient, order: targetOrder },
             chips: [
               { label: `Saved to ${displayName} ✓`, action: 'view_orders' },
               { label: 'View Orders', action: 'view_orders' },
@@ -2637,6 +2655,42 @@ export default function AiAssistantDrawer({
                   id: 'asst-' + Date.now(),
                   sender: 'assistant',
                   text: `💰 Updated price for **${name}**'s order to **₹${numRate}/box** (Total: ₹${(targetOrder.qty || 1) * numRate}) ✓`,
+                  type: 'order_edit',
+                  chips: [{ label: 'View Orders', action: 'view_orders' }],
+                  timestamp: new Date(),
+                },
+              ])
+              return
+            }
+          }
+
+          if (
+            (fieldToUpdate === 'location' ||
+              fieldToUpdate === 'address' ||
+              (changes && /(?:location|address|venue|plot|place)/i.test(changes))) &&
+            (newValue || changes)
+          ) {
+            const locVal = (
+              newValue ||
+              changes.replace(/^(?:change|update|set)?\s*(?:location|address|venue)\s*(?:to|as)?\s*/i, '')
+            ).trim()
+            if (locVal) {
+              try {
+                await updateOrder(targetOrder.id, {
+                  address: locVal,
+                  location: locVal,
+                  deliveryAddress: locVal,
+                })
+                toast.success(`Location updated to ${locVal}!`)
+              } catch (e) {
+                console.error('Failed to update location:', e)
+              }
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: `📍 Updated delivery location for **${name}**'s order to **${locVal}** ✓`,
                   type: 'order_edit',
                   chips: [{ label: 'View Orders', action: 'view_orders' }],
                   timestamp: new Date(),

@@ -1155,6 +1155,7 @@ function App() {
       <Toaster
         position="top-center"
         toastOptions={{
+          duration: 2500,
           style: {
             background: '#ffffff',
             color: '#131921',
@@ -1164,9 +1165,10 @@ function App() {
             fontWeight: '900',
             fontSize: '14px',
             padding: '16px 24px',
+            cursor: 'pointer',
           },
-          success: { iconTheme: { primary: '#25D366', secondary: '#fff' } },
-          error: { iconTheme: { primary: '#EF4444', secondary: '#fff' } },
+          success: { iconTheme: { primary: '#25D366', secondary: '#fff' }, duration: 2500 },
+          error: { iconTheme: { primary: '#EF4444', secondary: '#fff' }, duration: 4000 },
         }}
       />
 
