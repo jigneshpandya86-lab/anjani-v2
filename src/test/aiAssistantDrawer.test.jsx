@@ -59,6 +59,8 @@ const mockUpdateClient = vi.fn()
 const mockAddPayment = vi.fn()
 const mockDeletePayment = vi.fn()
 const mockAddExpense = vi.fn()
+const mockDeleteAccountExpense = vi.fn()
+const mockUpdateAccountExpense = vi.fn()
 const mockAddOrder = vi.fn()
 const mockUpdateOrder = vi.fn()
 let mockOrders = [
@@ -105,6 +107,8 @@ vi.mock('../store/clientStore', () => ({
       deletePayment: mockDeletePayment,
       addOrder: mockAddOrder,
       addExpense: mockAddExpense,
+      deleteAccountExpense: mockDeleteAccountExpense,
+      updateAccountExpense: mockUpdateAccountExpense,
       recordAccountTransfer: vi.fn(),
       recordStaffAdvance: vi.fn(),
       staffList: [
@@ -1624,6 +1628,167 @@ describe('AiAssistantDrawer', () => {
         })
       )
       expect(screen.getByText(/Expense Recorded: ₹500/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('updates expense amount when edit_expense is invoked', async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      empty: false,
+      docs: [{
+        id: 'exp-101',
+        data: () => ({
+          id: 'exp-101',
+          amount: 500,
+          category: 'Fuel / Transport',
+          accountId: 'counter',
+          note: 'Petrol',
+        }),
+      }],
+    })
+
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'edit_expense',
+        data: {
+          expenseId: 'exp-101',
+          amount: 600,
+          newAmount: 600,
+          oldAmount: 500,
+          category: 'Fuel / Transport',
+          changes: 'Edit to 600',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Edit expense to 600' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockUpdateAccountExpense).toHaveBeenCalledWith(
+        'exp-101',
+        expect.objectContaining({
+          amount: 600,
+          category: 'Fuel / Transport',
+        })
+      )
+      expect(screen.getByText(/Expense Updated/i)).toBeInTheDocument()
+      expect(screen.getByText(/₹600/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('deletes expense and refunds balance when cancel_expense is invoked', async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      empty: false,
+      docs: [{
+        id: 'exp-202',
+        data: () => ({
+          id: 'exp-202',
+          amount: 300,
+          category: 'Maintenance',
+          accountId: 'counter',
+          note: 'Puncture',
+        }),
+      }],
+    })
+
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'cancel_expense',
+        data: {
+          expenseId: 'exp-202',
+          amount: 300,
+          category: 'Maintenance',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Cancel puncture expense 300' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockDeleteAccountExpense).toHaveBeenCalledWith('exp-202')
+      expect(screen.getByText(/Expense Deleted/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('queries expenses and renders summary breakdown when query_expenses is invoked', async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      empty: false,
+      docs: [
+        {
+          id: 'exp-1',
+          data: () => ({
+            id: 'exp-1',
+            amount: 800,
+            category: 'Fuel / Transport',
+            accountId: 'counter',
+            date: new Date().toISOString().slice(0, 10),
+          }),
+        },
+        {
+          id: 'exp-2',
+          data: () => ({
+            id: 'exp-2',
+            amount: 200,
+            category: 'Food & Refreshments',
+            accountId: 'counter',
+            date: new Date().toISOString().slice(0, 10),
+          }),
+        },
+      ],
+    })
+
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'query_expenses',
+        data: {
+          dateFilter: 'today',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: "Show today's expenses" } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(screen.getByText(/Expense Summary/i)).toBeInTheDocument()
+      expect(screen.getByText(/₹1,000/i)).toBeInTheDocument()
     })
 
     unmount()

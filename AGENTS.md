@@ -204,10 +204,10 @@ All water products are defined centrally in `src/constants/skus.js`:
    - Unconfirmed drafts in chat are modified seamlessly when users issue follow-up corrections like *"Edit to 2"*, *"Make it 5000"*, or *"Change mode to cash"*.
    - Can be confirmed by tapping **Confirm & Record Payment** or typing *"Confirm"* / *"Confirm payment"*.
 
-5. **Universal Expense & Route Spending Engine (`record_expense`):**
-   - Direct conversational logging for operational, vehicle, factory, loader/labor, and route expenses (e.g. *"Record Expense of 500 Rs for Loader"*, *"Petrol kharch 300"*).
+5. **Universal Expense Lifecycle Engine A to Z (`record_expense`, `edit_expense`, `cancel_expense`, `query_expenses`):**
+   - Full end-to-end support for logging business expenses (`record_expense`), editing drafts or recorded expenses with automatic balance reconciliation (`edit_expense`), cancelling or deleting expenses with account balance refunds (`cancel_expense`), 1-tap/typed confirmation (`confirm_latest_expense`), and expense telemetry / reporting (`query_expenses`).
    - Strict anti-confusion guard prevents creating an order draft when an expense, petty cash, or labor note is specified.
-   - Automatically debits the designated account balance (`counter`, `bank`, or staff route cash) and saves to Firestore `expenses`.
+   - Automatically debits or credits the designated account balance (`counter`, `bank`, or staff route cash) in `accounts_summary`.
 
 ---
 

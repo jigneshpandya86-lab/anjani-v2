@@ -85,7 +85,8 @@ When adding or improving AI behavior:
 
 ---
 
-## 8. Universal Expense & Route Spending Engine (`record_expense`)
-- **Direct Expense Logging:** Supports recording operational, vehicle, factory, loader/labor, and route expenses (e.g. *"Record Expense of 500 Rs for Loader"*, *"Petrol kharch 300"*, *"Tea and snacks 150"*) via `record_expense`.
-- **Anti-Confusion Order Guard:** When the user specifies an expense, petty cash, or labor note, the AI strictly prevents invoking `create_order` and never creates an order draft for words like "Loader", "Petrol", or "Labor".
-- **Ledger & Account Debiting:** Persists to Firestore `expenses` collection via `addExpense` and debits the designated account balance (`counter`, `bank`, or delivery staff custody) in real time.
+## 8. Universal Expense Lifecycle Engine A to Z (`record_expense`, `edit_expense`, `cancel_expense`, `query_expenses`)
+- **Complete End-to-End Coverage:** Supports direct expense recording (`record_expense`), draft and recorded expense editing (`edit_expense`), expense cancellation and account balance refunding (`cancel_expense`), 1-tap/typed confirmation (`confirm_latest_expense`), and expense telemetry / summary reporting (`query_expenses`).
+- **Anti-Confusion Order Guard:** When the user specifies an expense, petty cash, or labor note (e.g. *"Record Expense of 500 Rs for Loader"*, *"Petrol kharch 300"*, *"Chai pani 120"*), the AI strictly prevents invoking `create_order` and never creates an order draft for words like "Loader", "Petrol", or "Labor".
+- **Dynamic Account Balance Synchronization:** Adding an expense debits the selected account (`counter`, `bank`, `nilesh`, `hiteshbhai`) in `accounts_summary`. Editing an expense recalculates the deltas and adjusts account balances accordingly. Deleting or cancelling an expense automatically credits back the debited amount to restore the account balance.
+- **Reporting & Telemetry (`query_expenses`):** Calculates real-time totals, category breakdowns, and individual expense logs for today, yesterday, this week, or this month.

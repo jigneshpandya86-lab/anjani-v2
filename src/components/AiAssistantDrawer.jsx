@@ -118,6 +118,8 @@ export default function AiAssistantDrawer({
   const deletePayment = useClientStore((state) => state.deletePayment)
   const addOrder = useClientStore((state) => state.addOrder)
   const addExpense = useClientStore((state) => state.addExpense)
+  const deleteAccountExpense = useClientStore((state) => state.deleteAccountExpense)
+  const updateAccountExpense = useClientStore((state) => state.updateAccountExpense)
   const recordAccountTransfer = useClientStore((state) => state.recordAccountTransfer)
   const recordStaffAdvance = useClientStore((state) => state.recordStaffAdvance)
   const staffList = useClientStore((state) => state.staffList)
@@ -171,6 +173,7 @@ export default function AiAssistantDrawer({
   const [processedSalesBatches, setProcessedSalesBatches] = useState({})
   const [createdClients, setCreatedClients] = useState({})
   const [recordedPayments, setRecordedPayments] = useState({})
+  const [recordedExpenses, setRecordedExpenses] = useState({})
   const [placedOrders, setPlacedOrders] = useState({})
   const [executedCompounds, setExecutedCompounds] = useState({})
   const [executingCompoundId, setExecutingCompoundId] = useState(null)
@@ -908,6 +911,72 @@ export default function AiAssistantDrawer({
     inputRef.current?.focus()
   }
 
+  const handleConfirmExpenseDraft = async (targetMsg = null) => {
+    const expMsg =
+      targetMsg ||
+      [...messages]
+        .reverse()
+        .find((m) => m.type === 'record_expense' && m.data && !recordedExpenses[m.expenseId || m.id])
+    if (!expMsg || !expMsg.data) {
+      toast.info('No pending expense draft found to record.')
+      return false
+    }
+
+    const expData = expMsg.data
+    const expKey = expMsg.expenseId || expMsg.id
+    if (recordedExpenses[expKey] && recordedExpenses[expKey] !== 'superseded') {
+      toast.info('Expense has already been recorded.')
+      return false
+    }
+
+    const amount = Number(expData.amount) || 0
+    if (amount <= 0) {
+      toast.error('Expense amount must be greater than zero.')
+      return false
+    }
+
+    const category = expData.category || 'Miscellaneous'
+    const accountId = expData.accountId || 'counter'
+    const note = expData.note ? String(expData.note).trim() : category
+    const date = expData.date ? new Date(expData.date) : new Date()
+
+    try {
+      const savedExp = await addExpense({
+        amount,
+        category,
+        accountId,
+        note,
+        date,
+      })
+
+      setRecordedExpenses((prev) => ({
+        ...prev,
+        [expKey]: savedExp || expData,
+      }))
+      const acctMeta = getAccountMeta(accountId)
+      const acctLabel = acctMeta?.shortLabel || acctMeta?.name || accountId
+      toast.success(`Expense of ₹${amount.toLocaleString('en-IN')} recorded!`)
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: 'asst-' + Date.now(),
+          sender: 'assistant',
+          text: `✅ **Expense of ₹${amount.toLocaleString('en-IN')} Recorded!**\n• Category: **${category}**\n• Paid From: **${acctLabel}**\n• Note: *${note}*\n• Account balance automatically debited ✓`,
+          type: 'expense_confirmed',
+          chips: [
+            { label: 'View Accounts', action: 'view_accounts' },
+            { label: 'Today\'s Expenses', action: 'query_expenses_today' },
+          ],
+          timestamp: new Date(),
+        },
+      ])
+      return true
+    } catch (err) {
+      toast.error('Failed to record expense: ' + err.message)
+      return false
+    }
+  }
+
   const handleChipClick = async (chip) => {
     // 1. If starting a flow from Main Menu
     if (chip.flow) {
@@ -1125,6 +1194,27 @@ export default function AiAssistantDrawer({
       } else {
         toast.info('No pending payment draft to confirm.')
       }
+      return
+    }
+    if (chip.action === 'confirm_latest_expense') {
+      await handleConfirmExpenseDraft()
+      return
+    }
+    if (chip.action === 'view_accounts') {
+      if (onNavigateTab) {
+        onNavigateTab('accounts')
+        onClose?.()
+      } else {
+        handleSend('accounts')
+      }
+      return
+    }
+    if (chip.action === 'query_expenses_today') {
+      handleSend("Show today's expenses")
+      return
+    }
+    if (chip.action === 'prompt_record_expense') {
+      handleSend('Record expense')
       return
     }
     if (chip.action === 'manual_feedback_check') {
@@ -1573,6 +1663,25 @@ export default function AiAssistantDrawer({
               toast.error('Failed to record payment: ' + err.message)
             }
           }
+        }
+      }
+
+      // Quick confirmation for pending expense draft (e.g. typing "confirm", "confirm expense", "record expense", "save expense", "haan")
+      if (/^(confirm|confirm expense|record expense|save expense|yes confirm|haan|confirm kar do|confirm karo|save kar do)$/i.test(lowerQ)) {
+        let unconfirmedExpenseDraft = null
+        if (Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            if (m.type === 'record_expense' && m.data && !recordedExpenses[m.expenseId || m.id]) {
+              unconfirmedExpenseDraft = m
+              break
+            }
+          }
+        }
+        if (unconfirmedExpenseDraft) {
+          setInputMessage('')
+          await handleConfirmExpenseDraft(unconfirmedExpenseDraft)
+          return
         }
       }
     }
@@ -2684,30 +2793,41 @@ export default function AiAssistantDrawer({
           toast.error('Failed to edit payment')
         }
       } else if (resData.type === 'record_expense') {
-        const { amount, category, note, accountId, date } = resData.data || {}
+        const { amount, category, note, accountId, date, paymentMode } = resData.data || {}
         const numAmount = Number(amount) || 0
         if (numAmount > 0) {
           try {
             const expDate = date ? new Date(date) : new Date()
+            const effAcc = accountId || (paymentMode === 'online' ? 'bank' : 'counter')
             const expPayload = {
               amount: numAmount,
               category: category || 'Miscellaneous',
               note: note ? String(note).trim() : '',
-              accountId: accountId || 'counter',
+              accountId: effAcc,
               date: expDate,
             }
             const savedExp = await addExpense(expPayload)
+            const expId = savedExp?.id || 'exp-' + Date.now()
+            setRecordedExpenses((prev) => ({
+              ...prev,
+              [expId]: savedExp || expPayload,
+              latest: { id: expId, ...expPayload },
+            }))
             toast.success(`Expense of ₹${numAmount} recorded successfully!`)
+            const acctMeta = getAccountMeta(effAcc)
+            const acctLabel = acctMeta?.shortLabel || acctMeta?.name || (effAcc === 'counter' ? 'Counter Cash' : effAcc === 'bank' ? 'Bank Account' : effAcc)
             setMessages((prev) => [
               ...prev,
               {
                 id: 'asst-' + Date.now(),
                 sender: 'assistant',
-                text: `💸 **Expense Recorded: ₹${numAmount.toLocaleString('en-IN')}**\n• Category: **${expPayload.category}**\n• Details: **${expPayload.note || 'Operational expense'}**\n• Paid from: **${expPayload.accountId === 'counter' ? 'Counter Cash' : expPayload.accountId === 'bank' ? 'Bank Account' : expPayload.accountId}**\nAccount balance updated ✓`,
+                text: `💸 **Expense Recorded: ₹${numAmount.toLocaleString('en-IN')}**\n• Category: **${expPayload.category}**\n• Details: **${expPayload.note || 'Operational expense'}**\n• Paid from: **${acctLabel}**\nAccount balance updated ✓`,
                 type: 'record_expense',
-                data: savedExp,
+                expenseId: expId,
+                data: { id: expId, ...expPayload },
                 chips: [
-                  { label: 'View Accounts', action: 'view_ledger' },
+                  { label: 'View Accounts', action: 'view_accounts' },
+                  { label: "Today's Expenses", action: 'query_expenses_today' },
                 ],
                 timestamp: new Date(),
               },
@@ -2726,6 +2846,303 @@ export default function AiAssistantDrawer({
               timestamp: new Date(),
             },
           ])
+        }
+      } else if (resData.type === 'edit_expense') {
+        const { amount, newAmount, oldAmount, category, accountId, note, date, expenseId, changes } = resData.data || {}
+        let targetNew = Number(newAmount) || Number(amount) || 0
+        const targetOld = Number(oldAmount) || 0
+
+        if (targetNew <= 0 && changes) {
+          const numMatch = String(changes).match(/(?:to|as|amount|rs|₹)?\s*(\d+(?:\.\d+)?)/i)
+          if (numMatch) targetNew = parseFloat(numMatch[1])
+        }
+
+        let targetExpenseRecord = null
+        if (expenseId) {
+          targetExpenseRecord = { id: expenseId, amount: targetOld }
+        } else if (recordedExpenses.latest) {
+          targetExpenseRecord = recordedExpenses.latest
+        } else if (Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            if (m.type === 'record_expense' && m.data?.id) {
+              targetExpenseRecord = m.data
+              break
+            }
+          }
+        }
+
+        try {
+          let foundExpense = null
+          if (targetExpenseRecord?.id && !String(targetExpenseRecord.id).startsWith('exp-')) {
+            foundExpense = targetExpenseRecord
+          } else {
+            const q = firestoreQuery(
+              collection(db, 'expenses'),
+              orderBy('createdAt', 'desc'),
+              limit(10)
+            )
+            const snap = await getDocs(q)
+            if (!snap.empty) {
+              if (targetOld > 0) {
+                const matchDoc = snap.docs.find((d) => Number(d.data().amount) === targetOld)
+                if (matchDoc) foundExpense = { id: matchDoc.id, ...matchDoc.data() }
+              }
+              if (!foundExpense && category) {
+                const matchCat = snap.docs.find((d) => (d.data().category || '').toLowerCase().includes(category.toLowerCase()))
+                if (matchCat) foundExpense = { id: matchCat.id, ...matchCat.data() }
+              }
+              if (!foundExpense) {
+                foundExpense = { id: snap.docs[0].id, ...snap.docs[0].data() }
+              }
+            }
+          }
+
+          if (foundExpense && targetNew > 0) {
+            const effCat = category || foundExpense.category || 'Miscellaneous'
+            const effAcc = accountId || foundExpense.accountId || 'counter'
+            const effNote = note || foundExpense.note || effCat
+            await updateAccountExpense(foundExpense.id, {
+              amount: targetNew,
+              category: effCat,
+              accountId: effAcc,
+              note: effNote,
+              date: foundExpense.date || new Date(),
+            })
+
+            const acctMeta = getAccountMeta(effAcc)
+            const acctLabel = acctMeta?.shortLabel || acctMeta?.name || effAcc
+            toast.success(`Expense updated to ₹${targetNew}!`)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `✏️ **Expense Updated**:\n• Category: **${effCat}**\n• Previous Amount: **₹${Number(foundExpense.amount || targetOld).toLocaleString('en-IN')}**\n• New Amount: **₹${Number(targetNew).toLocaleString('en-IN')}**\n• Account: **${acctLabel}**\n• Account balance automatically adjusted ✓`,
+                type: 'edit_expense',
+                data: { expenseId: foundExpense.id, newAmount: targetNew },
+                chips: [
+                  { label: 'View Accounts', action: 'view_accounts' },
+                  { label: "Today's Expenses", action: 'query_expenses_today' },
+                ],
+                timestamp: new Date(),
+              },
+            ])
+            return
+          }
+
+          if (targetNew > 0) {
+            const expDate = date ? new Date(date) : new Date()
+            const effAcc = accountId || 'counter'
+            const effCat = category || 'Miscellaneous'
+            const effNote = note || effCat
+            const savedExp = await addExpense({
+              amount: targetNew,
+              category: effCat,
+              accountId: effAcc,
+              note: effNote,
+              date: expDate,
+            })
+            const acctMeta = getAccountMeta(effAcc)
+            const acctLabel = acctMeta?.shortLabel || acctMeta?.name || effAcc
+            toast.success(`Expense of ₹${targetNew} recorded!`)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `💸 **Expense Recorded: ₹${targetNew.toLocaleString('en-IN')}**\n• Category: **${effCat}**\n• Account: **${acctLabel}**\n• Note: *${effNote}*\nAccount balance updated ✓`,
+                type: 'record_expense',
+                data: savedExp,
+                chips: [{ label: 'View Accounts', action: 'view_accounts' }],
+                timestamp: new Date(),
+              },
+            ])
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: 'Please specify the corrected expense amount (e.g. *"Change petrol expense to 600"*).',
+                type: 'edit_expense',
+                timestamp: new Date(),
+              },
+            ])
+          }
+        } catch (err) {
+          console.error('Failed to edit expense:', err)
+          toast.error('Failed to edit expense: ' + err.message)
+        }
+      } else if (resData.type === 'cancel_expense') {
+        const { amount, category, accountId, expenseId, reason } = resData.data || {}
+        const targetAmount = Number(amount) || 0
+
+        let targetExpenseRecord = null
+        if (expenseId) {
+          targetExpenseRecord = { id: expenseId, amount: targetAmount }
+        } else if (recordedExpenses.latest) {
+          targetExpenseRecord = recordedExpenses.latest
+        } else if (Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            if (m.type === 'record_expense' && m.data?.id) {
+              targetExpenseRecord = m.data
+              break
+            }
+          }
+        }
+
+        try {
+          let foundExpense = null
+          if (targetExpenseRecord?.id && !String(targetExpenseRecord.id).startsWith('exp-')) {
+            foundExpense = targetExpenseRecord
+          } else {
+            const q = firestoreQuery(
+              collection(db, 'expenses'),
+              orderBy('createdAt', 'desc'),
+              limit(10)
+            )
+            const snap = await getDocs(q)
+            if (!snap.empty) {
+              if (targetAmount > 0) {
+                const matchDoc = snap.docs.find((d) => Number(d.data().amount) === targetAmount)
+                if (matchDoc) foundExpense = { id: matchDoc.id, ...matchDoc.data() }
+              }
+              if (!foundExpense && category) {
+                const matchCat = snap.docs.find((d) => (d.data().category || '').toLowerCase().includes(category.toLowerCase()))
+                if (matchCat) foundExpense = { id: matchCat.id, ...matchCat.data() }
+              }
+              if (!foundExpense) {
+                foundExpense = { id: snap.docs[0].id, ...snap.docs[0].data() }
+              }
+            }
+          }
+
+          if (foundExpense) {
+            await deleteAccountExpense(foundExpense.id)
+            const cancelledAmt = foundExpense.amount || targetAmount
+            const cancelledCat = foundExpense.category || category || 'Expense'
+            const accMeta = getAccountMeta(foundExpense.accountId || accountId || 'counter')
+            const accLabel = accMeta?.shortLabel || accMeta?.name || 'Counter Cash'
+            toast.success(`Expense of ₹${cancelledAmt} deleted and refunded!`)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `🗑️ **Expense Deleted**:\n• Category: **${cancelledCat}**\n• Amount: **₹${Number(cancelledAmt).toLocaleString('en-IN')}**\n• Refunded to: **${accLabel}**\nAccount balance credited back ✓`,
+                type: 'cancel_expense',
+                data: { expenseId: foundExpense.id, amount: cancelledAmt },
+                chips: [{ label: 'View Accounts', action: 'view_accounts' }],
+                timestamp: new Date(),
+              },
+            ])
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `No matching expense record found${targetAmount > 0 ? ` of ₹${targetAmount}` : ''}${category ? ` for ${category}` : ''} to cancel.`,
+                type: 'cancel_expense',
+                chips: [{ label: 'View Accounts', action: 'view_accounts' }],
+                timestamp: new Date(),
+              },
+            ])
+          }
+        } catch (err) {
+          console.error('Failed to cancel expense:', err)
+          toast.error('Failed to cancel expense: ' + err.message)
+        }
+      } else if (resData.type === 'query_expenses') {
+        const { dateFilter, targetDate, category, accountId } = resData.data || {}
+        try {
+          const q = firestoreQuery(
+            collection(db, 'expenses'),
+            orderBy('date', 'desc'),
+            limit(100)
+          )
+          const snap = await getDocs(q)
+          const allExpenses = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+
+          const now = new Date()
+          const todayStr = now.toISOString().slice(0, 10)
+          const yesterdayObj = new Date(now)
+          yesterdayObj.setDate(yesterdayObj.getDate() - 1)
+          const yesterdayStr = yesterdayObj.toISOString().slice(0, 10)
+
+          const toDateStr = (dateVal) => {
+            if (!dateVal) return ''
+            if (dateVal.toDate) return dateVal.toDate().toISOString().slice(0, 10)
+            if (dateVal.seconds) return new Date(dateVal.seconds * 1000).toISOString().slice(0, 10)
+            return String(dateVal).slice(0, 10)
+          }
+
+          let filtered = allExpenses
+          let filterLabel = 'Recent'
+
+          if (dateFilter === 'today' || targetDate === todayStr) {
+            filtered = allExpenses.filter((e) => toDateStr(e.date) === todayStr)
+            filterLabel = 'Today'
+          } else if (dateFilter === 'yesterday' || targetDate === yesterdayStr) {
+            filtered = allExpenses.filter((e) => toDateStr(e.date) === yesterdayStr)
+            filterLabel = 'Yesterday'
+          } else if (dateFilter === 'this_month') {
+            const monthPrefix = todayStr.slice(0, 7)
+            filtered = allExpenses.filter((e) => toDateStr(e.date).startsWith(monthPrefix))
+            filterLabel = 'This Month'
+          } else if (targetDate) {
+            filtered = allExpenses.filter((e) => toDateStr(e.date) === targetDate)
+            filterLabel = targetDate
+          }
+
+          if (category) {
+            filtered = filtered.filter((e) => (e.category || '').toLowerCase().includes(category.toLowerCase()))
+          }
+          if (accountId) {
+            filtered = filtered.filter((e) => e.accountId === accountId)
+          }
+
+          const totalAmount = filtered.reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
+          const categoryTotals = {}
+          filtered.forEach((e) => {
+            const cat = e.category || 'Miscellaneous'
+            categoryTotals[cat] = (categoryTotals[cat] || 0) + (Number(e.amount) || 0)
+          })
+
+          const categoryLines = Object.entries(categoryTotals)
+            .sort((a, b) => b[1] - a[1])
+            .map(([cat, amt]) => `• **${cat}**: ₹${amt.toLocaleString('en-IN')}`)
+            .join('\n')
+
+          const summaryText = filtered.length > 0
+            ? `📊 **Expense Summary (${filterLabel})**:\n• **Total Spent**: **₹${totalAmount.toLocaleString('en-IN')}** across ${filtered.length} entries\n\n**Category Breakdown**:\n${categoryLines}`
+            : `📊 No expenses recorded for **${filterLabel}**${category ? ` in category ${category}` : ''}.`
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: summaryText,
+              type: 'expenses_summary',
+              data: {
+                total: totalAmount,
+                count: filtered.length,
+                breakdown: categoryTotals,
+                expenses: filtered.slice(0, 5),
+              },
+              chips: [
+                { label: 'View Accounts', action: 'view_accounts' },
+                { label: 'Record New Expense', action: 'prompt_record_expense' },
+              ],
+              timestamp: new Date(),
+            },
+          ])
+        } catch (err) {
+          console.error('Failed to query expenses:', err)
+          toast.error('Failed to query expenses')
         }
       } else if (resData.type === 'update_date') {
         const { clientName, targetDate, targetDateLabel } = resData.data || {}
