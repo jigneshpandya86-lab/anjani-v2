@@ -2145,100 +2145,92 @@ export default function AiAssistantDrawer({
         if (targetClient) {
           const clientTitle = targetClient.displayName || targetClient.name
           try {
-            if (fieldToUpdate === 'inactive' || active === false) {
-              await updateClient(targetClient.id, { active: false })
-              toast.success(`${clientTitle} marked as Inactive!`)
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `👤 Client **${clientTitle}** has been marked as **Inactive** ✓`,
-                  type: 'edit_client',
-                  data: { clientId: targetClient.id, active: false },
-                  chips: [{ label: 'View Clients', action: 'view_client' }],
-                  timestamp: new Date(),
-                },
-              ])
-            } else if (fieldToUpdate === 'active' || active === true) {
-              await updateClient(targetClient.id, { active: true })
-              toast.success(`${clientTitle} marked as Active!`)
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `👤 Client **${clientTitle}** has been marked as **Active** ✓`,
-                  type: 'edit_client',
-                  data: { clientId: targetClient.id, active: true },
-                  chips: [{ label: 'View Clients', action: 'view_client' }],
-                  timestamp: new Date(),
-                },
-              ])
-            } else if (fieldToUpdate === 'mobile') {
-              const cleanMobile = String(newValue || '').replace(/\D/g, '')
-              await updateClient(targetClient.id, { mobile: cleanMobile })
-              toast.success(`Mobile for ${clientTitle} updated to ${cleanMobile}!`)
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `📱 Updated mobile for **${clientTitle}** to **${cleanMobile}** ✓`,
-                  type: 'edit_client',
-                  data: { clientId: targetClient.id, mobile: cleanMobile },
-                  chips: [{ label: 'View Clients', action: 'view_client' }],
-                  timestamp: new Date(),
-                },
-              ])
-            } else if (fieldToUpdate === 'address' || fieldToUpdate === 'location') {
-              await updateClient(targetClient.id, { [fieldToUpdate]: newValue })
-              toast.success(`Address for ${clientTitle} updated!`)
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `📍 Updated address for **${clientTitle}** to **${newValue}** ✓`,
-                  type: 'edit_client',
-                  data: { clientId: targetClient.id, [fieldToUpdate]: newValue },
-                  chips: [{ label: 'View Clients', action: 'view_client' }],
-                  timestamp: new Date(),
-                },
-              ])
-            } else if (fieldToUpdate === 'contactPerson') {
-              await updateClient(targetClient.id, { contactPerson: newValue })
-              toast.success(`Contact person for ${clientTitle} updated!`)
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `👤 Updated contact person for **${clientTitle}** to **${newValue}** ✓`,
-                  type: 'edit_client',
-                  data: { clientId: targetClient.id, contactPerson: newValue },
-                  chips: [{ label: 'View Clients', action: 'view_client' }],
-                  timestamp: new Date(),
-                },
-              ])
-            } else if (fieldToUpdate === 'rate') {
-              const numRate = Number(newValue) || 0
-              if (numRate > 0) {
-                await updateClient(targetClient.id, { rate: numRate })
-                toast.success(`Rate for ${clientTitle} updated to ₹${numRate}!`)
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: 'asst-' + Date.now(),
-                    sender: 'assistant',
-                    text: `💰 Updated rate for **${clientTitle}** to **₹${numRate}/box** ✓`,
-                    type: 'edit_client',
-                    data: { clientId: targetClient.id, rate: numRate },
-                    chips: [{ label: 'View Clients', action: 'view_client' }],
-                    timestamp: new Date(),
-                  },
-                ])
+            const incomingUpdates = { ...(resData.data?.updates || {}) }
+            if (active !== undefined) incomingUpdates.active = active
+            if (fieldToUpdate && newValue !== undefined) {
+              const f = String(fieldToUpdate).toLowerCase().trim()
+              if (f === 'inactive') incomingUpdates.active = false
+              else if (f === 'active') incomingUpdates.active = true
+              else if (f === 'rate') incomingUpdates.rate = newValue
+              else if (f === 'mobile' || f === 'phone') incomingUpdates.mobile = newValue
+              else if (f === 'address' || f === 'location') incomingUpdates.address = newValue
+              else if (f === 'contactperson') incomingUpdates.contactPerson = newValue
+              else if (f === 'notes') incomingUpdates.notes = newValue
+              else incomingUpdates[fieldToUpdate] = newValue
+            }
+
+            const patch = {}
+            const appliedClientChanges = []
+
+            if (incomingUpdates.active !== undefined) {
+              patch.active = Boolean(incomingUpdates.active)
+              appliedClientChanges.push(patch.active ? `Status: **Active**` : `Status: **Inactive**`)
+            }
+            if (incomingUpdates.mobile !== undefined) {
+              const cleanMobile = String(incomingUpdates.mobile || '').replace(/\D/g, '')
+              if (cleanMobile) {
+                patch.mobile = cleanMobile
+                appliedClientChanges.push(`📱 Mobile: **${cleanMobile}**`)
               }
+            }
+            if (incomingUpdates.address !== undefined || incomingUpdates.location !== undefined) {
+              const addr = String(incomingUpdates.address || incomingUpdates.location || '').trim()
+              if (addr) {
+                patch.address = addr
+                patch.location = addr
+                appliedClientChanges.push(`📍 Address: **${addr}**`)
+              }
+            }
+            if (incomingUpdates.contactPerson !== undefined) {
+              const cp = String(incomingUpdates.contactPerson || '').trim()
+              if (cp) {
+                patch.contactPerson = cp
+                appliedClientChanges.push(`👤 Contact Person: **${cp}**`)
+              }
+            }
+            if (incomingUpdates.rate !== undefined) {
+              const numRate = Number(incomingUpdates.rate) || 0
+              if (numRate > 0) {
+                patch.rate = numRate
+                appliedClientChanges.push(`💰 Rate: **₹${numRate}/box**`)
+              }
+            }
+            if (incomingUpdates.notes !== undefined) {
+              patch.notes = String(incomingUpdates.notes || '').trim()
+              appliedClientChanges.push(`📝 Notes: **${patch.notes}**`)
+            }
+
+            if (appliedClientChanges.length > 0) {
+              await updateClient(targetClient.id, patch)
+              toast.success(`Client ${clientTitle} updated!`)
+
+              const singleText =
+                appliedClientChanges.length === 1 && patch.active === false
+                  ? `👤 Client **${clientTitle}** has been marked as **Inactive** ✓`
+                  : appliedClientChanges.length === 1 && patch.active === true
+                  ? `👤 Client **${clientTitle}** has been marked as **Active** ✓`
+                  : appliedClientChanges.length === 1 && patch.mobile
+                  ? `📱 Updated mobile for **${clientTitle}** to **${cleanMobile}** ✓`
+                  : appliedClientChanges.length === 1 && patch.address
+                  ? `📍 Updated address for **${clientTitle}** to **${patch.address}** ✓`
+                  : appliedClientChanges.length === 1 && patch.contactPerson
+                  ? `👤 Updated contact person for **${clientTitle}** to **${patch.contactPerson}** ✓`
+                  : appliedClientChanges.length === 1 && patch.rate
+                  ? `💰 Updated rate for **${clientTitle}** to **₹${patch.rate}/box** ✓`
+                  : `👤 **Updated Client Profile for ${clientTitle}**:\n${appliedClientChanges.map((c) => `• ${c}`).join('\n')} ✓`
+
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: 'asst-' + Date.now(),
+                  sender: 'assistant',
+                  text: singleText,
+                  type: 'edit_client',
+                  data: { clientId: targetClient.id, ...patch },
+                  chips: [{ label: 'View Clients', action: 'view_client' }],
+                  timestamp: new Date(),
+                },
+              ])
             } else {
               setMessages((prev) => [
                 ...prev,
@@ -2564,182 +2556,178 @@ export default function AiAssistantDrawer({
           const currentTime = targetOrder.deliveryTime || targetOrder.time || '11 AM'
           const currentLoc = targetOrder.address || targetOrder.location || 'Vadodara'
 
-          // If specific inline changes were requested
-          if (fieldToUpdate === 'date' && newValue) {
-            try {
-              await updateOrder(targetOrder.id, { date: newValue, deliveryDate: newValue })
-              toast.success(`Rescheduled to ${newValue}!`)
-            } catch (e) {
-              console.error('Failed to update date:', e)
-            }
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: 'asst-' + Date.now(),
-                sender: 'assistant',
-                text: `📅 Rescheduled order for **${name}** to **${newValue}** ✓`,
-                type: 'order_edit',
-                chips: [{ label: 'View Orders', action: 'view_orders' }],
-                timestamp: new Date(),
-              },
-            ])
-            return
+          const patch = {}
+          const appliedChanges = []
+
+          // 1. Gather all incoming modifications into a normalized updates map
+          const incoming = { ...(resData.data?.updates || {}) }
+
+          if (fieldToUpdate && newValue !== undefined && String(newValue).trim() !== '') {
+            const f = String(fieldToUpdate).toLowerCase().trim()
+            if (['quantity', 'qty', 'boxes'].includes(f)) incoming.qty = newValue
+            else if (['price', 'rate'].includes(f)) incoming.rate = newValue
+            else if (['date', 'deliverydate'].includes(f)) incoming.deliveryDate = newValue
+            else if (['time', 'deliverytime'].includes(f)) incoming.deliveryTime = newValue
+            else if (['location', 'address', 'venue', 'plot', 'place'].includes(f)) incoming.location = newValue
+            else if (['sku', 'product', 'item'].includes(f)) incoming.sku = newValue
+            else if (['paymentmode', 'payment'].includes(f)) incoming.paymentMode = newValue
+            else if (['notes', 'note', 'instructions'].includes(f)) incoming.notes = newValue
+            else if (f === 'confirm' || (f === 'status' && String(newValue).toLowerCase() === 'confirmed')) incoming.status = 'Confirmed'
+            else if (f === 'deliver' || (f === 'status' && String(newValue).toLowerCase() === 'delivered')) incoming.status = 'Delivered'
+            else if (f === 'cancel' || (f === 'status' && String(newValue).toLowerCase() === 'cancelled')) incoming.status = 'cancelled'
+            else incoming[fieldToUpdate] = newValue
           }
 
-          if (fieldToUpdate === 'time' && newValue) {
-            try {
-              await updateOrder(targetOrder.id, { time: newValue, deliveryTime: newValue })
-              toast.success(`Delivery time updated to ${newValue}!`)
-            } catch (e) {
-              console.error('Failed to update time:', e)
+          // 2. Fallback check on changes text for status or location if not captured
+          if (changes) {
+            const ch = String(changes).trim()
+            if (!incoming.status) {
+              if (/(?:cancel|cancelled|cancel order)/i.test(ch)) incoming.status = 'cancelled'
+              else if (/(?:confirm|confirmed|pakku|manjoor)/i.test(ch)) incoming.status = 'Confirmed'
+              else if (/(?:deliver|delivered|mark delivered)/i.test(ch)) incoming.status = 'Delivered'
             }
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: 'asst-' + Date.now(),
-                sender: 'assistant',
-                text: `⏰ Updated delivery time for **${name}** to **${newValue}** ✓`,
-                type: 'order_edit',
-                chips: [{ label: 'View Orders', action: 'view_orders' }],
-                timestamp: new Date(),
-              },
-            ])
-            return
+            if (!incoming.location && /(?:location|address|venue|party plot|plot)/i.test(ch)) {
+              const cleanedLoc = ch.replace(/^(?:change|update|set)?\s*(?:location|address|venue)\s*(?:to|as)?\s*/i, '').trim()
+              if (cleanedLoc) incoming.location = cleanedLoc
+            }
           }
 
-          if (fieldToUpdate === 'quantity' && newValue) {
-            const numQty = parseInt(newValue, 10)
+          // 3. Normalize into the Firestore patch & build summary bullet points
+          if (incoming.qty !== undefined) {
+            const numQty = parseInt(incoming.qty, 10)
             if (numQty > 0) {
-              try {
-                const rate = targetOrder.rate || 130
-                await updateOrder(targetOrder.id, {
-                  qty: numQty,
-                  totalQty: numQty,
-                  totalAmount: numQty * rate,
-                })
-                toast.success(`Quantity updated to ${numQty} boxes!`)
-              } catch (e) {
-                console.error('Failed to update qty:', e)
-              }
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `📦 Updated quantity for **${name}** to **${numQty} boxes** ✓`,
-                  type: 'order_edit',
-                  chips: [{ label: 'View Orders', action: 'view_orders' }],
-                  timestamp: new Date(),
-                },
-              ])
-              return
+              patch.qty = numQty
+              patch.totalQty = numQty
+              const effectiveRate = incoming.rate !== undefined ? parseFloat(incoming.rate) : (targetOrder.rate || 130)
+              patch.totalAmount = numQty * effectiveRate
+              appliedChanges.push(`📦 Quantity: **${numQty} boxes**`)
             }
           }
 
-          if ((fieldToUpdate === 'price' || fieldToUpdate === 'rate') && newValue) {
-            const numRate = parseFloat(newValue)
+          if (incoming.rate !== undefined) {
+            const numRate = parseFloat(incoming.rate)
             if (numRate > 0) {
-              try {
-                const qty = targetOrder.qty || targetOrder.totalQty || 1
-                await updateOrder(targetOrder.id, {
-                  rate: numRate,
-                  totalAmount: qty * numRate,
-                })
-                toast.success(`Price updated to ₹${numRate} per box!`)
-              } catch (e) {
-                console.error('Failed to update rate on order:', e)
-              }
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `💰 Updated price for **${name}**'s order to **₹${numRate}/box** (Total: ₹${(targetOrder.qty || 1) * numRate}) ✓`,
-                  type: 'order_edit',
-                  chips: [{ label: 'View Orders', action: 'view_orders' }],
-                  timestamp: new Date(),
-                },
-              ])
-              return
+              patch.rate = numRate
+              const effectiveQty = patch.qty !== undefined ? patch.qty : (targetOrder.qty || targetOrder.totalQty || 1)
+              patch.totalAmount = effectiveQty * numRate
+              appliedChanges.push(`💰 Price: **₹${numRate}/box**`)
             }
           }
 
-          if (
-            (fieldToUpdate === 'location' ||
-              fieldToUpdate === 'address' ||
-              (changes && /(?:location|address|venue|plot|place)/i.test(changes))) &&
-            (newValue || changes)
-          ) {
-            const locVal = (
-              newValue ||
-              changes.replace(/^(?:change|update|set)?\s*(?:location|address|venue)\s*(?:to|as)?\s*/i, '')
-            ).trim()
-            if (locVal) {
-              try {
-                await updateOrder(targetOrder.id, {
-                  address: locVal,
-                  location: locVal,
-                  deliveryAddress: locVal,
-                })
-                toast.success(`Location updated to ${locVal}!`)
-              } catch (e) {
-                console.error('Failed to update location:', e)
-              }
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: `📍 Updated delivery location for **${name}**'s order to **${locVal}** ✓`,
-                  type: 'order_edit',
-                  chips: [{ label: 'View Orders', action: 'view_orders' }],
-                  timestamp: new Date(),
-                },
-              ])
-              return
+          if (incoming.deliveryDate || incoming.date) {
+            const d = String(incoming.deliveryDate || incoming.date).trim()
+            if (d) {
+              patch.date = d
+              patch.deliveryDate = d
+              appliedChanges.push(`📅 Date: **${d}**`)
             }
           }
 
-          if (
-            fieldToUpdate === 'confirm' ||
-            (fieldToUpdate === 'status' && String(newValue).toLowerCase() === 'confirmed') ||
-            (changes && /(?:confirm|confirmed|pakku|manjoor)/i.test(changes))
-          ) {
+          if (incoming.deliveryTime || incoming.time) {
+            const t = String(incoming.deliveryTime || incoming.time).trim()
+            if (t) {
+              patch.time = t
+              patch.deliveryTime = t
+              appliedChanges.push(`⏰ Time: **${t}**`)
+            }
+          }
+
+          if (incoming.location || incoming.address) {
+            const loc = String(incoming.location || incoming.address).trim()
+            if (loc) {
+              patch.location = loc
+              patch.address = loc
+              patch.deliveryAddress = loc
+              appliedChanges.push(`📍 Location: **${loc}**`)
+            }
+          }
+
+          if (incoming.sku) {
+            const s = String(incoming.sku).trim()
+            if (s) {
+              patch.sku = s
+              appliedChanges.push(`🏷️ Product: **${s}**`)
+            }
+          }
+
+          if (incoming.paymentMode) {
+            const pm = String(incoming.paymentMode).trim()
+            if (pm) {
+              patch.paymentMode = pm
+              appliedChanges.push(`💳 Payment Mode: **${pm}**`)
+            }
+          }
+
+          if (incoming.notes) {
+            const n = String(incoming.notes).trim()
+            if (n) {
+              patch.notes = n
+              appliedChanges.push(`📝 Notes: **${n}**`)
+            }
+          }
+
+          if (incoming.status) {
+            const st = String(incoming.status).trim()
+            patch.status = st
+            if (st.toLowerCase() === 'cancelled') {
+              patch.isCancelled = true
+              appliedChanges.push(`❌ Status: **Cancelled**`)
+            } else if (st.toLowerCase() === 'confirmed') {
+              appliedChanges.push(`✅ Status: **Confirmed**`)
+            } else if (st.toLowerCase() === 'delivered') {
+              appliedChanges.push(`🚚 Status: **Delivered**`)
+            } else {
+              appliedChanges.push(`Status: **${st}**`)
+            }
+          }
+
+          // Handle any other arbitrary fields passed
+          for (const [k, v] of Object.entries(incoming)) {
+            if (!(k in patch) && !['qty', 'quantity', 'boxes', 'rate', 'price', 'deliveryDate', 'date', 'deliveryTime', 'time', 'location', 'address', 'venue', 'sku', 'paymentMode', 'notes', 'status'].includes(k)) {
+              patch[k] = v
+              appliedChanges.push(`${k}: **${v}**`)
+            }
+          }
+
+          // 4. If ANY changes were requested, apply atomically to Firestore!
+          if (appliedChanges.length > 0) {
             try {
-              await updateOrder(targetOrder.id, { status: 'Confirmed' })
-              toast.success(`Order for ${name} confirmed!`)
+              await updateOrder(targetOrder.id, patch)
+              toast.success(`Order for ${name} updated!`)
             } catch (e) {
-              console.error('Failed to confirm order:', e)
+              console.error('Failed to update order:', e)
+              toast.error('Failed to update order: ' + (e.message || 'Error'))
             }
+
+            const headerText =
+              patch.status?.toLowerCase() === 'cancelled'
+                ? `❌ Order for **${name}** has been cancelled ✓`
+                : patch.status?.toLowerCase() === 'confirmed' && appliedChanges.length === 1
+                ? `✅ Order for **${name}** has been **Confirmed** ✓`
+                : appliedChanges.length === 1 && patch.date
+                ? `📅 Rescheduled order for **${name}** to **${patch.date}** ✓`
+                : appliedChanges.length === 1 && patch.time
+                ? `⏰ Updated delivery time for **${name}** to **${patch.time}** ✓`
+                : appliedChanges.length === 1 && patch.qty
+                ? `📦 Updated quantity for **${name}** to **${patch.qty} boxes** ✓`
+                : appliedChanges.length === 1 && patch.rate
+                ? `💰 Updated price for **${name}**'s order to **₹${patch.rate}/box** (Total: ₹${(targetOrder.qty || 1) * patch.rate}) ✓`
+                : appliedChanges.length === 1 && patch.location
+                ? `📍 Updated delivery location for **${name}**'s order to **${patch.location}** ✓`
+                : `✅ **Updated Order for ${name}** (Order #${(targetOrder.orderId || targetOrder.id || '').slice(-6)}):\n${appliedChanges.map((c) => `• ${c}`).join('\n')} ✓`
+
             setMessages((prev) => [
               ...prev,
               {
                 id: 'asst-' + Date.now(),
                 sender: 'assistant',
-                text: `✅ Order for **${name}** has been **Confirmed** ✓`,
+                text: headerText,
                 type: 'order_edit',
-                chips: [{ label: 'View Orders', action: 'view_orders' }],
-                timestamp: new Date(),
-              },
-            ])
-            return
-          }
-
-          if (fieldToUpdate === 'cancel' || (changes && changes.toLowerCase().includes('cancel'))) {
-            try {
-              await updateOrder(targetOrder.id, { status: 'cancelled', isCancelled: true })
-              toast.success(`Order for ${name} cancelled!`)
-            } catch (e) {
-              console.error('Failed to cancel order:', e)
-            }
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: 'asst-' + Date.now(),
-                sender: 'assistant',
-                text: `❌ Order for **${name}** has been cancelled ✓`,
-                type: 'order_edit',
-                chips: [{ label: 'View Orders', action: 'view_orders' }],
+                data: { order: { ...targetOrder, ...patch }, patch },
+                chips: [
+                  { label: 'View Orders', action: 'view_orders' },
+                  { label: '✏️ Full Edit', action: 'open_order_modal', data: { ...targetOrder, ...patch } },
+                ],
                 timestamp: new Date(),
               },
             ])

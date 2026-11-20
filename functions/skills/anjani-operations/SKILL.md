@@ -218,15 +218,27 @@ The native operational agent uses Vertex AI Function Calling with 17 registered 
 - *Defaults*: 48 pieces (nung) = 1 box. Default time: 11:00 AM (or 4:00 PM if "sanje", 9:00 AM if "savare", 1:00 PM if "bapore"). Default rate: 130 per box for Anjani 200ml.
 - **Incomplete Commands**: When user types *"Book Order"* without customer or quantity, DO NOT call `create_order`. Clarify per Section 5.
 
-#### Order Editing, Rescheduling, Confirmation & Cancellation (`edit_order`)
+#### Universal Order Editing, Rescheduling, Confirmation & Cancellation (`edit_order`)
 - **Trigger**: Modifying, rescheduling, confirming, or cancelling an order.
-- *Parameters*: `clientName` (required), `changes`, `fieldToUpdate` ('quantity', 'date', 'time', 'location', 'price', 'confirm', 'cancel', 'select'), `newValue`, `targetDate`.
-- *CRITICAL*: Order cancellation STRICTLY uses `edit_order` with `fieldToUpdate: "cancel"` (e.g. `edit_order(clientName: "Maruti Caterers", fieldToUpdate: "cancel", changes: "cancel order")`).
+- **Universal Multi-Field Capability**: Supports modifying ANY single attribute or MULTIPLE attributes simultaneously in a single command.
+- *Parameters*:
+  - `clientName` (required - infer from recent context if omitted in conversational follow-ups)
+  - `updates`: Object dictionary of fields to update simultaneously:
+    - `qty` (number), `rate` (number), `deliveryDate` (YYYY-MM-DD), `deliveryTime` (e.g. 11 AM, 16:00), `location` (venue/party plot/address), `sku` (e.g. Anjani 200ml, Bailey 500ml), `paymentMode` (cash, credit, upi), `notes` (delivery instructions), `status` (Confirmed, Delivered, cancelled).
+  - `fieldToUpdate`: Single attribute being updated ('quantity', 'date', 'time', 'location', 'price', 'sku', 'paymentMode', 'notes', 'confirm', 'deliver', 'cancel').
+  - `newValue`: New value for the single attribute.
+  - `changes`: Full natural language description of changes.
+  - `targetDate`: Order date if known (YYYY-MM-DD).
+- *CRITICAL*: Order cancellation STRICTLY uses `edit_order` with `fieldToUpdate: "cancel"` or `updates: { status: "cancelled" }` (e.g. `edit_order(clientName: "Maruti Caterers", fieldToUpdate: "cancel", changes: "cancel order")`).
 - *Examples*:
-  - Location/Address update: *"Update location as P G Party Plot Harni"* $\rightarrow$ `edit_order(clientName: "<inferred from context>", fieldToUpdate: "location", newValue: "P G Party Plot Harni", changes: "Update location as P G Party Plot Harni")`.
-  - Specific modification: *"Change Bhaveshbhai order to 50 boxes"* $\rightarrow$ `edit_order(clientName: "Bhaveshbhai", fieldToUpdate: "quantity", newValue: "50")`.
-  - Confirmation: *"Confirm Maruti Caterers order"* $\rightarrow$ `edit_order(clientName: "Maruti Caterers", fieldToUpdate: "confirm", newValue: "Confirmed")`.
-  - Cancellation: *"Cancel Maruti Caterers order"* $\rightarrow$ `edit_order(clientName: "Maruti Caterers", fieldToUpdate: "cancel", changes: "Customer requested cancellation")`.
+  - **Multi-field update**: *"Change Maruti Caterers to 50 boxes at 4 PM at PG Party Plot"* $\rightarrow$ `edit_order(clientName: "Maruti Caterers", updates: { qty: 50, deliveryTime: "16:00", location: "PG Party Plot" })`.
+  - **SKU change**: *"Change Maruti Caterers order to Bailey 500ml"* $\rightarrow$ `edit_order(clientName: "Maruti Caterers", updates: { sku: "Bailey 500ml" })`.
+  - **Delivery notes**: *"Add note: deliver to kitchen stage backside"* $\rightarrow$ `edit_order(clientName: "Maruti Caterers", updates: { notes: "deliver to kitchen stage backside" })`.
+  - **Payment mode**: *"Change payment mode to cash for Maruti Caterers"* $\rightarrow$ `edit_order(clientName: "Maruti Caterers", updates: { paymentMode: "cash" })`.
+  - **Location/Address update**: *"Update location as P G Party Plot Harni"* $\rightarrow$ `edit_order(clientName: "<inferred from context>", fieldToUpdate: "location", newValue: "P G Party Plot Harni")`.
+  - **Quantity modification**: *"Change Bhaveshbhai order to 50 boxes"* $\rightarrow$ `edit_order(clientName: "Bhaveshbhai", fieldToUpdate: "quantity", newValue: "50")`.
+  - **Confirmation**: *"Confirm Maruti Caterers order"* $\rightarrow$ `edit_order(clientName: "Maruti Caterers", fieldToUpdate: "confirm", newValue: "Confirmed")`.
+  - **Cancellation**: *"Cancel Maruti Caterers order"* $\rightarrow$ `edit_order(clientName: "Maruti Caterers", fieldToUpdate: "cancel", changes: "Customer requested cancellation")`.
 - **CRITICAL CONTEXTUAL RESOLUTION**: When an order was just displayed, listed, or discussed in the previous message (e.g. user queried tomorrow's order and saw Maruti Caterers), any follow-up modification command without an explicit customer name (e.g. *"Update location as P G Party Plot Harni"*, *"Change time to 4 PM"*, *"Make quantity 50"*) MUST resolve to that customer. NEVER ask "What would you like to update?" when the user already stated the attribute and value to change!
 
 #### Delivery Completion (`mark_orders_delivered`)
@@ -245,8 +257,9 @@ The native operational agent uses Vertex AI Function Calling with 17 registered 
 - **Customer Registration (`create_client`)**:
   - Onboard a new customer or shop (`name` required, `contactPerson`, `mobile`, `alternateMobile`, `address`, `location`, `rate`, `notes`).
 - **Customer Profile & Inactive Editing (`edit_client`)**:
-  - Modify existing customer details or toggle active/inactive state (`clientName` required, `fieldToUpdate`, `newValue`, `active`).
-  - Examples: *"Update phone of Maruti Caterers to 9825012345"*, *"Mark Maruti Caterers as inactive"*, *"Reactivate client Jay Ambe"*.
+  - Modify existing customer details or toggle active/inactive state (`clientName` required, `updates`, `fieldToUpdate`, `newValue`, `active`).
+  - Supports single or multiple fields simultaneously (phone, rate, address, contact person, notes, status).
+  - Examples: *"Update phone of Maruti Caterers to 9825012345"*, *"Mark Maruti Caterers as inactive"*, *"Reactivate client Jay Ambe"*, *"Update Maruti Caterers address to Karelibaug and rate to 125"*.
 - **Customer Agreed Price Updates (`update_price`)**:
   - Set custom rate per box for a client (`rate` required, `clientName`, `sku`). E.g. *"Update price for Maruti Caterers to 140"*, *"bhav 140 karo for Ramesh"*.
 

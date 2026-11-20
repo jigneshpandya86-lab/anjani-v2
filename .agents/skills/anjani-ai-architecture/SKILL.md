@@ -69,7 +69,8 @@ When adding or improving AI behavior:
 
 ---
 
-## 6. Contextual Order Edits & Location Updates (`edit_order`, `location_update`)
+## 6. Universal Multi-Field Order & Entity Mutator (`edit_order`, `edit_client`, `location_update`)
 - **Conversational Follow-ups:** When an order is displayed in chat (e.g. from `orders_query`) and the user immediately issues an update command without repeating the customer name (e.g. *"Update location as P G Party Plot Harni"*, *"Change time to 4 PM"*), the model infers the active customer and passes `clientName`.
-- **Location Updates in `edit_order`:** The client drawer MUST handle `fieldToUpdate === 'location'` or `'address'` and update `targetOrder` with `address`, `location`, `deliveryAddress`. It must NEVER ask "What would you like to update?" when the attribute and new value were already provided.
+- **Universal Multi-Field Patch Engine:** `edit_order` supports updating ANY order property (`qty`, `rate`, `date`, `time`, `location`, `sku`, `paymentMode`, `notes`, `status`) or MULTIPLE properties simultaneously via `updates: { ... }` or `fieldToUpdate`/`newValue`.
+- **Zero Fallthrough Dropouts:** All incoming fields are normalized and applied directly to Firestore via `updateOrder(targetOrder.id, patch)`. The client NEVER asks *"What would you like to update?"* when any field modification was specified.
 - **Support Both GPS Links and Text Venues:** Location updates accept both full Google Maps navigation URLs and text venues / party plot names (e.g. *"P G Party Plot Harni"*).

@@ -1033,6 +1033,114 @@ describe('AiAssistantDrawer', () => {
     unmount()
   })
 
+  it('updates multiple order fields simultaneously via universal updates dictionary', async () => {
+    mockOrders.length = 0
+    mockOrders.push({
+      id: 'ord-multi-test',
+      clientName: 'Maruti Caterers',
+      status: 'Confirmed',
+      qty: 84,
+      rate: 130,
+      deliveryTime: '11 AM',
+      location: 'Old Venue',
+      sku: 'Anjani 200ml',
+      notes: '',
+    })
+
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'edit_order',
+        text: 'Order updated',
+        data: {
+          clientName: 'Maruti Caterers',
+          updates: {
+            qty: 50,
+            deliveryTime: '16:00',
+            location: 'PG Party Plot',
+            sku: 'Bailey 500ml',
+            notes: 'Deliver backside',
+            paymentMode: 'cash',
+          },
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, {
+      target: { value: 'Change Maruti Caterers order to 50 boxes at 4 PM at PG Party Plot' },
+    })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockUpdateOrder).toHaveBeenCalledWith('ord-multi-test', expect.objectContaining({
+        qty: 50,
+        totalQty: 50,
+        totalAmount: 50 * 130,
+        time: '16:00',
+        deliveryTime: '16:00',
+        location: 'PG Party Plot',
+        sku: 'Bailey 500ml',
+        notes: 'Deliver backside',
+        paymentMode: 'cash',
+      }))
+      expect(screen.getByText(/Updated Order for Maruti Caterers/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('updates multiple client fields simultaneously via universal client updates dictionary', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'edit_client',
+        text: 'Client profile updated',
+        data: {
+          clientName: 'Bhaveshbhai',
+          updates: {
+            mobile: '9825099999',
+            rate: 125,
+            address: 'Karelibaug Vadodara',
+          },
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, {
+      target: { value: 'Update Bhaveshbhai phone to 9825099999 and rate to 125' },
+    })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockUpdateClient).toHaveBeenCalledWith('c3', expect.objectContaining({
+        mobile: '9825099999',
+        rate: 125,
+        address: 'Karelibaug Vadodara',
+      }))
+      expect(screen.getByText(/Updated Client Profile for Bhaveshbhai/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
   it('marks client as inactive when edit_client specifies inactive', async () => {
     mockHttpsCallableResponse.mockResolvedValueOnce({
       data: {

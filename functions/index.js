@@ -2667,18 +2667,53 @@ ${rawText.slice(0, 3000)}`
       const ANJANI_FUNCTION_DECLARATIONS = [
         {
           name: 'edit_order',
-          description: 'Searches, views, or modifies an existing water delivery order (quantity, delivery date, time, location, price, or cancellation) for a customer.',
+          description:
+            'Searches, views, or modifies an existing water delivery order for a customer. Can update single or multiple attributes simultaneously: quantity, rate/price, delivery date, delivery time, location/venue, product SKU, payment mode, delivery notes/instructions, or status (confirm, deliver, cancel).',
           parameters: {
             type: 'OBJECT',
             properties: {
-              clientName: { type: 'STRING', description: 'Customer or caterer name whose order is being viewed or modified' },
-              changes: { type: 'STRING', description: 'Specific modification requested, e.g. "change quantity to 50 boxes", "postpone to tomorrow", "change time to 11 AM", "cancel order"' },
-              fieldToUpdate: { type: 'STRING', enum: ['quantity', 'date', 'time', 'location', 'price', 'confirm', 'cancel', 'select'], description: 'The specific attribute to update' },
-              newValue: { type: 'STRING', description: 'The new value for the attribute' },
-              targetDate: { type: 'STRING', description: 'Order date if known (YYYY-MM-DD)' }
+              clientName: {
+                type: 'STRING',
+                description: 'Customer or caterer name whose order is being viewed or modified',
+              },
+              changes: {
+                type: 'STRING',
+                description:
+                  'Specific modification requested, e.g. "change quantity to 50 boxes and time to 4 PM", "change location to PG Party Plot", "cancel order"',
+              },
+              fieldToUpdate: {
+                type: 'STRING',
+                description:
+                  'Specific single attribute being updated, e.g. "quantity", "date", "time", "location", "price", "sku", "paymentMode", "notes", "confirm", "deliver", "cancel".',
+              },
+              newValue: {
+                type: 'STRING',
+                description: 'The new value for the single attribute being updated',
+              },
+              targetDate: {
+                type: 'STRING',
+                description: 'Order date if known (YYYY-MM-DD)',
+              },
+              updates: {
+                type: 'OBJECT',
+                description:
+                  'Dictionary of fields to update simultaneously for multi-field modifications (e.g. { qty: 50, time: "16:00", location: "PG Party Plot" })',
+                properties: {
+                  qty: { type: 'INTEGER', description: 'Updated quantity of boxes' },
+                  rate: { type: 'NUMBER', description: 'Updated rate or price per box' },
+                  deliveryDate: { type: 'STRING', description: 'Updated delivery date (YYYY-MM-DD)' },
+                  deliveryTime: { type: 'STRING', description: 'Updated delivery time (e.g. 11 AM, 4 PM, 16:00)' },
+                  location: { type: 'STRING', description: 'Updated delivery venue, party plot, or address' },
+                  address: { type: 'STRING', description: 'Updated delivery address' },
+                  sku: { type: 'STRING', description: 'Updated product SKU (e.g. Anjani 200ml, Bailey 500ml)' },
+                  paymentMode: { type: 'STRING', description: 'Updated payment mode: cash, credit, upi' },
+                  notes: { type: 'STRING', description: 'Updated delivery notes or instructions' },
+                  status: { type: 'STRING', description: 'Updated status: Confirmed, Delivered, cancelled' }
+                }
+              }
             },
-            required: ['clientName']
-          }
+            required: ['clientName'],
+          },
         },
         {
           name: 'create_order',
@@ -2868,21 +2903,36 @@ ${rawText.slice(0, 3000)}`
         },
         {
           name: 'edit_client',
-          description: 'Updates an existing customer profile: phone number, address, contact person, default rate, or active/inactive status.',
+          description:
+            'Updates an existing customer profile: phone number, address, contact person, default rate, notes, or active/inactive status. Supports single or multiple fields simultaneously.',
           parameters: {
             type: 'OBJECT',
             properties: {
               clientName: { type: 'STRING', description: 'Customer or shop name' },
               fieldToUpdate: {
                 type: 'STRING',
-                enum: ['rate', 'mobile', 'address', 'location', 'contactPerson', 'active', 'inactive'],
-                description: 'The attribute to update'
+                description:
+                  'The attribute to update (e.g. rate, mobile, address, location, contactPerson, notes, active, inactive)',
               },
               newValue: { type: 'STRING', description: 'The new value for the field' },
-              active: { type: 'BOOLEAN', description: 'Set false to mark client inactive, true for active' }
+              active: { type: 'BOOLEAN', description: 'Set false to mark client inactive, true for active' },
+              updates: {
+                type: 'OBJECT',
+                description:
+                  'Dictionary of client fields to update simultaneously (e.g. { mobile: "9825012345", rate: 125, address: "Karelibaug" })',
+                properties: {
+                  mobile: { type: 'STRING', description: 'New phone number' },
+                  rate: { type: 'NUMBER', description: 'New default agreed rate' },
+                  address: { type: 'STRING', description: 'New address or venue' },
+                  location: { type: 'STRING', description: 'New location' },
+                  contactPerson: { type: 'STRING', description: 'Contact person name' },
+                  notes: { type: 'STRING', description: 'Client notes' },
+                  active: { type: 'BOOLEAN', description: 'Active or inactive status' },
+                },
+              },
             },
-            required: ['clientName']
-          }
+            required: ['clientName'],
+          },
         },
         {
           name: 'edit_payment',
@@ -3050,6 +3100,7 @@ RUNTIME CONTEXT:
               fieldToUpdate: args.fieldToUpdate || '',
               newValue: args.newValue || '',
               active: args.active,
+              updates: args.updates || null,
             },
           }
         }
