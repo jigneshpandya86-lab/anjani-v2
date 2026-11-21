@@ -19,7 +19,7 @@ import {
 import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 import AddStockModal from './AddStockModal'
 
-export default function StockDashboard({ onOpenReport, onOpenBaileyOrder }) {
+export default function StockDashboard({ onOpenReport }) {
   const {
     stockEntries,
     stockTotal,
@@ -233,17 +233,6 @@ export default function StockDashboard({ onOpenReport, onOpenBaileyOrder }) {
             </p>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            {onOpenBaileyOrder && (
-              <button
-                type="button"
-                onClick={onOpenBaileyOrder}
-                className="flex items-center gap-1 text-[9px] bg-white/15 hover:bg-white/25 text-[#ff9900] px-2.5 py-1 rounded-lg font-extrabold uppercase tracking-wider transition-all backdrop-blur-sm cursor-pointer shadow-2xs shrink-0"
-                title="Smart Bailey Water Replenishment Order based on consumption"
-              >
-                <Droplets size={11} className="text-[#ff9900]" />
-                <span>Order Bailey</span>
-              </button>
-            )}
             <button
               onClick={handleRecalculate}
               disabled={isSyncing || loading}
@@ -283,17 +272,6 @@ export default function StockDashboard({ onOpenReport, onOpenBaileyOrder }) {
                 SKU-Wise Live Breakdown
               </span>
               <div className="flex items-center gap-2">
-                {onOpenBaileyOrder && (
-                  <button
-                    type="button"
-                    onClick={onOpenBaileyOrder}
-                    className="text-[9px] font-black uppercase tracking-wide bg-white/15 hover:bg-white/25 text-[#ff9900] px-2 py-0.5 rounded-full flex items-center gap-1 transition-all cursor-pointer backdrop-blur-sm"
-                    title="Calculate consumption pattern and create Bailey replenishment order"
-                  >
-                    <Droplets size={9} className="text-[#ff9900]" />
-                    <span>Order Bailey</span>
-                  </button>
-                )}
                 <span className="text-[9px] text-white/60">Tap card to filter</span>
               </div>
             </div>

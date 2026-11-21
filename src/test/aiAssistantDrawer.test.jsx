@@ -63,6 +63,11 @@ const mockDeleteAccountExpense = vi.fn()
 const mockUpdateAccountExpense = vi.fn()
 const mockAddStockBatch = vi.fn()
 const mockRecordAccountTransfer = vi.fn()
+const mockDeleteAccountTransfer = vi.fn()
+const mockUpdateLead = vi.fn()
+let mockStaffTransactions = [
+  { id: 'st1', employeeId: 'nilesh', amount: 1500, status: 'active' },
+]
 const mockAddOrder = vi.fn()
 const mockUpdateOrder = vi.fn()
 let mockOrders = [
@@ -112,7 +117,9 @@ vi.mock('../store/clientStore', () => ({
       deleteAccountExpense: mockDeleteAccountExpense,
       updateAccountExpense: mockUpdateAccountExpense,
       recordAccountTransfer: mockRecordAccountTransfer,
+      deleteAccountTransfer: mockDeleteAccountTransfer,
       recordStaffAdvance: vi.fn(),
+      staffTransactions: mockStaffTransactions,
       staffList: [
         { id: 'nilesh', name: 'Nilesh', mobile: '7990943652' },
         { id: 'hiteshbhai', name: 'Hiteshbhai', mobile: '7778077617' },
@@ -120,6 +127,7 @@ vi.mock('../store/clientStore', () => ({
       leads: [
         { id: 'lead-1', name: 'Krishna Hotel', area: 'Manjalpur', mobile: '9988776655', business_type: 'Hotel' },
       ],
+      updateLead: mockUpdateLead,
       fetchLeads: vi.fn(),
       accountsSummary: { balances: {} },
       jobs: [
@@ -1940,6 +1948,324 @@ describe('AiAssistantDrawer', () => {
     await waitFor(() => {
       expect(screen.getByText(/Prospective B2B Leads/i)).toBeInTheDocument()
       expect(screen.getByText(/Krishna Hotel/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('records stock damage and leakage when record_stock_damage is invoked', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'record_stock_damage',
+        data: {
+          sku: 'Anjani 200ml',
+          qty: 5,
+          reason: 'Transit breakage',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: '5 box 200ml damage thaya chhe' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockAddStockBatch).toHaveBeenCalledWith(
+        [{ sku: 'Anjani 200ml', qty: -5, rate: 0 }],
+        'Damage / Leakage: Transit breakage'
+      )
+      expect(screen.getByText(/Stock Damage \/ Leakage Recorded/i)).toBeInTheDocument()
+      expect(screen.getByText(/-5 boxes/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('cancels and reverses a cash handover when cancel_transfer is invoked', async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      empty: false,
+      docs: [
+        {
+          id: 'trans-999',
+          data: () => ({
+            amount: 5000,
+            fromAccountId: 'nilesh',
+            toAccountId: 'counter',
+            date: new Date(),
+          }),
+        },
+      ],
+    })
+
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'cancel_transfer',
+        data: {
+          amount: 5000,
+          fromAccountId: 'nilesh',
+          reason: 'Mistake in entry',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Cancel handover of 5000 from Nilesh' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockDeleteAccountTransfer).toHaveBeenCalledWith('trans-999')
+      expect(screen.getByText(/Cash Handover Cancelled & Reversed/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('converts a prospective lead to active client when convert_lead is invoked', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'convert_lead',
+        data: {
+          leadName: 'Krishna Hotel',
+          rate: 125,
+          mobile: '9988776655',
+          address: 'Manjalpur Vadodara',
+          notes: 'Converted from B2B radar',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Convert lead Krishna Hotel to client with rate 125' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(mockAddClient).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Krishna Hotel',
+          rate: 125,
+          mobile: '9988776655',
+        })
+      )
+      expect(mockUpdateLead).toHaveBeenCalledWith(
+        'lead-1',
+        expect.objectContaining({ status: 'converted' })
+      )
+      expect(screen.getByText(/Lead Converted to Customer Client!/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('queries celebrations for today when query_celebrations is invoked', async () => {
+    const now = new Date()
+    const todayMD = String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
+
+    mockGetDocs.mockResolvedValueOnce({
+      empty: false,
+      docs: [
+        {
+          id: 'cel-1',
+          data: () => ({
+            name: 'Jay Ambe Provision',
+            birthday: todayMD,
+            phone: '9876543210',
+          }),
+        },
+      ],
+    })
+
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'query_celebrations',
+        data: {
+          period: 'today',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Whose birthday is it today?' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(screen.getByText(/Celebrations Today/i)).toBeInTheDocument()
+      expect(screen.getByText(/Jay Ambe Provision/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('prepares celebration wish link when send_celebration_wish is invoked', async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      empty: false,
+      docs: [
+        {
+          id: 'cel-1',
+          data: () => ({
+            name: 'Jay Ambe Provision',
+            phone: '9876543210',
+          }),
+        },
+      ],
+    })
+
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'send_celebration_wish',
+        data: {
+          contactName: 'Jay Ambe Provision',
+          type: 'birthday',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Send birthday wish to Jay Ambe' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(screen.getByText(/Celebration Wish Prepared for Jay Ambe Provision/i)).toBeInTheDocument()
+      expect(screen.getByText(/Send WhatsApp to Jay Ambe Provision/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('prepares instant delivery invoice action card when generate_invoice is invoked', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'generate_invoice',
+        data: {
+          clientName: 'Jay Ambe',
+          channel: 'whatsapp',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Send invoice to Jay Ambe' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(screen.getByText(/Delivery Invoice Ready for Jay Ambe/i)).toBeInTheDocument()
+      expect(screen.getByText(/Share Invoice WhatsApp/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('prepares customer ledger statement report card when generate_statement is invoked', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'generate_statement',
+        data: {
+          clientName: 'Jay Ambe',
+          dateRange: 'current-month',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Show ledger statement for Jay Ambe' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(screen.getByText(/Account Ledger Statement: Jay Ambe/i)).toBeInTheDocument()
+      expect(screen.getByText(/Open Ledger Statement/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('queries driver cash custody and active advances when query_staff_balance is invoked', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'query_staff_balance',
+        data: {
+          staffName: 'Nilesh',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Nilesh nu ketlu baaki chhe?' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(screen.getByText(/Staff Driver Balances & Advances/i)).toBeInTheDocument()
+      expect(screen.getByText(/Route Cash Custody/i)).toBeInTheDocument()
     })
 
     unmount()

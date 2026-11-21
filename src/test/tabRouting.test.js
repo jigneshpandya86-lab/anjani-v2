@@ -13,7 +13,6 @@ const VALID_TABS = [
   'celebrations',
   'leads',
   'settings',
-  'bailey-order',
 ]
 
 const TAB_STORAGE_KEY = 'anjani_active_tab'

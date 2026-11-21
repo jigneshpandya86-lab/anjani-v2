@@ -34,7 +34,7 @@ import { getNormalizedOrderStatus } from '../utils/orderUtils'
 import { checkIsDayTime } from '../services/taskService'
 import { sendBackgroundSms } from '../services/leadSmsService'
 
-function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOpenBaileyOrder }) {
+function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
   const orders = useClientStore((state) => state.orders)
   const hasMoreOrders = useClientStore((state) => state.hasMoreOrders)
   const loadingOlderOrders = useClientStore((state) => state.loadingOlderOrders)
@@ -661,17 +661,6 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice, onOp
         >
           <Smartphone size={12} /> Roster
         </button>
-
-        {onOpenBaileyOrder && (
-          <button
-            type="button"
-            onClick={onOpenBaileyOrder}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider whitespace-nowrap flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
-            title="Create Bailey replenishment order based on consumption & stock"
-          >
-            <Droplets size={12} /> Bailey Order
-          </button>
-        )}
       </div>
 
       {/* ─── Expandable Month / Custom Range Selector ─── */}

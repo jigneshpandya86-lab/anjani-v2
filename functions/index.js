@@ -3131,6 +3131,113 @@ ${rawText.slice(0, 3000)}`
               corridor: { type: 'STRING', description: 'Specific corridor or zone to scan (e.g. "Vadodara Central", "Alkapuri", "Makarpura")' },
             },
           },
+        },
+        {
+          name: 'record_stock_damage',
+          description:
+            'Records damaged, broken, or leaked stock written off from warehouse inventory (e.g. "5 boxes 200ml damaged in transit", "2 cases Bailey 1L leaked", "Write off 4 boxes broken").',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              sku: { type: 'STRING', description: 'Product SKU (e.g. "Anjani 200ml", "Bailey 500ml", "Bailey 1 Liter", "Bailey 250ml")' },
+              qty: { type: 'NUMBER', description: 'Quantity of boxes or cases damaged / written off' },
+              reason: { type: 'STRING', description: 'Reason for damage (e.g. "Transit breakage", "Leaking caps", "Warehouse damage")' },
+            },
+            required: ['qty'],
+          },
+        },
+        {
+          name: 'cancel_transfer',
+          description:
+            'Reverses or cancels an erroneous cash handover or account transfer between staff and counter/bank (e.g. "Cancel cash transfer of 5000", "Mistake, cancel handover from Nilesh", "Reverse transfer 2000").',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              amount: { type: 'NUMBER', description: 'Transfer amount in INR to cancel/reverse' },
+              fromAccountId: { type: 'STRING', enum: ['nilesh', 'hiteshbhai', 'counter', 'bank'], description: 'Original source account' },
+              toAccountId: { type: 'STRING', enum: ['counter', 'bank', 'nilesh', 'hiteshbhai'], description: 'Original destination account' },
+              reason: { type: 'STRING', description: 'Reason for cancellation' },
+            },
+            required: ['amount'],
+          },
+        },
+        {
+          name: 'convert_lead',
+          description:
+            'Converts a prospective B2B lead into an active customer client (e.g. "Convert lead Shreeji Dining to customer with rate 130", "Convert Maruti Caterers from leads to client", "Onboard lead into client").',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              leadName: { type: 'STRING', description: 'Name of the prospective lead to convert' },
+              rate: { type: 'NUMBER', description: 'Agreed box delivery rate in INR (defaults to 130)' },
+              mobile: { type: 'STRING', description: 'Contact phone number' },
+              address: { type: 'STRING', description: 'Shop or venue address' },
+              notes: { type: 'STRING', description: 'Notes or remarks' },
+            },
+            required: ['leadName'],
+          },
+        },
+        {
+          name: 'query_celebrations',
+          description:
+            'Inquires customer or contact birthdays and anniversaries for today, upcoming this week, or this month (e.g. "Whose birthday is it today?", "Upcoming birthdays", "Aaje kono birthday chhe?", "Any anniversaries today?").',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              period: { type: 'STRING', enum: ['today', 'upcoming', 'month'], description: 'Time window to check (defaults to "today")' },
+            },
+          },
+        },
+        {
+          name: 'send_celebration_wish',
+          description:
+            'Prepares and sends a personalized festive, birthday, or anniversary greeting on WhatsApp (e.g. "Send birthday wish to Jay Ambe", "Wish Kamleshbhai happy anniversary", "Send Diwali greeting to Maruti Caterers").',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              contactName: { type: 'STRING', description: 'Name of the customer or contact person' },
+              type: { type: 'STRING', enum: ['birthday', 'anniversary', 'festival'], description: 'Type of celebration wish' },
+              customMessage: { type: 'STRING', description: 'Optional custom greeting message' },
+            },
+            required: ['contactName'],
+          },
+        },
+        {
+          name: 'generate_invoice',
+          description:
+            'Generates or triggers a customer delivery invoice to view or share on WhatsApp (e.g. "Create invoice for Maruti Caterers", "Send bill to Bhaveshbhai", "Bill WhatsApp karo", "Generate invoice for today delivery").',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              clientName: { type: 'STRING', description: 'Customer or shop name' },
+              channel: { type: 'STRING', enum: ['whatsapp', 'view'], description: 'Share channel (defaults to "whatsapp")' },
+            },
+            required: ['clientName'],
+          },
+        },
+        {
+          name: 'generate_statement',
+          description:
+            'Generates or exports a customer financial ledger statement report (e.g. "Show account statement for Maruti Caterers", "Send ledger to Kamleshbhai", "Generate statement PDF").',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              clientName: { type: 'STRING', description: 'Customer or shop name' },
+              dateRange: { type: 'STRING', enum: ['current-month', 'last-month', 'financial-year', 'all'], description: 'Statement period (defaults to "current-month")' },
+            },
+            required: ['clientName'],
+          },
+        },
+        {
+          name: 'query_staff_balance',
+          description:
+            'Inquires staff route cash custody, pending salary advances, and outstanding dues for drivers (e.g. "Nilesh nu ketlu baaki chhe?", "How much advance does Nilesh have?", "Cash and advances with Hiteshbhai", "Staff balance").',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              staffName: { type: 'STRING', enum: ['Nilesh', 'Hiteshbhai', 'all'], description: 'Driver staff name (defaults to "all")' },
+            },
+          },
         }
       ]
 
@@ -3419,6 +3526,107 @@ RUNTIME CONTEXT:
             text: textPart?.text || '',
             data: {
               corridor: args.corridor || '',
+            },
+          }
+        }
+
+        if (returnType === 'record_stock_damage') {
+          return {
+            type: 'record_stock_damage',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              sku: args.sku || 'Anjani 200ml',
+              qty: Number(args.qty) || 0,
+              reason: args.reason || 'Damage / Leakage',
+            },
+          }
+        }
+
+        if (returnType === 'cancel_transfer') {
+          return {
+            type: 'cancel_transfer',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              amount: Number(args.amount) || 0,
+              fromAccountId: args.fromAccountId || '',
+              toAccountId: args.toAccountId || '',
+              reason: args.reason || '',
+            },
+          }
+        }
+
+        if (returnType === 'convert_lead') {
+          return {
+            type: 'convert_lead',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              leadName: args.leadName || '',
+              rate: Number(args.rate) || 130,
+              mobile: args.mobile || '',
+              address: args.address || '',
+              notes: args.notes || '',
+            },
+          }
+        }
+
+        if (returnType === 'query_celebrations') {
+          return {
+            type: 'query_celebrations',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              period: args.period || 'today',
+            },
+          }
+        }
+
+        if (returnType === 'send_celebration_wish') {
+          return {
+            type: 'send_celebration_wish',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              contactName: args.contactName || '',
+              type: args.type || 'birthday',
+              customMessage: args.customMessage || '',
+            },
+          }
+        }
+
+        if (returnType === 'generate_invoice') {
+          return {
+            type: 'generate_invoice',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              clientName: args.clientName || '',
+              channel: args.channel || 'whatsapp',
+            },
+          }
+        }
+
+        if (returnType === 'generate_statement') {
+          return {
+            type: 'generate_statement',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              clientName: args.clientName || '',
+              dateRange: args.dateRange || 'current-month',
+            },
+          }
+        }
+
+        if (returnType === 'query_staff_balance') {
+          return {
+            type: 'query_staff_balance',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              staffName: args.staffName || 'all',
             },
           }
         }

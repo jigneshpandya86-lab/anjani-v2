@@ -113,9 +113,11 @@ export default function AiAssistantDrawer({
   const deleteAccountExpense = useClientStore((state) => state.deleteAccountExpense)
   const updateAccountExpense = useClientStore((state) => state.updateAccountExpense)
   const recordAccountTransfer = useClientStore((state) => state.recordAccountTransfer)
+  const deleteAccountTransfer = useClientStore((state) => state.deleteAccountTransfer)
   const recordStaffAdvance = useClientStore((state) => state.recordStaffAdvance)
   const staffList = useClientStore((state) => state.staffList)
   const accountsSummary = useClientStore((state) => state.accountsSummary)
+  const staffTransactions = useClientStore((state) => state.staffTransactions || [])
   const jobs = useClientStore((state) => state.jobs || [])
   const fetchJobs = useClientStore((state) => state.fetchJobs)
   const addStaffJob = useClientStore((state) => state.addStaffJob)
@@ -130,6 +132,7 @@ export default function AiAssistantDrawer({
   const clearAllAiFeedbacks = useClientStore((state) => state.clearAllAiFeedbacks)
   const aiFeedbacks = useClientStore((state) => state.aiFeedbacks)
   const leads = useClientStore((state) => state.leads || [])
+  const updateLead = useClientStore((state) => state.updateLead)
   const fetchLeads = useClientStore((state) => state.fetchLeads)
 
   const [activeChatbotFlow, setActiveChatbotFlow] = useState(null)
@@ -1132,6 +1135,51 @@ export default function AiAssistantDrawer({
         onClose?.()
       } else {
         handleSend('Show prospective leads')
+      }
+      return
+    }
+    if (chip.action === 'view_celebrations') {
+      if (onNavigateTab) {
+        onNavigateTab('celebrations')
+        onClose?.()
+      }
+      return
+    }
+    if (chip.action === 'view_staff') {
+      if (onNavigateTab) {
+        onNavigateTab('staff')
+        onClose?.()
+      }
+      return
+    }
+    if (chip.action === 'view_clients') {
+      if (onNavigateTab) {
+        onNavigateTab('clients')
+        onClose?.()
+      }
+      return
+    }
+    if (typeof chip.action === 'string' && chip.action.startsWith('open_url:')) {
+      const targetUrl = chip.action.slice('open_url:'.length)
+      if (targetUrl) {
+        window.open(targetUrl, '_blank')
+      }
+      return
+    }
+    if (typeof chip.action === 'string' && chip.action.startsWith('create_order:')) {
+      const cli = chip.action.slice('create_order:'.length)
+      handleSend(`Book order for ${cli}`)
+      return
+    }
+    if (typeof chip.action === 'string' && chip.action.startsWith('share_invoice:')) {
+      const cli = chip.action.slice('share_invoice:'.length)
+      handleSend(`Send bill to ${cli}`)
+      return
+    }
+    if (typeof chip.action === 'string' && chip.action.startsWith('open_ledger:')) {
+      if (onNavigateTab) {
+        onNavigateTab('clients')
+        onClose?.()
       }
       return
     }
@@ -3313,6 +3361,308 @@ export default function AiAssistantDrawer({
           toast.dismiss('lead-scan')
           toast.error('Lead discovery failed: ' + err.message)
         }
+      } else if (resData.type === 'record_stock_damage') {
+        const { sku, qty, reason } = resData.data || {}
+        const parsedQty = Number(qty) || 0
+        if (parsedQty > 0) {
+          try {
+            const targetSku = sku || 'Anjani 200ml'
+            const damageReason = reason || 'Damage / Leakage'
+            await addStockBatch(
+              [{ sku: targetSku, qty: -parsedQty, rate: 0 }],
+              `Damage / Leakage: ${damageReason}`
+            )
+            toast.success(`Recorded damage: -${parsedQty} boxes of ${targetSku}`)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `💔 **Stock Damage / Leakage Recorded**:\n• Product: **${targetSku}**\n• Quantity Written Off: **-${parsedQty} boxes**\n• Reason: *${damageReason}*\nLive inventory deducted ✓`,
+                type: 'stock_damage',
+                chips: [{ label: 'Check Stock', action: 'query_stock' }],
+                timestamp: new Date(),
+              },
+            ])
+          } catch (err) {
+            toast.error('Failed to record damage: ' + err.message)
+          }
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: 'Please specify the quantity of damaged boxes (e.g. *"5 boxes 200ml damaged in transit"*).',
+              type: 'stock_damage',
+              timestamp: new Date(),
+            },
+          ])
+        }
+      } else if (resData.type === 'cancel_transfer') {
+        const { amount, fromAccountId, toAccountId, reason } = resData.data || {}
+        const numAmount = Number(amount) || 0
+        try {
+          const q = firestoreQuery(
+            collection(db, 'account_transfers'),
+            orderBy('date', 'desc'),
+            limit(20)
+          )
+          const snap = await getDocs(q)
+          let targetDoc = null
+          for (const d of snap.docs) {
+            const row = d.data()
+            const rowAmt = Number(row.amount) || 0
+            if (numAmount > 0 && Math.abs(rowAmt - numAmount) < 1) {
+              if (!fromAccountId || row.fromAccountId === fromAccountId) {
+                targetDoc = { id: d.id, ...row }
+                break
+              }
+            } else if (numAmount === 0) {
+              if (!fromAccountId || row.fromAccountId === fromAccountId) {
+                targetDoc = { id: d.id, ...row }
+                break
+              }
+            }
+          }
+          if (targetDoc && deleteAccountTransfer) {
+            await deleteAccountTransfer(targetDoc.id)
+            const amtStr = Number(targetDoc.amount || numAmount).toLocaleString('en-IN')
+            toast.success(`Transfer of ₹${amtStr} cancelled and reversed!`)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `↩️ **Cash Handover Cancelled & Reversed**:\n• Amount Refunded: **₹${amtStr}**\n• Sender: **${targetDoc.fromAccountId || 'Staff'}** (credited back)\n• Receiver: **${targetDoc.toAccountId || 'Counter'}** (debited back)\n• Reason: *${reason || 'User requested reversal'}*\nAccount balances restored ✓`,
+                type: 'transfer_cancelled',
+                chips: [{ label: 'View Accounts', action: 'view_ledger' }],
+                timestamp: new Date(),
+              },
+            ])
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `Could not find a recent cash transfer matching ₹${numAmount.toLocaleString('en-IN')}. Please verify the amount in Accounts.`,
+                type: 'transfer_cancelled',
+                timestamp: new Date(),
+              },
+            ])
+          }
+        } catch (err) {
+          toast.error('Failed to cancel transfer: ' + err.message)
+        }
+      } else if (resData.type === 'convert_lead') {
+        const { leadName, rate, mobile, address, notes } = resData.data || {}
+        try {
+          const targetName = (leadName || '').trim()
+          const matchedLead = (leads || []).find((l) => {
+            const lName = (l.name || '').toLowerCase()
+            const tName = targetName.toLowerCase()
+            return lName.includes(tName) || tName.includes(lName)
+          })
+          const finalName = targetName || matchedLead?.name || 'New Client'
+          const finalPhone = mobile || matchedLead?.mobile || matchedLead?.phone || ''
+          const finalAddr = address || matchedLead?.address || matchedLead?.area || ''
+          const boxRate = Number(rate) || 130
+
+          await addClient({
+            name: finalName,
+            mobile: finalPhone,
+            address: finalAddr,
+            rate: boxRate,
+            notes: notes || 'Converted from Lead',
+          })
+          if (matchedLead?.id && updateLead) {
+            await updateLead(matchedLead.id, {
+              Tag: 'FOLLOWUP_DONE',
+              tag: 'FOLLOWUP_DONE',
+              status: 'converted',
+            })
+          }
+          toast.success(`🎉 '${finalName}' converted to Active Client!`)
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: `🎉 **Lead Converted to Customer Client!**\n• Client: **${finalName}**\n• Agreed Rate: **₹${boxRate}/box**\n• Phone: **${finalPhone || 'N/A'}**\n• Location/Address: **${finalAddr || 'Vadodara'}**\nClient profile active and ready for orders ✓`,
+              type: 'lead_converted',
+              chips: [
+                { label: `Book Order for ${finalName}`, action: `create_order:${finalName}` },
+                { label: 'View Clients', action: 'view_clients' },
+              ],
+              timestamp: new Date(),
+            },
+          ])
+        } catch (err) {
+          toast.error('Failed to convert lead: ' + err.message)
+        }
+      } else if (resData.type === 'query_celebrations') {
+        try {
+          const snap = await getDocs(
+            firestoreQuery(collection(db, 'celebrations'), orderBy('name', 'asc'))
+          )
+          const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+          const now = new Date()
+          const curMD = String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
+
+          const todayList = []
+          for (const c of all) {
+            const b = c.birthday ? (c.birthday.length === 5 ? c.birthday : c.birthday.slice(5)) : ''
+            const a = c.anniversary ? (c.anniversary.length === 5 ? c.anniversary : c.anniversary.slice(5)) : ''
+            if (b === curMD && a === curMD) {
+              todayList.push(`${c.name} (🎂 Birthday & 💑 Anniversary Today!)`)
+            } else if (b === curMD) {
+              todayList.push(`${c.name} (🎂 Birthday Today!)`)
+            } else if (a === curMD) {
+              todayList.push(`${c.name} (💑 Anniversary Today!)`)
+            }
+          }
+
+          let celebrationText = ''
+          if (todayList.length > 0) {
+            celebrationText = `🎉 **Celebrations Today (${todayList.length})**:\n` + todayList.map((t, i) => `${i + 1}. **${t}**`).join('\n')
+          } else {
+            celebrationText = '🎂 No customer birthdays or anniversaries scheduled for today.'
+          }
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: celebrationText,
+              type: 'celebrations_query',
+              chips: [{ label: 'View Celebrations Tab', action: 'view_celebrations' }],
+              timestamp: new Date(),
+            },
+          ])
+        } catch (err) {
+          toast.error('Failed to query celebrations: ' + err.message)
+        }
+      } else if (resData.type === 'send_celebration_wish') {
+        const { contactName, type, customMessage } = resData.data || {}
+        try {
+          const snap = await getDocs(
+            firestoreQuery(collection(db, 'celebrations'), orderBy('name', 'asc'))
+          )
+          const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+          const tName = (contactName || '').toLowerCase().trim()
+          const matched = all.find((c) => (c.name || '').toLowerCase().includes(tName)) ||
+            (clients || []).find((c) => (c.name || '').toLowerCase().includes(tName))
+          const nameToUse = matched?.name || contactName || 'Friend'
+          const phoneToUse = matched?.phone || matched?.mobile || ''
+
+          let greeting = customMessage
+          if (!greeting) {
+            if (type === 'anniversary') {
+              greeting = `Dear ${nameToUse}, wishing you a very Happy Marriage Anniversary! May your bond grow stronger and sweeter each year. Best wishes from Jignesh Pandya & Anjani Water.`
+            } else if (type === 'festival') {
+              greeting = `Dear ${nameToUse}, wishing you and your family a very happy and joyous festival! Warm wishes from Jignesh Pandya & Anjani Packaged Drinking Water.`
+            } else {
+              greeting = `Dear ${nameToUse}, wishing you a very Happy Birthday! May you be blessed with good health, joy, and prosperity. Warm wishes from Jignesh Pandya & Anjani Water.`
+            }
+          }
+
+          const encoded = encodeURIComponent(greeting)
+          const waUrl = phoneToUse ? `https://wa.me/91${phoneToUse}?text=${encoded}` : `https://wa.me/?text=${encoded}`
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: `💌 **Celebration Wish Prepared for ${nameToUse}**:\n*"${greeting}"*\n\nTap below to send directly via WhatsApp:`,
+              type: 'celebration_wish',
+              chips: [
+                { label: `Send WhatsApp to ${nameToUse}`, action: `open_url:${waUrl}` },
+                { label: 'View Celebrations', action: 'view_celebrations' },
+              ],
+              timestamp: new Date(),
+            },
+          ])
+        } catch (err) {
+          toast.error('Failed to prepare celebration greeting: ' + err.message)
+        }
+      } else if (resData.type === 'generate_invoice') {
+        const { clientName } = resData.data || {}
+        const client = findMatchingClient(clientName, clients)
+        const nameToUse = client?.name || clientName || 'Customer'
+        const clientOrders = (orders || []).filter((o) =>
+          (o.clientName || o.name || '').toLowerCase().includes(nameToUse.toLowerCase())
+        )
+        const latestOrder = clientOrders[0] || null
+        const total = latestOrder ? Number(latestOrder.totalAmount || 0) : 0
+        const items = latestOrder?.items || [{ sku: 'Anjani 200ml', qty: latestOrder?.qty || 10, rate: 130 }]
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `📄 **Delivery Invoice Ready for ${nameToUse}**:\n• Order Date: **${latestOrder?.deliveryDate || 'Today'}**\n• Amount: **₹${total > 0 ? total.toLocaleString('en-IN') : 'Standard Rates'}**\n• Items: ${items.map((it) => `${it.qty} ${it.sku || 'Box'}`).join(', ')}\n\nTap below to share or preview invoice:`,
+            type: 'invoice_ready',
+            chips: [
+              { label: `Share Invoice WhatsApp`, action: `share_invoice:${nameToUse}` },
+              { label: 'View Orders', action: 'view_orders' },
+            ],
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'generate_statement') {
+        const { clientName, dateRange } = resData.data || {}
+        const client = findMatchingClient(clientName, clients)
+        const nameToUse = client?.name || clientName || 'Customer'
+        const dues = Number(client?.outstanding || 0)
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `📊 **Account Ledger Statement: ${nameToUse}**:\n• Current Outstanding Balance: **₹${dues.toLocaleString('en-IN')}**\n• Period: **${dateRange || 'Current Month'}**\n• Phone: **${client?.mobile || 'N/A'}**\n\nTap below to open full ledger report:`,
+            type: 'statement_ready',
+            chips: [
+              { label: `Open Ledger Statement`, action: `open_ledger:${client?.id || nameToUse}` },
+              { label: 'View Clients', action: 'view_clients' },
+            ],
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'query_staff_balance') {
+        const { staffName } = resData.data || {}
+        const staffToCheck = staffName && staffName.toLowerCase() !== 'all' ? [staffName.toLowerCase()] : ['nilesh', 'hiteshbhai']
+        const lines = []
+        for (const sId of staffToCheck) {
+          const custody = Number(accountsSummary?.[sId] || 0)
+          const staffAdvs = (staffTransactions || []).filter(
+            (tx) => tx.employeeId === sId && (tx.status === 'active' || !tx.status)
+          )
+          const totalAdv = staffAdvs.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0)
+          const sLabel = sId === 'nilesh' ? 'Nilesh' : sId === 'hiteshbhai' ? 'Hiteshbhai' : sId
+          lines.push(
+            `👤 **${sLabel}**:\n  • Route Cash Custody: **₹${custody.toLocaleString('en-IN')}**\n  • Active Salary Advance: **₹${totalAdv.toLocaleString('en-IN')}**`
+          )
+        }
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `💼 **Staff Driver Balances & Advances**:\n\n${lines.join('\n\n')}\n\n*Route cash is collected customer money; advance is salary drawn.*`,
+            type: 'staff_balance_query',
+            chips: [
+              { label: 'View Staff Salaries', action: 'view_staff' },
+              { label: 'View Accounts', action: 'view_ledger' },
+            ],
+            timestamp: new Date(),
+          },
+        ])
       } else if (resData.type === 'update_date') {
         const { clientName, targetDate, targetDateLabel } = resData.data || {}
         let targetOrder = null

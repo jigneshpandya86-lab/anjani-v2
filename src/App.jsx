@@ -61,7 +61,6 @@ import CelebrationsTab from './components/CelebrationsTab'
 import ExpensesDashboard from './components/ExpensesDashboard'
 import AccountsDashboard from './components/AccountsDashboard'
 import StaffSalariesDashboard from './components/StaffSalariesDashboard'
-import BaileyOrderPage from './components/BaileyOrderPage'
 import AccountsLedgerReportModal from './components/AccountsLedgerReportModal'
 import CustomerLedgerReportModal from './components/CustomerLedgerReportModal'
 import NetworkStatusBar from './components/NetworkStatusBar'
@@ -89,7 +88,6 @@ const VALID_TABS = [
   'celebrations',
   'leads',
   'settings',
-  'bailey-order',
   'staff',
 ]
 
@@ -400,7 +398,7 @@ function App() {
 
   useEffect(() => {
     if (!authLoading && userRole && userRole !== 'admin') {
-      const adminOnlyTabs = ['accounts', 'expenses', 'bailey-order']
+      const adminOnlyTabs = ['accounts', 'expenses']
       if (adminOnlyTabs.includes(activeTab)) {
         setActiveTab('orders')
       }
@@ -762,15 +760,6 @@ function App() {
         setActiveTab('payments')
         setPayClient({})
         setPaymentPrefill(null)
-        setDrawerOpen(false)
-      },
-    },
-    {
-      id: 'quick-order-bailey',
-      label: 'Order Bailey Water',
-      icon: <Droplets size={18} />,
-      onClick: () => {
-        setActiveTab('bailey-order')
         setDrawerOpen(false)
       },
     },
@@ -1313,17 +1302,12 @@ function App() {
               }}
               onRecordPayment={handleRecordPaymentFromOrder}
               onShareInvoice={handleOrderInvoiceWhatsApp}
-              onOpenBaileyOrder={() => setActiveTab('bailey-order')}
             />
           )}
           {activeTab === 'stock' && (
             <StockDashboard
               onOpenReport={() => setStockModalOpen(true)}
-              onOpenBaileyOrder={() => setActiveTab('bailey-order')}
             />
-          )}
-          {activeTab === 'bailey-order' && userRole === 'admin' && (
-            <BaileyOrderPage onBack={() => setActiveTab('stock')} />
           )}
           {activeTab === 'payments' && (
             <PaymentDashboard onNavigateAccounts={() => setActiveTab('accounts')} />
