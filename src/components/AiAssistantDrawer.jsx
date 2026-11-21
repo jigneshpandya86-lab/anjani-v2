@@ -7382,9 +7382,11 @@ export default function AiAssistantDrawer({
           )))}
 
           {loading && (
-            <div className="flex gap-2.5 items-center text-gray-500 text-xs italic pl-2">
+            <div className="flex gap-2.5 items-center text-gray-600 text-xs pl-2">
               <Loader2 className="w-4 h-4 animate-spin text-[#ff9900]" />
-              <span>Analyzing bill with {aiSettings?.activeModel || 'Gemini Flash Lite'}...</span>
+              <span className="font-medium text-gray-600">
+                {selectedFile ? 'Anjani AI is scanning document…' : 'Anjani AI is thinking…'}
+              </span>
             </div>
           )}
 
