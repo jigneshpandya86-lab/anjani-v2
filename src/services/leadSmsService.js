@@ -170,7 +170,11 @@ export const buildLeadWhatsAppMessage = (_lead = {}) => {
     `🎉 *Marriages & Family Events*\n` +
     `🏷️ *Customer Branding* (customized label/logo)\n` +
     `📦 *Retail & Daily Supply*\n\n` +
-    `We provide fast doorstep delivery across Vadodara. Let us know your requirement or reply for rates! 😊`
+    `We provide fast doorstep delivery across Vadodara. Let us know your requirement or reply for rates! 😊\n\n` +
+    `To view photo of Anjani Water:\n\n` +
+    `https://maps.app.goo.gl/TgqHa1veYG6Da8MRA?g_st=ac\n\n` +
+    `To Order Anjani Water:\n\n` +
+    `https://www.anjaniwater.in/contact.html#order`
   )
 }
 

@@ -310,16 +310,23 @@ export default function LeadsDashboard({
 
       setIsSavingLead(true)
       try {
-        await addLead({
+        const leadData = {
           name,
           mobile,
           source: 'manual',
           Tag: null,
-        })
-        toast.success('Lead added')
+        }
+        await addLead(leadData)
         setNewLeadName('')
         setNewLeadMobile('')
         setShowAddForm(false)
+
+        // Automatically open WhatsApp outreach with formatted greeting and direct links
+        if (mobile && typeof window !== 'undefined' && typeof window.open === 'function') {
+          const msg = buildLeadWhatsAppMessage(leadData)
+          window.open(`https://wa.me/91${mobile}?text=${encodeURIComponent(msg)}`, '_blank')
+        }
+        toast.success('Lead added! WhatsApp greeting opened.')
       } catch (error) {
         console.error('Failed to add lead:', error)
         toast.error('Failed to add lead')

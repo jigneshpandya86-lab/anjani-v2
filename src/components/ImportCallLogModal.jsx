@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { Phone, Clipboard, AlertTriangle, Info, CheckCircle2, X, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { extractPhoneNumber, checkNumberCollisions } from '../utils/shareTargetUtils'
+import { buildLeadWhatsAppMessage } from '../services/leadSmsService'
 import { useClientStore } from '../store/clientStore'
 
 export default function ImportCallLogModal({
@@ -115,6 +116,12 @@ export default function ImportCallLogModal({
         await addLead(leadPayload)
         toast.success(`Lead added: ${cleanPhone}`)
         if (onLeadAdded) onLeadAdded(leadPayload)
+
+        // Automatically open WhatsApp outreach with formatted message and direct links
+        if (cleanPhone && typeof window !== 'undefined' && typeof window.open === 'function') {
+          const msg = buildLeadWhatsAppMessage(leadPayload)
+          window.open(`https://wa.me/91${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank')
+        }
         onClose()
       } catch (err) {
         console.error('Failed to add lead from call log / share:', err)

@@ -106,6 +106,8 @@ describe('leadSmsService', () => {
       expect(msgWithName).toContain('Marriages & Family Events')
       expect(msgWithName).toContain('Customer Branding')
       expect(msgWithName).toContain('Retail & Daily Supply')
+      expect(msgWithName).toContain('https://maps.app.goo.gl/TgqHa1veYG6Da8MRA?g_st=ac')
+      expect(msgWithName).toContain('https://www.anjaniwater.in/contact.html#order')
 
       const msgNoName = buildLeadWhatsAppMessage({})
       expect(msgNoName.startsWith('Dear Sir/Madam,')).toBe(true)
