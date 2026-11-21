@@ -182,10 +182,18 @@ describe('clientMatchingUtils', () => {
       { id: 'c4', name: 'Pooja Cold Drinks', mobile: '9123456789', outstanding: 0 },
     ]
 
-    it('returns exact match if present', () => {
-      const best = findBestExistingClientMatch('Sandip Patel', clients)
-      expect(best).toBeDefined()
-      expect(best.id).toBe('c1')
+    it('matches PARMAR DHRUMIL RAMJIBHAI to Drumil Bhai instead of AlpeshbhaiParmar even when surname candidates appear first', () => {
+      const testClients = [
+        { id: 'c2', name: 'AlpeshbhaiParmar', displayName: 'AlpeshbhaiParmar', mobile: '9925506269', outstanding: 0 },
+        { id: 'c3', name: 'Raj Parmar', displayName: 'Raj Parmar', mobile: '918460247508', outstanding: 0 },
+        { id: 'c1', name: 'Drumil Bhai', displayName: 'Drumil Bhai', mobile: '9712636271', outstanding: 0 },
+      ]
+      const match1 = findMatchingClient('PARMAR DHRUMIL RAMJIBHAI', testClients)
+      expect(match1).not.toBeNull()
+      expect(match1.client.name).toBe('Drumil Bhai')
+
+      const best = findBestExistingClientMatch('PARMAR DHRUMIL RAMJIBHAI', testClients)
+      expect(best.name).toBe('Drumil Bhai')
     })
 
     it('returns phonetic match (Sandeep -> Sandip Patel)', () => {

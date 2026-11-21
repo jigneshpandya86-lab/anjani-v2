@@ -2326,8 +2326,10 @@ ${rawText.slice(0, 3000)}`
         }
       }
 
-      // 0. Check for compound action intent in text (only if explicit compound_action mode)
-      const isCompoundTextIntent = mode === 'compound_action'
+      // 0. Check for compound action intent in text (explicit mode or compound keywords in rawText)
+      const isCompoundTextIntent =
+        mode === 'compound_action' ||
+        /(?:client\s*(?:\+|plus|plyus)\s*order|order\s*(?:\+|plus|plyus)\s*payment|client\s*(?:\+|plus|plyus)\s*(?:order\s*(?:\+|plus|plyus)\s*)?payment)/i.test(rawText)
 
       if (isCompoundTextIntent) {
         const model = vertexAI.getGenerativeModel({

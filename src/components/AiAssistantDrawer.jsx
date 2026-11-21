@@ -1640,7 +1640,8 @@ export default function AiAssistantDrawer({
     const isPayment = isPaymentMode
     const isClient = isClientMode
     const isAccounts = isAccountsMode
-    const isOnlyPayment = isPayment && !isClient && !isSales && !isAccounts
+    const isCompoundExplicit = /(?:client\s*(?:\+|plus|plyus)\s*order|order\s*(?:\+|plus|plyus)\s*payment|client\s*(?:\+|plus|plyus)\s*(?:order\s*(?:\+|plus|plyus)\s*)?payment)/i.test(query)
+    const isOnlyPayment = isPayment && !isClient && !isSales && !isAccounts && !isCompoundExplicit
 
     if (!query && !filePayload) return
 
@@ -1844,7 +1845,7 @@ export default function AiAssistantDrawer({
       ].filter(Boolean)
 
       let apiMode = 'auto'
-      if (activeModes.length >= 2) {
+      if (isCompoundExplicit || activeModes.length >= 2) {
         apiMode = 'compound_action'
       } else if (isClient) {
         apiMode = 'create_client'
@@ -1857,9 +1858,13 @@ export default function AiAssistantDrawer({
       }
 
       let promptText = query
-      if (isOnlyPayment) {
-        if (promptText.toLowerCase().includes('client plus order plus payment')) {
-          promptText = promptText.replace(/client\s*plus\s*order\s*plus\s*payment:?/gi, '').trim()
+      if (isCompoundExplicit) {
+        if (/^(?:client\s*(?:\+|plus|plyus)\s*order\s*(?:\+|plus|plyus)\s*payment|client\s*(?:\+|plus|plyus)\s*order|order\s*(?:\+|plus|plyus)\s*payment)$/i.test(promptText.trim())) {
+          promptText = 'Extract client, order, and payment details from this document/receipt. Default product SKU is Anjani 200ml and default unit rate is 130 Rs per box if not explicitly specified.'
+        }
+      } else if (isOnlyPayment) {
+        if (promptText.toLowerCase().includes('client plus order plus payment') || promptText.toLowerCase().includes('client plus order plyus payment')) {
+          promptText = promptText.replace(/client\s*(?:\+|plus|plyus)\s*order\s*(?:\+|plus|plyus)\s*payment:?/gi, '').trim()
         }
         if (!promptText) {
           promptText = 'Extract payment details from this UPI screenshot or receipt for existing client only'
