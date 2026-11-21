@@ -19,10 +19,10 @@ last_updated: 2026-11-21
 ## 2. Guardrails & Hierarchy
 - **Hierarchy**: User text prompt (Tier 1) > Merchant guard (Tier 2) > Visual Ground Truth (Tier 3) > Mode Chip Hints (Tier 4) > Defaults (Tier 5: Anjani 200ml, 11 AM, ₹130, today).
 - **Full Auto Mode Everywhere**: All photo scans, screenshots, bills, and documents operate in **Full Auto Mode**. The multimodal AI autonomously determines the document type directly from its visual layout and text. UI chips act as optional hints, but visual reality takes precedence over any single selected chip (e.g. a GPay receipt is always parsed as `receive_payment`, never an order).
-- **Strict On-Demand Compound Action**: Compound actions combining client, order, and payment (`create_client_and_order` / `compound_action`) trigger **ONLY** when:
-  1. The user explicitly writes or speaks a combination prompt (e.g., *"client + order + payment"*, *"create order and receive payment"*), OR
+- **Strict On-Demand Compound Action**: Compound actions combining client and order (`create_client_and_order` / `compound_action`) trigger **ONLY** when:
+  1. The user explicitly writes or speaks a combination prompt containing both party and order details, OR
   2. The user explicitly activates $\ge 2$ mode chips simultaneously.
-  Standalone payment receipts MUST generate ONLY a payment action (`receive_payment`) and must NEVER hallucinate or book an unprompted order.
+  Strictly registers the client and books the delivery order; it NEVER records payments unless user explicitly states money was received. Standalone payment receipts MUST generate ONLY a payment action (`receive_payment`) and must NEVER hallucinate or book an unprompted order.
 - **Zero Hardwiring & Candidate Coverage Matching**: Do NOT use static surname lists or artificial typo dictionaries. Name matching across Indian name formats (`[SURNAME] [GIVEN] [FATHER]`) uses mathematical candidate token coverage:
   $$\text{Coverage}(C, T) = \frac{|C \cap T|}{|C|}$$
   Candidates whose given name is fully contained in the receipt name (e.g., `Drumil Bhai` in `PARMAR DHRUMIL RAMJIBHAI`) are prioritized over candidates that only share a generic surname.
@@ -39,7 +39,7 @@ last_updated: 2026-11-21
 - **Stock**: `query_stock` (live warehouse check); `add_stock` (factory inward: `sku`, `qty`, `narration`); `record_stock_damage` (`sku`, `qty`, `reason`).
 - **Leads & Greetings**: `query_leads` (`area`, `business_type`); `discover_leads` (`corridor`); `convert_lead` (`leadName`, `rate`, `mobile`, `address`, `notes`); `query_celebrations` (`period`: `'today' | 'upcoming' | 'month'`); `send_celebration_wish` (`contactName`, `type`: `'birthday' | 'anniversary' | 'festival'`, `customMessage`).
 - **Staff & Errands**: `send_client_message` (`clientName`, `message`, `channel`); `staff_reminder` (`staffName`: `'Nilesh' | 'Hiteshbhai'`, `message`); `query_tasks` (`staffName`); `query_staff_balance` (`staffName`: `'Nilesh' | 'Hiteshbhai' | 'all'`).
-- **Compound Multi-Entity**: `create_client_and_order` (onboards client & books order: `client`: `{ name, mobile, address, location, rate }`, `order`: `{ sku, qty, rate, deliveryDate, deliveryTime, location, mapLink, notes }`, `payment`: optional `{ amount, paymentMode, utr }` ONLY if money was explicitly paid/received; otherwise `payment: null`).
+- **Compound Multi-Entity**: `create_client_and_order` (onboards client & books order: `client`: `{ name, mobile, address, location, rate }`, `order`: `{ sku, qty, rate, deliveryDate, deliveryTime, location, mapLink, notes }`). Strictly registers client and books order; NEVER records payments. Financial mutations are decoupled and handled via `receive_payment`.
 
 ## 4. Vision OCR Document Schemas
 When an image is attached, the multimodal AI autonomously classifies the document type into valid JSON:
@@ -47,5 +47,5 @@ When an image is attached, the multimodal AI autonomously classifies the documen
 2. `retail_sales`: Daily order notepads, bottle delivery notes, challans, bills. `{ docType: "retail_sales", summary: { totalOrders, totalQty, date }, sales: [{ clientName, mobile, address, deliveryDate, deliveryTime, items: [{ sku, qty, rate, unit }], totalAmount, paymentMode, notes }] }`. Walk-ins $\rightarrow$ `clientName: "Retail"`.
 3. `accounts_cash`: Staff cash handovers, fuel/petrol/labor/tea expense vouchers. `{ docType: "accounts_cash", type: "expense" | "transfer", fromAccount, toAccount, accountId, category, amount, notes }`.
 4. `create_client`: Customer visiting cards, new estimate book headers with name, phone, address. `{ docType: "create_client", name, contactPerson, mobile, address, location, rate, notes }`.
-5. `compound_action`: On-demand multi-entity combinations combining `client`, `order`, and optional `payment` ONLY when combination was explicitly requested.
+5. `compound_action`: On-demand multi-entity combinations combining `client`, `order`, and optional `payment` ONLY when payment receipt was explicitly confirmed.
 6. `vendor_bill`: Inward factory/supplier tax invoices. `{ docType: "vendor_bill", supplierName, invoiceNumber, date, items: [{ sku, qty, rate }], totalAmount }`.

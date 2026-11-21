@@ -2099,6 +2099,11 @@ Return a single valid JSON object strictly matching the schema for the detected 
         const sanitizedClient = ensureEnglishClient(parsedData.client || {})
         const rawPayer = parsedData.payment?.payerName || ''
         const sanitizedPayer = isMerchantName(rawPayer) ? (sanitizedClient.name || '') : rawPayer
+        const promptLower = String(text || '').toLowerCase()
+        const paymentKeywords = ['payment', 'paid', 'advance', 'jama', 'chuko', 'gpay', 'phonepe', 'paytm', 'upi', 'cheque', 'received']
+        const hasPaymentIntent = paymentKeywords.some((w) => promptLower.includes(w))
+        const hasUtr = Boolean(parsedData.payment?.utr && String(parsedData.payment.utr).trim().length >= 6)
+        const shouldIncludePayment = Boolean(parsedData.payment && Number(parsedData.payment.amount) > 0 && (mode === 'receive_payment' || hasPaymentIntent || hasUtr))
 
         return {
           type: 'compound_action',
@@ -2112,7 +2117,7 @@ Return a single valid JSON object strictly matching the schema for the detected 
               totalAmount: Number(orderData.totalAmount) || ((Number(orderData.qty) || defaultQty) * (Number(orderData.rate) || defaultRate)),
               address: orderData.address || '',
             } : null,
-            payment: (parsedData.payment && (Number(parsedData.payment.amount) > 0 || (parsedData.payment.utr && parsedData.payment.utr.trim()))) ? {
+            payment: shouldIncludePayment ? {
               ...parsedData.payment,
               payerName: sanitizedPayer,
             } : null,
@@ -2417,6 +2422,11 @@ User Text: ${rawText.slice(0, 1000)}`
             const sanitizedClient = ensureEnglishClient(parsedData.client || {})
             const rawPayer = parsedData.payment?.payerName || ''
             const sanitizedPayer = isMerchantName(rawPayer) ? (sanitizedClient.name || '') : rawPayer
+            const promptLower = String(rawText || '').toLowerCase()
+            const explicitPaymentKeywords = ['payment', 'paid', 'advance', 'jama', 'chuko', 'gpay', 'phonepe', 'paytm', 'upi', 'cheque', 'received']
+            const hasExplicitPaymentInPrompt = explicitPaymentKeywords.some((w) => promptLower.includes(w))
+            const hasUtr = Boolean(parsedData.payment?.utr && String(parsedData.payment.utr).trim().length >= 6)
+            const shouldIncludePayment = (hasExplicitPaymentInPrompt || hasUtr) && Number(parsedData.payment?.amount) > 0
 
             return {
               type: 'compound_action',
@@ -2430,7 +2440,7 @@ User Text: ${rawText.slice(0, 1000)}`
                   totalAmount: Number(orderData.totalAmount) || ((Number(orderData.qty) || defaultQty) * (Number(orderData.rate) || defaultRate)),
                   address: orderData.address || '',
                 },
-                payment: (parsedData.payment && (Number(parsedData.payment.amount) > 0 || (parsedData.payment.utr && parsedData.payment.utr.trim()))) ? {
+                payment: shouldIncludePayment ? {
                   ...parsedData.payment,
                   payerName: sanitizedPayer,
                 } : null,
@@ -2883,7 +2893,7 @@ ${rawText.slice(0, 3000)}`
         {
           name: 'create_client_and_order',
           description:
-            'Simultaneously registers a new customer AND books or drafts their water delivery order in a unified compound action. MUST be used whenever an incoming inquiry, message, or website order form contains BOTH customer details (name, phone, address) and water delivery order details (quantity, items/SKU, delivery date, delivery time slot, location). Never split these into separate calls or drop the order.',
+            'Simultaneously registers a new customer AND books or drafts their water delivery order in a unified compound action. MUST be used whenever an incoming inquiry, message, or website order form contains BOTH customer details (name, phone, address) and water delivery order details (quantity, items/SKU, delivery date, delivery time slot, location). Never split these into separate calls or drop the order. This action strictly registers the client and books the delivery order; it NEVER records payments.',
           parameters: {
             type: 'OBJECT',
             properties: {
@@ -2917,16 +2927,6 @@ ${rawText.slice(0, 3000)}`
                   notes: { type: 'STRING', description: 'Special delivery instructions' }
                 },
                 required: ['qty']
-              },
-              payment: {
-                type: 'OBJECT',
-                description: 'Optional advance or payment details ONLY IF payment was explicitly made or received. If no payment has been made yet (e.g. order inquiry or unpaid order), DO NOT include this payment object or leave amount null/0. NEVER invent or assume a payment for an unpaid order.',
-                properties: {
-                  amount: { type: 'NUMBER', description: 'Payment amount received in INR' },
-                  paymentMode: { type: 'STRING', enum: ['cash', 'online', 'cheque'], description: 'Payment mode' },
-                  onlineProvider: { type: 'STRING', enum: ['GPay', 'PhonePe', 'Paytm', 'UPI', 'Bank'], description: 'Provider' },
-                  utr: { type: 'STRING', description: 'UTR reference number' }
-                }
               }
             },
             required: ['client', 'order']
@@ -3354,7 +3354,6 @@ RUNTIME CONTEXT:
           const cArgs = directCompound.functionCall.args || {}
           const rawClient = cArgs.client || {}
           const rawOrder = cArgs.order || {}
-          const rawPayment = cArgs.payment || null
           const clientData = ensureEnglishClient(rawClient)
           const orderRate = Number(rawOrder.rate) || Number(clientData.rate) || 130
           const orderQty = Number(rawOrder.qty) || 1
@@ -3379,10 +3378,7 @@ RUNTIME CONTEXT:
                 mapLink: rawOrder.mapLink || '',
                 notes: rawOrder.notes || '',
               },
-              payment: rawPayment && Number(rawPayment.amount) > 0 ? {
-                ...rawPayment,
-                payerName: isMerchantName(rawPayment.payerName) ? (clientData.name || '') : (rawPayment.payerName || clientData.name || ''),
-              } : null,
+              payment: null,
             },
           }
         }

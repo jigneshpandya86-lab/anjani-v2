@@ -2062,7 +2062,13 @@ export default function AiAssistantDrawer({
         const isNewClient = !matched
 
         const rawPayAmount = Number(payRaw?.amount) || 0
-        const hasExplicitPayment = Boolean(payRaw && (rawPayAmount > 0 || (payRaw.utr && String(payRaw.utr).trim().length > 0)))
+        const promptLower = String(promptText || '').toLowerCase()
+        const paymentKeywords = ['payment', 'paid', 'advance', 'jama', 'chuko', 'gpay', 'phonepe', 'paytm', 'upi', 'cheque', 'received']
+        const hasPaymentWord = paymentKeywords.some((w) => promptLower.includes(w))
+        const hasUtr = Boolean(payRaw?.utr && String(payRaw.utr).trim().length >= 6)
+        const isPaymentIntent = Boolean(isOnlyPayment || activeModes.includes('receive_payment') || hasPaymentWord || hasUtr)
+
+        const hasExplicitPayment = Boolean(payRaw && rawPayAmount > 0 && isPaymentIntent)
         const paymentAmount = hasExplicitPayment ? rawPayAmount : 0
         const orderRate = Number(orderRaw.rate) || (matched?.rate ? Number(matched.rate) : 130) || 130
         const orderSku = orderRaw.sku && orderRaw.sku.trim() ? orderRaw.sku : 'Anjani 200ml'
@@ -6023,7 +6029,13 @@ export default function AiAssistantDrawer({
                               <span>Saving...</span>
                             </>
                           ) : (
-                            <span>Confirm & Save</span>
+                            <span>
+                              {msg.data?.order && !msg.data?.payment
+                                ? 'Confirm & Save Order'
+                                : msg.data?.payment && !msg.data?.order
+                                ? 'Confirm & Save Payment'
+                                : 'Confirm & Save'}
+                            </span>
                           )}
                         </button>
                       )}

@@ -2457,4 +2457,75 @@ describe('AiAssistantDrawer', () => {
 
     unmount()
   })
+
+  it('strictly decouples order booking from payment and never records payment when ordering for Shivshakti Caterers', async () => {
+    mockAddPayment.mockClear()
+    mockAddOrder.mockClear()
+    mockAddClient.mockClear()
+
+    // Even if backend accidentally returned a payment object with the order amount:
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'compound_action',
+        data: {
+          client: {
+            name: 'Shivshakti Caterers',
+            mobile: '9724112233',
+            address: 'Waghodia Road Vadodara',
+          },
+          order: {
+            sku: 'Anjani 200ml',
+            qty: 20,
+            rate: 130,
+            totalAmount: 2600,
+            deliveryDate: '2026-11-21',
+            deliveryTime: '4:00 PM – 5:00 PM',
+            location: 'Waghodia Road Vadodara',
+          },
+          payment: {
+            amount: 2600,
+            paymentMode: 'online',
+            onlineProvider: 'GPay',
+            payerName: 'Shivshakti Caterers',
+          },
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText((content) => content.includes('Ask bot above'))
+    fireEvent.change(input, {
+      target: {
+        value: 'Shivshakti Caterers mobile 9724112233 address Waghodia Road 20 boxes at 130',
+      },
+    })
+
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    // Verify client and order rendered
+    expect(await screen.findByText('Shivshakti Caterers')).toBeInTheDocument()
+    expect(screen.getByText('(9724112233)')).toBeInTheDocument()
+    expect(screen.getByText((content) => content.includes('20 × Anjani 200ml'))).toBeInTheDocument()
+
+    // Deterministic guard dropped the payment: button displays "Confirm & Save Order"
+    const saveBtn = screen.getByRole('button', { name: (content) => content.includes('Confirm & Save Order') })
+    expect(saveBtn).toBeInTheDocument()
+
+    await fireEvent.click(saveBtn)
+    expect(await screen.findByText((content) => content.includes('Saved Cleanly ✓'))).toBeInTheDocument()
+
+    // Assert that order and client were created, but payment was NEVER called!
+    expect(mockAddOrder).toHaveBeenCalled()
+    expect(mockAddPayment).not.toHaveBeenCalled()
+
+    unmount()
+  })
 })
