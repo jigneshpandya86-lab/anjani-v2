@@ -2326,10 +2326,12 @@ ${rawText.slice(0, 3000)}`
         }
       }
 
-      // 0. Check for compound action intent in text (explicit mode or compound keywords in rawText)
-      const isCompoundTextIntent =
-        mode === 'compound_action' ||
-        /(?:client\s*(?:\+|plus|plyus)\s*order|order\s*(?:\+|plus|plyus)\s*payment|client\s*(?:\+|plus|plyus)\s*(?:order\s*(?:\+|plus|plyus)\s*)?payment)/i.test(rawText)
+      // 0. Check for compound action intent in text (explicit mode or references 2 or more distinct core entities)
+      const hasClientWord = /\b(?:client|customer|party|khata)\b/i.test(rawText)
+      const hasOrderWord = /\b(?:order|sales?|peti|box|cases?)\b/i.test(rawText)
+      const hasPaymentWord = /\b(?:pay(?:ment|ing)?|jama|received?|cheque|gpay|upi|cash)\b/i.test(rawText)
+      const compoundEntitiesCount = (hasClientWord ? 1 : 0) + (hasOrderWord ? 1 : 0) + (hasPaymentWord ? 1 : 0)
+      const isCompoundTextIntent = mode === 'compound_action' || compoundEntitiesCount >= 2
 
       if (isCompoundTextIntent) {
         const model = vertexAI.getGenerativeModel({

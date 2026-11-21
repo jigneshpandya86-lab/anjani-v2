@@ -1,12 +1,50 @@
 import { ensureEnglishText } from './textUtils'
 
-export const COMMON_INDIAN_SURNAMES = new Set([
-  'PATEL', 'PARMAR', 'SHAH', 'SOLANKI', 'CHAUHAN', 'PANCHAL', 'RAVAL',
-  'PRAJAPATI', 'JOSHI', 'BHATT', 'SHARMA', 'GOHIL', 'RATHOD', 'MAKWANA',
-  'DESAI', 'THAKOR', 'THAKKAR', 'MISTRY', 'SONI', 'VORA', 'MODI', 'MEHTA',
-  'PANDYA', 'DAVE', 'VYAS', 'TRIVEDI', 'SHUKLA', 'JADEJA', 'ZALA', 'BARIA',
-  'PADHIYAR', 'VASAVA', 'TADVI', 'KAPADIA', 'DALAL', 'CHOKSHI'
-])
+/**
+ * Extracts clean word tokens from a name or phrase, splitting camelCase/PascalCase
+ * and filtering out common honorifics and generic business descriptors.
+ *
+ * @param {string} str
+ * @returns {string[]}
+ */
+export function extractNameTokens(str) {
+  return (str || '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\b([a-z]{3,})(?:bhai|ben|kumar|sinh|singh|seth|sheth|babu|ji|lal|chand)\b/g, '$1')
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !['bhai', 'ben', 'kumar', 'store', 'kirana', 'general', 'shree', 'om'].includes(w))
+}
+
+/**
+ * Computes candidate token coverage against a target token set.
+ * Returns the proportion of candidate name tokens matched in the target (0.0 to 1.0).
+ *
+ * @param {string[]} targetTokens
+ * @param {string[]} candidateTokens
+ * @returns {number}
+ */
+export function computeCandidateCoverage(targetTokens = [], candidateTokens = []) {
+  if (!candidateTokens || candidateTokens.length === 0) return 0
+  if (!targetTokens || targetTokens.length === 0) return 0
+
+  let matched = 0
+  for (const ct of candidateTokens) {
+    const ctPhon = getPhoneticKey(ct)
+    if (targetTokens.includes(ct)) {
+      matched += 1.0
+    } else if (targetTokens.some((tt) => {
+      const ttPhon = getPhoneticKey(tt)
+      return ct === tt || (ctPhon && ttPhon && ctPhon === ttPhon)
+    })) {
+      matched += 0.95
+    } else if (targetTokens.some((tt) => tt.includes(ct) || ct.includes(tt))) {
+      matched += 0.7
+    }
+  }
+  return matched / candidateTokens.length
+}
 
 /**
  * Normalizes an Indian personal or business name to its core phonetic signature.
@@ -246,13 +284,16 @@ export function findMatchingClient(rawName, clients = [], options = {}) {
         )
       })
       if (candidates.length > 0) {
-        // Prioritize candidates matching given name over candidates matching only common surnames
+        // Rank candidates by candidate name coverage in target, then key specificity
+        const targetTokens = extractNameTokens(targetName)
         candidates.sort((a, b) => {
+          const tokensA = extractNameTokens(a.displayName || a.name || '')
+          const tokensB = extractNameTokens(b.displayName || b.name || '')
+          const covA = computeCandidateCoverage(targetTokens, tokensA)
+          const covB = computeCandidateCoverage(targetTokens, tokensB)
+          if (covB !== covA) return covB - covA
           const keyA = getPhoneticKey(a.displayName || a.name || '')
           const keyB = getPhoneticKey(b.displayName || b.name || '')
-          const isSurnameA = COMMON_INDIAN_SURNAMES.has(keyA) ? 1 : 0
-          const isSurnameB = COMMON_INDIAN_SURNAMES.has(keyB) ? 1 : 0
-          if (isSurnameA !== isSurnameB) return isSurnameA - isSurnameB
           return keyB.length - keyA.length
         })
         phoneticMatch = candidates[0]
@@ -284,12 +325,15 @@ export function findMatchingClient(rawName, clients = [], options = {}) {
       return matchName || matchDisplay || matchBase
     })
     if (substringCandidates.length > 0) {
+      const targetTokens = extractNameTokens(targetName)
       substringCandidates.sort((a, b) => {
+        const tokensA = extractNameTokens(a.displayName || a.name || '')
+        const tokensB = extractNameTokens(b.displayName || b.name || '')
+        const covA = computeCandidateCoverage(targetTokens, tokensA)
+        const covB = computeCandidateCoverage(targetTokens, tokensB)
+        if (covB !== covA) return covB - covA
         const keyA = getPhoneticKey(a.displayName || a.name || '')
         const keyB = getPhoneticKey(b.displayName || b.name || '')
-        const isSurnameA = COMMON_INDIAN_SURNAMES.has(keyA) ? 1 : 0
-        const isSurnameB = COMMON_INDIAN_SURNAMES.has(keyB) ? 1 : 0
-        if (isSurnameA !== isSurnameB) return isSurnameA - isSurnameB
         return keyB.length - keyA.length
       })
       const substringMatch = substringCandidates[0]
@@ -383,17 +427,7 @@ export function findBestExistingClientMatch(rawName, clients = [], options = {})
   const targetLower = targetStr.toLowerCase()
   const targetPhonetic = getPhoneticKey(targetStr)
 
-  // Helper to extract clean word tokens
-  const extractTokens = (str) => {
-    return (str || '')
-      .replace(/([a-z])([A-Z])/g, '$1 $2')
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter((w) => w.length >= 3 && !['bhai', 'ben', 'kumar', 'store', 'kirana', 'general', 'shree', 'om'].includes(w))
-  }
-
-  const targetTokens = extractTokens(targetStr)
+  const targetTokens = extractNameTokens(targetStr)
 
   let bestClient = null
   let bestScore = -1
@@ -405,7 +439,7 @@ export function findBestExistingClientMatch(rawName, clients = [], options = {})
 
     const cLower = cName.toLowerCase()
     const cPhonetic = getPhoneticKey(cName)
-    const cTokens = extractTokens(cName)
+    const cTokens = extractNameTokens(cName)
 
     let score = 0
 
@@ -419,36 +453,33 @@ export function findBestExistingClientMatch(rawName, clients = [], options = {})
       score += phonSim * 0.35
     }
 
-    // Token overlap with given-name priority over common surnames
+    // Token overlap: candidate precision coverage & token overlap
     if (targetTokens.length > 0 && cTokens.length > 0) {
-      let matchedTokens = 0
-      for (const tt of targetTokens) {
-        const ttPhon = getPhoneticKey(tt)
-        const isSurname = COMMON_INDIAN_SURNAMES.has(tt.toUpperCase()) || COMMON_INDIAN_SURNAMES.has(ttPhon)
-        const weight = isSurname ? 0.5 : 1.0
-
-        if (cTokens.includes(tt)) {
-          matchedTokens += weight
-        } else if (cTokens.some((ct) => {
-          const ctPhon = getPhoneticKey(ct)
+      let matchedCount = 0
+      for (const ct of cTokens) {
+        const ctPhon = getPhoneticKey(ct)
+        if (targetTokens.includes(ct)) {
+          matchedCount += 1.0
+        } else if (targetTokens.some((tt) => {
+          const ttPhon = getPhoneticKey(tt)
           return ct === tt || (ctPhon && ttPhon && ctPhon === ttPhon)
         })) {
-          matchedTokens += weight * 0.95
-        } else if (cTokens.some((ct) => ct.includes(tt) || tt.includes(ct))) {
-          matchedTokens += weight * 0.7
+          matchedCount += 0.95
+        } else if (targetTokens.some((tt) => tt.includes(ct) || ct.includes(tt))) {
+          matchedCount += 0.7
         }
       }
-      const tokenScore = (2 * matchedTokens) / (targetTokens.length + cTokens.length)
-      score += tokenScore * 0.35
+      const candidateCoverage = matchedCount / cTokens.length
+      const diceScore = (2 * matchedCount) / (targetTokens.length + cTokens.length)
+      score += (diceScore * 0.20) + (candidateCoverage * 0.20)
     }
 
-    // Substring containment bonus (higher bonus for non-surnames)
+    // Substring containment bonus
     if (
       (targetLower.length >= 4 && cLower.includes(targetLower)) ||
       (cLower.length >= 4 && targetLower.includes(cLower))
     ) {
-      const key = getPhoneticKey(cLower)
-      score += COMMON_INDIAN_SURNAMES.has(key) ? 0.1 : 0.25
+      score += 0.2
     }
 
     // Outstanding balance bonus (a customer with outstanding balance is much more likely to make a payment)

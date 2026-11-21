@@ -1640,7 +1640,10 @@ export default function AiAssistantDrawer({
     const isPayment = isPaymentMode
     const isClient = isClientMode
     const isAccounts = isAccountsMode
-    const isCompoundExplicit = /(?:client\s*(?:\+|plus|plyus)\s*order|order\s*(?:\+|plus|plyus)\s*payment|client\s*(?:\+|plus|plyus)\s*(?:order\s*(?:\+|plus|plyus)\s*)?payment)/i.test(query)
+    const hasClientIntent = /\b(?:client|customer|party|khata)\b/i.test(query)
+    const hasOrderIntent = /\b(?:order|sales?|peti|box|cases?)\b/i.test(query)
+    const hasPaymentIntent = /\b(?:pay(?:ment|ing)?|jama|received?|cash|upi|gpay|bank)\b/i.test(query)
+    const isCompoundExplicit = (hasClientIntent ? 1 : 0) + (hasOrderIntent ? 1 : 0) + (hasPaymentIntent ? 1 : 0) >= 2
     const isOnlyPayment = isPayment && !isClient && !isSales && !isAccounts && !isCompoundExplicit
 
     if (!query && !filePayload) return
@@ -1859,14 +1862,21 @@ export default function AiAssistantDrawer({
 
       let promptText = query
       if (isCompoundExplicit) {
-        if (/^(?:client\s*(?:\+|plus|plyus)\s*order\s*(?:\+|plus|plyus)\s*payment|client\s*(?:\+|plus|plyus)\s*order|order\s*(?:\+|plus|plyus)\s*payment)$/i.test(promptText.trim())) {
+        // If query just specifies multi-action intent keywords without specific transactional details,
+        // provide rich extraction guidance for the multimodal model:
+        const meaningfulDetails = query
+          .replace(/\b(?:client|customer|party|khata|order|sales?|peti|box|cases?|pay(?:ment|ing)?|jama|received?|cash|upi|gpay|bank|plus|\+|and|with|,)\b/gi, '')
+          .replace(/[^a-zA-Z0-9]/g, ' ')
+          .trim()
+        if (!meaningfulDetails) {
           promptText = 'Extract client, order, and payment details from this document/receipt. Default product SKU is Anjani 200ml and default unit rate is 130 Rs per box if not explicitly specified.'
         }
       } else if (isOnlyPayment) {
-        if (promptText.toLowerCase().includes('client plus order plus payment') || promptText.toLowerCase().includes('client plus order plyus payment')) {
-          promptText = promptText.replace(/client\s*(?:\+|plus|plyus)\s*order\s*(?:\+|plus|plyus)\s*payment:?/gi, '').trim()
-        }
-        if (!promptText) {
+        const meaningfulDetails = query
+          .replace(/\b(?:pay(?:ment|ing)?|jama|received?|cash|upi|gpay|bank|receipt|screenshot)\b/gi, '')
+          .replace(/[^a-zA-Z0-9]/g, ' ')
+          .trim()
+        if (!meaningfulDetails) {
           promptText = 'Extract payment details from this UPI screenshot or receipt for existing client only'
         }
       } else if (!promptText && filePayload) {

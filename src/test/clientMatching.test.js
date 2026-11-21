@@ -5,6 +5,8 @@ import {
   findBestExistingClientMatch,
   similarityRatio,
   levenshteinDistance,
+  extractNameTokens,
+  computeCandidateCoverage,
 } from '../utils/clientMatchingUtils'
 
 describe('clientMatchingUtils', () => {
@@ -237,6 +239,28 @@ describe('clientMatchingUtils', () => {
     it('returns null if clients array is empty', () => {
       expect(findBestExistingClientMatch('Sandip', [])).toBeNull()
       expect(findBestExistingClientMatch('Sandip', null)).toBeNull()
+    })
+  })
+
+  describe('extractNameTokens and computeCandidateCoverage (algorithmic, no hardcoding)', () => {
+    it('splits camelCase/PascalCase properly without hardcoded word lists', () => {
+      const tokens = extractNameTokens('AlpeshbhaiParmar')
+      expect(tokens).toContain('alpesh')
+      expect(tokens).toContain('parmar')
+    })
+
+    it('computes candidate coverage dynamically across unknown names', () => {
+      const targetTokens = extractNameTokens('MUKHERJEE ARNAB SHYAMAL')
+      const candidateArnab = extractNameTokens('Arnab')
+      const candidateSanjay = extractNameTokens('Sanjay Mukherjee')
+
+      const covArnab = computeCandidateCoverage(targetTokens, candidateArnab)
+      const covSanjay = computeCandidateCoverage(targetTokens, candidateSanjay)
+
+      // Arnab is 100% covered in target; Sanjay is only 50% covered (Sanjay is missing)
+      expect(covArnab).toBeGreaterThan(covSanjay)
+      expect(covArnab).toBeCloseTo(1.0, 1)
+      expect(covSanjay).toBeCloseTo(0.5, 1)
     })
   })
 })
