@@ -649,14 +649,26 @@ describe('AiAssistantDrawer', () => {
     )
 
     expect(await screen.findByText('Scan photo as:')).toBeInTheDocument()
+    const autoBtn = screen.getByRole('button', { name: /✨ Auto/i })
     const clientBtn = screen.getByRole('button', { name: /👤 Client/i })
     const orderBtn = screen.getByRole('button', { name: /🛒 Order/i })
     const paymentBtn = screen.getByRole('button', { name: /💰 Payment/i })
 
-    // In pure auto mode, chips are unselected by default
+    // In pure auto mode, Auto is active and other chips are unselected by default
+    expect(autoBtn).toHaveAttribute('aria-pressed', 'true')
     expect(clientBtn).toHaveAttribute('aria-pressed', 'false')
     expect(orderBtn).toHaveAttribute('aria-pressed', 'false')
     expect(paymentBtn).toHaveAttribute('aria-pressed', 'false')
+
+    // Tapping Client activates Client and deactivates Auto
+    fireEvent.click(clientBtn)
+    expect(autoBtn).toHaveAttribute('aria-pressed', 'false')
+    expect(clientBtn).toHaveAttribute('aria-pressed', 'true')
+
+    // Tapping Auto resets back to pure auto
+    fireEvent.click(autoBtn)
+    expect(autoBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(clientBtn).toHaveAttribute('aria-pressed', 'false')
 
     mockAiPrefillFile = null
     unmount()

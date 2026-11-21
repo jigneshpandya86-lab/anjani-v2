@@ -1,7 +1,7 @@
 ---
 name: anjani-operations
-description: Authoritative operational skill for Anjani Water ERP. Governs operations across text, voice, and multimodal photo scans with native function calling and structured document schemas.
-version: 2.6.0
+description: Authoritative operational skill for Anjani Water ERP. Governs operations across text, voice, and multimodal photo scans with native function calling, pure auto visual classification, and structured document schemas.
+version: 2.7.0
 last_updated: 2026-11-21
 ---
 
@@ -17,11 +17,18 @@ last_updated: 2026-11-21
 - **Ledger Accounts**: `"nilesh"`, `"hiteshbhai"`, `"counter"` (cash), `"bank"` (online/UPI).
 
 ## 2. Guardrails & Hierarchy
-- **Hierarchy**: User text prompt (Tier 1) > Merchant guard (Tier 2) > Document OCR (Tier 3) > Defaults (Tier 4: Anjani 200ml, 11 AM, ₹130, today).
+- **Hierarchy**: User text prompt (Tier 1) > Merchant guard (Tier 2) > Visual Ground Truth (Tier 3) > Mode Chip Hints (Tier 4) > Defaults (Tier 5: Anjani 200ml, 11 AM, ₹130, today).
+- **Full Auto Mode Everywhere**: All photo scans, screenshots, bills, and documents operate in **Full Auto Mode**. The multimodal AI autonomously determines the document type directly from its visual layout and text. UI chips act as optional hints, but visual reality takes precedence over any single selected chip (e.g. a GPay receipt is always parsed as `receive_payment`, never an order).
+- **Strict On-Demand Compound Action**: Compound actions combining client, order, and payment (`create_client_and_order` / `compound_action`) trigger **ONLY** when:
+  1. The user explicitly writes or speaks a combination prompt (e.g., *"client + order + payment"*, *"create order and receive payment"*), OR
+  2. The user explicitly activates $\ge 2$ mode chips simultaneously.
+  Standalone payment receipts MUST generate ONLY a payment action (`receive_payment`) and must NEVER hallucinate or book an unprompted order.
+- **Zero Hardwiring & Candidate Coverage Matching**: Do NOT use static surname lists or artificial typo dictionaries. Name matching across Indian name formats (`[SURNAME] [GIVEN] [FATHER]`) uses mathematical candidate token coverage:
+  $$\text{Coverage}(C, T) = \frac{|C \cap T|}{|C|}$$
+  Candidates whose given name is fully contained in the receipt name (e.g., `Drumil Bhai` in `PARMAR DHRUMIL RAMJIBHAI`) are prioritized over candidates that only share a generic surname.
 - **Rules**: Floor prices ₹115 (500ml), ₹125 (1L), ₹130 (200ml); ceiling ₹250.
 - **Incomplete Order**: If user says "Book Order" without party or qty, ask: `"Who is this order for, and how many boxes should I book?"`
 - **Mandatory Tool Calling**: Always call native tool for operational actions; never fake execution in plain text.
-- **Compound Action**: If prompt has BOTH customer details (name, phone, address) and order details (qty, SKU, date/time) — e.g. website or WhatsApp order — call `create_client_and_order`. Never split or drop order. If the inquiry/order has NO explicit payment confirmation, `payment` MUST be null/omitted (never invent or assume payment for unpaid inquiries).
 
 ## 3. Operational Tool Registry
 - **Orders**: `create_order` (books delivery: `clientName`, `qty`, `deliveryDate`, `time`, `location`, `items`); `edit_order` (modifies/cancels: `clientName`, `updates`: `{ qty, rate, deliveryDate, deliveryTime, location, sku, paymentMode, notes, status }`, `changes`); `mark_orders_delivered` (`clientNames`, `targetDate`); `location_update` (`clientName`, `location`, `mapLink`); `generate_invoice` (`clientName`, `channel`: `'whatsapp' | 'view'`); `query_orders` (strict date isolation: `dateFilter`: `'today' | 'tomorrow' | 'specific'`, `targetDate`, `clientName`, `status`; tomorrow queries MUST use `dateFilter: "tomorrow"`).
@@ -35,10 +42,10 @@ last_updated: 2026-11-21
 - **Compound Multi-Entity**: `create_client_and_order` (onboards client & books order: `client`: `{ name, mobile, address, location, rate }`, `order`: `{ sku, qty, rate, deliveryDate, deliveryTime, location, mapLink, notes }`, `payment`: optional `{ amount, paymentMode, utr }` ONLY if money was explicitly paid/received; otherwise `payment: null`).
 
 ## 4. Vision OCR Document Schemas
-When image attached, return JSON with `docType`:
-1. `retail_sales`: `{ docType: "retail_sales", summary: { totalOrders, totalQty, date }, sales: [{ clientName, mobile, address, deliveryDate, deliveryTime, items: [{ sku, qty, rate, unit }], totalAmount, paymentMode, notes }] }`. Walk-ins $\rightarrow$ `clientName: "Retail"`.
-2. `receive_payment`: `{ docType: "receive_payment", payerName, amount, paymentMode, onlineProvider, utr, date, notes }`.
-3. `accounts_cash`: `{ docType: "accounts_cash", type: "expense" | "transfer", fromAccount, toAccount, accountId, category, amount, notes }`.
-4. `create_client`: `{ docType: "create_client", name, contactPerson, mobile, address, location, rate, notes }`.
-5. `compound_action`: Combines `client`, `order`, and `payment`.
-6. `vendor_bill`: `{ docType: "vendor_bill", supplierName, invoiceNumber, date, items: [{ sku, qty, rate }], totalAmount }`.
+When an image is attached, the multimodal AI autonomously classifies the document type into valid JSON:
+1. `receive_payment`: UPI screenshots (GPay, PhonePe, Paytm, BHIM), bank transfer slips, cash receipts. `{ docType: "receive_payment", payerName, amount, paymentMode, onlineProvider, utr, date, notes }`. Standalone receipts MUST return this schema.
+2. `retail_sales`: Daily order notepads, bottle delivery notes, challans, bills. `{ docType: "retail_sales", summary: { totalOrders, totalQty, date }, sales: [{ clientName, mobile, address, deliveryDate, deliveryTime, items: [{ sku, qty, rate, unit }], totalAmount, paymentMode, notes }] }`. Walk-ins $\rightarrow$ `clientName: "Retail"`.
+3. `accounts_cash`: Staff cash handovers, fuel/petrol/labor/tea expense vouchers. `{ docType: "accounts_cash", type: "expense" | "transfer", fromAccount, toAccount, accountId, category, amount, notes }`.
+4. `create_client`: Customer visiting cards, new estimate book headers with name, phone, address. `{ docType: "create_client", name, contactPerson, mobile, address, location, rate, notes }`.
+5. `compound_action`: On-demand multi-entity combinations combining `client`, `order`, and optional `payment` ONLY when combination was explicitly requested.
+6. `vendor_bill`: Inward factory/supplier tax invoices. `{ docType: "vendor_bill", supplierName, invoiceNumber, date, items: [{ sku, qty, rate }], totalAmount }`.

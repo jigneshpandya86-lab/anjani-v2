@@ -789,15 +789,14 @@ export default function AiAssistantDrawer({
       toast.dismiss('compress-img')
       setSelectedFile(processed)
       setFilePreview(processed.dataUrl)
+      // Reset chips to Pure Auto by default on file upload
+      setIsClientMode(false)
+      setIsSalesMode(false)
+      setIsPaymentMode(false)
+      setIsAccountsMode(false)
       const label = processed.isAudio
         ? 'Voice note'
-        : isClientMode
-          ? 'Bill book / Visiting card'
-          : isPaymentMode
-            ? 'Payment slip'
-            : isSalesMode
-              ? 'Sales notepad'
-              : 'Document'
+        : 'Document'
       toast.success(`${label} ready (~${processed.sizeKb} KB)`)
     } catch (err) {
       toast.dismiss('compress-img')
@@ -1885,16 +1884,8 @@ export default function AiAssistantDrawer({
           promptText = 'Transcribe and extract orders, payments, or client details from this voice note'
         } else if (activeModes.length >= 2) {
           promptText = `Extract and process: ${activeModes.join(' plus ')}. Default product SKU is Anjani 200ml and default unit rate is 130 Rs per box if not explicitly specified.`
-        } else if (isSales) {
-          promptText = 'Parse these daily retail customer sales orders'
-        } else if (isPayment) {
-          promptText = 'Extract payment details from this UPI screenshot or receipt'
-        } else if (isClient) {
-          promptText = 'Extract new client name, mobile, and address from this customer bill book, estimate book, or visiting card'
-        } else if (isAccounts) {
-          promptText = 'Parse these staff cash custody, handover, or route expense entries'
         } else {
-          promptText = 'Scan this document and extract details (default SKU Anjani 200ml @ 130 Rs)'
+          promptText = 'Scan this document or screenshot and autonomously extract its structured details (e.g. payment receipt, sales order, client contact, or expense). Default SKU Anjani 200ml @ 130 Rs.'
         }
       }
 
@@ -7747,12 +7738,30 @@ export default function AiAssistantDrawer({
               </div>
 
               {/* Quick multi-selection mode selector for photo */}
-              <div className="flex items-center gap-1.5 pt-1 border-t border-orange-200/70">
+              <div className="flex items-center gap-1.5 pt-1 border-t border-orange-200/70 overflow-x-auto">
                 <span className="text-[10px] font-semibold text-gray-500 shrink-0">Scan photo as:</span>
                 <button
                   type="button"
+                  onClick={() => {
+                    setIsClientMode(false)
+                    setIsSalesMode(false)
+                    setIsPaymentMode(false)
+                    setIsAccountsMode(false)
+                  }}
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
+                    !isClientMode && !isSalesMode && !isPaymentMode && !isAccountsMode
+                      ? 'bg-indigo-600 text-white shadow-2xs'
+                      : 'bg-white border border-gray-300 text-gray-700 hover:border-indigo-500'
+                  }`}
+                  aria-pressed={!isClientMode && !isSalesMode && !isPaymentMode && !isAccountsMode}
+                >
+                  {!isClientMode && !isSalesMode && !isPaymentMode && !isAccountsMode && <Check className="w-3 h-3" />}
+                  <span>✨ Auto</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => setIsClientMode((prev) => !prev)}
-                  className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
                     isClientMode
                       ? 'bg-blue-600 text-white shadow-2xs'
                       : 'bg-white border border-gray-300 text-gray-700 hover:border-blue-500'
@@ -7765,7 +7774,7 @@ export default function AiAssistantDrawer({
                 <button
                   type="button"
                   onClick={() => setIsSalesMode((prev) => !prev)}
-                  className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
                     isSalesMode
                       ? 'bg-emerald-600 text-white shadow-2xs'
                       : 'bg-white border border-gray-300 text-gray-700 hover:border-emerald-600'
@@ -7778,7 +7787,7 @@ export default function AiAssistantDrawer({
                 <button
                   type="button"
                   onClick={() => setIsPaymentMode((prev) => !prev)}
-                  className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
                     isPaymentMode
                       ? 'bg-emerald-700 text-white shadow-2xs'
                       : 'bg-white border border-gray-300 text-gray-700 hover:border-emerald-700'

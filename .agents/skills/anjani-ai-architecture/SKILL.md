@@ -110,3 +110,22 @@ When adding or improving AI behavior:
 ## 11. Prospective B2B Leads Engine A to Z (`query_leads`, `discover_leads`)
 - **Lead Exploration (`query_leads`):** Allows users to search and list commercial leads discovered by AI radar (*"Show leads"*, *"Prospective clients in Manjalpur"*).
 - **AI Radar Discovery (`discover_leads`):** Triggers Vertex AI Gemini 2.5 radar on Google Cloud (`triggerBaileyLeadDiscovery`) directly from chat to scan corridors in Vadodara and onboard verified leads with deduplication against existing clients.
+
+---
+
+## 12. Full Auto Multimodal OCR & Pure Auto Document Classification
+- **Pure Auto Mode Everywhere**: When any document, photo, or screenshot is shared or attached, the AI drawer defaults to Pure Auto mode.
+- **UI Chip Architecture (`[✨ Auto] [👤 Client] [🛒 Order] [💰 Payment]`):**
+  - The `[✨ Auto]` chip is active by default whenever no specific mode is selected.
+  - Tapping any mode chip provides optional user focus guidance, but never overrides visual reality.
+  - Tapping `[✨ Auto]` instantly resets all modes and returns to pure auto.
+- **Visual Ground Truth Primacy:** Multimodal visual evidence takes precedence over any single selected mode chip. If an attached image is a GPay/UPI payment receipt, the system autonomously classifies it as `receive_payment` with 100% visual fidelity, preventing accidental misclicks on the "Order" or "Client" chip from creating garbage records.
+- **On-Demand Compound Actions Only:** Compound multi-entity flows combining client, order, and payment (`compound_action`) trigger **ONLY** if:
+  1. The user explicitly requests combination in natural language (*"client + order + payment"*, *"add client and book order with payment"*), or
+  2. The user explicitly selects $\ge 2$ chips simultaneously.
+  Standalone payment receipts or single documents never trigger unprompted compound actions or hallucinate orders.
+- **Zero Hardwiring & Candidate Coverage Resolution:**
+  - Prohibits static surname databases or artificial typo keyword mappings (`plyus`).
+  - Resolves Indian names (`[SURNAME] [GIVEN] [FATHER]`) against client master using mathematical candidate token coverage:
+    $$\text{Coverage}(C, T) = \frac{|C \cap T|}{|C|}$$
+  - Suffix and honorific stripping (`bhai`, `ben`, `kumar`, `singh`, `seth`, etc.) handles attached and detached tokens.

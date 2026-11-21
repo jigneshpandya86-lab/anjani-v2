@@ -2046,7 +2046,9 @@ exports.askAnjaniAi = onCall(async (request) => {
       const skillInstructions = loadSkillInstructions();
       const isAudio = mimeType && mimeType.startsWith('audio/');
       const userTextPrompt = text ? `\nUSER SPECIFIC INSTRUCTION / NOTE: "${text}"\n` : '';
-      const modeHint = mode && mode !== 'auto' ? `\nUSER FOCUSED INTENT: "${mode}"\n` : '';
+      const modeHint = mode && mode !== 'auto'
+        ? `\nUSER PREFERRED FOCUS: "${mode}". Note: Always verify actual visual document content. If the document is clearly a payment receipt or UPI screenshot, output docType "receive_payment"; if an order note, "retail_sales"; if visiting card, "create_client"; if expense or cash handover, "accounts_cash".\n`
+        : '';
 
       const multimodalPrompt = `${skillInstructions}
 
@@ -2079,16 +2081,10 @@ Return a single valid JSON object strictly matching the schema for the detected 
       const rawJson = res.response.candidates[0].content.parts[0].text.trim()
       const parsedData = parseStructuredJson(rawJson)
 
+      // 1. Explicit Compound Action: Trigger only when combination requested or multimodal explicitly outputs compound_action
       if (
-        mode !== 'receive_payment' &&
-        mode !== 'create_client' &&
-        mode !== 'retail_sales' &&
-        mode !== 'accounts_cash' &&
-        (
-          mode === 'compound_action' ||
-          parsedData.docType === 'compound_action' ||
-          (parsedData.client && (parsedData.order || parsedData.payment))
-        )
+        (mode === 'compound_action' || parsedData.docType === 'compound_action') ||
+        (parsedData.client && (parsedData.order || parsedData.payment) && mode !== 'receive_payment' && mode !== 'create_client' && mode !== 'retail_sales' && mode !== 'accounts_cash')
       ) {
         const payAmount = Number(parsedData.payment?.amount) || 0
         const defaultRate = 130
@@ -2124,10 +2120,77 @@ Return a single valid JSON object strictly matching the schema for the detected 
         }
       }
 
-      if (
-        mode === 'create_client' ||
-        parsedData.docType === 'create_client'
-      ) {
+      // 2. Full Auto Payment Detection: True payment receipts (UPI, GPay, Bank, Cash slip) take visual precedence
+      const isClearlyPayment =
+        parsedData.docType === 'receive_payment' ||
+        (Number(parsedData.amount || parsedData.payment?.amount) > 0 &&
+          (parsedData.payerName || parsedData.payment?.payerName || parsedData.utr || parsedData.payment?.utr) &&
+          !Array.isArray(parsedData.sales) &&
+          parsedData.docType !== 'accounts_cash' &&
+          !Array.isArray(parsedData.entries))
+
+      if (isClearlyPayment && parsedData.docType !== 'compound_action') {
+        const rawPayment = parsedData.payment ? { ...parsedData.payment } : { ...parsedData }
+        const cleanPayment = {
+          ...rawPayment,
+          amount: Number(rawPayment.amount || parsedData.amount) || 0,
+          payerName: rawPayment.payerName || parsedData.payerName || parsedData.client?.name || '',
+          mobile: rawPayment.mobile || parsedData.mobile || parsedData.client?.mobile || '',
+          utr: rawPayment.utr || parsedData.utr || '',
+          date: rawPayment.date || parsedData.date || new Date().toISOString().slice(0, 10),
+          onlineProvider: rawPayment.onlineProvider || parsedData.onlineProvider || 'UPI',
+          paymentMode: rawPayment.paymentMode || parsedData.paymentMode || 'online',
+          notes: rawPayment.notes || parsedData.notes || '',
+        }
+        if (isMerchantName(cleanPayment.payerName)) {
+          cleanPayment.payerName = ''
+        }
+        return {
+          type: 'receive_payment',
+          modelUsed: modelName,
+          data: cleanPayment,
+        }
+      }
+
+      // 3. Full Auto Sales Order Detection: Order notepads, challans, delivery bills
+      const isClearlySales =
+        parsedData.docType === 'retail_sales' ||
+        (Array.isArray(parsedData.sales) && parsedData.sales.length > 0)
+
+      if (isClearlySales && parsedData.docType !== 'compound_action' && parsedData.docType !== 'receive_payment') {
+        if (Array.isArray(parsedData.sales)) {
+          for (const s of parsedData.sales) {
+            if (s) {
+              s.deliveryTime = normalizeDeliveryTimeHelper(s.deliveryTime || s.time)
+            }
+          }
+        }
+        return {
+          type: 'retail_sales',
+          modelUsed: modelName,
+          data: parsedData,
+        }
+      }
+
+      // 4. Full Auto Accounts / Cash Handover / Expense Detection
+      const isClearlyAccounts =
+        parsedData.docType === 'accounts_cash' ||
+        (Array.isArray(parsedData.entries) && parsedData.entries.length > 0)
+
+      if (isClearlyAccounts && parsedData.docType !== 'compound_action' && parsedData.docType !== 'receive_payment') {
+        return {
+          type: 'accounts_cash',
+          modelUsed: modelName,
+          data: parsedData,
+        }
+      }
+
+      // 5. Full Auto New Client Detection: Visiting cards, customer estimate headers
+      const isClearlyClient =
+        parsedData.docType === 'create_client' ||
+        (parsedData.name && (parsedData.mobile || parsedData.address) && !isClearlyPayment && !isClearlySales)
+
+      if (isClearlyClient || mode === 'create_client') {
         let clientData = { ...parsedData }
         // Fallback recovery if Gemini still returned a sales order format for a bill book:
         if (!clientData.name && Array.isArray(parsedData.sales) && parsedData.sales.length > 0) {
@@ -2153,82 +2216,24 @@ Return a single valid JSON object strictly matching the schema for the detected 
         }
       }
 
-      if (
-        parsedData.docType === 'accounts_cash' ||
-        mode === 'accounts_cash' ||
-        (Array.isArray(parsedData.entries) && parsedData.entries.length > 0)
-      ) {
-        return {
-          type: 'accounts_cash',
-          modelUsed: modelName,
-          data: parsedData,
-        }
-      }
-
-      if (
-        (mode === 'receive_payment' ||
-        parsedData.docType === 'receive_payment' ||
-        (Number(parsedData.amount || parsedData.payment?.amount) > 0 &&
-          (parsedData.payerName || parsedData.payment?.payerName || parsedData.utr || parsedData.payment?.utr) &&
-          !Array.isArray(parsedData.sales))) &&
-        parsedData.docType !== 'accounts_cash' &&
-        !Array.isArray(parsedData.entries)
-      ) {
+      // 6. Ambiguous Fallbacks based on user mode hint
+      if (mode === 'receive_payment') {
         const rawPayment = parsedData.payment ? { ...parsedData.payment } : { ...parsedData }
-        const cleanPayment = {
-          ...rawPayment,
-          amount: Number(rawPayment.amount || parsedData.amount) || 0,
-          payerName: rawPayment.payerName || parsedData.payerName || parsedData.client?.name || '',
-          mobile: rawPayment.mobile || parsedData.mobile || parsedData.client?.mobile || '',
-          utr: rawPayment.utr || parsedData.utr || '',
-          date: rawPayment.date || parsedData.date || new Date().toISOString().slice(0, 10),
-          onlineProvider: rawPayment.onlineProvider || parsedData.onlineProvider || 'UPI',
-          paymentMode: rawPayment.paymentMode || parsedData.paymentMode || 'online',
-          notes: rawPayment.notes || parsedData.notes || '',
-        }
-        if (isMerchantName(cleanPayment.payerName)) {
-          cleanPayment.payerName = ''
-        }
         return {
           type: 'receive_payment',
           modelUsed: modelName,
-          data: cleanPayment,
+          data: {
+            ...rawPayment,
+            amount: Number(rawPayment.amount || parsedData.amount) || 0,
+            payerName: isMerchantName(rawPayment.payerName || parsedData.payerName) ? '' : (rawPayment.payerName || parsedData.payerName || ''),
+            date: rawPayment.date || parsedData.date || new Date().toISOString().slice(0, 10),
+            paymentMode: rawPayment.paymentMode || 'online',
+            onlineProvider: rawPayment.onlineProvider || 'UPI',
+          },
         }
       }
 
-      if (
-        parsedData.docType === 'retail_sales' ||
-        (Array.isArray(parsedData.sales) && parsedData.sales.length > 0)
-      ) {
-        if (Array.isArray(parsedData.sales)) {
-          for (const s of parsedData.sales) {
-            if (s) {
-              s.deliveryTime = normalizeDeliveryTimeHelper(s.deliveryTime || s.time)
-            }
-          }
-        }
-        return {
-          type: 'retail_sales',
-          modelUsed: modelName,
-          data: parsedData,
-        }
-      }
-
-      if (
-        parsedData.docType === 'create_client' ||
-        (parsedData.name && (parsedData.mobile || parsedData.address))
-      ) {
-        return {
-          type: 'create_client',
-          modelUsed: modelName,
-          data: ensureEnglishClient(parsedData),
-        }
-      }
-
-      if (
-        parsedData.docType === 'accounts_cash' ||
-        (Array.isArray(parsedData.entries) && parsedData.entries.length > 0)
-      ) {
+      if (mode === 'accounts_cash') {
         return {
           type: 'accounts_cash',
           modelUsed: modelName,
