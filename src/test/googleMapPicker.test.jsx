@@ -8,6 +8,8 @@ describe('GoogleMapPicker Component', () => {
     vi.clearAllMocks()
     document.head.innerHTML = ''
     delete window.google
+    delete window.__googleMapsAuthFailed
+    delete window.__gmAuthHooked
   })
 
   it('renders input field with initial address and GPS button', () => {
@@ -101,6 +103,72 @@ describe('GoogleMapPicker Component', () => {
         }),
       )
     })
+  })
+
+  it('displays instant curated Vadodara landmark suggestions and selects one with coordinates', async () => {
+    const handleChange = vi.fn()
+    render(<GoogleMapPicker initialAddress="" onChange={handleChange} />)
+
+    const input = screen.getByPlaceholderText(/search landmark, coords/i)
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'Alkapuri' } })
+
+    // Instant local landmark matching should display Alkapuri
+    await waitFor(() => {
+      expect(screen.getByText(/Alkapuri, Vadodara, Gujarat/i)).toBeInTheDocument()
+    })
+
+    // Click prediction item
+    const itemBtn = screen.getByText(/Alkapuri, Vadodara, Gujarat/i).closest('button')
+    fireEvent.mouseDown(itemBtn)
+
+    await waitFor(() => {
+      expect(handleChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lat: 22.3102,
+          lng: 73.1757,
+          address: 'Alkapuri, Vadodara, Gujarat',
+          mapLink: 'https://www.google.com/maps?q=22.3102,73.1757',
+        }),
+      )
+    })
+  })
+
+  it('never hangs when Google Maps silently drops autocomplete callbacks (RefererNotAllowedMapError)', async () => {
+    // Simulate Google Maps AutocompleteService that never calls back (hung/blocked API)
+    const mockHungGetPlacePredictions = vi.fn((_req, _cb) => {
+      // Intentionally never call _cb to simulate RefererNotAllowedMapError silent failure
+    })
+
+    window.google = {
+      maps: {
+        places: {
+          AutocompleteService: vi.fn(() => ({
+            getPlacePredictions: mockHungGetPlacePredictions,
+          })),
+          PlacesServiceStatus: { OK: 'OK' },
+        },
+      },
+    }
+
+    render(<GoogleMapPicker initialAddress="" onChange={vi.fn()} />)
+
+    const input = screen.getByPlaceholderText(/search landmark, coords/i)
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'Karelibaug' } })
+
+    // Local matches show immediately and UI does not stay frozen
+    await waitFor(() => {
+      expect(screen.getByText(/Karelibaug, Vadodara, Gujarat/i)).toBeInTheDocument()
+    })
+
+    // Advance timers / wait for race resolution
+    await waitFor(
+      () => {
+        expect(screen.queryByText(/Searching places in Vadodara\.\.\./i)).not.toBeInTheDocument()
+      },
+      { timeout: 3500 },
+    )
   })
 
   it('falls back to classic AutocompleteService when AutocompleteSuggestion is not enabled', async () => {

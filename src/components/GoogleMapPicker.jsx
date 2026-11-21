@@ -2,17 +2,14 @@ import React, { useEffect, useRef, useState } from 'react'
 import { LocateFixed } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { parseGoogleMapsLocation } from '../utils/locationUtils'
+import {
+  VADODARA_BOUNDS,
+  VADODARA_COORDINATES,
+  searchVadodaraLandmarks,
+  fetchPhotonSuggestions,
+} from '../utils/vadodaraLandmarks'
 
 let mapsScriptPromise = null
-
-const VADODARA_RESTRICTION = {
-  north: 22.45,
-  south: 22.2,
-  east: 73.3,
-  west: 72.95,
-}
-
-const VADODARA_ORIGIN = { lat: 22.3072, lng: 73.1812 }
 
 const loadGoogleMapsScript = (apiKey) => {
   if (!apiKey) {
@@ -21,6 +18,17 @@ const loadGoogleMapsScript = (apiKey) => {
 
   if (typeof window !== 'undefined' && window.google?.maps) {
     return Promise.resolve(window.google.maps)
+  }
+
+  if (typeof window !== 'undefined' && !window.__gmAuthHooked) {
+    window.__gmAuthHooked = true
+    const prevAuth = window.gm_authFailure
+    window.gm_authFailure = () => {
+      window.__googleMapsAuthFailed = true
+      if (typeof prevAuth === 'function') {
+        prevAuth()
+      }
+    }
   }
 
   if (!mapsScriptPromise) {
@@ -82,6 +90,8 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
   const onChangeRef = useRef(onChange)
   const sessionTokenRef = useRef(null)
   const suppressNextSearchRef = useRef(false)
+  const activeSearchIdRef = useRef(0)
+
   const [searchTerm, setSearchTerm] = useState(initialAddress || '')
   const [predictions, setPredictions] = useState([])
   const [isSearching, setIsSearching] = useState(false)
@@ -126,114 +136,208 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
   }, [apiKey])
 
   useEffect(() => {
-    if (!searchTerm || !searchTerm.trim()) {
+    const cleanTerm = searchTerm ? searchTerm.trim() : ''
+    if (!cleanTerm || cleanTerm.length < 2) {
       setPredictions([])
       setIsSearching(false)
       return
     }
+
     if (suppressNextSearchRef.current) {
       suppressNextSearchRef.current = false
       return
     }
 
+    // Step 1: Instant local Vadodara landmarks for zero-latency feedback
+    const localMatches = searchVadodaraLandmarks(cleanTerm, 5)
+    if (localMatches.length > 0) {
+      setPredictions(localMatches)
+    }
+
+    const currentSearchId = ++activeSearchIdRef.current
+
     const timer = setTimeout(async () => {
       setIsSearching(true)
-      try {
-        const places = await getPlacesLibrary()
-        if (!places) {
-          setIsSearching(false)
-          return
-        }
 
-        // Method A: Places API (New) fetchAutocompleteSuggestions
-        if (
-          places.AutocompleteSuggestion &&
-          typeof places.AutocompleteSuggestion.fetchAutocompleteSuggestions === 'function'
-        ) {
-          if (!sessionTokenRef.current && places.AutocompleteSessionToken) {
-            sessionTokenRef.current = new places.AutocompleteSessionToken()
-          }
+      let foundGoogleResults = false
+      const isAuthFailed = typeof window !== 'undefined' && Boolean(window.__googleMapsAuthFailed)
 
-          try {
-            const { suggestions } =
-              await places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
-                input: searchTerm,
+      // Step 2: Try Google Places API (with strict 2000ms timeout guard)
+      if (!isAuthFailed) {
+        try {
+          const places = await getPlacesLibrary()
+
+          if (places) {
+            // Method A: Places API (New) fetchAutocompleteSuggestions
+            if (
+              places.AutocompleteSuggestion &&
+              typeof places.AutocompleteSuggestion.fetchAutocompleteSuggestions === 'function'
+            ) {
+              if (!sessionTokenRef.current && places.AutocompleteSessionToken) {
+                sessionTokenRef.current = new places.AutocompleteSessionToken()
+              }
+
+              const newApiPromise = places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+                input: cleanTerm,
                 sessionToken: sessionTokenRef.current,
-                locationRestriction: VADODARA_RESTRICTION,
-                origin: VADODARA_ORIGIN,
+                locationRestriction: VADODARA_BOUNDS,
+                origin: VADODARA_COORDINATES,
                 includedRegionCodes: ['in'],
               })
 
-            if (Array.isArray(suggestions) && suggestions.length > 0) {
-              setPredictions(
-                suggestions.slice(0, 6).map((s) => ({
-                  id: s?.placePrediction?.placeId || String(Math.random()),
-                  label: s?.placePrediction?.text?.text || 'Unknown location',
-                  raw: s,
-                  isNewApi: true,
-                })),
+              const timeoutPromise = new Promise((resolve) =>
+                setTimeout(() => resolve({ isTimeout: true }), 2000),
               )
-              setError('')
-              setIsSearching(false)
-              return
+
+              const outcome = await Promise.race([newApiPromise, timeoutPromise])
+
+              if (activeSearchIdRef.current === currentSearchId && outcome && !outcome.isTimeout) {
+                const suggestions = outcome.suggestions
+                if (Array.isArray(suggestions) && suggestions.length > 0) {
+                  const googleList = suggestions.slice(0, 6).map((s) => ({
+                    id: s?.placePrediction?.placeId || String(Math.random()),
+                    label: s?.placePrediction?.text?.text || 'Unknown location',
+                    raw: s,
+                    isNewApi: true,
+                    source: 'google',
+                  }))
+
+                  setPredictions(googleList)
+                  setError('')
+                  setIsSearching(false)
+                  foundGoogleResults = true
+                  return
+                }
+              }
             }
-          } catch (newApiErr) {
-            console.warn('AutocompleteSuggestion failed, trying AutocompleteService:', newApiErr?.message)
-          }
-        }
 
-        // Method B: Universal Classic AutocompleteService fallback
-        if (places.AutocompleteService) {
-          const service = new places.AutocompleteService()
-          const bounds = window.google?.maps?.LatLngBounds
-            ? new window.google.maps.LatLngBounds(
-                new window.google.maps.LatLng(VADODARA_RESTRICTION.south, VADODARA_RESTRICTION.west),
-                new window.google.maps.LatLng(VADODARA_RESTRICTION.north, VADODARA_RESTRICTION.east),
+            // Method B: Universal Classic AutocompleteService fallback
+            if (!foundGoogleResults && places.AutocompleteService) {
+              const service = new places.AutocompleteService()
+              const bounds = window.google?.maps?.LatLngBounds
+                ? new window.google.maps.LatLngBounds(
+                    new window.google.maps.LatLng(VADODARA_BOUNDS.south, VADODARA_BOUNDS.west),
+                    new window.google.maps.LatLng(VADODARA_BOUNDS.north, VADODARA_BOUNDS.east),
+                  )
+                : undefined
+
+              const classicPromise = new Promise((resolve) => {
+                service.getPlacePredictions(
+                  {
+                    input: cleanTerm,
+                    bounds,
+                    componentRestrictions: { country: 'in' },
+                  },
+                  (results, status) => {
+                    resolve({ results, status })
+                  },
+                )
+              })
+
+              const timeoutPromise = new Promise((resolve) =>
+                setTimeout(() => resolve({ isTimeout: true }), 2000),
               )
-            : undefined
 
-          service.getPlacePredictions(
-            {
-              input: searchTerm,
-              bounds,
-              componentRestrictions: { country: 'in' },
-            },
-            (results, status) => {
-              setIsSearching(false)
-              const isOk =
-                status === 'OK' || status === window.google?.maps?.places?.PlacesServiceStatus?.OK
-              if (isOk && Array.isArray(results) && results.length > 0) {
-                setPredictions(
-                  results.slice(0, 6).map((r) => ({
+              const classicOutcome = await Promise.race([classicPromise, timeoutPromise])
+
+              if (
+                activeSearchIdRef.current === currentSearchId &&
+                classicOutcome &&
+                !classicOutcome.isTimeout
+              ) {
+                const isOk =
+                  classicOutcome.status === 'OK' ||
+                  classicOutcome.status === window.google?.maps?.places?.PlacesServiceStatus?.OK
+
+                if (
+                  isOk &&
+                  Array.isArray(classicOutcome.results) &&
+                  classicOutcome.results.length > 0
+                ) {
+                  const classicList = classicOutcome.results.slice(0, 6).map((r) => ({
                     id: r.place_id,
                     label: r.description,
                     placeId: r.place_id,
                     isNewApi: false,
-                  })),
-                )
-                setError('')
-              } else {
-                setPredictions([])
-              }
-            },
-          )
-          return
-        }
+                    source: 'google',
+                  }))
 
-        setPredictions([])
-        setIsSearching(false)
-      } catch (err) {
-        setPredictions([])
+                  setPredictions(classicList)
+                  setError('')
+                  setIsSearching(false)
+                  foundGoogleResults = true
+                  return
+                }
+              }
+            }
+          }
+        } catch (_err) {
+          // Google Places threw or timed out; fall through to OSM fallback
+        }
+      }
+
+      // If we are superseded by a newer search, abort
+      if (activeSearchIdRef.current !== currentSearchId) {
+        return
+      }
+
+      // Step 3: OpenStreetMap Photon fallback if Google Places didn't return results
+      if (!foundGoogleResults) {
+        try {
+          const osmResults = await fetchPhotonSuggestions(cleanTerm, 6, 2200)
+
+          if (activeSearchIdRef.current === currentSearchId) {
+            if (Array.isArray(osmResults) && osmResults.length > 0) {
+              setPredictions(osmResults)
+              setError('')
+              setIsSearching(false)
+              return
+            }
+          }
+        } catch (_osmErr) {
+          // Ignore OSM error
+        }
+      }
+
+      // Step 4: Final resolution - keep local matches or clear
+      if (activeSearchIdRef.current === currentSearchId) {
+        if (localMatches.length > 0) {
+          setPredictions(localMatches)
+        } else if (!foundGoogleResults) {
+          setPredictions([])
+        }
         setIsSearching(false)
       }
-    }, 250)
+    }, 200)
 
-    return () => clearTimeout(timer)
+    return () => {
+      clearTimeout(timer)
+    }
   }, [searchTerm])
 
   const handleSelectPrediction = async (item) => {
     try {
-      // 1. New Places API resolution
+      // 1. Direct Landmark or OpenStreetMap item (coordinates already known)
+      if (
+        (item.source === 'landmark' || item.source === 'osm') &&
+        Number.isFinite(Number(item.lat)) &&
+        Number.isFinite(Number(item.lng))
+      ) {
+        const lat = Number(item.lat)
+        const lng = Number(item.lng)
+        const address = item.label || ''
+        const mapLink = item.mapLink || `https://www.google.com/maps?q=${lat},${lng}`
+
+        suppressNextSearchRef.current = true
+        setSearchTerm(address)
+        setPredictions([])
+        setError('')
+        setIsFocused(false)
+        onChangeRef.current?.({ lat, lng, address, mapLink })
+        return
+      }
+
+      // 2. New Places API resolution
       if (item.isNewApi && item.raw?.placePrediction?.toPlace) {
         const place = item.raw.placePrediction.toPlace()
         await place.fetchFields({
@@ -262,7 +366,7 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
         }
       }
 
-      // 2. Geocoder resolution for placeId
+      // 3. Geocoder resolution for placeId
       if (item.placeId && window.google?.maps?.Geocoder) {
         const geocoder = new window.google.maps.Geocoder()
         geocoder.geocode({ placeId: item.placeId }, (results, status) => {
@@ -291,7 +395,7 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
         return
       }
 
-      // 3. Fallback text
+      // 4. Fallback text
       suppressNextSearchRef.current = true
       setSearchTerm(item.label)
       setPredictions([])
@@ -353,7 +457,10 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
       })
     }
 
-    if (!nextValue.trim()) setPredictions([])
+    if (!nextValue.trim()) {
+      setPredictions([])
+      setIsSearching(false)
+    }
   }
 
   return (
@@ -365,33 +472,40 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
             value={searchTerm}
             onFocus={() => setIsFocused(true)}
             onBlur={() => {
-              window.setTimeout(() => setIsFocused(false), 200)
+              window.setTimeout(() => setIsFocused(false), 250)
             }}
             onChange={handleInputChange}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
             placeholder="Search landmark, coords (e.g. 22.3, 73.1), or paste map URL"
           />
           {isFocused && (isSearching || predictions.length > 0) && (
-            <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl max-h-56 overflow-y-auto">
-              {isSearching && (
-                <p className="px-3 py-2.5 text-xs text-gray-500 font-medium">
+            <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl max-h-60 overflow-y-auto">
+              {isSearching && predictions.length === 0 && (
+                <p className="px-3 py-2.5 text-xs text-gray-500 font-medium animate-pulse">
                   Searching places in Vadodara...
                 </p>
               )}
-              {!isSearching &&
-                predictions.map((item, index) => (
-                  <button
-                    type="button"
-                    key={item.id || item.placeId || index}
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                      handleSelectPrediction(item)
-                    }}
-                    className="block w-full border-b border-gray-100 px-3 py-2.5 text-left text-xs text-gray-800 hover:bg-amber-50 hover:text-amber-900 transition-colors cursor-pointer"
-                  >
-                    📍 {item.label}
-                  </button>
-                ))}
+              {predictions.map((item, index) => (
+                <button
+                  type="button"
+                  key={item.id || item.placeId || index}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    handleSelectPrediction(item)
+                  }}
+                  className="block w-full border-b border-gray-100 px-3 py-2.5 text-left text-xs text-gray-800 hover:bg-amber-50 hover:text-amber-900 transition-colors cursor-pointer"
+                >
+                  <span className="font-semibold text-amber-700 mr-1.5">📍</span>
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {isFocused && !isSearching && predictions.length === 0 && searchTerm.trim().length >= 2 && (
+            <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl p-2.5">
+              <p className="text-xs text-gray-500">
+                No matching places found. You can type address, paste map link, or tap GPS.
+              </p>
             </div>
           )}
         </div>
