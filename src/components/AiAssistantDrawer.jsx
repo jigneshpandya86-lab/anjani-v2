@@ -62,6 +62,7 @@ import {
   MAIN_MENU_CHIPS,
   MAIN_MENU_GROUPS,
 } from '../utils/chatbotFlowEngine'
+import { getContextualAiChips } from '../utils/aiContextualChips'
 import {
   checkIsDayTime,
   buildHumanLikeFollowUpMessage,
@@ -4140,10 +4141,12 @@ export default function AiAssistantDrawer({
               text:
                 resData.text ||
                 'Sure! Please specify the customer name and quantity (e.g. "Kamleshbhai 30 box tomorrow 11 AM").',
-              chips: [
-                { label: '📦 Orders & Deliveries', action: 'query_orders' },
-                { label: '📊 Check Stock', action: 'query_stock' },
-              ],
+              chips: getContextualAiChips({
+                text: resData.text || 'specify customer name and quantity',
+                lastUserMessage: query,
+                clients,
+                orders,
+              }),
               timestamp: new Date(),
             },
           ])
@@ -4271,9 +4274,10 @@ export default function AiAssistantDrawer({
         const totalStaffCash = nileshBal + hiteshBal
 
         let acctText = ''
-        if (staffName && /nilesh/i.test(staffName)) {
+        const staffNameLower = (staffName || '').toLowerCase()
+        if (staffNameLower.includes('nilesh')) {
           acctText = `💼 **Cash with Nilesh**: **₹${nileshBal.toLocaleString('en-IN')}**\nNilesh currently has ₹${nileshBal.toLocaleString('en-IN')} in delivery cash custody.`
-        } else if (staffName && /hitesh/i.test(staffName)) {
+        } else if (staffNameLower.includes('hitesh')) {
           acctText = `💼 **Cash with Hiteshbhai**: **₹${hiteshBal.toLocaleString('en-IN')}**\nHiteshbhai currently has ₹${hiteshBal.toLocaleString('en-IN')} in delivery cash custody.`
         } else {
           acctText = `💼 **Staff Cash Custody & Account Balances**:\n• **Nilesh**: ₹${nileshBal.toLocaleString('en-IN')}\n• **Hiteshbhai**: ₹${hiteshBal.toLocaleString('en-IN')}\n• **Total with Delivery Staff**: ₹${totalStaffCash.toLocaleString('en-IN')}\n• **Counter Cash**: ₹${counterBal.toLocaleString('en-IN')}\n• **Bank / UPI**: ₹${bankBal.toLocaleString('en-IN')}`
@@ -4287,6 +4291,11 @@ export default function AiAssistantDrawer({
             text: acctText,
             type: 'accounts_summary',
             data: { balances: summary, totalStaffCash },
+            chips: [
+              { label: '🤝 Cash Handover', value: 'record cash handover' },
+              { label: '💸 Record Expense', value: 'record expense' },
+              { label: '💳 Outstanding Dues', action: 'query_dues' },
+            ],
             timestamp: new Date(),
           },
         ])
@@ -4305,6 +4314,11 @@ export default function AiAssistantDrawer({
             text: `📊 **Live Warehouse Stock Summary**:\n${lines}\n\n• **Total Units**: **${stockTotal ?? 0}**`,
             type: 'stock_summary',
             data: { summary, total: stockTotal },
+            chips: [
+              { label: '📦 Book Order', value: 'book order' },
+              { label: "📦 Today's Orders", action: 'query_orders' },
+              { label: '🚚 Inward Stock', value: 'add 100 boxes 200ml to production' },
+            ],
             timestamp: new Date(),
           },
         ])
@@ -4336,6 +4350,11 @@ export default function AiAssistantDrawer({
             sender: 'assistant',
             text: duesText,
             type: 'dues_summary',
+            chips: [
+              { label: '💳 Record Payment', value: 'record payment' },
+              { label: '📄 Client Statement', value: 'generate statement' },
+              { label: "📦 Today's Orders", action: 'query_orders' },
+            ],
             timestamp: new Date(),
           },
         ])
@@ -4356,6 +4375,10 @@ export default function AiAssistantDrawer({
               : '📋 No pending staff tasks in the system right now.',
             type: 'staff_tasks_list',
             data: { tasks: filtered },
+            chips: [
+              { label: '📋 Assign Errand', value: 'remind nilesh' },
+              { label: "📦 Today's Orders", action: 'query_orders' },
+            ],
             timestamp: new Date(),
           },
         ])
@@ -4366,13 +4389,12 @@ export default function AiAssistantDrawer({
             id: 'asst-' + Date.now(),
             sender: 'assistant',
             text: resData.text || "Hello! I am Anjani AI, your operations assistant. How can I assist you today?",
-            chips: [
-              { label: '📦 Book Order', value: 'book order' },
-              { label: "📦 Today's Orders", value: "today's orders" },
-              { label: '📊 Check Stock', value: 'check stock' },
-              { label: '💳 Outstanding Dues', value: 'outstanding dues' },
-              { label: '📋 Staff Tasks', value: 'show staff tasks' },
-            ],
+            chips: getContextualAiChips({
+              text: resData.text,
+              lastUserMessage: query,
+              clients,
+              orders,
+            }),
             modelUsed: resData.modelUsed,
             timestamp: new Date(),
           },
@@ -4384,6 +4406,12 @@ export default function AiAssistantDrawer({
             id: 'asst-' + Date.now(),
             sender: 'assistant',
             text: resData.text || "I've processed your request.",
+            chips: getContextualAiChips({
+              text: resData.text,
+              lastUserMessage: query,
+              clients,
+              orders,
+            }),
             modelUsed: resData.modelUsed,
             timestamp: new Date(),
           },
