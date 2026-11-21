@@ -6,6 +6,7 @@ import GoogleMapPicker from './GoogleMapPicker'
 import SkuSelect from './SkuSelect'
 import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 import { resolveOrderInitialData } from '../utils/orderUtils'
+import { parseGoogleMapsLocation } from '../utils/locationUtils'
 
 export default function OrderModal({ orderToEdit, onClose }) {
   const clients = useClientStore((state) => state.clients)
@@ -525,19 +526,40 @@ export default function OrderModal({ orderToEdit, onClose }) {
             maxLength={150}
             className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm"
             value={formData.location}
-            onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+            onChange={(e) => {
+              const val = e.target.value
+              const parsed = parseGoogleMapsLocation(val)
+              setFormData((prev) => ({
+                ...prev,
+                location: val,
+                mapLink: parsed?.mapLink || prev.mapLink,
+                locationLat:
+                  parsed?.lat !== null && parsed?.lat !== undefined ? parsed.lat : prev.locationLat,
+                locationLng:
+                  parsed?.lng !== null && parsed?.lng !== undefined ? parsed.lng : prev.locationLng,
+              }))
+            }}
           />
           {formData.mapLink && (
-            <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5">
-              <MapPinned className="h-4 w-4 text-amz-orange shrink-0" />
-              <a
-                className="text-xs text-blue-600 font-semibold underline truncate"
-                href={formData.mapLink}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open Google Map
-              </a>
+            <div className="mt-1.5 flex items-center justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <MapPinned className="h-4 w-4 text-amz-orange shrink-0" />
+                <a
+                  className="text-xs text-blue-600 font-semibold underline truncate"
+                  href={formData.mapLink}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open Google Map
+                </a>
+              </div>
+              {Number.isFinite(Number(formData.locationLat)) &&
+                Number.isFinite(Number(formData.locationLng)) && (
+                  <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
+                    ✓ {Number(formData.locationLat).toFixed(4)},{' '}
+                    {Number(formData.locationLng).toFixed(4)}
+                  </span>
+                )}
             </div>
           )}
         </div>

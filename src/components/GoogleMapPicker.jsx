@@ -1,15 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { LocateFixed } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { parseGoogleMapsLocation } from '../utils/locationUtils'
 
 let mapsScriptPromise = null
+
 const VADODARA_RESTRICTION = {
   north: 22.45,
   south: 22.2,
   east: 73.3,
   west: 72.95,
 }
+
 const VADODARA_ORIGIN = { lat: 22.3072, lng: 73.1812 }
 
 const loadGoogleMapsScript = (apiKey) => {
@@ -17,16 +19,28 @@ const loadGoogleMapsScript = (apiKey) => {
     return Promise.resolve(null)
   }
 
-  if (window.google?.maps?.places) return Promise.resolve(window.google.maps)
+  if (typeof window !== 'undefined' && window.google?.maps) {
+    return Promise.resolve(window.google.maps)
+  }
 
   if (!mapsScriptPromise) {
     mapsScriptPromise = new Promise((resolve, reject) => {
+      if (typeof document === 'undefined') {
+        resolve(null)
+        return
+      }
+
       const existing = document.querySelector('script[data-google-maps-loader="true"]')
       if (existing) {
-        existing.addEventListener('load', () => resolve(window.google.maps))
-        existing.addEventListener('error', () =>
-          reject(new Error('Failed to load Google Maps script.')),
-        )
+        if (window.google?.maps) {
+          resolve(window.google.maps)
+          return
+        }
+        existing.addEventListener('load', () => resolve(window.google?.maps || null))
+        existing.addEventListener('error', () => {
+          mapsScriptPromise = null
+          reject(new Error('Failed to load Google Maps script.'))
+        })
         return
       }
 
@@ -36,18 +50,31 @@ const loadGoogleMapsScript = (apiKey) => {
       script.defer = true
       script.dataset.googleMapsLoader = 'true'
       script.onload = () => {
-        if (!window.google?.maps?.places) {
-          reject(new Error('Google Places is not available after script load.'))
-          return
-        }
-        resolve(window.google.maps)
+        resolve(window.google?.maps || null)
       }
-      script.onerror = () => reject(new Error('Failed to load Google Maps script.'))
+      script.onerror = () => {
+        mapsScriptPromise = null
+        reject(new Error('Failed to load Google Maps script.'))
+      }
       document.head.appendChild(script)
     })
   }
 
   return mapsScriptPromise
+}
+
+const getPlacesLibrary = async () => {
+  if (typeof window === 'undefined') return null
+  if (window.google?.maps?.places) return window.google.maps.places
+  if (window.google?.maps?.importLibrary) {
+    try {
+      const lib = await window.google.maps.importLibrary('places')
+      if (lib) return lib
+    } catch (_e) {
+      // fallback
+    }
+  }
+  return window.google?.maps?.places || null
 }
 
 export default function GoogleMapPicker({ initialAddress = '', onChange }) {
@@ -81,13 +108,13 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
         const maps = await loadGoogleMapsScript(apiKey)
         if (!isActive || !maps) return
 
-        if (!window.google.maps.places.AutocompleteSuggestion) {
-          return
+        const places = await getPlacesLibrary()
+        if (places?.AutocompleteSessionToken) {
+          sessionTokenRef.current = new places.AutocompleteSessionToken()
         }
-        sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken()
       } catch (err) {
         if (!isActive) return
-        console.warn('Google Places suggestion loader notice:', err.message)
+        console.warn('Google Places suggestion loader notice:', err?.message)
       }
     }
 
@@ -99,8 +126,11 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
   }, [apiKey])
 
   useEffect(() => {
-    if (!searchTerm.trim()) return
-    if (!window.google?.maps?.places?.AutocompleteSuggestion) return
+    if (!searchTerm || !searchTerm.trim()) {
+      setPredictions([])
+      setIsSearching(false)
+      return
+    }
     if (suppressNextSearchRef.current) {
       suppressNextSearchRef.current = false
       return
@@ -109,24 +139,91 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
     const timer = setTimeout(async () => {
       setIsSearching(true)
       try {
-        if (!sessionTokenRef.current) {
-          sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken()
+        const places = await getPlacesLibrary()
+        if (!places) {
+          setIsSearching(false)
+          return
         }
 
-        const { suggestions } =
-          await window.google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
-            input: searchTerm,
-            sessionToken: sessionTokenRef.current,
-            locationRestriction: VADODARA_RESTRICTION,
-            origin: VADODARA_ORIGIN,
-            includedRegionCodes: ['in'],
-          })
+        // Method A: Places API (New) fetchAutocompleteSuggestions
+        if (
+          places.AutocompleteSuggestion &&
+          typeof places.AutocompleteSuggestion.fetchAutocompleteSuggestions === 'function'
+        ) {
+          if (!sessionTokenRef.current && places.AutocompleteSessionToken) {
+            sessionTokenRef.current = new places.AutocompleteSessionToken()
+          }
 
-        setPredictions(Array.isArray(suggestions) ? suggestions.slice(0, 6) : [])
-        setError('')
+          try {
+            const { suggestions } =
+              await places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+                input: searchTerm,
+                sessionToken: sessionTokenRef.current,
+                locationRestriction: VADODARA_RESTRICTION,
+                origin: VADODARA_ORIGIN,
+                includedRegionCodes: ['in'],
+              })
+
+            if (Array.isArray(suggestions) && suggestions.length > 0) {
+              setPredictions(
+                suggestions.slice(0, 6).map((s) => ({
+                  id: s?.placePrediction?.placeId || String(Math.random()),
+                  label: s?.placePrediction?.text?.text || 'Unknown location',
+                  raw: s,
+                  isNewApi: true,
+                })),
+              )
+              setError('')
+              setIsSearching(false)
+              return
+            }
+          } catch (newApiErr) {
+            console.warn('AutocompleteSuggestion failed, trying AutocompleteService:', newApiErr?.message)
+          }
+        }
+
+        // Method B: Universal Classic AutocompleteService fallback
+        if (places.AutocompleteService) {
+          const service = new places.AutocompleteService()
+          const bounds = window.google?.maps?.LatLngBounds
+            ? new window.google.maps.LatLngBounds(
+                new window.google.maps.LatLng(VADODARA_RESTRICTION.south, VADODARA_RESTRICTION.west),
+                new window.google.maps.LatLng(VADODARA_RESTRICTION.north, VADODARA_RESTRICTION.east),
+              )
+            : undefined
+
+          service.getPlacePredictions(
+            {
+              input: searchTerm,
+              bounds,
+              componentRestrictions: { country: 'in' },
+            },
+            (results, status) => {
+              setIsSearching(false)
+              const isOk =
+                status === 'OK' || status === window.google?.maps?.places?.PlacesServiceStatus?.OK
+              if (isOk && Array.isArray(results) && results.length > 0) {
+                setPredictions(
+                  results.slice(0, 6).map((r) => ({
+                    id: r.place_id,
+                    label: r.description,
+                    placeId: r.place_id,
+                    isNewApi: false,
+                  })),
+                )
+                setError('')
+              } else {
+                setPredictions([])
+              }
+            },
+          )
+          return
+        }
+
+        setPredictions([])
+        setIsSearching(false)
       } catch (err) {
         setPredictions([])
-      } finally {
         setIsSearching(false)
       }
     }, 250)
@@ -134,44 +231,80 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
     return () => clearTimeout(timer)
   }, [searchTerm])
 
-  const handleSelectPrediction = async (suggestion) => {
+  const handleSelectPrediction = async (item) => {
     try {
-      const place = suggestion?.placePrediction?.toPlace?.()
-      if (!place) {
-        setError('Unable to fetch selected place details.')
+      // 1. New Places API resolution
+      if (item.isNewApi && item.raw?.placePrediction?.toPlace) {
+        const place = item.raw.placePrediction.toPlace()
+        await place.fetchFields({
+          fields: ['displayName', 'formattedAddress', 'location'],
+        })
+
+        const lat = place.location?.lat?.()
+        const lng = place.location?.lng?.()
+
+        if (Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
+          const address = place.formattedAddress || item.label || ''
+          const mapLink = `https://www.google.com/maps?q=${lat},${lng}`
+
+          suppressNextSearchRef.current = true
+          setSearchTerm(address)
+          setPredictions([])
+          setError('')
+          setIsFocused(false)
+          onChangeRef.current?.({ lat, lng, address, mapLink })
+
+          const places = await getPlacesLibrary()
+          if (places?.AutocompleteSessionToken) {
+            sessionTokenRef.current = new places.AutocompleteSessionToken()
+          }
+          return
+        }
+      }
+
+      // 2. Geocoder resolution for placeId
+      if (item.placeId && window.google?.maps?.Geocoder) {
+        const geocoder = new window.google.maps.Geocoder()
+        geocoder.geocode({ placeId: item.placeId }, (results, status) => {
+          if (status === 'OK' && results && results[0]) {
+            const loc = results[0].geometry?.location
+            const lat = Number(loc?.lat?.()?.toFixed(6))
+            const lng = Number(loc?.lng?.()?.toFixed(6))
+            const address = results[0].formatted_address || item.label || ''
+            const mapLink = `https://www.google.com/maps?q=${lat},${lng}`
+
+            suppressNextSearchRef.current = true
+            setSearchTerm(address)
+            setPredictions([])
+            setError('')
+            setIsFocused(false)
+            onChangeRef.current?.({ lat, lng, address, mapLink })
+          } else {
+            suppressNextSearchRef.current = true
+            setSearchTerm(item.label)
+            setPredictions([])
+            setError('')
+            setIsFocused(false)
+            onChangeRef.current?.({ lat: null, lng: null, address: item.label, mapLink: null })
+          }
+        })
         return
       }
 
-      await place.fetchFields({
-        fields: ['displayName', 'formattedAddress', 'location'],
-      })
-
-      const lat = place.location?.lat?.()
-      const lng = place.location?.lng?.()
-
-      if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) {
-        setError('Selected place does not include coordinates.')
-        return
-      }
-
-      const address = place.formattedAddress || suggestion?.placePrediction?.text?.text || ''
-      const mapLink = `https://www.google.com/maps?q=${lat},${lng}`
-
+      // 3. Fallback text
       suppressNextSearchRef.current = true
-      setSearchTerm(address)
+      setSearchTerm(item.label)
       setPredictions([])
       setError('')
       setIsFocused(false)
-      onChangeRef.current?.({ lat, lng, address, mapLink })
-
-      sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken()
+      onChangeRef.current?.({ lat: null, lng: null, address: item.label, mapLink: null })
     } catch (err) {
       setError(err?.message || 'Unable to fetch selected place details.')
     }
   }
 
   const handleUseCurrentGps = () => {
-    if (!navigator.geolocation) {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
       toast.error('Geolocation is not supported by your browser')
       return
     }
@@ -232,27 +365,31 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
             value={searchTerm}
             onFocus={() => setIsFocused(true)}
             onBlur={() => {
-              window.setTimeout(() => setIsFocused(false), 120)
+              window.setTimeout(() => setIsFocused(false), 200)
             }}
             onChange={handleInputChange}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amz-orange focus:border-amz-orange"
-            placeholder="Type place name, coords (e.g. 22.3, 73.1), or paste map URL"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+            placeholder="Search landmark, coords (e.g. 22.3, 73.1), or paste map URL"
           />
           {isFocused && (isSearching || predictions.length > 0) && (
-            <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg max-h-48 overflow-y-auto">
-              {isSearching && <p className="px-3 py-2 text-xs text-gray-500">Searching...</p>}
+            <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl max-h-56 overflow-y-auto">
+              {isSearching && (
+                <p className="px-3 py-2.5 text-xs text-gray-500 font-medium">
+                  Searching places in Vadodara...
+                </p>
+              )}
               {!isSearching &&
                 predictions.map((item, index) => (
                   <button
                     type="button"
-                    key={item?.placePrediction?.placeId || index}
+                    key={item.id || item.placeId || index}
                     onMouseDown={(e) => {
                       e.preventDefault()
                       handleSelectPrediction(item)
                     }}
-                    className="block w-full border-b border-gray-100 px-3 py-2 text-left text-xs hover:bg-gray-50"
+                    className="block w-full border-b border-gray-100 px-3 py-2.5 text-left text-xs text-gray-800 hover:bg-amber-50 hover:text-amber-900 transition-colors cursor-pointer"
                   >
-                    {item?.placePrediction?.text?.text || 'Unknown location'}
+                    📍 {item.label}
                   </button>
                 ))}
             </div>
@@ -264,18 +401,20 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
           type="button"
           onClick={handleUseCurrentGps}
           disabled={gettingGps}
-          className="px-2.5 py-2 bg-gray-100 hover:bg-orange-50 hover:text-amz-orange border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+          className="px-2.5 py-2 bg-gray-100 hover:bg-orange-50 hover:text-amber-700 border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
           title="Detect and use current device GPS location"
         >
-          <LocateFixed className={`w-3.5 h-3.5 ${gettingGps ? 'animate-spin text-amz-orange' : 'text-gray-600'}`} />
+          <LocateFixed
+            className={`w-3.5 h-3.5 ${gettingGps ? 'animate-spin text-amber-600' : 'text-gray-600'}`}
+          />
           <span className="hidden sm:inline">GPS</span>
         </button>
       </div>
 
       <p className="text-[11px] text-gray-500">
-        Type location, paste Google Maps link/coords, or tap GPS.
+        Type landmark in Vadodara, paste Google Maps link, or tap GPS.
       </p>
-      {error && <p className="text-xs text-amber-600">{error}</p>}
+      {error && <p className="text-xs text-amber-600 font-medium">{error}</p>}
     </div>
   )
 }
