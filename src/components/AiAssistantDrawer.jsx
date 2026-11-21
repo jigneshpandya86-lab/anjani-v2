@@ -758,10 +758,11 @@ export default function AiAssistantDrawer({
     if (aiPrefillFile) {
       setSelectedFile(aiPrefillFile)
       setFilePreview(aiPrefillFile.dataUrl)
-      // For shared GPay receipts, pre-select Client + Order + Payment
-      setIsClientMode(true)
-      setIsSalesMode(true)
-      setIsPaymentMode(true)
+      // Pure Auto mode: keep chips unselected so AI auto-detects from image content
+      setIsClientMode(false)
+      setIsSalesMode(false)
+      setIsPaymentMode(false)
+      setIsAccountsMode(false)
     }
   }, [aiPrefillFile])
 

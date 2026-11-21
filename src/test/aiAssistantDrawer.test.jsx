@@ -92,9 +92,12 @@ vi.mock('../services/leadSmsService', async (importOriginal) => {
   }
 })
 
+let mockAiPrefillFile = null
+
 vi.mock('../store/clientStore', () => ({
   useClientStore: (selector) => {
     const state = {
+      aiPrefillFile: mockAiPrefillFile,
       clients: [
         { id: 'c1', name: 'Jay Ambe' },
         { id: 'c2', name: 'Rohitbhai' },
@@ -624,6 +627,38 @@ describe('AiAssistantDrawer', () => {
       }),
     )
 
+    unmount()
+  })
+
+  it('opens in pure auto mode with no chips pre-selected when aiPrefillFile is shared', async () => {
+    const mockFile = {
+      file: new File(['mock'], 'gpay_receipt.jpg', { type: 'image/jpeg' }),
+      dataUrl: 'data:image/jpeg;base64,mock',
+      fileName: 'gpay_receipt.jpg',
+      sizeKb: 120,
+    }
+
+    mockAiPrefillFile = mockFile
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    expect(await screen.findByText('Scan photo as:')).toBeInTheDocument()
+    const clientBtn = screen.getByRole('button', { name: /👤 Client/i })
+    const orderBtn = screen.getByRole('button', { name: /🛒 Order/i })
+    const paymentBtn = screen.getByRole('button', { name: /💰 Payment/i })
+
+    // In pure auto mode, chips are unselected by default
+    expect(clientBtn).toHaveAttribute('aria-pressed', 'false')
+    expect(orderBtn).toHaveAttribute('aria-pressed', 'false')
+    expect(paymentBtn).toHaveAttribute('aria-pressed', 'false')
+
+    mockAiPrefillFile = null
     unmount()
   })
 
