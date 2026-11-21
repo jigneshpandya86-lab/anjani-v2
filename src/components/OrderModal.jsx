@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useClientStore } from '../store/clientStore'
 import { Package, Clock, IndianRupee, Image as ImageIcon, MapPinned, Plus, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -484,7 +484,9 @@ export default function OrderModal({ orderToEdit, onClose }) {
                 required
                 className="w-full pl-9 pr-3 py-3 bg-gray-50 rounded-xl border border-gray-200 outline-none text-sm font-bold"
                 value={formData.time}
-                onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, time: e.target.value, deliveryTime: e.target.value })
+                }
               />
             </div>
           </div>

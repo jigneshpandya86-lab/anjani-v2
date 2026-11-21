@@ -52,7 +52,7 @@ import { consolidateRetailSales } from '../utils/salesBatchUtils'
 import { findBestExistingClientMatch, findMatchingClient } from '../utils/clientMatchingUtils'
 import { ensureEnglishText, sanitizeClientForEnglish, isMerchantOrSelfName } from '../utils/textUtils'
 import { extractGoogleMapsUrl } from '../utils/locationUtils'
-import { getRecentSkuPrice, formatPaymentNarration } from '../utils/orderUtils'
+import { getRecentSkuPrice, formatPaymentNarration, normalizeTimeToHHmm } from '../utils/orderUtils'
 import {
   getMainMenuMessage,
   startChatbotFlow,
@@ -3809,7 +3809,7 @@ export default function AiAssistantDrawer({
         if (targetOrder?.id && time) {
           try {
             await updateOrder(targetOrder.id, {
-              time,
+              time: normalizeTimeToHHmm(time, time),
               deliveryTime: time,
             })
             toast.success(`Delivery time updated to ${time}!`)
@@ -4107,7 +4107,7 @@ export default function AiAssistantDrawer({
           if (incoming.deliveryTime || incoming.time) {
             const t = String(incoming.deliveryTime || incoming.time).trim()
             if (t) {
-              patch.time = t
+              patch.time = normalizeTimeToHHmm(t, t)
               patch.deliveryTime = t
               appliedChanges.push(`⏰ Time: **${t}**`)
             }
@@ -5476,8 +5476,8 @@ export default function AiAssistantDrawer({
                               status: 'Pending',
                               date: msg.data.deliveryDate || msg.data.date,
                               deliveryDate: msg.data.deliveryDate || msg.data.date,
-                              time: msg.data.deliveryTime || msg.data.time || '11 AM',
-                              deliveryTime: msg.data.deliveryTime || msg.data.time || '11 AM',
+                              time: normalizeTimeToHHmm(msg.data.deliveryTime || msg.data.time, '11:00'),
+                              deliveryTime: msg.data.deliveryTime || msg.data.time || '11:00',
                             })
                             setPlacedOrders((prev) => ({ ...prev, [msg.id]: savedOrder || msg.data }))
                             toast.success(`Order confirmed for ${msg.data.clientName}!`)
@@ -5927,7 +5927,8 @@ export default function AiAssistantDrawer({
                                 const fallbackTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 
                                 const orderDate = d.order.deliveryDate || d.order.date || fallbackDate
-                                const orderTime = d.order.deliveryTime || d.order.time || fallbackTime
+                                const rawOrderTime = d.order.deliveryTime || d.order.time || fallbackTime
+                                const orderTime = normalizeTimeToHHmm(rawOrderTime, fallbackTime)
 
                                 const qty = Number(d.order.qty) || 1
                                 const rate = Number(d.order.rate) || 130
@@ -5960,7 +5961,7 @@ export default function AiAssistantDrawer({
                                   date: orderDate,
                                   time: orderTime,
                                   deliveryDate: orderDate,
-                                  deliveryTime: orderTime,
+                                  deliveryTime: d.order.deliveryTime || d.order.time || orderTime,
                                 }
 
                                 const res = await addOrder(orderPayload)

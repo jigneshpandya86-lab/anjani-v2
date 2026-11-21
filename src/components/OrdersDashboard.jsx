@@ -30,7 +30,7 @@ import {
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage'
 import { app } from '../firebase-config'
 import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
-import { getNormalizedOrderStatus } from '../utils/orderUtils'
+import { getNormalizedOrderStatus, normalizeTimeToHHmm } from '../utils/orderUtils'
 import { checkIsDayTime } from '../services/taskService'
 import { sendBackgroundSms } from '../services/leadSmsService'
 
@@ -241,7 +241,7 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
       const statusPrio = statusPriority[getNormalizedOrderStatus(order.status)] ?? 999
       const dateObj = getOrderDate(order)
       const dateTime = dateObj?.getTime() ?? Number.MAX_VALUE
-      const timeStr = order.time || '23:59'
+      const timeStr = normalizeTimeToHHmm(order.time || order.deliveryTime, '23:59')
       const [hours, minutes] = timeStr.split(':').map(Number)
       const timeInMinutes = (hours || 0) * 60 + (minutes || 0)
       return [statusPrio, dateTime, timeInMinutes]

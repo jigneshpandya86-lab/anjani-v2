@@ -63,11 +63,14 @@ export const normalizeOrderWriteData = (data = {}, isUpdate = false) => {
   if (!result.deliveryDate && result.date) {
     result.deliveryDate = result.date
   }
-  if (!result.time && data.deliveryTime) {
-    result.time = data.deliveryTime
+  if (!result.time && (data.deliveryTime || data.preferredTime || data.preferred_time)) {
+    result.time = data.deliveryTime || data.preferredTime || data.preferred_time
   }
   if (!result.deliveryTime && result.time) {
     result.deliveryTime = result.time
+  }
+  if (result.time) {
+    result.time = normalizeTimeToHHmm(result.time, result.time)
   }
 
   if (Array.isArray(data.items) && data.items.length > 0) {
@@ -271,10 +274,22 @@ export const resolveOrderInitialData = (orderToEdit, clients = []) => {
     selectedClient?.locationLng
   )
 
+  const rawTime =
+    orderToEdit.time ||
+    orderToEdit.deliveryTime ||
+    orderToEdit.preferredTime ||
+    orderToEdit.preferred_time ||
+    orderToEdit.delivery_time ||
+    ''
+
+  const resolvedTime = normalizeTimeToHHmm(rawTime, localTime)
+
   return {
     clientId,
     date: orderToEdit.date || orderToEdit.deliveryDate || orderToEdit.orderDate || localDate,
-    time: orderToEdit.time || orderToEdit.deliveryTime || localTime,
+    time: resolvedTime,
+    deliveryTime: orderToEdit.deliveryTime || resolvedTime,
+    deliveryDate: orderToEdit.deliveryDate || orderToEdit.date || orderToEdit.orderDate || localDate,
     address: resolvedAddress,
     location: resolvedLocation,
     mapLink: resolvedMapLink,
@@ -488,5 +503,142 @@ export function parseNaturalDate(input, referenceDate = new Date()) {
   }
 
   return null
+}
+
+/**
+ * Normalizes any natural language or 12h/24h time string into standard HH:mm format.
+ * Suitable for HTML <input type="time"> and 24-hour chronological sorting.
+ * Handles:
+ * - Time slots/ranges: "4:00 PM – 5:00 PM", "4 PM to 5 PM", "11 AM - 12 PM" (extracts start time)
+ * - 12h formats: "4:00 PM", "4:30 pm", "4 PM", "11 AM", "9 AM", "1 PM", "12 PM", "12 AM"
+ * - 24h formats: "16:00", "16:00:00", "09:30"
+ * - Gujarati / colloquial: "sanje" / "સાંજે" -> "16:00", "savare" / "સવારે" -> "09:00", "bapore" / "બપોરે" -> "13:00", "night" / "રાત્રે" -> "20:00"
+ * - Date objects and ISO strings with "T"
+ * Strictly NO REGEX used.
+ */
+export function normalizeTimeToHHmm(rawTime, fallback = '') {
+  if (rawTime === null || rawTime === undefined) {
+    return fallback
+  }
+
+  if (rawTime instanceof Date && !isNaN(rawTime.getTime())) {
+    const hh = String(rawTime.getHours()).padStart(2, '0')
+    const mm = String(rawTime.getMinutes()).padStart(2, '0')
+    return `${hh}:${mm}`
+  }
+
+  if (typeof rawTime !== 'string') {
+    return fallback
+  }
+
+  let s = rawTime.trim()
+  if (!s || s === 'N/A' || s === 'null' || s === 'undefined') {
+    return fallback
+  }
+
+  // If ISO date string, extract time
+  if (s.includes('T')) {
+    const parsed = new Date(s)
+    if (!isNaN(parsed.getTime())) {
+      const hh = String(parsed.getHours()).padStart(2, '0')
+      const mm = String(parsed.getMinutes()).padStart(2, '0')
+      return `${hh}:${mm}`
+    }
+  }
+
+  // Handle range / slot: "4:00 PM – 5:00 PM", "4 PM to 5 PM", "11 AM - 12 PM"
+  if (s.includes('–')) {
+    s = s.split('–')[0].trim()
+  } else if (s.includes('—')) {
+    s = s.split('—')[0].trim()
+  } else {
+    const toIdx = s.toLowerCase().indexOf(' to ')
+    if (toIdx !== -1) {
+      s = s.slice(0, toIdx).trim()
+    } else if (s.includes(' - ')) {
+      s = s.split(' - ')[0].trim()
+    } else if (s.includes('-') && !s.startsWith('20') && !s.startsWith('19')) {
+      s = s.split('-')[0].trim()
+    }
+  }
+
+  const lower = s.toLowerCase()
+
+  // Gujarati / colloquial shortcuts
+  if (
+    lower.includes('sanje') ||
+    lower.includes('saanj') ||
+    lower.includes('evening') ||
+    lower.includes('shyam') ||
+    lower.includes('સાંજે') ||
+    lower.includes('સાંજ')
+  ) {
+    return '16:00'
+  }
+  if (
+    lower.includes('savare') ||
+    lower.includes('sakal') ||
+    lower.includes('morning') ||
+    lower.includes('સવારે') ||
+    lower.includes('સવાર')
+  ) {
+    return '09:00'
+  }
+  if (
+    lower.includes('bapore') ||
+    lower.includes('dupahar') ||
+    lower.includes('afternoon') ||
+    lower.includes('બપોરે') ||
+    lower.includes('બપોર')
+  ) {
+    return '13:00'
+  }
+  if (
+    lower.includes('night') ||
+    lower.includes('raat') ||
+    lower.includes('raatre') ||
+    lower.includes('રાત્રે') ||
+    lower.includes('રાત')
+  ) {
+    return '20:00'
+  }
+
+  const isPM = lower.includes('pm') || lower.includes('p.m.')
+  const isAM = lower.includes('am') || lower.includes('a.m.')
+
+  let clean = ''
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if ((ch >= '0' && ch <= '9') || ch === ':') {
+      clean += ch
+    }
+  }
+
+  if (clean.includes(':')) {
+    const parts = clean.split(':')
+    let hours = parseInt(parts[0], 10)
+    let minutes = parseInt(parts[1], 10) || 0
+    if (isNaN(hours)) return fallback
+
+    if (isPM && hours < 12) hours += 12
+    else if (isAM && hours === 12) hours = 0
+
+    if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+    }
+  } else if (clean.length > 0) {
+    let hours = parseInt(clean, 10)
+    let minutes = 0
+    if (isNaN(hours)) return fallback
+
+    if (isPM && hours < 12) hours += 12
+    else if (isAM && hours === 12) hours = 0
+
+    if (hours >= 0 && hours <= 23) {
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+    }
+  }
+
+  return fallback
 }
 
