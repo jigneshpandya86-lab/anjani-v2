@@ -333,8 +333,9 @@ describe('AiAssistantDrawer', () => {
     )
 
     expect(screen.getByRole('heading', { level: 2, name: 'Anjani' })).toBeInTheDocument()
-    expect(screen.getByText('Anjani AI Assistant')).toBeInTheDocument()
-    expect(screen.getByText((content) => content.includes('Powered by Gemini 3.5 Flash'))).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 3, name: 'Anjani AI' })).toBeInTheDocument()
+    expect(screen.queryByText('Powered by Gemini 3.5 Flash')).not.toBeInTheDocument()
+    expect(screen.queryByText('Orders & Deliveries:')).not.toBeInTheDocument()
 
     // Unintelligent hardwired chips must NOT be in the document
     expect(screen.queryByText('💸 Record Expense')).not.toBeInTheDocument()

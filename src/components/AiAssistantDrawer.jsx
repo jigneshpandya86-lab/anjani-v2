@@ -5104,46 +5104,10 @@ export default function AiAssistantDrawer({
         {/* Message Thread */}
         <div ref={messagesContainerRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50/50">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center text-center py-10 px-4 text-gray-700 select-none">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#131921] to-gray-800 text-[#ff9900] flex items-center justify-center shadow-md mb-3">
-                <Bot className="w-8 h-8" />
-              </div>
-              <h3 className="text-base font-bold text-gray-900 mb-1">
-                Anjani AI Assistant
+            <div className="flex flex-col items-center justify-center flex-1 h-full min-h-[300px] text-center p-4 text-gray-400 select-none">
+              <h3 className="text-xl font-semibold tracking-wide text-gray-400">
+                Anjani AI
               </h3>
-              <p className="text-xs text-gray-500 max-w-xs mb-4">
-                Powered by Gemini 3.5 Flash. Speak naturally, send voice notes, or share photos of bills &amp; receipts.
-              </p>
-              <div className="w-full max-w-sm bg-white/90 rounded-xl p-3.5 border border-gray-200/90 shadow-2xs space-y-2.5 text-left text-xs text-gray-700">
-                <div className="flex items-start gap-2.5">
-                  <span className="text-base shrink-0">📦</span>
-                  <div>
-                    <span className="font-bold text-gray-900">Orders &amp; Deliveries:</span>
-                    <p className="text-gray-500 text-[11px] mt-0.5">Book or change orders (e.g. <em>&quot;Kamleshbhai 30 box tomorrow 11 AM&quot;</em>)</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <span className="text-base shrink-0">💰</span>
-                  <div>
-                    <span className="font-bold text-gray-900">Payments &amp; Expenses:</span>
-                    <p className="text-gray-500 text-[11px] mt-0.5">Record customer payments, log factory expenses, or check ledger dues.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <span className="text-base shrink-0">📋</span>
-                  <div>
-                    <span className="font-bold text-gray-900">Staff Tasks &amp; Stock:</span>
-                    <p className="text-gray-500 text-[11px] mt-0.5">Assign driver tasks, trigger WhatsApp alerts, or check warehouse inventory.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <span className="text-base shrink-0">📸</span>
-                  <div>
-                    <span className="font-bold text-gray-900">Pure Multimodal OCR:</span>
-                    <p className="text-gray-500 text-[11px] mt-0.5">Upload bills, UPI screenshots, or visiting cards for automatic detection.</p>
-                  </div>
-                </div>
-              </div>
             </div>
           ) : (
             messages.map((msg) => (
