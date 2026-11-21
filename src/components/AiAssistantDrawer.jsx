@@ -2086,6 +2086,11 @@ export default function AiAssistantDrawer({
                 qty: orderQty,
                 rate: orderRate,
                 totalAmount: orderAmount,
+                deliveryDate: orderRaw.deliveryDate || orderRaw.date || '',
+                deliveryTime: orderRaw.deliveryTime || orderRaw.time || '',
+                location: orderRaw.location || orderRaw.address || clientRaw.address || '',
+                mapLink: orderRaw.mapLink || '',
+                notes: orderRaw.notes || '',
               } : null,
               payment: (payRaw && (payRaw.amount || paymentAmount > 0 || payRaw.utr)) ? {
                 payerName: (!isMerchantOrSelfName(payRaw.payerName) ? payRaw.payerName : '') || clientName,
@@ -5734,6 +5739,11 @@ export default function AiAssistantDrawer({
                                 Existing
                               </span>
                             )}
+                            {msg.data.clientAddress ? (
+                              <span className="block text-[10px] text-gray-500 font-normal truncate max-w-[200px]">
+                                📍 {msg.data.clientAddress}
+                              </span>
+                            ) : null}
                           </span>
                         </div>
                       )}
@@ -5741,17 +5751,32 @@ export default function AiAssistantDrawer({
                       {/* Order row */}
                       {msg.data.order && (
                         <div
-                          className="flex items-center justify-between gap-2 pt-1.5 p-1"
+                          className="flex flex-col gap-1 pt-1.5 p-1"
                         >
-                          <span className="text-gray-500 flex items-center gap-1.5 font-medium shrink-0">
-                            <Package className="w-3.5 h-3.5 text-emerald-600" /> Order
-                          </span>
-                          <span className="font-bold text-gray-900 text-right">
-                            {msg.data.order.qty} × {msg.data.order.sku || 'Anjani 200ml'}
-                            <span className="text-gray-500 font-normal text-[11px] ml-1">
-                              @ ₹{msg.data.order.rate || 130} = ₹{Number(msg.data.order.totalAmount || (msg.data.order.qty * (msg.data.order.rate || 130))).toLocaleString('en-IN')}
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-gray-500 flex items-center gap-1.5 font-medium shrink-0">
+                              <Package className="w-3.5 h-3.5 text-emerald-600" /> Order
                             </span>
-                          </span>
+                            <span className="font-bold text-gray-900 text-right">
+                              {msg.data.order.qty} × {msg.data.order.sku || 'Anjani 200ml'}
+                              <span className="text-gray-500 font-normal text-[11px] ml-1">
+                                @ ₹{msg.data.order.rate || 130} = ₹{Number(msg.data.order.totalAmount || (msg.data.order.qty * (msg.data.order.rate || 130))).toLocaleString('en-IN')}
+                              </span>
+                            </span>
+                          </div>
+                          {(msg.data.order.deliveryDate || msg.data.order.deliveryTime || msg.data.order.location) ? (
+                            <div className="flex flex-wrap items-center justify-end gap-x-2 text-[10px] text-gray-500">
+                              {msg.data.order.deliveryDate ? (
+                                <span>📅 {msg.data.order.deliveryDate}</span>
+                              ) : null}
+                              {msg.data.order.deliveryTime ? (
+                                <span>🕒 {msg.data.order.deliveryTime}</span>
+                              ) : null}
+                              {msg.data.order.location ? (
+                                <span className="truncate max-w-[180px]">📍 {msg.data.order.location}</span>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </div>
                       )}
 
@@ -5867,7 +5892,7 @@ export default function AiAssistantDrawer({
                                   address: d.clientAddress || '',
                                   location: d.clientAddress || '',
                                   rate: Number(d.order?.rate) || 130,
-                                  notes: `Created via ${d.payment?.onlineProvider || 'UPI'} transaction`,
+                                  notes: d.payment?.onlineProvider ? `Created via ${d.payment.onlineProvider} transaction` : 'Created via order request',
                                 })
                                 createdClientObj = {
                                   id: finalClientId,
@@ -5898,8 +5923,11 @@ export default function AiAssistantDrawer({
                                 const yyyy = now.getFullYear()
                                 const mm = String(now.getMonth() + 1).padStart(2, '0')
                                 const dd = String(now.getDate()).padStart(2, '0')
-                                const localDate = `${yyyy}-${mm}-${dd}`
-                                const localTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+                                const fallbackDate = `${yyyy}-${mm}-${dd}`
+                                const fallbackTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+
+                                const orderDate = d.order.deliveryDate || d.order.date || fallbackDate
+                                const orderTime = d.order.deliveryTime || d.order.time || fallbackTime
 
                                 const qty = Number(d.order.qty) || 1
                                 const rate = Number(d.order.rate) || 130
@@ -5924,11 +5952,15 @@ export default function AiAssistantDrawer({
                                   qty,
                                   rate,
                                   sku,
-                                  address: d.clientAddress || '',
-                                  location: d.clientAddress || '',
+                                  address: d.order.location || d.order.address || d.clientAddress || '',
+                                  location: d.order.location || d.order.address || d.clientAddress || '',
+                                  mapLink: d.order.mapLink || '',
+                                  notes: d.order.notes || '',
                                   status: 'Pending',
-                                  date: localDate,
-                                  time: localTime,
+                                  date: orderDate,
+                                  time: orderTime,
+                                  deliveryDate: orderDate,
+                                  deliveryTime: orderTime,
                                 }
 
                                 const res = await addOrder(orderPayload)

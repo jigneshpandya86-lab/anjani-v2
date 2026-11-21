@@ -2345,4 +2345,66 @@ describe('AiAssistantDrawer', () => {
 
     unmount()
   })
+
+  it('handles incoming website order request with compound client and order creation', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'compound_action',
+        data: {
+          client: {
+            name: 'Drumil Bhai',
+            mobile: '9712636271',
+            address: 'Shri rameshwar mahadev temple vadodara',
+          },
+          order: {
+            sku: 'Anjani 200ml',
+            qty: 25,
+            rate: 130,
+            totalAmount: 3250,
+            deliveryDate: '2026-11-21',
+            deliveryTime: '4:00 PM – 5:00 PM',
+            location: 'Shri rameshwar mahadev temple vadodara',
+          },
+          payment: null,
+        },
+      },
+    })
+
+    const mockOpenOrder = vi.fn()
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+        onOpenOrderModal={mockOpenOrder}
+      />
+    )
+
+    const input = screen.getByPlaceholderText((content) => content.includes('Ask bot above'))
+    fireEvent.change(input, {
+      target: {
+        value: 'Name: DRUMIL BHAI, Phone: 9712636271, Address: Shri rameshwar mahadev temple, Quantity: 25 Boxes, Time: 4:00 PM – 5:00 PM, Date: 2026-11-21',
+      },
+    })
+
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    // Verify both client details and order details are displayed
+    expect(await screen.findByText('Drumil Bhai')).toBeInTheDocument()
+    expect(screen.getByText('(9712636271)')).toBeInTheDocument()
+    expect(screen.getByText((content) => content.includes('25 × Anjani 200ml'))).toBeInTheDocument()
+    expect(screen.getByText((content) => content.includes('@ ₹130'))).toBeInTheDocument()
+    expect(screen.getByText('📅 2026-11-21')).toBeInTheDocument()
+    expect(screen.getByText('🕒 4:00 PM – 5:00 PM')).toBeInTheDocument()
+
+    // Confirm & Save button is present and clickable
+    const saveBtn = screen.getByRole('button', { name: (content) => content.includes('Confirm & Save') })
+    expect(saveBtn).toBeInTheDocument()
+
+    await fireEvent.click(saveBtn)
+    expect(await screen.findByText((content) => content.includes('Saved Cleanly ✓'))).toBeInTheDocument()
+
+    unmount()
+  })
 })

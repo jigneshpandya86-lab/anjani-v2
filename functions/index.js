@@ -2870,6 +2870,58 @@ ${rawText.slice(0, 3000)}`
           }
         },
         {
+          name: 'create_client_and_order',
+          description:
+            'Simultaneously registers a new customer AND books or drafts their water delivery order in a unified compound action. MUST be used whenever an incoming inquiry, message, or website order form contains BOTH customer details (name, phone, address) and water delivery order details (quantity, items/SKU, delivery date, delivery time slot, location). Never split these into separate calls or drop the order.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              client: {
+                type: 'OBJECT',
+                description: 'Customer or party details',
+                properties: {
+                  name: { type: 'STRING', description: 'Customer or shop name in English Title Case' },
+                  contactPerson: { type: 'STRING', description: 'Contact person name in English' },
+                  mobile: { type: 'STRING', description: '10-digit mobile phone number' },
+                  alternateMobile: { type: 'STRING', description: 'Alternate contact number' },
+                  address: { type: 'STRING', description: 'Delivery address, shop address, or landmark' },
+                  location: { type: 'STRING', description: 'Area or neighborhood in Vadodara' },
+                  rate: { type: 'NUMBER', description: 'Agreed rate per box (default 130)' },
+                  notes: { type: 'STRING', description: 'Customer notes or preferences' }
+                },
+                required: ['name']
+              },
+              order: {
+                type: 'OBJECT',
+                description: 'Delivery order details',
+                properties: {
+                  sku: { type: 'STRING', description: 'Product SKU (default: Anjani 200ml)' },
+                  qty: { type: 'INTEGER', description: 'Total quantity of boxes or cases' },
+                  rate: { type: 'NUMBER', description: 'Rate per box (default 130)' },
+                  deliveryDate: { type: 'STRING', description: 'Delivery date (YYYY-MM-DD)' },
+                  deliveryTime: { type: 'STRING', description: 'Delivery time slot, e.g. 4:00 PM – 5:00 PM, 11 AM' },
+                  location: { type: 'STRING', description: 'Delivery venue, landmark, or party plot' },
+                  address: { type: 'STRING', description: 'Delivery address' },
+                  mapLink: { type: 'STRING', description: 'Google Maps link if provided' },
+                  notes: { type: 'STRING', description: 'Special delivery instructions' }
+                },
+                required: ['qty']
+              },
+              payment: {
+                type: 'OBJECT',
+                description: 'Optional advance or payment details if specified',
+                properties: {
+                  amount: { type: 'NUMBER', description: 'Payment amount received in INR' },
+                  paymentMode: { type: 'STRING', enum: ['cash', 'online', 'cheque'], description: 'Payment mode' },
+                  onlineProvider: { type: 'STRING', enum: ['GPay', 'PhonePe', 'Paytm', 'UPI', 'Bank'], description: 'Provider' },
+                  utr: { type: 'STRING', description: 'UTR reference number' }
+                }
+              }
+            },
+            required: ['client', 'order']
+          }
+        },
+        {
           name: 'receive_payment',
           description: 'Records a customer payment received in cash, UPI, GPay, PhonePe, Paytm, or Cheque.',
           parameters: {
@@ -3281,10 +3333,85 @@ RUNTIME CONTEXT:
 
       const candidate = res.response?.candidates?.[0]?.content
       const candidateParts = candidate?.parts || []
-      const funcCallPart = candidateParts.find((p) => p.functionCall)
-      const textPart = candidateParts.find((p) => p.text)
+      const funcCallParts = candidateParts.filter((p) => Boolean(p && p.functionCall))
+      const textPart = candidateParts.find((p) => Boolean(p && p.text))
 
-      if (funcCallPart && funcCallPart.functionCall) {
+      if (funcCallParts.length > 0) {
+        // 1. Direct compound action tool call: create_client_and_order
+        const directCompound = funcCallParts.find((p) => p.functionCall?.name === 'create_client_and_order')
+        if (directCompound && directCompound.functionCall) {
+          const cArgs = directCompound.functionCall.args || {}
+          const rawClient = cArgs.client || {}
+          const rawOrder = cArgs.order || {}
+          const rawPayment = cArgs.payment || null
+          const clientData = ensureEnglishClient(rawClient)
+          const orderRate = Number(rawOrder.rate) || Number(clientData.rate) || 130
+          const orderQty = Number(rawOrder.qty) || 1
+          const orderSku = rawOrder.sku && String(rawOrder.sku).trim() ? String(rawOrder.sku).trim() : 'Anjani 200ml'
+          const totalAmount = Number(rawOrder.totalAmount) || (orderQty * orderRate)
+
+          return {
+            type: 'compound_action',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              client: clientData,
+              order: {
+                sku: orderSku,
+                qty: orderQty,
+                rate: orderRate,
+                totalAmount,
+                deliveryDate: rawOrder.deliveryDate || rawOrder.date || istToday,
+                deliveryTime: normalizeDeliveryTimeHelper(rawOrder.deliveryTime || rawOrder.time || '11 AM'),
+                location: rawOrder.location || rawOrder.address || clientData.address || '',
+                address: rawOrder.address || clientData.address || '',
+                mapLink: rawOrder.mapLink || '',
+                notes: rawOrder.notes || '',
+              },
+              payment: rawPayment && Number(rawPayment.amount) > 0 ? {
+                ...rawPayment,
+                payerName: isMerchantName(rawPayment.payerName) ? (clientData.name || '') : (rawPayment.payerName || clientData.name || ''),
+              } : null,
+            },
+          }
+        }
+
+        // 2. Dual tool calling combination (e.g. Gemini returned both create_client and create_order)
+        const clientCall = funcCallParts.find((p) => p.functionCall?.name === 'create_client')
+        const orderCall = funcCallParts.find((p) => p.functionCall?.name === 'create_order')
+        if (clientCall && orderCall) {
+          const clientArgs = clientCall.functionCall?.args || {}
+          const orderArgs = orderCall.functionCall?.args || {}
+          const clientData = ensureEnglishClient(clientArgs)
+          const firstItem = Array.isArray(orderArgs.items) && orderArgs.items.length > 0 ? orderArgs.items[0] : null
+          const orderRate = Number(firstItem?.rate) || Number(clientData.rate) || 130
+          const orderQty = Number(orderArgs.qty) || Number(firstItem?.qty) || 1
+          const orderSku = firstItem?.sku && String(firstItem.sku).trim() ? String(firstItem.sku).trim() : 'Anjani 200ml'
+          const totalAmount = orderQty * orderRate
+
+          return {
+            type: 'compound_action',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              client: clientData,
+              order: {
+                sku: orderSku,
+                qty: orderQty,
+                rate: orderRate,
+                totalAmount,
+                deliveryDate: orderArgs.deliveryDate || orderArgs.date || istToday,
+                deliveryTime: normalizeDeliveryTimeHelper(orderArgs.time || orderArgs.deliveryTime || '11 AM'),
+                location: orderArgs.location || clientData.address || '',
+                address: orderArgs.location || clientData.address || '',
+                notes: '',
+              },
+              payment: null,
+            },
+          }
+        }
+
+        const funcCallPart = funcCallParts[0]
         const fc = funcCallPart.functionCall
         let returnType = fc.name
         // Normalize tool names to client-expected action types
