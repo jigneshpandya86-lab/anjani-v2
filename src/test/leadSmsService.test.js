@@ -101,11 +101,10 @@ describe('leadSmsService', () => {
       expect(msgWithName.startsWith('Dear Sir/Madam,')).toBe(true)
       expect(msgWithName).not.toContain('Hello')
       expect(msgWithName).toContain('owner of *Anjani Water*')
-      expect(msgWithName).toContain('Bailey')
       expect(msgWithName).toContain('Bisleri')
       expect(msgWithName).toContain('Marriages & Family Events')
-      expect(msgWithName).toContain('Customer Branding')
       expect(msgWithName).toContain('Retail & Daily Supply')
+      expect(msgWithName).toContain('Let us know your requirement! 😊')
       expect(msgWithName).toContain('https://maps.app.goo.gl/TgqHa1veYG6Da8MRA?g_st=ac')
       expect(msgWithName).toContain('https://www.anjaniwater.in/contact.html#order')
 

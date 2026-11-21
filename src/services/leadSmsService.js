@@ -165,12 +165,11 @@ export const buildLeadWhatsAppMessage = (_lead = {}) => {
   return (
     `Dear Sir/Madam,\n` +
     `I'm Jignesh Pandya, owner of *Anjani Water* (Vadodara). 💧\n\n` +
-    `Along with *Anjani Water*, we provide *Bailey* and *Bisleri* as well at direct wholesale rates!\n\n` +
+    `Along with *Anjani Water*, we provide *Bisleri* as well at direct wholesale rates!\n\n` +
     `Looking for packaged water for:\n` +
     `🎉 *Marriages & Family Events*\n` +
-    `🏷️ *Customer Branding* (customized label/logo)\n` +
     `📦 *Retail & Daily Supply*\n\n` +
-    `We provide fast doorstep delivery across Vadodara. Let us know your requirement or reply for rates! 😊\n\n` +
+    `Let us know your requirement! 😊\n\n` +
     `To view photo of Anjani Water:\n\n` +
     `https://maps.app.goo.gl/TgqHa1veYG6Da8MRA?g_st=ac\n\n` +
     `To Order Anjani Water:\n\n` +

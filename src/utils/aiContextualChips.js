@@ -161,7 +161,7 @@ export function getContextualAiChips({
     return [
       { label: "📦 Today's Orders", action: 'query_orders', value: "today's orders" },
       { label: '📊 Check Stock', action: 'query_stock', value: 'check stock' },
-      { label: '📦 Book Another Order', value: 'book order' },
+      { label: '📦 Book Another Order', flow: 'order', value: 'book order' },
       { label: '💳 Outstanding Dues', action: 'query_dues', value: 'outstanding dues' },
     ]
   }
@@ -175,7 +175,7 @@ export function getContextualAiChips({
 
   if (isStockInfo) {
     return [
-      { label: '📦 Book Order', value: 'book order' },
+      { label: '📦 Book Order', flow: 'order', value: 'book order' },
       { label: "📦 Today's Orders", action: 'query_orders', value: "today's orders" },
       { label: '🚚 Inward Stock', value: 'add 100 boxes 200ml to production' },
     ]
@@ -197,7 +197,7 @@ export function getContextualAiChips({
 
   // 9. Default Fallback (Main Menu Launcher)
   return [
-    { label: '📦 Book Order', value: 'book order' },
+    { label: '📦 Book Order', flow: 'order', value: 'book order' },
     { label: "📦 Today's Orders", action: 'query_orders', value: "today's orders" },
     { label: '📊 Check Stock', action: 'query_stock', value: 'check stock' },
     { label: '💳 Outstanding Dues', action: 'query_dues', value: 'outstanding dues' },
