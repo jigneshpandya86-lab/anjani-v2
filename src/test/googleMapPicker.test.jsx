@@ -97,6 +97,45 @@ describe('GoogleMapPicker Component (Vadodara + 50 km restriction)', () => {
     )
   })
 
+  it('pops up extracted address when Google Maps place URL is pasted', async () => {
+    const handleChange = vi.fn()
+    render(<GoogleMapPicker initialAddress="" onChange={handleChange} />)
+
+    const input = screen.getByPlaceholderText(
+      'Search Vadodara + 50 km (e.g. Alkapuri, Halol, Padra, GIDC)...',
+    )
+    fireEvent.focus(input)
+    fireEvent.change(input, {
+      target: {
+        value:
+          'https://www.google.com/maps/place/879G%2BWW+Pushpak+Upvan,+Timbi,+Bakrol,+Gujarat+390019/data=!4m2!3m1!1s0x395fd10036100d35',
+      },
+    })
+
+    await waitFor(() => {
+      expect(
+        screen.getByText((content) =>
+          content.includes('Pushpak Upvan, Timbi, Bakrol, Gujarat 390019'),
+        ),
+      ).toBeInTheDocument()
+    })
+
+    const popupItem = screen
+      .getByText((content) =>
+        content.includes('Pushpak Upvan, Timbi, Bakrol, Gujarat 390019'),
+      )
+      .closest('button')
+    fireEvent.mouseDown(popupItem)
+
+    expect(handleChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: 'Pushpak Upvan, Timbi, Bakrol, Gujarat 390019',
+        mapLink:
+          'https://www.google.com/maps/place/879G%2BWW+Pushpak+Upvan,+Timbi,+Bakrol,+Gujarat+390019/data=!4m2!3m1!1s0x395fd10036100d35',
+      }),
+    )
+  })
+
   it('uses device GPS when within 50 km', async () => {
     const handleChange = vi.fn()
     const mockGetCurrentPosition = vi.fn((success) => {

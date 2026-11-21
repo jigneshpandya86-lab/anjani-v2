@@ -5491,6 +5491,46 @@ exports.notifyCorrectionDeployed = onCall(async (request) => {
 })
 
 /**
+ * Callable Function: resolveMapLink
+ * Resolves Google Maps URLs and shortlinks (maps.app.goo.gl) to extract full address and location.
+ * Strictly NO REGEX.
+ */
+exports.resolveMapLink = onCall(async (request) => {
+  const url = request.data?.url
+  if (!url || typeof url !== 'string') {
+    return { success: false, error: 'No URL provided' }
+  }
+  try {
+    const res = await fetch(url, { method: 'HEAD', redirect: 'manual' })
+    const loc = res.headers.get('location') || ''
+    let title = ''
+    const placeIdx = loc.indexOf('/place/')
+    if (placeIdx !== -1) {
+      const rest = loc.slice(placeIdx + 7)
+      const endIdx = rest.indexOf('/')
+      const raw = endIdx !== -1 ? rest.slice(0, endIdx) : rest
+      const decoded = decodeURIComponent(raw)
+      const parts = decoded.split('+')
+      title = parts.join(' ')
+      // If starts with Plus Code like 879G+WW, clean prefix
+      if (title.slice(0, 8).includes('+')) {
+        const firstSpace = title.indexOf(' ')
+        if (firstSpace !== -1) {
+          title = title.slice(firstSpace + 1).trim()
+        }
+      }
+    }
+    return {
+      success: true,
+      title: title || 'Google Maps Location',
+      resolvedUrl: loc || url,
+    }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+/**
  * Trigger 4: onDocumentUpdated('ai_feedbacks/{docId}')
  * Fires strictly POST-CORRECTION when a feedback's status is changed to 'completed'
  * after code changes have been deployed live!

@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { LocateFixed } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { getFunctions, httpsCallable } from 'firebase/functions'
+import { app } from '../firebase-config'
 import { parseGoogleMapsLocation } from '../utils/locationUtils'
 import {
   VADODARA_50KM_BOUNDS,
@@ -87,6 +89,32 @@ const getPlacesLibrary = async () => {
   return window.google?.maps?.places || null
 }
 
+const extractPlaceFromUrl = (url) => {
+  if (!url || typeof url !== 'string') return ''
+  const placeIdx = url.indexOf('/place/')
+  if (placeIdx !== -1) {
+    const rest = url.slice(placeIdx + 7)
+    const endIdx = rest.indexOf('/')
+    const raw = endIdx !== -1 ? rest.slice(0, endIdx) : rest
+    let decoded = ''
+    try {
+      decoded = decodeURIComponent(raw)
+    } catch (_e) {
+      decoded = raw
+    }
+    const tokens = decoded.split('+')
+    if (
+      tokens.length >= 3 &&
+      tokens[0].length === 4 &&
+      (tokens[1].length === 2 || tokens[1].length === 3)
+    ) {
+      return tokens.slice(2).join(' ')
+    }
+    return tokens.join(' ')
+  }
+  return ''
+}
+
 export default function GoogleMapPicker({ initialAddress = '', onChange }) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
   const onChangeRef = useRef(onChange)
@@ -147,6 +175,61 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
 
     if (suppressNextSearchRef.current) {
       suppressNextSearchRef.current = false
+      return
+    }
+
+    // Step 0: If user pasted a Google Maps URL, immediately show popup and resolve
+    const isUrl = cleanTerm.startsWith('http://') || cleanTerm.startsWith('https://')
+    if (isUrl) {
+      const directPlace = extractPlaceFromUrl(cleanTerm)
+      const initialLabel = directPlace || cleanTerm
+      setPredictions([
+        {
+          id: 'pasted-url',
+          label: initialLabel,
+          resolvedAddress: directPlace || cleanTerm,
+          mapLink: cleanTerm,
+          source: 'pasted-url',
+        },
+      ])
+      setIsSearching(false)
+
+      if (
+        !directPlace &&
+        (cleanTerm.includes('maps.app.goo.gl') ||
+          cleanTerm.includes('goo.gl/maps') ||
+          cleanTerm.includes('google.com/maps'))
+      ) {
+        setIsSearching(true)
+        if (app) {
+          try {
+            const functions = getFunctions(app, 'asia-south1')
+            const resolveMapLink = httpsCallable(functions, 'resolveMapLink')
+            resolveMapLink({ url: cleanTerm })
+              .then((res) => {
+                if (res?.data?.success && res.data.title) {
+                  setPredictions([
+                    {
+                      id: 'resolved-url',
+                      label: res.data.title,
+                      resolvedAddress: res.data.title,
+                      mapLink: cleanTerm,
+                      source: 'pasted-url',
+                    },
+                  ])
+                }
+              })
+              .catch(() => {})
+              .finally(() => {
+                setIsSearching(false)
+              })
+          } catch (_e) {
+            setIsSearching(false)
+          }
+        } else {
+          setIsSearching(false)
+        }
+      }
       return
     }
 
@@ -324,6 +407,20 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
 
   const handleSelectPrediction = async (item) => {
     try {
+      // 0. Pasted Google Maps link (either raw or resolved)
+      if (item.source === 'pasted-url') {
+        const address = item.resolvedAddress || item.label || ''
+        const mapLink = item.mapLink || searchTerm
+
+        suppressNextSearchRef.current = true
+        setSearchTerm(address)
+        setPredictions([])
+        setError('')
+        setIsFocused(false)
+        onChangeRef.current?.({ lat: null, lng: null, address, mapLink })
+        return
+      }
+
       // 1. Direct Landmark or OpenStreetMap item (coordinates already known)
       if (
         (item.source === 'landmark' || item.source === 'osm') &&

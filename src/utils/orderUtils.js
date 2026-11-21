@@ -380,3 +380,113 @@ export const getRecentSkuPrice = (skuLabelOrId, orders = [], clientId = null) =>
     return 0
   }
 }
+
+/**
+ * Natural language date parser for conversational order booking and rescheduling.
+ * Parses "Date 28 November", "28 Nov", "tomorrow", "today", "28-11-2026", etc.
+ * Strictly NO REGEX used.
+ */
+export function parseNaturalDate(input, referenceDate = new Date()) {
+  if (!input || typeof input !== 'string') return null
+  const str = input.toLowerCase().trim()
+  if (!str) return null
+
+  // Fast exact match for relative dates
+  if (str === 'today' || str === 'aaj') {
+    const y = referenceDate.getFullYear()
+    const m = String(referenceDate.getMonth() + 1).padStart(2, '0')
+    const d = String(referenceDate.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+  if (str === 'tomorrow' || str === 'kal') {
+    const tmrw = new Date(referenceDate)
+    tmrw.setDate(tmrw.getDate() + 1)
+    const y = tmrw.getFullYear()
+    const m = String(tmrw.getMonth() + 1).padStart(2, '0')
+    const d = String(tmrw.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+  if (str === 'day after tomorrow' || str === 'parso') {
+    const dayAfter = new Date(referenceDate)
+    dayAfter.setDate(dayAfter.getDate() + 2)
+    const y = dayAfter.getFullYear()
+    const m = String(dayAfter.getMonth() + 1).padStart(2, '0')
+    const d = String(dayAfter.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+
+  // Handle months
+  const months = [
+    ['january', 'jan', '01'],
+    ['february', 'feb', '02'],
+    ['march', 'mar', '03'],
+    ['april', 'apr', '04'],
+    ['may', 'may', '05'],
+    ['june', 'jun', '06'],
+    ['july', 'jul', '07'],
+    ['august', 'aug', '08'],
+    ['september', 'sep', '09'],
+    ['october', 'oct', '10'],
+    ['november', 'nov', '11'],
+    ['december', 'dec', '12'],
+  ]
+
+  let matchedMonthNum = ''
+  for (let i = 0; i < months.length; i++) {
+    const [longName, shortName, mNum] = months[i]
+    if (str.includes(longName) || str.includes(shortName)) {
+      matchedMonthNum = mNum
+      break
+    }
+  }
+
+  if (matchedMonthNum) {
+    const tokens = str.split(' ')
+    let day = null
+    for (let t = 0; t < tokens.length; t++) {
+      let tok = tokens[t].trim()
+      if (
+        tok.endsWith('th') ||
+        tok.endsWith('st') ||
+        tok.endsWith('nd') ||
+        tok.endsWith('rd')
+      ) {
+        tok = tok.slice(0, tok.length - 2)
+      }
+      const parsedNum = parseInt(tok, 10)
+      if (Number.isFinite(parsedNum) && parsedNum >= 1 && parsedNum <= 31) {
+        day = parsedNum
+        break
+      }
+    }
+    if (day !== null) {
+      const year = referenceDate.getFullYear()
+      const dayStr = day < 10 ? '0' + String(day) : String(day)
+      return `${year}-${matchedMonthNum}-${dayStr}`
+    }
+  }
+
+  // Handle standard YYYY-MM-DD or DD-MM-YYYY or DD/MM/YYYY
+  if (str.includes('-') || str.includes('/')) {
+    const sep = str.includes('-') ? '-' : '/'
+    const parts = str.split(sep)
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        // YYYY-MM-DD
+        const y = parts[0]
+        const m = parts[1].padStart(2, '0')
+        const d = parts[2].padStart(2, '0')
+        return `${y}-${m}-${d}`
+      } else if (parts[2].length === 4) {
+        // DD-MM-YYYY
+        const d = parts[0].padStart(2, '0')
+        const m = parts[1].padStart(2, '0')
+        const y = parts[2]
+        return `${y}-${m}-${d}`
+      }
+    }
+  }
+
+  return null
+}
+

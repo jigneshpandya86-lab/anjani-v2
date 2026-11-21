@@ -3816,6 +3816,74 @@ export default function AiAssistantDrawer({
           targetOrder = resData.data.order
         }
 
+        // If no saved target order exists in database, check for an in-flight booking draft
+        let activeOrderDraft = null
+        if (!targetOrder) {
+          if (activeChatbotFlow?.flow === 'order' && activeChatbotFlow.data) {
+            activeOrderDraft = activeChatbotFlow.data
+          }
+          if (!activeOrderDraft && Array.isArray(messages)) {
+            for (let i = messages.length - 1; i >= 0; i--) {
+              const m = messages[i]
+              if (m.flowState?.flow === 'order' && m.flowState.data) {
+                activeOrderDraft = m.flowState.data
+                break
+              }
+            }
+          }
+        }
+
+        if (!targetOrder && activeOrderDraft) {
+          const incoming = { ...(resData.data?.updates || {}) }
+          if (fieldToUpdate && newValue !== undefined && String(newValue).trim() !== '') {
+            const f = String(fieldToUpdate).toLowerCase().trim()
+            if (['quantity', 'qty', 'boxes'].includes(f)) incoming.qty = newValue
+            else if (['price', 'rate'].includes(f)) incoming.rate = newValue
+            else if (['date', 'deliverydate'].includes(f)) incoming.deliveryDate = newValue
+            else if (['time', 'deliverytime'].includes(f)) incoming.deliveryTime = newValue
+            else if (['location', 'address', 'venue', 'plot', 'place'].includes(f)) incoming.location = newValue
+            else if (['sku', 'product', 'item'].includes(f)) incoming.sku = newValue
+            else incoming[fieldToUpdate] = newValue
+          }
+
+          const patch = {}
+          if (incoming.deliveryDate || incoming.date) {
+            patch.date = incoming.deliveryDate || incoming.date
+          }
+          if (incoming.qty) patch.qty = Number(incoming.qty)
+          if (incoming.rate) patch.rate = Number(incoming.rate)
+          if (incoming.location || incoming.address) patch.address = incoming.location || incoming.address
+          if (incoming.sku) patch.sku = incoming.sku
+
+          const updatedDraft = { ...activeOrderDraft, ...patch }
+          const totalAmount = (updatedDraft.qty || 1) * (updatedDraft.rate || 0)
+          const updatedState = {
+            flow: 'order',
+            step: 'confirm',
+            data: updatedDraft,
+            isConfirmation: true,
+            text: `📦 **Confirm Order Booking**\n\n• **Customer**: ${updatedDraft.clientName}\n• **Product**: ${updatedDraft.qty} × ${updatedDraft.sku}\n• **Rate**: ₹${updatedDraft.rate} / unit\n• **Total Amount**: ₹${totalAmount.toLocaleString('en-IN')}\n• **Date**: 📅 **${updatedDraft.date}** (Updated)\n• **Delivery**: ${updatedDraft.address}\n• **Status**: Pending Delivery\n\nTap **Confirm Order** to book now:`,
+            chips: [
+              { label: '✅ Confirm & Book Order', action: 'save', isPrimary: true },
+              { label: '📅 Change Date', action: 'change_date' },
+              { label: '❌ Cancel', action: 'cancel', isDestructive: true },
+            ],
+          }
+          setActiveChatbotFlow(updatedState)
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-' + Date.now(),
+              sender: 'assistant',
+              text: updatedState.text,
+              chips: updatedState.chips,
+              flowState: updatedState,
+              timestamp: new Date(),
+            },
+          ])
+          return
+        }
+
         if (targetOrder) {
           const name = targetOrder.clientName || targetOrder.name || clientName || 'Customer'
           const currentQty = targetOrder.qty || targetOrder.totalQty || 0

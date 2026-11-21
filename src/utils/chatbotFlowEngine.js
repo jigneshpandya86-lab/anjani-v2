@@ -15,7 +15,7 @@
 
 import { WATER_SKUS, getSkuMeta, DEFAULT_SKU } from '../constants/skus'
 import { findMatchingClient } from './clientMatchingUtils'
-import { getRecentSkuPrice } from './orderUtils'
+import { getRecentSkuPrice, parseNaturalDate } from './orderUtils'
 import { DEFAULT_ACCOUNTS } from '../constants/accounts'
 import { DEFAULT_STAFF } from '../constants/staff'
 import {
@@ -801,8 +801,78 @@ export function advanceChatbotFlow(currentFlowState, inputPayload, context = {})
         text: `📦 **Confirm Order Booking**\n\n• **Customer**: ${updatedData.clientName}\n• **Product**: ${updatedData.qty} × ${updatedData.sku}\n• **Rate**: ₹${updatedData.rate} / unit\n• **Total Amount**: ₹${totalAmount.toLocaleString('en-IN')}\n• **Date**: Today (${localDate} @ ${localTime})\n• **Delivery**: ${updatedData.address}\n• **Status**: Pending Delivery\n\nTap **Confirm Order** to book now:`,
         chips: [
           { label: '✅ Confirm & Book Order', action: 'save', isPrimary: true },
+          { label: '📅 Change Date', action: 'change_date' },
           { label: '❌ Cancel', action: 'cancel', isDestructive: true },
         ],
+      }
+    }
+
+    if (step === 'confirm') {
+      const isDateChange =
+        inputPayload === 'change_date' ||
+        (typeof inputPayload === 'object' && inputPayload?.action === 'change_date')
+
+      if (isDateChange) {
+        const today = new Date()
+        const tmrw = new Date()
+        tmrw.setDate(today.getDate() + 1)
+        const dayAfter = new Date()
+        dayAfter.setDate(today.getDate() + 2)
+
+        return {
+          ...currentFlowState,
+          step: 'confirm',
+          text: `📅 **Select Delivery Date** for **${data.clientName}**:\nChoose quick date or type any date (e.g. "28 November"):`,
+          chips: [
+            { label: `📅 Today (${getLocalDateStr(today)})`, value: getLocalDateStr(today), isDate: true },
+            { label: `📅 Tomorrow (${getLocalDateStr(tmrw)})`, value: getLocalDateStr(tmrw), isDate: true },
+            { label: `📅 Day After (${getLocalDateStr(dayAfter)})`, value: getLocalDateStr(dayAfter), isDate: true },
+            { label: '✅ Confirm Order', action: 'save', isPrimary: true },
+            { label: '❌ Cancel', action: 'cancel', isDestructive: true },
+          ],
+          inputPrompt: 'Type delivery date (e.g. 28 November)...',
+        }
+      }
+
+      // Check if user input is a date string (e.g. "Date 28 November", "28 Nov", "tomorrow")
+      const rawInput =
+        typeof inputPayload === 'object'
+          ? inputPayload?.value || inputPayload?.label || ''
+          : String(inputPayload || '')
+
+      const parsedDate = parseNaturalDate(rawInput)
+      if (parsedDate) {
+        const updatedData = { ...data, date: parsedDate }
+        const totalAmount = (updatedData.qty || 1) * (updatedData.rate || 0)
+        return {
+          flow,
+          step: 'confirm',
+          data: updatedData,
+          isConfirmation: true,
+          text: `📦 **Confirm Order Booking**\n\n• **Customer**: ${updatedData.clientName}\n• **Product**: ${updatedData.qty} × ${updatedData.sku}\n• **Rate**: ₹${updatedData.rate} / unit\n• **Total Amount**: ₹${totalAmount.toLocaleString('en-IN')}\n• **Date**: 📅 **${updatedData.date}** (Scheduled Delivery)\n• **Delivery**: ${updatedData.address}\n• **Status**: Pending Delivery\n\nTap **Confirm Order** to book now:`,
+          chips: [
+            { label: '✅ Confirm & Book Order', action: 'save', isPrimary: true },
+            { label: '📅 Change Date', action: 'change_date' },
+            { label: '❌ Cancel', action: 'cancel', isDestructive: true },
+          ],
+        }
+      }
+
+      // Check if user confirmed via text
+      const lowerRaw = rawInput.toLowerCase().trim()
+      if (
+        lowerRaw === 'save' ||
+        lowerRaw === 'confirm' ||
+        lowerRaw === 'yes' ||
+        lowerRaw === 'ok' ||
+        lowerRaw === 'book' ||
+        lowerRaw === 'haan' ||
+        lowerRaw === 'confirm order'
+      ) {
+        return {
+          ...currentFlowState,
+          shouldSave: true,
+        }
       }
     }
   }
