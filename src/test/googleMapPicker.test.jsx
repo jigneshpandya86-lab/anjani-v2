@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import GoogleMapPicker from '../components/GoogleMapPicker'
 
-describe('GoogleMapPicker Component', () => {
+describe('GoogleMapPicker Component (Vadodara + 50 km restriction)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     document.head.innerHTML = ''
@@ -15,11 +15,13 @@ describe('GoogleMapPicker Component', () => {
   it('renders input field with initial address and GPS button', () => {
     render(<GoogleMapPicker initialAddress="Alkapuri, Vadodara" onChange={vi.fn()} />)
 
-    const input = screen.getByPlaceholderText(/search landmark, coords/i)
+    const input = screen.getByPlaceholderText(
+      'Search Vadodara + 50 km (e.g. Alkapuri, Halol, Padra, GIDC)...',
+    )
     expect(input).toBeInTheDocument()
     expect(input.value).toBe('Alkapuri, Vadodara')
 
-    const gpsBtn = screen.getByTitle(/detect and use current device gps location/i)
+    const gpsBtn = screen.getByTitle('Detect and use current device GPS location')
     expect(gpsBtn).toBeInTheDocument()
   })
 
@@ -27,7 +29,9 @@ describe('GoogleMapPicker Component', () => {
     const handleChange = vi.fn()
     render(<GoogleMapPicker initialAddress="" onChange={handleChange} />)
 
-    const input = screen.getByPlaceholderText(/search landmark, coords/i)
+    const input = screen.getByPlaceholderText(
+      'Search Vadodara + 50 km (e.g. Alkapuri, Halol, Padra, GIDC)...',
+    )
     fireEvent.change(input, { target: { value: 'Gotri Road' } })
 
     expect(handleChange).toHaveBeenCalledWith({
@@ -38,11 +42,13 @@ describe('GoogleMapPicker Component', () => {
     })
   })
 
-  it('automatically parses coordinates when pasted into input', () => {
+  it('automatically parses coordinates when pasted within 50 km', () => {
     const handleChange = vi.fn()
     render(<GoogleMapPicker initialAddress="" onChange={handleChange} />)
 
-    const input = screen.getByPlaceholderText(/search landmark, coords/i)
+    const input = screen.getByPlaceholderText(
+      'Search Vadodara + 50 km (e.g. Alkapuri, Halol, Padra, GIDC)...',
+    )
     fireEvent.change(input, { target: { value: '22.3072, 73.1812' } })
 
     expect(handleChange).toHaveBeenCalledWith(
@@ -55,11 +61,30 @@ describe('GoogleMapPicker Component', () => {
     )
   })
 
+  it('warns when pasted coordinates exceed 50 km boundary', () => {
+    const handleChange = vi.fn()
+    render(<GoogleMapPicker initialAddress="" onChange={handleChange} />)
+
+    const input = screen.getByPlaceholderText(
+      'Search Vadodara + 50 km (e.g. Alkapuri, Halol, Padra, GIDC)...',
+    )
+    // Ahmedabad coordinates (~101 km away)
+    fireEvent.change(input, { target: { value: '23.0225, 72.5714' } })
+
+    expect(
+      screen.getByText((content) =>
+        content.toLowerCase().includes('outside 50 km vadodara limit'),
+      ),
+    ).toBeInTheDocument()
+  })
+
   it('automatically parses Google Maps URLs when pasted into input', () => {
     const handleChange = vi.fn()
     render(<GoogleMapPicker initialAddress="" onChange={handleChange} />)
 
-    const input = screen.getByPlaceholderText(/search landmark, coords/i)
+    const input = screen.getByPlaceholderText(
+      'Search Vadodara + 50 km (e.g. Alkapuri, Halol, Padra, GIDC)...',
+    )
     fireEvent.change(input, {
       target: { value: 'https://maps.app.goo.gl/abcdef12345' },
     })
@@ -72,7 +97,7 @@ describe('GoogleMapPicker Component', () => {
     )
   })
 
-  it('uses device GPS when GPS button is clicked', async () => {
+  it('uses device GPS when within 50 km', async () => {
     const handleChange = vi.fn()
     const mockGetCurrentPosition = vi.fn((success) => {
       success({
@@ -90,7 +115,7 @@ describe('GoogleMapPicker Component', () => {
 
     render(<GoogleMapPicker initialAddress="" onChange={handleChange} />)
 
-    const gpsBtn = screen.getByTitle(/detect and use current device gps location/i)
+    const gpsBtn = screen.getByTitle('Detect and use current device GPS location')
     fireEvent.click(gpsBtn)
 
     await waitFor(() => {
@@ -105,37 +130,74 @@ describe('GoogleMapPicker Component', () => {
     })
   })
 
-  it('displays instant curated Vadodara landmark suggestions and selects one with coordinates', async () => {
+  it('blocks GPS selection when device is outside 50 km', async () => {
+    const handleChange = vi.fn()
+    const mockGetCurrentPosition = vi.fn((success) => {
+      success({
+        coords: {
+          latitude: 23.0225, // Ahmedabad (~101 km)
+          longitude: 72.5714,
+        },
+      })
+    })
+
+    Object.defineProperty(globalThis.navigator, 'geolocation', {
+      value: { getCurrentPosition: mockGetCurrentPosition },
+      configurable: true,
+    })
+
+    render(<GoogleMapPicker initialAddress="" onChange={handleChange} />)
+
+    const gpsBtn = screen.getByTitle('Detect and use current device GPS location')
+    fireEvent.click(gpsBtn)
+
+    await waitFor(() => {
+      expect(mockGetCurrentPosition).toHaveBeenCalled()
+      expect(handleChange).not.toHaveBeenCalled()
+      expect(
+        screen.getByText((content) =>
+          content.toLowerCase().includes('exceeds 50 km limit'),
+        ),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('displays instant curated Vadodara landmark suggestions and selects one within 50 km', async () => {
     const handleChange = vi.fn()
     render(<GoogleMapPicker initialAddress="" onChange={handleChange} />)
 
-    const input = screen.getByPlaceholderText(/search landmark, coords/i)
+    const input = screen.getByPlaceholderText(
+      'Search Vadodara + 50 km (e.g. Alkapuri, Halol, Padra, GIDC)...',
+    )
     fireEvent.focus(input)
-    fireEvent.change(input, { target: { value: 'Alkapuri' } })
+    fireEvent.change(input, { target: { value: 'Halol' } })
 
-    // Instant local landmark matching should display Alkapuri
+    // Instant local landmark matching should display Halol
     await waitFor(() => {
-      expect(screen.getByText(/Alkapuri, Vadodara, Gujarat/i)).toBeInTheDocument()
+      expect(
+        screen.getByText((content) => content.includes('Halol, Panchmahal')),
+      ).toBeInTheDocument()
     })
 
     // Click prediction item
-    const itemBtn = screen.getByText(/Alkapuri, Vadodara, Gujarat/i).closest('button')
+    const itemBtn = screen
+      .getByText((content) => content.includes('Halol, Panchmahal'))
+      .closest('button')
     fireEvent.mouseDown(itemBtn)
 
     await waitFor(() => {
       expect(handleChange).toHaveBeenCalledWith(
         expect.objectContaining({
-          lat: 22.3102,
-          lng: 73.1757,
-          address: 'Alkapuri, Vadodara, Gujarat',
-          mapLink: 'https://www.google.com/maps?q=22.3102,73.1757',
+          lat: 22.5,
+          lng: 73.47,
+          address: 'Halol, Panchmahal / Vadodara Road, Gujarat',
+          mapLink: 'https://www.google.com/maps?q=22.5,73.47',
         }),
       )
     })
   })
 
-  it('never hangs when Google Maps silently drops autocomplete callbacks (RefererNotAllowedMapError)', async () => {
-    // Simulate Google Maps AutocompleteService that never calls back (hung/blocked API)
+  it('never hangs when Google Maps silently drops autocomplete callbacks', async () => {
     const mockHungGetPlacePredictions = vi.fn((_req, _cb) => {
       // Intentionally never call _cb to simulate RefererNotAllowedMapError silent failure
     })
@@ -153,25 +215,33 @@ describe('GoogleMapPicker Component', () => {
 
     render(<GoogleMapPicker initialAddress="" onChange={vi.fn()} />)
 
-    const input = screen.getByPlaceholderText(/search landmark, coords/i)
+    const input = screen.getByPlaceholderText(
+      'Search Vadodara + 50 km (e.g. Alkapuri, Halol, Padra, GIDC)...',
+    )
     fireEvent.focus(input)
     fireEvent.change(input, { target: { value: 'Karelibaug' } })
 
     // Local matches show immediately and UI does not stay frozen
     await waitFor(() => {
-      expect(screen.getByText(/Karelibaug, Vadodara, Gujarat/i)).toBeInTheDocument()
+      expect(
+        screen.getByText((content) => content.includes('Karelibaug, Vadodara')),
+      ).toBeInTheDocument()
     })
 
     // Advance timers / wait for race resolution
     await waitFor(
       () => {
-        expect(screen.queryByText(/Searching places in Vadodara\.\.\./i)).not.toBeInTheDocument()
+        expect(
+          screen.queryByText((content) =>
+            content.includes('Searching places within 50 km of Vadodara'),
+          ),
+        ).not.toBeInTheDocument()
       },
       { timeout: 3500 },
     )
   })
 
-  it('falls back to classic AutocompleteService when AutocompleteSuggestion is not enabled', async () => {
+  it('falls back to classic AutocompleteService with 50 km bounds', async () => {
     const mockGetPlacePredictions = vi.fn((_req, cb) => {
       cb(
         [
@@ -197,12 +267,18 @@ describe('GoogleMapPicker Component', () => {
 
     render(<GoogleMapPicker initialAddress="" onChange={vi.fn()} />)
 
-    const input = screen.getByPlaceholderText(/search landmark, coords/i)
+    const input = screen.getByPlaceholderText(
+      'Search Vadodara + 50 km (e.g. Alkapuri, Halol, Padra, GIDC)...',
+    )
     fireEvent.focus(input)
     fireEvent.change(input, { target: { value: 'P G Party Plot' } })
 
     await waitFor(() => {
-      expect(screen.getByText(/P G Party Plot, Harni, Vadodara/i)).toBeInTheDocument()
+      expect(
+        screen.getByText((content) =>
+          content.includes('P G Party Plot, Harni, Vadodara'),
+        ),
+      ).toBeInTheDocument()
     })
   })
 })

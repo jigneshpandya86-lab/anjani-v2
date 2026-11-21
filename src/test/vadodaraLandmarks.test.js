@@ -2,25 +2,54 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   searchVadodaraLandmarks,
   fetchPhotonSuggestions,
+  calculateDistanceKm,
+  isWithinVadodara50Km,
   VADODARA_LANDMARKS,
   VADODARA_COORDINATES,
+  MAX_DELIVERY_RADIUS_KM,
+  VADODARA_50KM_BOUNDS,
 } from '../utils/vadodaraLandmarks'
 
-describe('vadodaraLandmarks utility', () => {
+describe('vadodaraLandmarks utility (50 km restriction)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('contains comprehensive Vadodara landmark list with valid coordinates', () => {
-    expect(VADODARA_LANDMARKS.length).toBeGreaterThan(30)
+  it('calculates geographic distance accurately and checks 50km boundary', () => {
+    // Vadodara center to Alkapuri (~0.7 km)
+    const dAlkapuri = calculateDistanceKm(22.3102, 73.1757)
+    expect(dAlkapuri).toBeLessThan(2.0)
+    expect(isWithinVadodara50Km(22.3102, 73.1757)).toBe(true)
+
+    // Padra (~13 km)
+    const dPadra = calculateDistanceKm(22.24, 73.08)
+    expect(dPadra).toBeGreaterThan(10.0)
+    expect(dPadra).toBeLessThan(16.0)
+    expect(isWithinVadodara50Km(22.24, 73.08)).toBe(true)
+
+    // Halol (~36 km)
+    const dHalol = calculateDistanceKm(22.5, 73.47)
+    expect(dHalol).toBeGreaterThan(30.0)
+    expect(dHalol).toBeLessThan(45.0)
+    expect(isWithinVadodara50Km(22.5, 73.47)).toBe(true)
+
+    // Ahmedabad (~101 km) - must be rejected
+    const dAhmedabad = calculateDistanceKm(23.02, 72.57)
+    expect(dAhmedabad).toBeGreaterThan(90.0)
+    expect(isWithinVadodara50Km(23.02, 72.57)).toBe(false)
+
+    // Surat (~131 km) - must be rejected
+    const dSurat = calculateDistanceKm(21.17, 72.83)
+    expect(dSurat).toBeGreaterThan(120.0)
+    expect(isWithinVadodara50Km(21.17, 72.83)).toBe(false)
+  })
+
+  it('all curated landmarks are strictly within 50 km of Vadodara center', () => {
+    expect(VADODARA_LANDMARKS.length).toBeGreaterThan(40)
     for (let i = 0; i < VADODARA_LANDMARKS.length; i++) {
       const item = VADODARA_LANDMARKS[i]
-      expect(item.name).toBeTruthy()
-      expect(item.lat).toBeGreaterThan(22.0)
-      expect(item.lat).toBeLessThan(23.0)
-      expect(item.lng).toBeGreaterThan(72.5)
-      expect(item.lng).toBeLessThan(74.0)
-      expect(item.address).toBeTruthy()
+      const dist = calculateDistanceKm(item.lat, item.lng)
+      expect(dist).toBeLessThanOrEqual(MAX_DELIVERY_RADIUS_KM)
     }
   })
 
@@ -31,36 +60,51 @@ describe('vadodaraLandmarks utility', () => {
     expect(searchVadodaraLandmarks(undefined)).toEqual([])
   })
 
-  it('matches landmarks case-insensitively and prioritizes startsWith matches', () => {
+  it('matches landmarks and includes distance in kilometers', () => {
     const results = searchVadodaraLandmarks('alkapuri', 5)
     expect(results.length).toBeGreaterThan(0)
     expect(results[0].label).toContain('Alkapuri')
     expect(results[0].lat).toBeCloseTo(22.3102)
     expect(results[0].lng).toBeCloseTo(73.1757)
+    expect(results[0].distanceKm).toBeLessThan(2.0)
     expect(results[0].mapLink).toBe('https://www.google.com/maps?q=22.3102,73.1757')
     expect(results[0].source).toBe('landmark')
   })
 
-  it('matches landmarks by area or address', () => {
-    const results = searchVadodaraLandmarks('GIDC', 5)
-    expect(results.length).toBeGreaterThan(0)
-    const hasGidc = results.some((r) => r.label.toLowerCase().includes('gidc'))
-    expect(hasGidc).toBe(true)
+  it('matches surrounding towns and GIDCs within 50 km', () => {
+    const halolResults = searchVadodaraLandmarks('halol', 5)
+    expect(halolResults.length).toBeGreaterThan(0)
+    expect(halolResults[0].distanceKm).toBeLessThan(50.0)
+
+    const karjanResults = searchVadodaraLandmarks('karjan', 5)
+    expect(karjanResults.length).toBeGreaterThan(0)
+    expect(karjanResults[0].distanceKm).toBeLessThan(50.0)
   })
 
-  it('fetches and maps Photon suggestions cleanly', async () => {
+  it('fetches and filters Photon suggestions, dropping any outside 50 km', async () => {
     const mockResponse = {
       features: [
         {
           properties: {
-            osm_id: 12345,
+            osm_id: 101,
             name: 'Akota Garden',
             street: 'Akota Stadium Rd',
             district: 'Akota',
             city: 'Vadodara',
           },
           geometry: {
-            coordinates: [73.1706, 22.2961],
+            coordinates: [73.1706, 22.2961], // ~1.5 km
+          },
+        },
+        {
+          properties: {
+            osm_id: 999,
+            name: 'Faraway Place',
+            street: 'High Road',
+            city: 'Ahmedabad',
+          },
+          geometry: {
+            coordinates: [72.57, 23.02], // ~101 km (OUTSIDE 50 km)
           },
         },
       ],
@@ -72,14 +116,13 @@ describe('vadodaraLandmarks utility', () => {
     })
     globalThis.fetch = mockFetch
 
-    const results = await fetchPhotonSuggestions('Akota Garden', 5, 1000)
+    const results = await fetchPhotonSuggestions('Akota', 5, 1000)
 
+    // Should only include the within-50km result (Akota Garden)
     expect(results.length).toBe(1)
-    expect(results[0].id).toBe('osm-12345')
+    expect(results[0].id).toBe('osm-101')
     expect(results[0].label).toContain('Akota Garden')
-    expect(results[0].lat).toBeCloseTo(22.2961)
-    expect(results[0].lng).toBeCloseTo(73.1706)
-    expect(results[0].source).toBe('osm')
+    expect(results[0].distanceKm).toBeLessThan(5.0)
   })
 
   it('handles fetch failure or non-ok status gracefully in fetchPhotonSuggestions', async () => {

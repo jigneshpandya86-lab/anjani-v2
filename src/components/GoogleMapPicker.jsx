@@ -3,8 +3,10 @@ import { LocateFixed } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { parseGoogleMapsLocation } from '../utils/locationUtils'
 import {
-  VADODARA_BOUNDS,
+  VADODARA_50KM_BOUNDS,
   VADODARA_COORDINATES,
+  MAX_DELIVERY_RADIUS_KM,
+  calculateDistanceKm,
   searchVadodaraLandmarks,
   fetchPhotonSuggestions,
 } from '../utils/vadodaraLandmarks'
@@ -148,8 +150,8 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
       return
     }
 
-    // Step 1: Instant local Vadodara landmarks for zero-latency feedback
-    const localMatches = searchVadodaraLandmarks(cleanTerm, 5)
+    // Step 1: Instant local Vadodara + 50 km landmarks for zero-latency feedback
+    const localMatches = searchVadodaraLandmarks(cleanTerm, 6)
     if (localMatches.length > 0) {
       setPredictions(localMatches)
     }
@@ -162,7 +164,7 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
       let foundGoogleResults = false
       const isAuthFailed = typeof window !== 'undefined' && Boolean(window.__googleMapsAuthFailed)
 
-      // Step 2: Try Google Places API (with strict 2000ms timeout guard)
+      // Step 2: Try Google Places API restricted to 50 km bounds
       if (!isAuthFailed) {
         try {
           const places = await getPlacesLibrary()
@@ -180,7 +182,7 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
               const newApiPromise = places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
                 input: cleanTerm,
                 sessionToken: sessionTokenRef.current,
-                locationRestriction: VADODARA_BOUNDS,
+                locationRestriction: VADODARA_50KM_BOUNDS,
                 origin: VADODARA_COORDINATES,
                 includedRegionCodes: ['in'],
               })
@@ -211,13 +213,19 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
               }
             }
 
-            // Method B: Universal Classic AutocompleteService fallback
+            // Method B: Universal Classic AutocompleteService fallback with strict 50 km bounds
             if (!foundGoogleResults && places.AutocompleteService) {
               const service = new places.AutocompleteService()
               const bounds = window.google?.maps?.LatLngBounds
                 ? new window.google.maps.LatLngBounds(
-                    new window.google.maps.LatLng(VADODARA_BOUNDS.south, VADODARA_BOUNDS.west),
-                    new window.google.maps.LatLng(VADODARA_BOUNDS.north, VADODARA_BOUNDS.east),
+                    new window.google.maps.LatLng(
+                      VADODARA_50KM_BOUNDS.south,
+                      VADODARA_50KM_BOUNDS.west,
+                    ),
+                    new window.google.maps.LatLng(
+                      VADODARA_50KM_BOUNDS.north,
+                      VADODARA_50KM_BOUNDS.east,
+                    ),
                   )
                 : undefined
 
@@ -276,12 +284,11 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
         }
       }
 
-      // If we are superseded by a newer search, abort
       if (activeSearchIdRef.current !== currentSearchId) {
         return
       }
 
-      // Step 3: OpenStreetMap Photon fallback if Google Places didn't return results
+      // Step 3: OpenStreetMap Photon fallback with strict 50 km bbox filter
       if (!foundGoogleResults) {
         try {
           const osmResults = await fetchPhotonSuggestions(cleanTerm, 6, 2200)
@@ -325,6 +332,16 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
       ) {
         const lat = Number(item.lat)
         const lng = Number(item.lng)
+        const dist = calculateDistanceKm(lat, lng)
+
+        if (dist > MAX_DELIVERY_RADIUS_KM) {
+          toast.error(
+            `Location is ${dist.toFixed(1)} km away. Delivery is restricted to Vadodara + 50 km only.`,
+          )
+          setError(`Selected location is ${dist.toFixed(1)} km away (exceeds 50 km limit).`)
+          return
+        }
+
         const address = item.label || ''
         const mapLink = item.mapLink || `https://www.google.com/maps?q=${lat},${lng}`
 
@@ -348,6 +365,15 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
         const lng = place.location?.lng?.()
 
         if (Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
+          const dist = calculateDistanceKm(lat, lng)
+          if (dist > MAX_DELIVERY_RADIUS_KM) {
+            toast.error(
+              `Selected place is ${dist.toFixed(1)} km away. Delivery is restricted to Vadodara + 50 km only.`,
+            )
+            setError(`Selected location is ${dist.toFixed(1)} km away (exceeds 50 km limit).`)
+            return
+          }
+
           const address = place.formattedAddress || item.label || ''
           const mapLink = `https://www.google.com/maps?q=${lat},${lng}`
 
@@ -374,6 +400,18 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
             const loc = results[0].geometry?.location
             const lat = Number(loc?.lat?.()?.toFixed(6))
             const lng = Number(loc?.lng?.()?.toFixed(6))
+
+            if (Number.isFinite(lat) && Number.isFinite(lng)) {
+              const dist = calculateDistanceKm(lat, lng)
+              if (dist > MAX_DELIVERY_RADIUS_KM) {
+                toast.error(
+                  `Selected place is ${dist.toFixed(1)} km away. Delivery is restricted to Vadodara + 50 km only.`,
+                )
+                setError(`Selected location is ${dist.toFixed(1)} km away (exceeds 50 km limit).`)
+                return
+              }
+            }
+
             const address = results[0].formatted_address || item.label || ''
             const mapLink = `https://www.google.com/maps?q=${lat},${lng}`
 
@@ -418,13 +456,23 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
         setGettingGps(false)
         const lat = Number(pos.coords.latitude.toFixed(6))
         const lng = Number(pos.coords.longitude.toFixed(6))
+        const dist = calculateDistanceKm(lat, lng)
+
+        if (dist > MAX_DELIVERY_RADIUS_KM) {
+          toast.error(
+            `GPS location is ${dist.toFixed(1)} km away. Outside the 50 km Vadodara delivery zone.`,
+          )
+          setError(`GPS location is ${dist.toFixed(1)} km away (exceeds 50 km limit).`)
+          return
+        }
+
         const mapLink = `https://www.google.com/maps?q=${lat},${lng}`
-        const label = `GPS: ${lat}, ${lng}`
+        const label = `GPS: ${lat}, ${lng} (${dist.toFixed(1)} km from Vadodara)`
         suppressNextSearchRef.current = true
         setSearchTerm(label)
         setError('')
         onChangeRef.current?.({ lat, lng, address: label, mapLink })
-        toast.success(`Current GPS pinned: ${lat}, ${lng}`)
+        toast.success(`Current GPS pinned: ${lat}, ${lng} (${dist.toFixed(1)} km away)`)
       },
       (err) => {
         setGettingGps(false)
@@ -442,6 +490,19 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
     // Check if input is a pasted coordinates or Google Maps URL
     const parsed = parseGoogleMapsLocation(nextValue)
     if (parsed) {
+      if (
+        parsed.lat !== null &&
+        parsed.lat !== undefined &&
+        parsed.lng !== null &&
+        parsed.lng !== undefined
+      ) {
+        const dist = calculateDistanceKm(parsed.lat, parsed.lng)
+        if (dist > MAX_DELIVERY_RADIUS_KM) {
+          setError(`Pasted location is ${dist.toFixed(1)} km away (outside 50 km Vadodara limit).`)
+        } else {
+          setError('')
+        }
+      }
       onChangeRef.current?.({
         lat: parsed.lat,
         lng: parsed.lng,
@@ -449,6 +510,7 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
         mapLink: parsed.mapLink,
       })
     } else {
+      setError('')
       onChangeRef.current?.({
         lat: null,
         lng: null,
@@ -460,6 +522,7 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
     if (!nextValue.trim()) {
       setPredictions([])
       setIsSearching(false)
+      setError('')
     }
   }
 
@@ -476,13 +539,13 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
             }}
             onChange={handleInputChange}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-            placeholder="Search landmark, coords (e.g. 22.3, 73.1), or paste map URL"
+            placeholder="Search Vadodara + 50 km (e.g. Alkapuri, Halol, Padra, GIDC)..."
           />
           {isFocused && (isSearching || predictions.length > 0) && (
             <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl max-h-60 overflow-y-auto">
               {isSearching && predictions.length === 0 && (
                 <p className="px-3 py-2.5 text-xs text-gray-500 font-medium animate-pulse">
-                  Searching places in Vadodara...
+                  Searching places within 50 km of Vadodara...
                 </p>
               )}
               {predictions.map((item, index) => (
@@ -497,6 +560,11 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
                 >
                   <span className="font-semibold text-amber-700 mr-1.5">📍</span>
                   <span>{item.label}</span>
+                  {Number.isFinite(item.distanceKm) && (
+                    <span className="ml-2 text-[10px] text-gray-400 font-medium">
+                      ({item.distanceKm} km)
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -504,7 +572,7 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
           {isFocused && !isSearching && predictions.length === 0 && searchTerm.trim().length >= 2 && (
             <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl p-2.5">
               <p className="text-xs text-gray-500">
-                No matching places found. You can type address, paste map link, or tap GPS.
+                No matching places found within 50 km of Vadodara. You can paste map link or tap GPS.
               </p>
             </div>
           )}
@@ -526,7 +594,7 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
       </div>
 
       <p className="text-[11px] text-gray-500">
-        Type landmark in Vadodara, paste Google Maps link, or tap GPS.
+        Restricted to Vadodara + 50 km range (City, Padra, Karjan, Halol, Savli, GIDCs).
       </p>
       {error && <p className="text-xs text-amber-600 font-medium">{error}</p>}
     </div>
