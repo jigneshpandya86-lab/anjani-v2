@@ -59,10 +59,7 @@ import {
   advanceChatbotFlow,
   executeFlowSave,
   FLOW_TYPES,
-  MAIN_MENU_CHIPS,
-  MAIN_MENU_GROUPS,
 } from '../utils/chatbotFlowEngine'
-import { getContextualAiChips } from '../utils/aiContextualChips'
 import {
   checkIsDayTime,
   buildHumanLikeFollowUpMessage,
@@ -874,19 +871,6 @@ export default function AiAssistantDrawer({
         })
         .slice(0, 5)
     : []
-
-  const quickClientSuggestions =
-    !atMatch &&
-    !slashMatch &&
-    (isSalesMode || isPaymentMode) &&
-    inputMessage.trim().length >= 2 &&
-    !inputMessage.includes('\n')
-      ? clients
-          .filter((c) =>
-            c.name?.toLowerCase().includes(inputMessage.trim().toLowerCase())
-          )
-          .slice(0, 4)
-      : []
 
   const handleSelectClient = (client) => {
     if (atMatch) {
@@ -4370,12 +4354,6 @@ export default function AiAssistantDrawer({
               text:
                 resData.text ||
                 'Sure! Please specify the customer name and quantity (e.g. "Kamleshbhai 30 box tomorrow 11 AM").',
-              chips: getContextualAiChips({
-                text: resData.text || 'specify customer name and quantity',
-                lastUserMessage: query,
-                clients,
-                orders,
-              }),
               timestamp: new Date(),
             },
           ])
@@ -4639,12 +4617,6 @@ export default function AiAssistantDrawer({
             id: 'asst-' + Date.now(),
             sender: 'assistant',
             text: resData.text || "Hello! I am Anjani AI, your operations assistant. How can I assist you today?",
-            chips: getContextualAiChips({
-              text: resData.text,
-              lastUserMessage: query,
-              clients,
-              orders,
-            }),
             modelUsed: resData.modelUsed,
             timestamp: new Date(),
           },
@@ -4656,12 +4628,6 @@ export default function AiAssistantDrawer({
             id: 'asst-' + Date.now(),
             sender: 'assistant',
             text: resData.text || "I've processed your request.",
-            chips: getContextualAiChips({
-              text: resData.text,
-              lastUserMessage: query,
-              clients,
-              orders,
-            }),
             modelUsed: resData.modelUsed,
             timestamp: new Date(),
           },
@@ -5135,228 +5101,48 @@ export default function AiAssistantDrawer({
           </div>
         )}
 
-        {/* Clutter-Free Quick Action Navigation Strip (Single line, strictly icon-only, no scrolling needed) */}
-        <div className="px-2 py-1.5 bg-gray-50/90 border-b border-gray-200 flex items-center justify-between gap-1 overflow-x-hidden shrink-0 text-xs select-none">
-          {/* 0. WhatsApp Bot Menu */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveChatbotFlow(null)
-              const menu = getMainMenuMessage()
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: 'asst-' + Date.now(),
-                  sender: 'assistant',
-                  text: menu.text,
-                  chips: menu.chips,
-                  isMainMenu: true,
-                  timestamp: new Date(),
-                },
-              ])
-            }}
-            className="h-7 w-7 rounded-lg border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-950 flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs"
-            title="WhatsApp Bot Menu"
-            aria-label="Bot Menu"
-          >
-            <Bot className="w-4 h-4 text-[#ff9900]" />
-          </button>
-
-          {/* 1. Staff Tasks (AI Powered & SMS Follow-up) */}
-          <button
-            type="button"
-            onClick={() => handleSend('show staff tasks')}
-            className="h-7 w-7 rounded-lg border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-900 flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs relative"
-            title="Staff Tasks Assignment & SMS Follow-ups"
-            aria-label="Staff Tasks"
-          >
-            <span className="text-xs">📋</span>
-            {jobs.filter((j) => j && j.stage !== 'complete' && j.stage !== 'archived').length > 0 && (
-              <span className="absolute -top-1 -right-1 px-1 h-3.5 min-w-[14px] rounded-full bg-teal-600 text-white font-black text-[9px] flex items-center justify-center">
-                {jobs.filter((j) => j && j.stage !== 'complete' && j.stage !== 'archived').length}
-              </span>
-            )}
-          </button>
-
-          {/* 2. Order Creation & Sales */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsSalesMode((prev) => {
-                const next = !prev
-                if (next) {
-                  setIsPaymentMode(false)
-                  setIsClientMode(false)
-                  setIsAccountsMode(false)
-                  setTimeout(() => inputRef.current?.focus(), 50)
-                }
-                return next
-              })
-            }}
-            className={`h-7 w-7 rounded-lg border flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs ${
-              isSalesMode
-                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                : 'bg-white text-gray-700 border-gray-200 hover:border-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50'
-            }`}
-            title="1. Order Creation & Daily Sales"
-            aria-label="Order Creation"
-          >
-            <ClipboardList className={`w-4 h-4 ${isSalesMode ? 'text-white' : 'text-emerald-600'}`} />
-          </button>
-
-          {/* 3. Receive Payment */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsPaymentMode((prev) => {
-                const next = !prev
-                if (next) {
-                  setIsSalesMode(false)
-                  setIsClientMode(false)
-                  setIsAccountsMode(false)
-                  setTimeout(() => inputRef.current?.focus(), 50)
-                }
-                return next
-              })
-            }}
-            className={`h-7 w-7 rounded-lg border flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs ${
-              isPaymentMode
-                ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
-                : 'bg-white text-gray-700 border-gray-200 hover:border-emerald-700 hover:text-emerald-800 hover:bg-emerald-50/50'
-            }`}
-            title="2. Receive Payment / Scan UPI"
-            aria-label="Receive Payment"
-          >
-            <IndianRupee className={`w-4 h-4 ${isPaymentMode ? 'text-white' : 'text-emerald-700'}`} />
-          </button>
-
-          {/* 4. Add Client */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsClientMode((prev) => {
-                const next = !prev
-                if (next) {
-                  setIsSalesMode(false)
-                  setIsPaymentMode(false)
-                  setIsAccountsMode(false)
-                  setTimeout(() => inputRef.current?.focus(), 50)
-                }
-                return next
-              })
-            }}
-            className={`h-7 w-7 rounded-lg border flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs ${
-              isClientMode
-                ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
-                : 'bg-white text-gray-700 border-gray-200 hover:border-amz-orange hover:text-amz-orange hover:bg-orange-50/50'
-            }`}
-            title="3. Add New Client"
-            aria-label="Add Client"
-          >
-            <UserPlus className={`w-4 h-4 ${isClientMode ? 'text-white' : 'text-amz-orange'}`} />
-          </button>
-
-          {/* 5. Camera OCR: Scan Photo */}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="h-7 w-7 bg-white border border-gray-200 hover:border-amz-orange hover:bg-orange-50/50 rounded-lg flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs text-gray-700"
-            title="Scan Photo (Vendor Bill / UPI Screenshot / Visiting Card)"
-            aria-label="Scan Photo"
-          >
-            <Camera className="w-4 h-4 text-gray-700" />
-          </button>
-
-          {/* 6. Accounts & Staff Cash */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsAccountsMode((prev) => {
-                const next = !prev
-                if (next) {
-                  setIsSalesMode(false)
-                  setIsPaymentMode(false)
-                  setIsClientMode(false)
-                  setTimeout(() => inputRef.current?.focus(), 50)
-                }
-                return next
-              })
-            }}
-            className={`h-7 w-7 rounded-lg border flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs ${
-              isAccountsMode
-                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                : 'bg-white text-gray-700 border-gray-200 hover:border-blue-600 hover:text-blue-600 hover:bg-blue-50/50'
-            }`}
-            title="Accounts & Staff Cash (Nilesh, Hiteshbhai, Counter, Bank)"
-            aria-label="Accounts & Staff Cash"
-          >
-            <ArrowRightLeft className={`w-4 h-4 ${isAccountsMode ? 'text-white' : 'text-blue-600'}`} />
-          </button>
-
-          {/* 7. Current Stock */}
-          <button
-            type="button"
-            onClick={() => handleSend('Current stock')}
-            className="h-7 w-7 bg-white border border-gray-200 hover:border-indigo-500 hover:bg-indigo-50/50 rounded-lg flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs text-gray-700"
-            title="Check Warehouse Stock"
-            aria-label="Current Stock"
-          >
-            <Package className="w-4 h-4 text-indigo-600" />
-          </button>
-
-          {/* 8. Today Deliveries */}
-          <button
-            type="button"
-            onClick={() => handleSend('Pending orders today')}
-            className="h-7 w-7 bg-white border border-gray-200 hover:border-cyan-600 hover:bg-cyan-50/50 rounded-lg flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs text-gray-700"
-            title="Today's Pending Deliveries"
-            aria-label="Today Deliveries"
-          >
-            <Truck className="w-4 h-4 text-cyan-600" />
-          </button>
-
-          {/* 9. Outstanding Dues */}
-          <button
-            type="button"
-            onClick={() => handleSend('Outstanding balances')}
-            className="h-7 w-7 bg-white border border-gray-200 hover:border-purple-500 hover:bg-purple-50/50 rounded-lg flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs text-gray-700"
-            title="Customer Outstanding Dues"
-            aria-label="Outstanding Balances"
-          >
-            <CreditCard className="w-4 h-4 text-purple-600" />
-          </button>
-        </div>
-
         {/* Message Thread */}
         <div ref={messagesContainerRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50/50">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-start text-center pt-0 pb-1 px-1 text-gray-700 select-none">
-              {/* Single-Card Compact Menu (Fits 100% on one page without scrolling) */}
-              <div className="w-full max-w-sm bg-white rounded-xl p-2 border border-gray-200/90 shadow-2xs space-y-1.5 text-left">
-                {MAIN_MENU_GROUPS.map((group) => {
-                  const groupChips = MAIN_MENU_CHIPS.filter((c) => group.chipIds.includes(c.id))
-                  return (
-                    <div key={group.title} className="space-y-0.5">
-                      <div className="text-[9px] font-black tracking-wider text-gray-400 uppercase px-0.5">
-                        {group.title}
-                      </div>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {groupChips.map((chip) => (
-                          <button
-                            key={chip.id}
-                            type="button"
-                            onClick={() => handleChipClick(chip)}
-                            className={`h-7 px-2 rounded-lg border text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs hover:scale-[1.01] active:scale-95 ${
-                              chip.color || 'bg-white text-gray-800 border-gray-200 hover:bg-gray-50'
-                            }`}
-                          >
-                            <span className="truncate">{chip.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })}
+            <div className="flex flex-col items-center justify-center text-center py-10 px-4 text-gray-700 select-none">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#131921] to-gray-800 text-[#ff9900] flex items-center justify-center shadow-md mb-3">
+                <Bot className="w-8 h-8" />
+              </div>
+              <h3 className="text-base font-bold text-gray-900 mb-1">
+                Anjani AI Assistant
+              </h3>
+              <p className="text-xs text-gray-500 max-w-xs mb-4">
+                Powered by Gemini 3.5 Flash. Speak naturally, send voice notes, or share photos of bills &amp; receipts.
+              </p>
+              <div className="w-full max-w-sm bg-white/90 rounded-xl p-3.5 border border-gray-200/90 shadow-2xs space-y-2.5 text-left text-xs text-gray-700">
+                <div className="flex items-start gap-2.5">
+                  <span className="text-base shrink-0">📦</span>
+                  <div>
+                    <span className="font-bold text-gray-900">Orders &amp; Deliveries:</span>
+                    <p className="text-gray-500 text-[11px] mt-0.5">Book or change orders (e.g. <em>&quot;Kamleshbhai 30 box tomorrow 11 AM&quot;</em>)</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <span className="text-base shrink-0">💰</span>
+                  <div>
+                    <span className="font-bold text-gray-900">Payments &amp; Expenses:</span>
+                    <p className="text-gray-500 text-[11px] mt-0.5">Record customer payments, log factory expenses, or check ledger dues.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <span className="text-base shrink-0">📋</span>
+                  <div>
+                    <span className="font-bold text-gray-900">Staff Tasks &amp; Stock:</span>
+                    <p className="text-gray-500 text-[11px] mt-0.5">Assign driver tasks, trigger WhatsApp alerts, or check warehouse inventory.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <span className="text-base shrink-0">📸</span>
+                  <div>
+                    <span className="font-bold text-gray-900">Pure Multimodal OCR:</span>
+                    <p className="text-gray-500 text-[11px] mt-0.5">Upload bills, UPI screenshots, or visiting cards for automatic detection.</p>
+                  </div>
+                </div>
               </div>
             </div>
           ) : (
@@ -5396,7 +5182,7 @@ export default function AiAssistantDrawer({
                   </div>
                 )}
 
-                {/* WhatsApp-Style Interactive Selection Chips */}
+                {/* Action Buttons & Links */}
                 {msg.chips && msg.chips.length > 0 && (
                   <div className={`${msg.text ? 'mt-2.5 pt-2 border-t border-gray-100' : ''} flex flex-wrap gap-1.5 items-center`}>
                     {msg.chips.map((chip, cIdx) => (
@@ -5420,6 +5206,7 @@ export default function AiAssistantDrawer({
                     ))}
                   </div>
                 )}
+
 
                 {/* 1. Interactive Order Draft Card */}
                 {msg.type === 'order_draft' && msg.data && (
@@ -5690,6 +5477,16 @@ export default function AiAssistantDrawer({
                             toast.success(
                               `Payment of ₹${Number(msg.data.amount).toLocaleString('en-IN')} recorded successfully!`,
                             )
+                            setMessages((prev) => [
+                              ...prev,
+                              {
+                                id: 'asst-' + Date.now(),
+                                sender: 'assistant',
+                                text: `✅ **Payment Recorded & Confirmed**:\n• Customer: **${resolvedName}**\n• Amount: **₹${Number(msg.data.amount).toLocaleString('en-IN')}**\n• Mode: **${msg.data.method || 'online'}**\n• Account: **${msg.data.method === 'cash' ? 'Counter Cash' : 'Bank'}**\nLedger updated ✓`,
+                                type: 'payment_confirmed',
+                                timestamp: new Date(),
+                              },
+                            ])
                           } catch (err) {
                             toast.error('Failed to record payment: ' + err.message)
                           }
@@ -7749,67 +7546,7 @@ export default function AiAssistantDrawer({
                 </button>
               </div>
 
-              {/* Quick multi-selection mode selector for photo */}
-              <div className="flex items-center gap-1.5 pt-1 border-t border-orange-200/70 overflow-x-auto">
-                <span className="text-[10px] font-semibold text-gray-500 shrink-0">Scan photo as:</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsClientMode(false)
-                    setIsSalesMode(false)
-                    setIsPaymentMode(false)
-                    setIsAccountsMode(false)
-                  }}
-                  className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
-                    !isClientMode && !isSalesMode && !isPaymentMode && !isAccountsMode
-                      ? 'bg-indigo-600 text-white shadow-2xs'
-                      : 'bg-white border border-gray-300 text-gray-700 hover:border-indigo-500'
-                  }`}
-                  aria-pressed={!isClientMode && !isSalesMode && !isPaymentMode && !isAccountsMode}
-                >
-                  {!isClientMode && !isSalesMode && !isPaymentMode && !isAccountsMode && <Check className="w-3 h-3" />}
-                  <span>✨ Auto</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsClientMode((prev) => !prev)}
-                  className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
-                    isClientMode
-                      ? 'bg-blue-600 text-white shadow-2xs'
-                      : 'bg-white border border-gray-300 text-gray-700 hover:border-blue-500'
-                  }`}
-                  aria-pressed={isClientMode}
-                >
-                  {isClientMode && <Check className="w-3 h-3" />}
-                  <span>👤 Client</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsSalesMode((prev) => !prev)}
-                  className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
-                    isSalesMode
-                      ? 'bg-emerald-600 text-white shadow-2xs'
-                      : 'bg-white border border-gray-300 text-gray-700 hover:border-emerald-600'
-                  }`}
-                  aria-pressed={isSalesMode}
-                >
-                  {isSalesMode && <Check className="w-3 h-3" />}
-                  <span>🛒 Order</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsPaymentMode((prev) => !prev)}
-                  className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
-                    isPaymentMode
-                      ? 'bg-emerald-700 text-white shadow-2xs'
-                      : 'bg-white border border-gray-300 text-gray-700 hover:border-emerald-700'
-                  }`}
-                  aria-pressed={isPaymentMode}
-                >
-                  {isPaymentMode && <Check className="w-3 h-3" />}
-                  <span>💰 Payment</span>
-                </button>
-              </div>
+
             </div>
           )}
 
@@ -7885,23 +7622,6 @@ export default function AiAssistantDrawer({
                       Standard
                     </span>
                   )}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Quick Client suggestion chips */}
-          {quickClientSuggestions.length > 0 && (
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 mb-1 scrollbar-none">
-              {quickClientSuggestions.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => handleSelectClient(c)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 hover:bg-orange-100 text-gray-700 hover:text-orange-900 rounded-full text-xs font-semibold shrink-0 cursor-pointer border border-gray-200 transition-colors"
-                >
-                  <User className="w-3 h-3 text-[#ff9900]" />
-                  <span>{c.name}</span>
                 </button>
               ))}
             </div>
@@ -8024,30 +7744,12 @@ export default function AiAssistantDrawer({
                       : speechLang === 'hi-IN'
                         ? 'सुन रहे हैं... हिंदी में बोलें'
                         : 'Listening in English... Speak now'
-                    : isPaymentMode
-                      ? 'Payment (e.g. Received 2000 from @Royal...)'
-                      : isClientMode
-                        ? 'New client (e.g. Shiv Dhaba, Manjalpur, 98250...)'
-                        : isSalesMode
-                          ? 'Sales order (e.g. @Client /SKU or voice...)'
-                          : isAccountsMode
-                            ? 'Cash handover / custody entry...'
-                            : filePreview
-                              ? 'Add notes or send...'
-                              : 'Ask bot above, type @client, /sku, or speech...'
+                    : filePreview
+                      ? 'Add notes or send...'
+                      : 'Ask bot above, type @client, /sku, or speech...'
               }
               style={{ minHeight: '42px', height: 'auto' }}
-              className={`flex-1 py-2 px-3 border-2 rounded-xl text-xs sm:text-sm outline-none transition-all resize-none max-h-36 overflow-y-auto leading-relaxed ${
-                isPaymentMode
-                  ? 'border-emerald-600 ring-2 ring-emerald-200/70 bg-emerald-50/20'
-                  : isClientMode
-                    ? 'border-orange-500 ring-2 ring-orange-200/70 bg-orange-50/20'
-                    : isSalesMode
-                      ? 'border-emerald-500 ring-2 ring-emerald-200/60 bg-emerald-50/20'
-                      : isAccountsMode
-                        ? 'border-blue-500 ring-2 ring-blue-200/60 bg-blue-50/20'
-                        : 'border-gray-300 focus:ring-2 focus:ring-[#ff9900] focus:border-[#ff9900]'
-              }`}
+              className="flex-1 py-2 px-3 border-2 border-gray-300 focus:ring-2 focus:ring-[#ff9900] focus:border-[#ff9900] rounded-xl text-xs sm:text-sm outline-none transition-all resize-none max-h-36 overflow-y-auto leading-relaxed"
             />
 
             <button

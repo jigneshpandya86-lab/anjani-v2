@@ -182,6 +182,7 @@ import AiAssistantDrawer from '../components/AiAssistantDrawer'
 describe('AiAssistantDrawer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockAiPrefillFile = null
   })
 
   it('renders without crashing when open in all modes', () => {
@@ -322,7 +323,7 @@ describe('AiAssistantDrawer', () => {
     unmount()
   })
 
-  it('renders WhatsApp-style bot action menu chips and initiates guided flow on click', () => {
+  it('renders minimalist AI welcome screen without hardwired chips in empty state', () => {
     const { unmount } = render(
       <AiAssistantDrawer
         isOpen={true}
@@ -332,26 +333,21 @@ describe('AiAssistantDrawer', () => {
     )
 
     expect(screen.getByRole('heading', { level: 2, name: 'Anjani' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { level: 3, name: 'Anjani' })).not.toBeInTheDocument()
-    expect(screen.queryByText('Anjani WhatsApp-Style Assistant')).not.toBeInTheDocument()
-    expect(screen.queryByText(/guided workflows/i)).not.toBeInTheDocument()
-    expect(screen.getByText('💸 Record Expense')).toBeInTheDocument()
-    expect(screen.getByText('📦 Book Order')).toBeInTheDocument()
-    expect(screen.getByText('💰 Receive Payment (Jama)')).toBeInTheDocument()
-    expect(screen.getByText('🤝 Cash Handover')).toBeInTheDocument()
-    expect(screen.getByText('🚚 Staff Advance')).toBeInTheDocument()
+    expect(screen.getByText('Anjani AI Assistant')).toBeInTheDocument()
+    expect(screen.getByText((content) => content.includes('Powered by Gemini 3.5 Flash'))).toBeInTheDocument()
 
-    // Click Record Expense chip
-    fireEvent.click(screen.getByText('💸 Record Expense'))
-
-    // Should prompt for Step 1 Expense Amount
-    expect(screen.getByText(/Step 1\/4: Expense Amount/i)).toBeInTheDocument()
-    expect(screen.getByText('₹500')).toBeInTheDocument()
+    // Unintelligent hardwired chips must NOT be in the document
+    expect(screen.queryByText('💸 Record Expense')).not.toBeInTheDocument()
+    expect(screen.queryByText('📦 Book Order')).not.toBeInTheDocument()
+    expect(screen.queryByText('💰 Receive Payment (Jama)')).not.toBeInTheDocument()
+    expect(screen.queryByText('🤝 Cash Handover')).not.toBeInTheDocument()
+    expect(screen.queryByText('🚚 Staff Advance')).not.toBeInTheDocument()
+    expect(screen.queryByText('Scan photo as:')).not.toBeInTheDocument()
 
     unmount()
   })
 
-  it('renders clutter-free quick action pill strip with Staff Tasks and interactive task flow', () => {
+  it('operates in 100% minimalist chat mode with top quick action strip removed', () => {
     const { unmount } = render(
       <AiAssistantDrawer
         isOpen={true}
@@ -360,26 +356,24 @@ describe('AiAssistantDrawer', () => {
       />
     )
 
-    // Clutter-free quick action pills must be present
-    expect(screen.getByRole('button', { name: /^Staff Tasks/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Bot Menu/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Order Creation/i })).toBeInTheDocument()
-
-    // Main menu must offer Staff Tasks flow
-    expect(screen.getByText('📋 Assign Staff Task')).toBeInTheDocument()
-    expect(screen.getByText('⏰ Staff Tasks & Follow-up')).toBeInTheDocument()
-
-    // Click Assign Staff Task chip to initiate flow
-    fireEvent.click(screen.getByText('📋 Assign Staff Task'))
-
-    // Should prompt for Step 1 Select Staff Member (streamlined 3-step flow)
-    expect(screen.getByText(/Step 1\/3: Select Staff Member/i)).toBeInTheDocument()
-    expect(screen.getByText(/Nilesh/i)).toBeInTheDocument()
+    // Quick action strip buttons must NOT be present in minimalist UI
+    expect(screen.queryByRole('button', { name: (content) => content.includes('Staff Tasks') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: (content) => content.includes('Bot Menu') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: (content) => content.includes('Order Creation') })).not.toBeInTheDocument()
+    expect(screen.queryByText('📋 Assign Staff Task')).not.toBeInTheDocument()
+    expect(screen.queryByText('⏰ Staff Tasks & Follow-up')).not.toBeInTheDocument()
 
     unmount()
   })
 
-  it('renders Staff Tasks card with 1-tap WhatsApp and SMS follow-up buttons', () => {
+  it('renders Staff Tasks card with 1-tap WhatsApp and SMS follow-up buttons via natural chat query', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'tasks_query',
+        data: { staffName: 'all' },
+      },
+    })
+
     const { unmount } = render(
       <AiAssistantDrawer
         isOpen={true}
@@ -388,21 +382,23 @@ describe('AiAssistantDrawer', () => {
       />
     )
 
-    // Click Staff Tasks chip
-    fireEvent.click(screen.getByText('⏰ Staff Tasks & Follow-up'))
+    const input = screen.getByPlaceholderText((content) => content.includes('Ask bot above'))
+    fireEvent.change(input, { target: { value: 'show staff tasks' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
 
     // Staff tasks list card appears with tasks
-    expect(screen.getByText(/Staff Tasks \(1\)/i)).toBeInTheDocument()
+    expect(await screen.findByText((content) => content.includes('Staff Tasks (1)'))).toBeInTheDocument()
     expect(screen.getByText('Collect empty jars from Krishna Hotel')).toBeInTheDocument()
 
     // 1-tap WhatsApp and SMS follow-up buttons exist
-    expect(screen.getByRole('button', { name: /^WhatsApp$/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /SMS Follow-up/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'WhatsApp' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: (content) => content.includes('SMS Follow-up') })).toBeInTheDocument()
 
     unmount()
   })
 
-  it('supports multi-selection for photo scan options (Client, Order, Payment simultaneously)', async () => {
+  it('operates in pure auto mode for photo scan without hardwired scan mode chips', async () => {
     const { unmount, container } = render(
       <AiAssistantDrawer
         isOpen={true}
@@ -418,34 +414,10 @@ describe('AiAssistantDrawer', () => {
     const mockFile = new File(['photo-bytes'], 'payment_screenshot.jpg', { type: 'image/jpeg' })
     await userEvent.upload(fileInput, mockFile)
 
-    // "Scan photo as:" bar appears asynchronously after processing
-    expect(await screen.findByText('Scan photo as:')).toBeInTheDocument()
-
-    const clientBtn = screen.getByRole('button', { name: /👤 Client/i })
-    const orderBtn = screen.getByRole('button', { name: /🛒 Order/i })
-    const paymentBtn = screen.getByRole('button', { name: /💰 Payment/i })
-
-    expect(clientBtn).toHaveAttribute('aria-pressed', 'false')
-    expect(orderBtn).toHaveAttribute('aria-pressed', 'false')
-    expect(paymentBtn).toHaveAttribute('aria-pressed', 'false')
-
-    // 1. Toggle Client -> Client becomes active
-    fireEvent.click(clientBtn)
-    expect(clientBtn).toHaveAttribute('aria-pressed', 'true')
-    expect(orderBtn).toHaveAttribute('aria-pressed', 'false')
-    expect(paymentBtn).toHaveAttribute('aria-pressed', 'false')
-
-    // 2. Toggle Order -> BOTH Client and Order are now active simultaneously!
-    fireEvent.click(orderBtn)
-    expect(clientBtn).toHaveAttribute('aria-pressed', 'true')
-    expect(orderBtn).toHaveAttribute('aria-pressed', 'true')
-    expect(paymentBtn).toHaveAttribute('aria-pressed', 'false')
-
-    // 3. Toggle Payment -> ALL THREE are active simultaneously!
-    fireEvent.click(paymentBtn)
-    expect(clientBtn).toHaveAttribute('aria-pressed', 'true')
-    expect(orderBtn).toHaveAttribute('aria-pressed', 'true')
-    expect(paymentBtn).toHaveAttribute('aria-pressed', 'true')
+    // "Scan photo as:" bar must NOT appear in pure auto mode
+    expect(screen.queryByText('Scan photo as:')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: (content) => content.includes('Auto') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: (content) => content.includes('Payment') })).not.toBeInTheDocument()
 
     unmount()
   })
@@ -544,14 +516,17 @@ describe('AiAssistantDrawer', () => {
     unmount()
   })
 
-  it('when payment receipt is shared and only payment is selected from three tabs, matches best existing client and never creates new client', async () => {
-    // Simulate backend returning compound_action or receive_payment from a payment receipt
+  it('when payment receipt is shared and processed in pure auto mode, matches best existing client and never creates new client', async () => {
+    // Simulate backend returning receive_payment from a payment receipt
     mockHttpsCallableResponse.mockResolvedValueOnce({
       data: {
-        type: 'compound_action',
+        type: 'receive_payment',
         data: {
-          client: { name: 'Rohit K Patel' },
-          payment: { payerName: 'Rohit K Patel', amount: 850, onlineProvider: 'UPI', utr: 'UPI5566' },
+          payerName: 'Rohit K Patel',
+          amount: 850,
+          paymentMode: 'online',
+          onlineProvider: 'UPI',
+          utr: 'UPI5566',
         },
       },
     })
@@ -570,36 +545,12 @@ describe('AiAssistantDrawer', () => {
     expect(fileInput).toBeInTheDocument()
     await userEvent.upload(fileInput, file)
 
-    // Wait for "Scan photo as:" bar to appear
-    expect(await screen.findByText('Scan photo as:')).toBeInTheDocument()
-
-    // Three scan tabs should be visible: [👤 Client], [🛒 Order], [💰 Payment]
-    const clientTab = screen.getByRole('button', { name: /👤 Client/i })
-    const orderTab = screen.getByRole('button', { name: /🛒 Order/i })
-    const paymentTab = screen.getByRole('button', { name: /💰 Payment/i })
-
-    expect(clientTab).toBeInTheDocument()
-    expect(orderTab).toBeInTheDocument()
-    expect(paymentTab).toBeInTheDocument()
-
-    // Unselect Client and Order, ensure only Payment is selected
-    if (clientTab.getAttribute('aria-pressed') === 'true') {
-      fireEvent.click(clientTab)
-    }
-    if (orderTab.getAttribute('aria-pressed') === 'true') {
-      fireEvent.click(orderTab)
-    }
-    if (paymentTab.getAttribute('aria-pressed') !== 'true') {
-      fireEvent.click(paymentTab)
-    }
-
-    expect(clientTab.getAttribute('aria-pressed')).toBe('false')
-    expect(orderTab.getAttribute('aria-pressed')).toBe('false')
-    expect(paymentTab.getAttribute('aria-pressed')).toBe('true')
+    // In pure auto mode, "Scan photo as:" bar is NOT present
+    expect(screen.queryByText('Scan photo as:')).not.toBeInTheDocument()
 
     // Submit form to scan payment receipt
-    const sendBtn = screen.getByRole('button', { name: /Send/i })
-    await fireEvent.click(sendBtn)
+    const form = container.querySelector('form')
+    await fireEvent.submit(form)
 
     // Must render Payment Receipt Card (type: receive_payment)
     expect(await screen.findByText('Payment Receipt')).toBeInTheDocument()
@@ -613,10 +564,11 @@ describe('AiAssistantDrawer', () => {
     expect(clientSelect.value).toBe('c2')
 
     // Confirm & Record Payment
-    const confirmBtn = screen.getByRole('button', { name: /Confirm & Record Payment/i })
-    expect(confirmBtn).toBeEnabled()
+    const confirmButtons = screen.getAllByRole('button', { name: (content) => content.includes('Confirm & Record Payment') })
+    expect(confirmButtons.length).toBeGreaterThanOrEqual(1)
+    expect(confirmButtons[0]).toBeEnabled()
 
-    await fireEvent.click(confirmBtn)
+    await fireEvent.click(confirmButtons[0])
 
     // Verify addClient was NEVER called
     expect(mockAddClient).not.toHaveBeenCalled()
@@ -630,7 +582,7 @@ describe('AiAssistantDrawer', () => {
     unmount()
   })
 
-  it('opens in pure auto mode with no chips pre-selected when aiPrefillFile is shared', async () => {
+  it('opens in pure auto mode without hardwired chips when aiPrefillFile is shared', async () => {
     const mockFile = {
       file: new File(['mock'], 'gpay_receipt.jpg', { type: 'image/jpeg' }),
       dataUrl: 'data:image/jpeg;base64,mock',
@@ -648,27 +600,9 @@ describe('AiAssistantDrawer', () => {
       />
     )
 
-    expect(await screen.findByText('Scan photo as:')).toBeInTheDocument()
-    const autoBtn = screen.getByRole('button', { name: /✨ Auto/i })
-    const clientBtn = screen.getByRole('button', { name: /👤 Client/i })
-    const orderBtn = screen.getByRole('button', { name: /🛒 Order/i })
-    const paymentBtn = screen.getByRole('button', { name: /💰 Payment/i })
-
-    // In pure auto mode, Auto is active and other chips are unselected by default
-    expect(autoBtn).toHaveAttribute('aria-pressed', 'true')
-    expect(clientBtn).toHaveAttribute('aria-pressed', 'false')
-    expect(orderBtn).toHaveAttribute('aria-pressed', 'false')
-    expect(paymentBtn).toHaveAttribute('aria-pressed', 'false')
-
-    // Tapping Client activates Client and deactivates Auto
-    fireEvent.click(clientBtn)
-    expect(autoBtn).toHaveAttribute('aria-pressed', 'false')
-    expect(clientBtn).toHaveAttribute('aria-pressed', 'true')
-
-    // Tapping Auto resets back to pure auto
-    fireEvent.click(autoBtn)
-    expect(autoBtn).toHaveAttribute('aria-pressed', 'true')
-    expect(clientBtn).toHaveAttribute('aria-pressed', 'false')
+    // In pure auto mode, no hardwired scan mode chips are displayed
+    expect(screen.queryByText('Scan photo as:')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: (content) => content.includes('✨ Auto') })).not.toBeInTheDocument()
 
     mockAiPrefillFile = null
     unmount()
