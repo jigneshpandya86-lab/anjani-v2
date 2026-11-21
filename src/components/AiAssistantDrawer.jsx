@@ -1568,6 +1568,51 @@ export default function AiAssistantDrawer({
       return
     }
 
+    if (chip.action === 'book_order') {
+      const orderData = chip.data || activeChatbotFlow?.data
+      if (orderData) {
+        setLoading(true)
+        try {
+          const storeMethods = {
+            addExpense,
+            addOrder,
+            addPayment,
+            recordAccountTransfer,
+            recordStaffAdvance,
+            addStaffJob,
+            sendStaffJobFollowUp,
+            jobs,
+          }
+          const saveRes = await executeFlowSave('order', orderData, storeMethods)
+          setActiveChatbotFlow(null)
+          const menu = getMainMenuMessage()
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'usr-' + Date.now(),
+              sender: 'user',
+              text: '✅ Confirm & Book Order',
+              timestamp: new Date(),
+            },
+            {
+              id: 'asst-' + (Date.now() + 1),
+              sender: 'assistant',
+              text: `${saveRes.text}\n\n---\n${menu.text}`,
+              chips: menu.chips,
+              isMainMenu: true,
+              timestamp: new Date(),
+            },
+          ])
+          toast.success('Order booked and saved!', { icon: '✅' })
+        } catch (err) {
+          toast.error('Failed to book order: ' + err.message)
+        } finally {
+          setLoading(false)
+        }
+        return
+      }
+    }
+
     if (chip.action === 'open_order_modal') {
       const ord = chip.order || chip.data
       if (ord && onOpenOrderModal) {
@@ -3829,6 +3874,10 @@ export default function AiAssistantDrawer({
                 activeOrderDraft = m.flowState.data
                 break
               }
+              if (m.type === 'order_draft' && m.data) {
+                activeOrderDraft = m.data
+                break
+              }
             }
           }
         }
@@ -3843,26 +3892,118 @@ export default function AiAssistantDrawer({
             else if (['time', 'deliverytime'].includes(f)) incoming.deliveryTime = newValue
             else if (['location', 'address', 'venue', 'plot', 'place'].includes(f)) incoming.location = newValue
             else if (['sku', 'product', 'item'].includes(f)) incoming.sku = newValue
+            else if (f === 'confirm' || (f === 'status' && String(newValue).toLowerCase() === 'confirmed')) incoming.status = 'Confirmed'
+            else if (f === 'cancel' || (f === 'status' && String(newValue).toLowerCase() === 'cancelled')) incoming.status = 'cancelled'
             else incoming[fieldToUpdate] = newValue
+          }
+
+          if (changes) {
+            const ch = String(changes).toLowerCase().trim()
+            if (ch.includes('cancel') || ch.includes('delete') || ch.includes('discard')) {
+              incoming.status = 'cancelled'
+            }
+            if (ch.includes('confirm') || ch.includes('book') || ch.includes('save')) {
+              incoming.status = 'Confirmed'
+            }
+          }
+
+          if (incoming.status === 'cancelled') {
+            setActiveChatbotFlow(null)
+            const menu = getMainMenuMessage()
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `❌ Order draft for **${activeOrderDraft.clientName || 'Customer'}** has been cancelled.\n\n${menu.text}`,
+                chips: menu.chips,
+                isMainMenu: true,
+                timestamp: new Date(),
+              },
+            ])
+            return
           }
 
           const patch = {}
           if (incoming.deliveryDate || incoming.date) {
             patch.date = incoming.deliveryDate || incoming.date
+            patch.deliveryDate = incoming.deliveryDate || incoming.date
           }
           if (incoming.qty) patch.qty = Number(incoming.qty)
           if (incoming.rate) patch.rate = Number(incoming.rate)
-          if (incoming.location || incoming.address) patch.address = incoming.location || incoming.address
+          if (incoming.location || incoming.address) {
+            patch.address = incoming.location || incoming.address
+            patch.location = incoming.location || incoming.address
+          }
           if (incoming.sku) patch.sku = incoming.sku
 
-          const updatedDraft = { ...activeOrderDraft, ...patch }
-          const totalAmount = (updatedDraft.qty || 1) * (updatedDraft.rate || 0)
+          const currentQty = Number(
+            patch.qty !== undefined
+              ? patch.qty
+              : activeOrderDraft.qty ||
+                activeOrderDraft.totalQty ||
+                activeOrderDraft.items?.[0]?.qty ||
+                30
+          )
+          const currentRate = Number(
+            patch.rate !== undefined
+              ? patch.rate
+              : activeOrderDraft.rate ||
+                activeOrderDraft.items?.[0]?.rate ||
+                130
+          )
+          const currentSku =
+            patch.sku ||
+            activeOrderDraft.sku ||
+            activeOrderDraft.items?.[0]?.sku ||
+            'Anjani 200ml'
+          const totalAmount = currentQty * currentRate
+
+          const updatedDraft = {
+            ...activeOrderDraft,
+            ...patch,
+            qty: currentQty,
+            totalQty: currentQty,
+            rate: currentRate,
+            sku: currentSku,
+            totalAmount: totalAmount,
+            items: [{ sku: currentSku, qty: currentQty, rate: currentRate }],
+          }
+
+          if (incoming.status === 'Confirmed') {
+            const saveRes = await executeFlowSave('order', updatedDraft, {
+              addOrder,
+              addPayment,
+              addExpense,
+              recordAccountTransfer,
+              recordStaffAdvance,
+              addStaffJob,
+              sendStaffJobFollowUp,
+              jobs,
+            })
+            setActiveChatbotFlow(null)
+            const menu = getMainMenuMessage()
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-' + Date.now(),
+                sender: 'assistant',
+                text: `${saveRes.text}\n\n---\n${menu.text}`,
+                chips: menu.chips,
+                isMainMenu: true,
+                timestamp: new Date(),
+              },
+            ])
+            toast.success('Order booked and saved!', { icon: '✅' })
+            return
+          }
+
           const updatedState = {
             flow: 'order',
             step: 'confirm',
             data: updatedDraft,
             isConfirmation: true,
-            text: `📦 **Confirm Order Booking**\n\n• **Customer**: ${updatedDraft.clientName}\n• **Product**: ${updatedDraft.qty} × ${updatedDraft.sku}\n• **Rate**: ₹${updatedDraft.rate} / unit\n• **Total Amount**: ₹${totalAmount.toLocaleString('en-IN')}\n• **Date**: 📅 **${updatedDraft.date}** (Updated)\n• **Delivery**: ${updatedDraft.address}\n• **Status**: Pending Delivery\n\nTap **Confirm Order** to book now:`,
+            text: `📦 **Confirm Order Booking**\n\n• **Customer**: ${updatedDraft.clientName}\n• **Product**: ${currentQty} × ${currentSku}\n• **Rate**: ₹${currentRate} / unit\n• **Total Amount**: ₹${totalAmount.toLocaleString('en-IN')}\n• **Date**: 📅 **${updatedDraft.date || updatedDraft.deliveryDate}**\n• **Delivery**: ${updatedDraft.address || updatedDraft.location}\n• **Status**: Pending Delivery\n\nTap **Confirm Order** to book now:`,
             chips: [
               { label: '✅ Confirm & Book Order', action: 'save', isPrimary: true },
               { label: '📅 Change Date', action: 'change_date' },
@@ -4243,6 +4384,26 @@ export default function AiAssistantDrawer({
             : (Number(draftData.qty) || 10) * (Number(draftData.rate) || 130),
         }
 
+        const orderFlowState = {
+          flow: 'order',
+          step: 'confirm',
+          data: {
+            clientId: draftOrder.clientId,
+            clientName: draftOrder.clientName,
+            sku: draftOrder.items?.[0]?.sku || draftOrder.sku || 'Anjani 200ml',
+            qty: Number(draftOrder.totalQty || draftOrder.qty || draftOrder.items?.[0]?.qty || 30),
+            rate: Number(draftOrder.rate || draftOrder.items?.[0]?.rate || 130),
+            date: draftOrder.deliveryDate || draftOrder.date,
+            deliveryDate: draftOrder.deliveryDate || draftOrder.date,
+            address: draftOrder.address || draftOrder.location || 'Vadodara',
+            location: draftOrder.location || draftOrder.address || 'Vadodara',
+            mobile: draftOrder.mobile || '',
+            items: draftOrder.items,
+          },
+          isConfirmation: true,
+        }
+        setActiveChatbotFlow(orderFlowState)
+
         setMessages((prev) => [
           ...prev,
           {
@@ -4251,6 +4412,7 @@ export default function AiAssistantDrawer({
             text: resData.text || `📦 **Drafted Order for ${draftOrder.clientName}**`,
             type: 'order_draft',
             data: draftOrder,
+            flowState: orderFlowState,
             chips: [
               { label: 'Confirm & Book Order', action: 'book_order', data: draftOrder },
               { label: 'Edit Draft', action: 'edit_draft', data: draftOrder },

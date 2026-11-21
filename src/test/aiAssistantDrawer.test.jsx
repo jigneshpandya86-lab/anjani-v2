@@ -2270,4 +2270,79 @@ describe('AiAssistantDrawer', () => {
 
     unmount()
   })
+
+  it('updates in-flight draft rate when user types Rate 127 without requiring prior Firestore order', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'order_draft',
+        text: 'Drafted order for Twinkle Caterers',
+        data: {
+          clientId: 'c-twinkle',
+          clientName: 'Twinkle Caterers',
+          qty: 30,
+          rate: 130,
+          date: '2026-11-21',
+          location: 'reva party plot',
+          address: 'reva party plot',
+          items: [{ sku: 'Anjani 200ml', qty: 30, rate: 130 }],
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText((content) =>
+      content.includes('Ask bot above, type @client')
+    )
+    fireEvent.change(input, {
+      target: { value: 'Twinkle Caterers 30 box reva party plot today' },
+    })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(
+        screen.getByText((content) => content.includes('Drafted order for Twinkle Caterers'))
+      ).toBeInTheDocument()
+    })
+
+    // Now user types "Rate 127"
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'edit_order',
+        data: {
+          clientName: 'Twinkle Caterers',
+          fieldToUpdate: 'rate',
+          newValue: '127',
+        },
+      },
+    })
+
+    fireEvent.change(input, { target: { value: 'Rate 127' } })
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(
+        screen.getByText((content) => content.includes('Confirm Order Booking'))
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText((content) => content.includes('₹127 / unit'))
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText((content) => content.includes('₹3,810'))
+      ).toBeInTheDocument()
+    })
+
+    expect(
+      screen.queryByText((content) => content.includes('No open active order found'))
+    ).not.toBeInTheDocument()
+
+    unmount()
+  })
 })
