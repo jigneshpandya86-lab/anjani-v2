@@ -81,6 +81,25 @@ describe('vadodaraLandmarks utility (50 km restriction)', () => {
     expect(karjanResults[0].distanceKm).toBeLessThan(50.0)
   })
 
+  it('matches party plots including Reva Party Plot from user feedback', () => {
+    const revaResults = searchVadodaraLandmarks('Reva p', 5)
+    expect(revaResults.length).toBeGreaterThan(0)
+    expect(revaResults[0].label).toContain('Reva Party Plot')
+    expect(revaResults[0].lat).toBeCloseTo(22.2573)
+    expect(revaResults[0].lng).toBeCloseTo(73.2168)
+    expect(revaResults[0].distanceKm).toBeLessThan(10.0)
+    expect(revaResults[0].label).toContain('Tarsali')
+    expect(revaResults[0].resolvedAddress).toContain('Tarsali')
+
+    const pgResults = searchVadodaraLandmarks('PG Party', 5)
+    expect(pgResults.length).toBeGreaterThan(0)
+    expect(pgResults[0].label).toContain('PG Party Plot')
+
+    const balajiResults = searchVadodaraLandmarks('Balaji Party', 5)
+    expect(balajiResults.length).toBeGreaterThan(0)
+    expect(balajiResults[0].label).toContain('Balaji Party Plot')
+  })
+
   it('fetches and filters Photon suggestions, dropping any outside 50 km', async () => {
     const mockResponse = {
       features: [

@@ -320,4 +320,62 @@ describe('GoogleMapPicker Component (Vadodara + 50 km restriction)', () => {
       ).toBeInTheDocument()
     })
   })
+
+  it('searches and selects Reva Party Plot from user feedback', async () => {
+    const handleChange = vi.fn()
+    render(<GoogleMapPicker initialAddress="" onChange={handleChange} />)
+
+    const input = screen.getByPlaceholderText(
+      'Search Vadodara + 50 km (e.g. Alkapuri, Halol, Padra, GIDC)...',
+    )
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'Reva p' } })
+
+    await waitFor(() => {
+      expect(
+        screen.getByText((content) =>
+          content.includes('Reva Party Plot') && content.includes('Tarsali'),
+        ),
+      ).toBeInTheDocument()
+    })
+
+    const revaButton = screen
+      .getByText((content) =>
+        content.includes('Reva Party Plot') && content.includes('Tarsali'),
+      )
+      .closest('button')
+    fireEvent.mouseDown(revaButton)
+
+    expect(handleChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lat: expect.closeTo(22.2573),
+        lng: expect.closeTo(73.2168),
+        address: expect.stringContaining('Reva Party Plot'),
+        mapLink: 'https://www.google.com/maps?q=22.2573,73.2168',
+      }),
+    )
+  })
+
+  it('extracts place from Google Maps URL with query param ?q=', async () => {
+    const handleChange = vi.fn()
+    render(<GoogleMapPicker initialAddress="" onChange={handleChange} />)
+
+    const input = screen.getByPlaceholderText(
+      'Search Vadodara + 50 km (e.g. Alkapuri, Halol, Padra, GIDC)...',
+    )
+    fireEvent.focus(input)
+    fireEvent.change(input, {
+      target: {
+        value: 'https://maps.google.com/?q=Reva+Party+Plot+Tarsali+Vadodara',
+      },
+    })
+
+    await waitFor(() => {
+      expect(
+        screen.getByText((content) =>
+          content.includes('Reva Party Plot Tarsali Vadodara'),
+        ),
+      ).toBeInTheDocument()
+    })
+  })
 })

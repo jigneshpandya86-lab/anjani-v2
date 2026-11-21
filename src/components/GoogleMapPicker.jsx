@@ -112,6 +112,30 @@ const extractPlaceFromUrl = (url) => {
     }
     return tokens.join(' ')
   }
+
+  // Also extract query parameter if present: ?query=... or ?q=...
+  if (url.includes('query=') || url.includes('?q=') || url.includes('&q=')) {
+    let qIdx = -1
+    if (url.includes('query=')) {
+      qIdx = url.indexOf('query=') + 6
+    } else if (url.includes('?q=')) {
+      qIdx = url.indexOf('?q=') + 3
+    } else if (url.includes('&q=')) {
+      qIdx = url.indexOf('&q=') + 3
+    }
+
+    if (qIdx !== -1) {
+      const end = url.indexOf('&', qIdx)
+      const raw = end !== -1 ? url.slice(qIdx, end) : url.slice(qIdx)
+      try {
+        const decoded = decodeURIComponent(raw.split('+').join(' ')).trim()
+        if (decoded) return decoded
+      } catch (_e) {
+        return raw.split('+').join(' ').trim()
+      }
+    }
+  }
+
   return ''
 }
 
@@ -183,11 +207,36 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
     if (isUrl) {
       const directPlace = extractPlaceFromUrl(cleanTerm)
       const initialLabel = directPlace || cleanTerm
+
+      let initLat = null
+      let initLng = null
+      const parsedCoords = parseGoogleMapsLocation(cleanTerm)
+      if (parsedCoords && Number.isFinite(parsedCoords.lat) && Number.isFinite(parsedCoords.lng)) {
+        initLat = parsedCoords.lat
+        initLng = parsedCoords.lng
+      } else if (directPlace) {
+        const initMatch = searchVadodaraLandmarks(directPlace, 1)
+        if (initMatch.length > 0 && Number.isFinite(initMatch[0].lat)) {
+          initLat = initMatch[0].lat
+          initLng = initMatch[0].lng
+        }
+      }
+
+      // Auto-update parent immediately with mapLink
+      onChangeRef.current?.({
+        lat: initLat,
+        lng: initLng,
+        address: directPlace || cleanTerm,
+        mapLink: cleanTerm,
+      })
+
       setPredictions([
         {
           id: 'pasted-url',
           label: initialLabel,
           resolvedAddress: directPlace || cleanTerm,
+          lat: initLat,
+          lng: initLng,
           mapLink: cleanTerm,
           source: 'pasted-url',
         },
@@ -195,10 +244,9 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
       setIsSearching(false)
 
       if (
-        !directPlace &&
-        (cleanTerm.includes('maps.app.goo.gl') ||
-          cleanTerm.includes('goo.gl/maps') ||
-          cleanTerm.includes('google.com/maps'))
+        cleanTerm.includes('maps.app.goo.gl') ||
+        cleanTerm.includes('goo.gl/maps') ||
+        cleanTerm.includes('google.com/maps')
       ) {
         setIsSearching(true)
         if (app) {
@@ -208,15 +256,37 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
             resolveMapLink({ url: cleanTerm })
               .then((res) => {
                 if (res?.data?.success && res.data.title) {
+                  const resolvedTitle = res.data.title
+                  let resLat = initLat
+                  let resLng = initLng
+
+                  if (resLat === null || resLng === null) {
+                    const matchedLandmark = searchVadodaraLandmarks(resolvedTitle, 1)
+                    if (matchedLandmark.length > 0 && Number.isFinite(matchedLandmark[0].lat)) {
+                      resLat = matchedLandmark[0].lat
+                      resLng = matchedLandmark[0].lng
+                    }
+                  }
+
                   setPredictions([
                     {
                       id: 'resolved-url',
-                      label: res.data.title,
-                      resolvedAddress: res.data.title,
+                      label: resolvedTitle,
+                      resolvedAddress: resolvedTitle,
+                      lat: resLat,
+                      lng: resLng,
                       mapLink: cleanTerm,
                       source: 'pasted-url',
                     },
                   ])
+
+                  // Auto-update parent with resolved title and coordinates
+                  onChangeRef.current?.({
+                    lat: resLat,
+                    lng: resLng,
+                    address: resolvedTitle,
+                    mapLink: cleanTerm,
+                  })
                 }
               })
               .catch(() => {})
@@ -412,12 +482,31 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
         const address = item.resolvedAddress || item.label || ''
         const mapLink = item.mapLink || searchTerm
 
+        let lat = Number.isFinite(Number(item.lat)) ? Number(item.lat) : null
+        let lng = Number.isFinite(Number(item.lng)) ? Number(item.lng) : null
+
+        if (lat === null || lng === null) {
+          const parsed = parseGoogleMapsLocation(mapLink)
+          if (parsed && Number.isFinite(parsed.lat) && Number.isFinite(parsed.lng)) {
+            lat = parsed.lat
+            lng = parsed.lng
+          }
+        }
+
+        if (lat === null || lng === null) {
+          const matched = searchVadodaraLandmarks(address, 1)
+          if (matched.length > 0 && Number.isFinite(matched[0].lat) && Number.isFinite(matched[0].lng)) {
+            lat = matched[0].lat
+            lng = matched[0].lng
+          }
+        }
+
         suppressNextSearchRef.current = true
         setSearchTerm(address)
         setPredictions([])
         setError('')
         setIsFocused(false)
-        onChangeRef.current?.({ lat: null, lng: null, address, mapLink })
+        onChangeRef.current?.({ lat, lng, address, mapLink })
         return
       }
 
@@ -632,7 +721,25 @@ export default function GoogleMapPicker({ initialAddress = '', onChange }) {
             value={searchTerm}
             onFocus={() => setIsFocused(true)}
             onBlur={() => {
-              window.setTimeout(() => setIsFocused(false), 250)
+              window.setTimeout(() => {
+                setIsFocused(false)
+                if (searchTerm.startsWith('http://') || searchTerm.startsWith('https://')) {
+                  const directPlace = extractPlaceFromUrl(searchTerm)
+                  let bLat = null
+                  let bLng = null
+                  const matched = searchVadodaraLandmarks(directPlace || searchTerm, 1)
+                  if (matched.length > 0 && Number.isFinite(matched[0].lat)) {
+                    bLat = matched[0].lat
+                    bLng = matched[0].lng
+                  }
+                  onChangeRef.current?.({
+                    lat: bLat,
+                    lng: bLng,
+                    address: directPlace || searchTerm,
+                    mapLink: searchTerm,
+                  })
+                }
+              }, 250)
             }}
             onChange={handleInputChange}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"

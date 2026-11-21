@@ -5631,6 +5631,9 @@ exports.resolveMapLink = onCall(async (request) => {
     const res = await fetch(url, { method: 'HEAD', redirect: 'manual' })
     const loc = res.headers.get('location') || ''
     let title = ''
+    let lat = null
+    let lng = null
+
     const placeIdx = loc.indexOf('/place/')
     if (placeIdx !== -1) {
       const rest = loc.slice(placeIdx + 7)
@@ -5646,11 +5649,42 @@ exports.resolveMapLink = onCall(async (request) => {
           title = title.slice(firstSpace + 1).trim()
         }
       }
+    } else if (loc.includes('query=') || loc.includes('?q=') || loc.includes('&q=')) {
+      let qIdx = -1
+      if (loc.includes('query=')) qIdx = loc.indexOf('query=') + 6
+      else if (loc.includes('?q=')) qIdx = loc.indexOf('?q=') + 3
+      else if (loc.includes('&q=')) qIdx = loc.indexOf('&q=') + 3
+      if (qIdx !== -1) {
+        const end = loc.indexOf('&', qIdx)
+        const raw = end !== -1 ? loc.slice(qIdx, end) : loc.slice(qIdx)
+        try {
+          title = decodeURIComponent(raw.split('+').join(' ')).trim()
+        } catch (_e) {
+          title = raw.split('+').join(' ').trim()
+        }
+      }
     }
+
+    if (loc.includes('/@')) {
+      const atIdx = loc.indexOf('/@') + 2
+      const commaIdx = loc.indexOf(',', atIdx)
+      if (commaIdx !== -1) {
+        const pLat = parseFloat(loc.slice(atIdx, commaIdx))
+        const nextComma = loc.indexOf(',', commaIdx + 1)
+        const pLng = parseFloat(nextComma !== -1 ? loc.slice(commaIdx + 1, nextComma) : loc.slice(commaIdx + 1))
+        if (!isNaN(pLat) && !isNaN(pLng)) {
+          lat = pLat
+          lng = pLng
+        }
+      }
+    }
+
     return {
       success: true,
       title: title || 'Google Maps Location',
       resolvedUrl: loc || url,
+      lat,
+      lng,
     }
   } catch (err) {
     return { success: false, error: err.message }
