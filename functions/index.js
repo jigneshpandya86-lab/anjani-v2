@@ -2391,7 +2391,7 @@ User Text: ${rawText.slice(0, 1000)}`
           })
           const rawJson = res.response.candidates[0].content.parts[0].text.trim()
           const parsedData = parseStructuredJson(rawJson)
-          if (parsedData.client?.name || parsedData.order?.sku || parsedData.payment?.amount) {
+          if (parsedData.client?.name && parsedData.client.name.trim().length > 0 && ((parsedData.order && Number(parsedData.order.qty) > 0) || (parsedData.payment && Number(parsedData.payment.amount) > 0))) {
             const payAmount = Number(parsedData.payment?.amount) || 0
             const defaultRate = 130
             const defaultQty = payAmount > 0 ? Math.max(1, Math.round(payAmount / defaultRate)) : 10
@@ -2796,13 +2796,26 @@ ${rawText.slice(0, 3000)}`
         },
         {
           name: 'send_client_message',
-          description: 'Drafts or sends a direct message to an external customer or internal staff member (e.g. Nilesh, Hiteshbhai, Bhaveshbhai) via WhatsApp or SMS.',
+          description: 'Drafts or sends direct messages to one or more external customers, prospective leads, or staff members via WhatsApp or SMS. If multiple recipients are mentioned (e.g. "first 2 leads", "top 3"), pass them in the recipients array. Always extract the 10-digit mobile number from the prompt, lead list, or recent chat history if visible.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              clientName: { type: 'STRING', description: 'Name of the customer or staff recipient (e.g. Bhaveshbhai, Maruti Caterers, Nilesh)' },
+              clientName: { type: 'STRING', description: 'Primary recipient name (e.g. Maruti Caterers, Shared Lead, Nilesh)' },
+              phone: { type: 'STRING', description: 'Recipient 10-digit mobile number if known or visible in context (e.g. 7984875717)' },
               message: { type: 'STRING', description: 'Polite drafted message in Gujarati or English' },
-              channel: { type: 'STRING', enum: ['sms', 'whatsapp', 'auto'], description: 'Delivery channel' }
+              channel: { type: 'STRING', enum: ['sms', 'whatsapp', 'auto'], description: 'Delivery channel' },
+              recipients: {
+                type: 'ARRAY',
+                description: 'Optional list of recipients if user requested messaging multiple contacts (e.g. "first 2", "top 3")',
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    name: { type: 'STRING', description: 'Recipient name' },
+                    phone: { type: 'STRING', description: '10-digit mobile number' }
+                  },
+                  required: ['name']
+                }
+              }
             },
             required: ['clientName', 'message']
           }

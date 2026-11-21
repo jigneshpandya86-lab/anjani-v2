@@ -129,3 +129,16 @@ When adding or improving AI behavior:
   - Resolves Indian names (`[SURNAME] [GIVEN] [FATHER]`) against client master using mathematical candidate token coverage:
     $$\text{Coverage}(C, T) = \frac{|C \cap T|}{|C|}$$
   - Suffix and honorific stripping (`bhai`, `ben`, `kumar`, `singh`, `seth`, etc.) handles attached and detached tokens.
+
+---
+
+## 13. Dynamic Contact & Lead Messaging Engine (`send_client_message`)
+- **Direct Lead & Contact Messaging:** Supports sending direct WhatsApp and SMS communication to external clients, prospective leads, and staff members.
+- **Zero Hardwired Phone Numbers:** Phone numbers are NEVER hardcoded into UI strings or component logic. They are resolved dynamically via:
+  1. Tool arguments (`phone` / `clientPhone`).
+  2. Client master (`clients`).
+  3. Prospective leads list (`leads`).
+  4. Staff roster (`staffList`).
+  5. Dynamic extraction from recent chat messages (e.g. `📞 7984875717` in leads summary).
+- **Multi-Recipient Batch Messaging:** When user asks to message multiple contacts (e.g. *"Send message for google map review to first 2"*), the model provides a `recipients` array, and the UI generates dedicated 1-tap dispatch cards for each contact.
+- **Zero Fake Cards on Incomplete Queries:** When user enters generic combination phrases (*"client plus order plus payment"*, *"book order"*) without customer details or quantities, the system never synthesizes empty client or dummy order cards; it conversationally prompts for the necessary details.

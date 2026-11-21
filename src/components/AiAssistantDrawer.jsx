@@ -1832,7 +1832,9 @@ export default function AiAssistantDrawer({
       ].filter(Boolean)
 
       let apiMode = 'auto'
-      if (isCompoundExplicit || activeModes.length >= 2) {
+      if (filePayload && isCompoundExplicit) {
+        apiMode = 'compound_action'
+      } else if (activeModes.length >= 2) {
         apiMode = 'compound_action'
       } else if (isClient) {
         apiMode = 'create_client'
@@ -1845,31 +1847,33 @@ export default function AiAssistantDrawer({
       }
 
       let promptText = query
-      if (isCompoundExplicit) {
-        // If query just specifies multi-action intent keywords without specific transactional details,
-        // provide rich extraction guidance for the multimodal model:
-        const meaningfulDetails = query
-          .replace(/\b(?:client|customer|party|khata|order|sales?|peti|box|cases?|pay(?:ment|ing)?|jama|received?|cash|upi|gpay|bank|plus|\+|and|with|,)\b/gi, '')
-          .replace(/[^a-zA-Z0-9]/g, ' ')
-          .trim()
-        if (!meaningfulDetails) {
-          promptText = 'Extract client, order, and payment details from this document/receipt. Default product SKU is Anjani 200ml and default unit rate is 130 Rs per box if not explicitly specified.'
-        }
-      } else if (isOnlyPayment) {
-        const meaningfulDetails = query
-          .replace(/\b(?:pay(?:ment|ing)?|jama|received?|cash|upi|gpay|bank|receipt|screenshot)\b/gi, '')
-          .replace(/[^a-zA-Z0-9]/g, ' ')
-          .trim()
-        if (!meaningfulDetails) {
-          promptText = 'Extract payment details from this UPI screenshot or receipt for existing client only'
-        }
-      } else if (!promptText && filePayload) {
-        if (filePayload.isAudio) {
-          promptText = 'Transcribe and extract orders, payments, or client details from this voice note'
-        } else if (activeModes.length >= 2) {
-          promptText = `Extract and process: ${activeModes.join(' plus ')}. Default product SKU is Anjani 200ml and default unit rate is 130 Rs per box if not explicitly specified.`
-        } else {
-          promptText = 'Scan this document or screenshot and autonomously extract its structured details (e.g. payment receipt, sales order, client contact, or expense). Default SKU Anjani 200ml @ 130 Rs.'
+      if (filePayload) {
+        if (isCompoundExplicit) {
+          // If query just specifies multi-action intent keywords without specific transactional details,
+          // provide rich extraction guidance for the multimodal model:
+          const meaningfulDetails = query
+            .replace(/\b(?:client|customer|party|khata|order|sales?|peti|box|cases?|pay(?:ment|ing)?|jama|received?|cash|upi|gpay|bank|plus|\+|and|with|,)\b/gi, '')
+            .replace(/[^a-zA-Z0-9]/g, ' ')
+            .trim()
+          if (!meaningfulDetails) {
+            promptText = 'Extract client, order, and payment details from this document/receipt. Default product SKU is Anjani 200ml and default unit rate is 130 Rs per box if not explicitly specified.'
+          }
+        } else if (isOnlyPayment) {
+          const meaningfulDetails = query
+            .replace(/\b(?:pay(?:ment|ing)?|jama|received?|cash|upi|gpay|bank|receipt|screenshot)\b/gi, '')
+            .replace(/[^a-zA-Z0-9]/g, ' ')
+            .trim()
+          if (!meaningfulDetails) {
+            promptText = 'Extract payment details from this UPI screenshot or receipt for existing client only'
+          }
+        } else if (!promptText) {
+          if (filePayload.isAudio) {
+            promptText = 'Transcribe and extract orders, payments, or client details from this voice note'
+          } else if (activeModes.length >= 2) {
+            promptText = `Extract and process: ${activeModes.join(' plus ')}. Default product SKU is Anjani 200ml and default unit rate is 130 Rs per box if not explicitly specified.`
+          } else {
+            promptText = 'Scan this document or screenshot and autonomously extract its structured details (e.g. payment receipt, sales order, client contact, or expense). Default SKU Anjani 200ml @ 130 Rs.'
+          }
         }
       }
 
@@ -4420,57 +4424,117 @@ export default function AiAssistantDrawer({
         ])
       } else if (resData.type === 'client_message') {
         const clientMsgData = resData.data || {}
-        const rawClientName = clientMsgData.clientName || 'Customer'
-        const matchedClient = (clients || []).find((c) => {
-          const cName = (c.name || '').toLowerCase()
-          const qName = rawClientName.toLowerCase()
-          return cName.includes(qName) || qName.includes(cName)
-        })
-        const matchedStaff = !matchedClient
-          ? (staffList || []).find((s) => {
-              const sName = (s.name || '').toLowerCase()
-              const qName = rawClientName.toLowerCase()
-              return sName.includes(qName) || qName.includes(sName)
+        const rawRecipients = Array.isArray(clientMsgData.recipients) && clientMsgData.recipients.length > 0
+          ? clientMsgData.recipients
+          : [{ name: clientMsgData.clientName || 'Customer', phone: clientMsgData.phone || clientMsgData.clientPhone || clientMsgData.mobile }]
+
+        const resolvePhoneAndClient = (rName, rPhone) => {
+          let resolvedPhone = rPhone ? String(rPhone).replace(/\D/g, '').slice(-10) : ''
+          const qName = (rName || '').toLowerCase().trim()
+
+          let matchedCli = null
+          let matchedLead = null
+          let matchedStaff = null
+
+          if (qName) {
+            // 1. Match client
+            matchedCli = (clients || []).find((c) => {
+              const cn = (c.name || '').toLowerCase().trim()
+              const cdn = (c.displayName || '').toLowerCase().trim()
+              return (cn && (cn.includes(qName) || qName.includes(cn))) ||
+                     (cdn && (cdn.includes(qName) || qName.includes(cdn)))
             })
-          : null
 
-        const finalClientName = matchedClient?.name || matchedStaff?.name || rawClientName
-        const clientPhone =
-          matchedClient?.mobile ||
-          matchedClient?.phone ||
-          matchedStaff?.mobile ||
-          (rawClientName.toLowerCase().includes('nilesh') ? '7990943652' : '') ||
-          (rawClientName.toLowerCase().includes('hitesh') ? '7778077617' : '')
-        const draftMsg = clientMsgData.message || resData.text || `Hi ${finalClientName}, regarding your Anjani Water order: please confirm your delivery status.`
+            // 2. Match prospective lead
+            matchedLead = !matchedCli
+              ? (leads || []).find((l) => {
+                  const ln = (l.name || l.businessName || l.title || '').toLowerCase().trim()
+                  return ln && (ln.includes(qName) || qName.includes(ln))
+                })
+              : null
 
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: 'asst-' + Date.now(),
+            // 3. Match staff
+            matchedStaff = !matchedCli && !matchedLead
+              ? (staffList || []).find((s) => {
+                  const sn = (s.name || '').toLowerCase().trim()
+                  const sid = (s.id || '').toLowerCase().trim()
+                  return (sn && (sn.includes(qName) || qName.includes(sn))) ||
+                         (sid && (sid.includes(qName) || qName.includes(sid)))
+                })
+              : null
+          }
+
+          if (!resolvedPhone) {
+            if (matchedCli?.mobile || matchedCli?.phone) {
+              resolvedPhone = String(matchedCli.mobile || matchedCli.phone).replace(/\D/g, '').slice(-10)
+            } else if (matchedLead?.phone || matchedLead?.mobile) {
+              resolvedPhone = String(matchedLead.phone || matchedLead.mobile).replace(/\D/g, '').slice(-10)
+            } else if (matchedStaff?.mobile || matchedStaff?.phone) {
+              resolvedPhone = String(matchedStaff.mobile || matchedStaff.phone).replace(/\D/g, '').slice(-10)
+            }
+          }
+
+          // 4. Fallback: Search recent chat messages for phone numbers associated with this recipient or leads summary
+          if (!resolvedPhone && messages?.length) {
+            for (let i = messages.length - 1; i >= 0; i--) {
+              const mText = messages[i]?.text || ''
+              if (mText && (mText.includes(rName) || /leads/i.test(mText))) {
+                const escapedName = (rName || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+                const nameRegex = new RegExp(`(?:${escapedName})[^\n]*?(?:📞|phone|mobile|tel)?[:\\s-]*([6-9]\\d{9})`, 'i')
+                const match = mText.match(nameRegex)
+                if (match?.[1]) {
+                  resolvedPhone = match[1]
+                  break
+                }
+                const anyPhone = mText.match(/(?:📞|phone|mobile)[:\s-]*([6-9]\d{9})/i)
+                if (anyPhone?.[1]) {
+                  resolvedPhone = anyPhone[1]
+                  break
+                }
+              }
+            }
+          }
+
+          const finalName = matchedCli?.name || matchedLead?.name || matchedStaff?.name || rName
+          const clientId = matchedCli?.id || null
+          return { finalName, clientId, resolvedPhone }
+        }
+
+        const draftMsg = clientMsgData.message || resData.text || `Hi, regarding your Anjani Water order: please confirm your delivery status.`
+
+        const newCards = rawRecipients.map((rec, idx) => {
+          const { finalName, clientId, resolvedPhone } = resolvePhoneAndClient(rec.name, rec.phone)
+          return {
+            id: 'asst-' + (Date.now() + idx),
             sender: 'assistant',
             text: '',
             type: 'client_message_draft',
             data: {
-              clientName: finalClientName,
-              clientId: matchedClient?.id || null,
-              clientPhone,
+              clientName: finalName,
+              clientId,
+              clientPhone: resolvedPhone,
               message: draftMsg,
               channel: clientMsgData.channel || 'auto',
             },
             timestamp: new Date(),
-          },
-        ])
+          }
+        })
+
+        setMessages((prev) => [...prev, ...newCards])
       } else if (resData.type === 'staff_reminder' || resData.type === 'staff_task') {
         const reminderData = resData.data || {}
         const staffName = reminderData.staffName || 'Nilesh'
         const isHitesh = /hitesh/i.test(staffName)
-        const assignedStaff = (staffList || []).find((s) => (s.name || '').toLowerCase().includes(staffName.toLowerCase())) || {
+        const matchedStaff = (staffList || []).find((s) => (s.name || '').toLowerCase().includes(staffName.toLowerCase())) ||
+          (staffList || []).find((s) => (s.id || '').toLowerCase().includes(isHitesh ? 'hitesh' : 'nilesh'))
+        const assignedStaff = matchedStaff || {
           id: isHitesh ? 'hiteshbhai' : 'nilesh',
           name: isHitesh ? 'Hiteshbhai' : 'Nilesh',
-          mobile: isHitesh ? '7778077617' : '7990943652',
+          mobile: '',
         }
         const taskText = reminderData.message || reminderData.taskText || resData.text || 'Staff follow-up task'
         const todayStr = new Date().toISOString().slice(0, 10)
+        const staffPhone = assignedStaff.mobile || (staffList || []).find((s) => s.id === assignedStaff.id)?.mobile || ''
 
         setMessages((prev) => [
           ...prev,
@@ -4483,7 +4547,7 @@ export default function AiAssistantDrawer({
               text: taskText,
               assignedTo: assignedStaff.id,
               assignedStaffName: assignedStaff.name,
-              staffPhone: assignedStaff.mobile || '7990943652',
+              staffPhone,
               dueDate: reminderData.dueDate || todayStr,
               targetLabel: reminderData.targetLabel || 'Today',
               isFollowUp: false,
@@ -7234,7 +7298,7 @@ export default function AiAssistantDrawer({
                       <div className="space-y-1.5">
                         {msg.data.tasks.map((task) => {
                           const staffName = task.assignedStaffName || (task.assignedTo === 'hiteshbhai' ? 'Hiteshbhai' : 'Nilesh')
-                          const staffPhone = task.staffPhone || (task.assignedTo === 'hiteshbhai' ? '7778077617' : '7990943652')
+                          const staffPhone = task.staffPhone || (staffList || []).find((s) => s.id === task.assignedTo || s.name?.toLowerCase().includes(String(staffName).toLowerCase()))?.mobile || ''
                           const followCount = Number(task.followUpCount || 0)
                           const isDone = task.stage === 'complete' || task.stage === 'archived'
 

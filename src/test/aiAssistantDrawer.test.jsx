@@ -764,6 +764,81 @@ describe('AiAssistantDrawer', () => {
     unmount()
   })
 
+  it('renders message draft cards with phone numbers resolved dynamically for multiple lead recipients', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'client_message',
+        text: 'Drafted review messages for first 2 leads',
+        data: {
+          clientName: 'Shared Lead',
+          channel: 'auto',
+          message: 'Hello! Thank you for choosing Anjani Water. Please drop us a Google Maps review!',
+          recipients: [
+            { name: 'Shared Lead', phone: '7984875717' },
+            { name: 'IndiaMART Lead', phone: '9313107250' },
+          ],
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, {
+      target: { value: 'Send message for google map review to first 2' },
+    })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(screen.getByText('Shared Lead')).toBeInTheDocument()
+      expect(screen.getByText('+91 7984875717')).toBeInTheDocument()
+      expect(screen.getByText('IndiaMART Lead')).toBeInTheDocument()
+      expect(screen.getByText('+91 9313107250')).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('sends raw query without prompt rewriting when typing client plus order plus payment in text mode', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'chat_reply',
+        text: 'Please provide the customer name, order quantity, and delivery details to proceed.',
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, {
+      target: { value: 'client plus order plus payment' },
+    })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    expect(mockHttpsCallableResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: 'client plus order plus payment',
+        mode: 'auto',
+      })
+    )
+
+    unmount()
+  })
+
   it('prompts user for customer and quantity when typing Book Order without rendering dummy order card', async () => {
     mockHttpsCallableResponse.mockResolvedValueOnce({
       data: {
