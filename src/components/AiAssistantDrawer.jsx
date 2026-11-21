@@ -349,7 +349,7 @@ export default function AiAssistantDrawer({
           type: targetMsg.type || 'chat_reply',
           text: String(targetMsg.text || '').slice(0, 1000),
           data: safeData,
-          modelUsed: targetMsg.modelUsed || aiSettings?.activeModel || 'gemini-2.5-flash-lite',
+          modelUsed: targetMsg.modelUsed || aiSettings?.activeModel || 'gemini-3.5-flash-lite',
           timestamp: targetMsg.timestamp instanceof Date ? targetMsg.timestamp.toISOString() : (targetMsg.timestamp || null),
         },
         recentChat,

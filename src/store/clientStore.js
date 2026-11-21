@@ -153,7 +153,7 @@ export const useClientStore = create((set, get) => ({
   aiPrefillPrompt: '',
   aiPrefillFile: null,
   aiSettings: {
-    activeModel: 'gemini-2.5-flash-lite',
+    activeModel: 'gemini-3.5-flash-lite',
     fallbackModel: 'gemini-2.5-flash',
     maxOutputTokens: 600,
   },
@@ -938,7 +938,7 @@ export const useClientStore = create((set, get) => ({
         const data = snap.data()
         set({
           aiSettings: {
-            activeModel: data.activeModel || 'gemini-2.5-flash-lite',
+            activeModel: data.activeModel || 'gemini-3.5-flash-lite',
             fallbackModel: data.fallbackModel || 'gemini-2.5-flash',
             maxOutputTokens: data.maxOutputTokens || 600,
           },

@@ -11,9 +11,9 @@ const { VertexAI } = require('@google-cloud/vertexai')
 admin.initializeApp()
 
 const project = process.env.GCLOUD_PROJECT || 'anjaniappnew';
-const vertexAI = new VertexAI({ project: project, location: 'us-central1' });
+const vertexAI = new VertexAI({ project: project, location: 'asia-south1' });
 const generativeModel = vertexAI.getGenerativeModel({
-  model: 'gemini-2.5-flash',
+  model: 'gemini-3.5-flash-lite',
 });
 
 const MACRODROID_URL = "https://trigger.macrodroid.com/25efcbac-eb13-4461-ae90-3158ba6c5b90/anjani_sms";
@@ -1458,7 +1458,7 @@ async function getAiSettings() {
       cachedAiSettings = doc.data()
     } else {
       cachedAiSettings = {
-        activeModel: 'gemini-2.5-flash-lite',
+        activeModel: 'gemini-3.5-flash-lite',
         fallbackModel: 'gemini-2.5-flash',
         maxOutputTokens: 600,
         temperature: 0.15,
@@ -1467,7 +1467,7 @@ async function getAiSettings() {
   } catch (e) {
     logger.warn('Failed to read config/aiSettings, using default:', e.message)
     cachedAiSettings = {
-      activeModel: 'gemini-2.5-flash-lite',
+      activeModel: 'gemini-3.5-flash-lite',
       fallbackModel: 'gemini-2.5-flash',
       maxOutputTokens: 600,
       temperature: 0.15,
@@ -1786,7 +1786,7 @@ exports.askAnjaniAi = onCall(async (request) => {
   const activeTasks = await getActiveStaffTasks()
   const tasksBlock = formatActiveTasksForPrompt(activeTasks)
   const contextInjections = `${memoriesBlock}${skuSlangBlock}${knownClientsBlock}${tasksBlock}`
-  const primaryModelName = aiSettings.activeModel || 'gemini-2.5-flash-lite'
+  const primaryModelName = aiSettings.activeModel || 'gemini-3.5-flash-lite'
   const fallbackModelName = aiSettings.fallbackModel || 'gemini-2.5-flash'
   const chatMaxTokens = 500 // Strict output token limit for operational agent
   const jsonMaxTokens = 3500

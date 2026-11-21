@@ -212,7 +212,7 @@ export default function SettingsTab() {
   const fetchAiSettings = useClientStore((state) => state.fetchAiSettings)
   const saveAiSettings = useClientStore((state) => state.saveAiSettings)
   const setAiDrawerOpen = useClientStore((state) => state.setAiDrawerOpen)
-  const [aiActiveModel, setAiActiveModel] = useState('gemini-2.5-flash-lite')
+  const [aiActiveModel, setAiActiveModel] = useState('gemini-3.5-flash-lite')
   const [aiCustomModel, setAiCustomModel] = useState('')
   const [aiFallbackModel, setAiFallbackModel] = useState('gemini-2.5-flash')
   const [aiMaxTokens, setAiMaxTokens] = useState(600)
@@ -386,7 +386,7 @@ export default function SettingsTab() {
 
   useEffect(() => {
     if (aiSettings) {
-      const known = ['gemini-2.5-flash-lite', 'gemini-2.5-flash']
+      const known = ['gemini-3.5-flash-lite', 'gemini-2.5-flash']
       if (known.includes(aiSettings.activeModel)) {
         setAiActiveModel(aiSettings.activeModel)
         setAiCustomModel('')
@@ -405,7 +405,7 @@ export default function SettingsTab() {
     try {
       const chosenModel =
         aiActiveModel === 'custom'
-          ? (aiCustomModel.trim() || 'gemini-2.5-flash-lite')
+          ? (aiCustomModel.trim() || 'gemini-3.5-flash-lite')
           : aiActiveModel
       await saveAiSettings({
         activeModel: chosenModel,
@@ -1268,14 +1268,14 @@ export default function SettingsTab() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* Option 1: gemini-2.5-flash-lite */}
+                {/* Option 1: gemini-3.5-flash-lite */}
                 <div
                   role="button"
                   tabIndex={0}
-                  onClick={() => setAiActiveModel('gemini-2.5-flash-lite')}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setAiActiveModel('gemini-2.5-flash-lite') }}
+                  onClick={() => setAiActiveModel('gemini-3.5-flash-lite')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setAiActiveModel('gemini-3.5-flash-lite') }}
                   className={`relative flex flex-col p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
-                    aiActiveModel === 'gemini-2.5-flash-lite'
+                    aiActiveModel === 'gemini-3.5-flash-lite'
                       ? 'border-[#ff9900] bg-orange-50/50 shadow-sm'
                       : 'border-gray-200 bg-white hover:border-gray-300'
                   }`}
@@ -1283,14 +1283,14 @@ export default function SettingsTab() {
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-sm font-black text-gray-900 flex items-center gap-1.5">
                       <Cpu size={16} className="text-[#ff9900]" />
-                      gemini-2.5-flash-lite
+                      gemini-3.5-flash-lite
                     </span>
                     <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full uppercase">
-                      Recommended / Lowest Cost
+                      Recommended / Active 3.5 Generation
                     </span>
                   </div>
                   <p className="text-[11px] text-gray-600 leading-relaxed">
-                    Fastest latency (~1.1s) and lowest pricing (~$0.10/M tokens or ~₹0.001 per scanned bill). Best for routine bill scanning and operational chat.
+                    Ultra-fast sub-second latency in Mumbai (asia-south1) and lowest pricing. High-accuracy vision OCR, clean Gujlish parsing, and native tool execution.
                   </p>
                 </div>
 
