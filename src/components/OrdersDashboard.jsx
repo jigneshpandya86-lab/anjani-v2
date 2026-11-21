@@ -436,10 +436,14 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
   )
 
   const shareDispatchPlan = useCallback(() => {
-    const pending = (orders || [])
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const todaysOrders = (orders || [])
       .filter((o) => {
         const s = getNormalizedOrderStatus(o.status)
-        return s === 'Pending' || s === 'Confirmed'
+        if (s !== 'Pending' && s !== 'Confirmed') return false
+        const orderDate = getOrderDate(o)
+        return orderDate && orderDate.getTime() === today.getTime()
       })
       .sort((a, b) => {
         const [, aDate, aTime] = getOrderSortKey(a)
@@ -448,19 +452,85 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
         if (aTime !== bTime) return aTime - bTime
         return 0
       })
-    let msg = `📋 *UPCOMING DISPATCH PLAN*\n\n`
-    pending.forEach((o, i) => {
-      const addr = getDisplayAddress(o)
-      const addrStr = addr ? ` | ${addr}` : ''
+
+    if (todaysOrders.length === 0) {
+      toast.error('No pending delivery orders for today')
+      return
+    }
+
+    let totalBoxes = 0
+    let grandTotalAmount = 0
+    todaysOrders.forEach((o) => {
       const items =
         o.items && o.items.length > 0
           ? o.items
-          : [{ sku: o.sku || '200ml', qty: o.qty }]
-      const itemsSummary = items.map((it) => `${it.qty}× ${it.sku}`).join(', ')
-      msg += `${i + 1}. ${getDisplayName(o)} - ${itemsSummary} - ${o.date} ${o.time}${addrStr}\n`
+          : [{ sku: o.sku || '200ml', qty: o.qty || 0, rate: o.rate || 0 }]
+      const orderQty = items.reduce((sum, it) => sum + (Number(it.qty) || 0), 0)
+      const orderAmount =
+        typeof o.totalAmount === 'number' && o.totalAmount > 0
+          ? o.totalAmount
+          : items.reduce(
+              (sum, it) => sum + (Number(it.qty) || 0) * (Number(it.rate) || 0),
+              0,
+            )
+      totalBoxes += orderQty
+      grandTotalAmount += orderAmount
     })
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
-  }, [orders, getDisplayName, getDisplayAddress, getOrderSortKey])
+
+    const dateFormatted = now.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    })
+
+    const separator = '━━━━━━━━━━━━━━━━━━━━'
+    let msg = `📋 *TODAY'S DISPATCH PLAN (${dateFormatted})*\n`
+    msg += `📦 Deliveries: ${todaysOrders.length} | Boxes: ${totalBoxes} | Total: ₹${grandTotalAmount.toLocaleString('en-IN')}\n\n`
+    msg += `${separator}\n`
+
+    todaysOrders.forEach((o, i) => {
+      const clientName = getDisplayName(o)
+      const mobile = getDisplayMobile(o)
+      const address = getDisplayAddress(o)
+      const mapsUrl = getMapsUrl(o)
+      const items =
+        o.items && o.items.length > 0
+          ? o.items
+          : [{ sku: o.sku || '200ml', qty: o.qty || 0, rate: o.rate || 0 }]
+      const itemsSummary = items
+        .map((it) => `${it.qty} × ${it.sku || 'Anjani 200ml'}`)
+        .join(', ')
+      const orderAmount =
+        typeof o.totalAmount === 'number' && o.totalAmount > 0
+          ? o.totalAmount
+          : items.reduce(
+              (sum, it) => sum + (Number(it.qty) || 0) * (Number(it.rate) || 0),
+              0,
+            )
+      const timeStr = o.time || o.deliveryTime || '11 AM'
+
+      msg += `${i + 1}. *${clientName}*\n`
+      msg += `📱 *Mobile:* ${mobile || 'N/A'}\n`
+      msg += `📦 *Items:* ${itemsSummary}\n`
+      msg += `💰 *Amount:* ₹${orderAmount.toLocaleString('en-IN')}\n`
+      msg += `🕒 *Time:* ${timeStr}\n`
+      msg += `📍 *Address:* ${address || 'Address not specified'}\n`
+      if (mapsUrl) {
+        msg += `🗺️ *Map:* ${mapsUrl}\n`
+      }
+      msg += `${separator}\n`
+    })
+
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg.trim())}`, '_blank')
+  }, [
+    orders,
+    getDisplayName,
+    getDisplayMobile,
+    getDisplayAddress,
+    getMapsUrl,
+    getOrderDate,
+    getOrderSortKey,
+  ])
 
   const callClient = useCallback(
     (order) => {

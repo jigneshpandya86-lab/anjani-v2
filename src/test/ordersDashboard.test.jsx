@@ -279,4 +279,84 @@ describe('OrdersDashboard Staff Visibility vs Admin Visibility', () => {
     expect(screen.getAllByText('Today').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('Tomorrow')).toBeInTheDocument()
   })
+
+  it('shares today dispatch roster with mobile numbers, order amounts, and separators', () => {
+    const windowOpenSpy = vi.spyOn(window, 'open').mockImplementation(() => {})
+    const now = new Date()
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const todayStr = fmt(now)
+    const tomorrowStr = fmt(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))
+
+    mockOrders = [
+      {
+        id: 'ord-today-1',
+        clientName: 'Drumil Bhai',
+        mobile: '9712636271',
+        status: 'Pending',
+        date: todayStr,
+        time: '16:00',
+        qty: 25,
+        rate: 130,
+        totalAmount: 3250,
+        address: 'Shri rameshwar mahadev temple vadodara',
+        sku: 'Anjani 200ml',
+      },
+      {
+        id: 'ord-tomorrow',
+        clientName: 'Tomorrow Party Plot',
+        mobile: '9825099999',
+        status: 'Confirmed',
+        date: tomorrowStr,
+        time: '11:00',
+        qty: 50,
+        rate: 130,
+        totalAmount: 6500,
+        address: 'Harni Road',
+        sku: 'Anjani 200ml',
+      },
+      {
+        id: 'ord-today-delivered',
+        clientName: 'Already Delivered Client',
+        mobile: '9111111111',
+        status: 'Delivered',
+        date: todayStr,
+        time: '09:00',
+        qty: 10,
+        rate: 130,
+        totalAmount: 1300,
+        sku: 'Anjani 200ml',
+      },
+    ]
+
+    render(<OrdersDashboard />)
+
+    const rosterBtn = screen.getByRole('button', { name: (content) => content.includes('Roster') })
+    expect(rosterBtn).toBeInTheDocument()
+
+    fireEvent.click(rosterBtn)
+
+    expect(windowOpenSpy).toHaveBeenCalled()
+    const sharedUrl = windowOpenSpy.mock.calls[0][0]
+    expect(sharedUrl.includes('https://wa.me/?text=')).toBe(true)
+
+    const decodedMsg = decodeURIComponent(sharedUrl.replace('https://wa.me/?text=', ''))
+
+    // Header check
+    expect(decodedMsg.includes("TODAY'S DISPATCH PLAN")).toBe(true)
+
+    // Today's pending client included with details
+    expect(decodedMsg.includes('Drumil Bhai')).toBe(true)
+    expect(decodedMsg.includes('9712636271')).toBe(true)
+    expect(decodedMsg.includes('25 × Anjani 200ml')).toBe(true)
+    expect(decodedMsg.includes('₹3,250')).toBe(true)
+    expect(decodedMsg.includes('16:00')).toBe(true)
+    expect(decodedMsg.includes('Shri rameshwar mahadev temple vadodara')).toBe(true)
+    expect(decodedMsg.includes('━━━━━━━━━━━━━━━━━━━━')).toBe(true)
+
+    // Tomorrow and delivered orders excluded
+    expect(decodedMsg.includes('Tomorrow Party Plot')).toBe(false)
+    expect(decodedMsg.includes('Already Delivered Client')).toBe(false)
+
+    windowOpenSpy.mockRestore()
+  })
 })
