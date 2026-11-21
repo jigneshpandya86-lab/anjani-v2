@@ -6,7 +6,7 @@ import GoogleMapPicker from './GoogleMapPicker'
 import SkuSelect from './SkuSelect'
 import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 import { resolveOrderInitialData } from '../utils/orderUtils'
-import { parseGoogleMapsLocation } from '../utils/locationUtils'
+import { parseGoogleMapsLocation, isValidCoordinate, normalizeCoordinate } from '../utils/locationUtils'
 
 export default function OrderModal({ orderToEdit, onClose }) {
   const clients = useClientStore((state) => state.clients)
@@ -90,20 +90,12 @@ export default function OrderModal({ orderToEdit, onClose }) {
         changed = true
       }
 
-      if (
-        !Number.isFinite(Number(prev.locationLat)) &&
-        Number.isFinite(Number(selectedClient.locationLat))
-      ) {
-        next.locationLat = Number(selectedClient.locationLat)
-        changed = true
-      }
-
-      if (
-        !Number.isFinite(Number(prev.locationLng)) &&
-        Number.isFinite(Number(selectedClient.locationLng))
-      ) {
-        next.locationLng = Number(selectedClient.locationLng)
-        changed = true
+      if (isValidCoordinate(selectedClient.locationLat, selectedClient.locationLng)) {
+        if (!isValidCoordinate(prev.locationLat, prev.locationLng)) {
+          next.locationLat = Number(selectedClient.locationLat)
+          next.locationLng = Number(selectedClient.locationLng)
+          changed = true
+        }
       }
 
       return changed ? next : prev
@@ -138,12 +130,12 @@ export default function OrderModal({ orderToEdit, onClose }) {
         mapLink: shouldUpdateMapLink && selectedClient?.mapLink
           ? selectedClient.mapLink
           : prev.mapLink,
-        locationLat: Number.isFinite(Number(selectedClient?.locationLat))
+        locationLat: isValidCoordinate(selectedClient?.locationLat, selectedClient?.locationLng)
           ? Number(selectedClient.locationLat)
-          : prev.locationLat,
-        locationLng: Number.isFinite(Number(selectedClient?.locationLng))
+          : normalizeCoordinate(prev.locationLat),
+        locationLng: isValidCoordinate(selectedClient?.locationLat, selectedClient?.locationLng)
           ? Number(selectedClient.locationLng)
-          : prev.locationLng,
+          : normalizeCoordinate(prev.locationLng),
       }
     })
 
@@ -269,12 +261,8 @@ export default function OrderModal({ orderToEdit, onClose }) {
         address: String(formData.address || '').trim(),
         location: String(formData.location || '').trim(),
         mapLink: String(formData.mapLink || '').trim(),
-        locationLat: Number.isFinite(Number(formData.locationLat))
-          ? Number(formData.locationLat)
-          : null,
-        locationLng: Number.isFinite(Number(formData.locationLng))
-          ? Number(formData.locationLng)
-          : null,
+        locationLat: normalizeCoordinate(formData.locationLat),
+        locationLng: normalizeCoordinate(formData.locationLng),
         proofUrl: String(formData.proofUrl || '').trim(),
       }
 

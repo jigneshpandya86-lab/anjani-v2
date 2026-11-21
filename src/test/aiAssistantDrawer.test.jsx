@@ -2398,6 +2398,9 @@ describe('AiAssistantDrawer', () => {
     expect(screen.getByText('📅 2026-11-21')).toBeInTheDocument()
     expect(screen.getByText('🕒 4:00 PM – 5:00 PM')).toBeInTheDocument()
 
+    // Verify no payment row is displayed when payment is null
+    expect(screen.queryByText('₹3,250')).not.toBeInTheDocument()
+
     // Confirm & Save button is present and clickable
     const saveBtn = screen.getByRole('button', { name: (content) => content.includes('Confirm & Save') })
     expect(saveBtn).toBeInTheDocument()

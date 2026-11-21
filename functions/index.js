@@ -2116,7 +2116,7 @@ Return a single valid JSON object strictly matching the schema for the detected 
               totalAmount: Number(orderData.totalAmount) || ((Number(orderData.qty) || defaultQty) * (Number(orderData.rate) || defaultRate)),
               address: orderData.address || '',
             } : null,
-            payment: parsedData.payment ? {
+            payment: (parsedData.payment && (Number(parsedData.payment.amount) > 0 || (parsedData.payment.utr && parsedData.payment.utr.trim()))) ? {
               ...parsedData.payment,
               payerName: sanitizedPayer,
             } : null,
@@ -2357,7 +2357,7 @@ Parse the user's multi-action request (Client + Order + Payment) into strict JSO
     "totalAmount": number,
     "address": string
   },
-  "payment": {
+  "payment": null or {
     "payerName": string,
     "amount": number,
     "paymentMode": "online" | "cash",
@@ -2367,6 +2367,8 @@ Parse the user's multi-action request (Client + Order + Payment) into strict JSO
     "notes": string
   }
 }
+CRITICAL PAYMENT RULE:
+If the user text does NOT explicitly state that a payment was made or money was received (e.g. order inquiry, price check, delivery booking without payment, or unpaid order), you MUST return "payment": null. NEVER invent, assume, or auto-fill a payment for an unpaid order inquiry!
 User Text: ${rawText.slice(0, 1000)}`
 
         try {
@@ -2419,7 +2421,7 @@ User Text: ${rawText.slice(0, 1000)}`
                   totalAmount: Number(orderData.totalAmount) || ((Number(orderData.qty) || defaultQty) * (Number(orderData.rate) || defaultRate)),
                   address: orderData.address || '',
                 },
-                payment: parsedData.payment ? {
+                payment: (parsedData.payment && (Number(parsedData.payment.amount) > 0 || (parsedData.payment.utr && parsedData.payment.utr.trim()))) ? {
                   ...parsedData.payment,
                   payerName: sanitizedPayer,
                 } : null,
@@ -2909,7 +2911,7 @@ ${rawText.slice(0, 3000)}`
               },
               payment: {
                 type: 'OBJECT',
-                description: 'Optional advance or payment details if specified',
+                description: 'Optional advance or payment details ONLY IF payment was explicitly made or received. If no payment has been made yet (e.g. order inquiry or unpaid order), DO NOT include this payment object or leave amount null/0. NEVER invent or assume a payment for an unpaid order.',
                 properties: {
                   amount: { type: 'NUMBER', description: 'Payment amount received in INR' },
                   paymentMode: { type: 'STRING', enum: ['cash', 'online', 'cheque'], description: 'Payment mode' },

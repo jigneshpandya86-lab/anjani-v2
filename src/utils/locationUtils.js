@@ -27,7 +27,8 @@ export function extractGoogleMapsUrl(input) {
       Number.isFinite(lat) &&
       Number.isFinite(lng) &&
       Math.abs(lat) <= 90 &&
-      Math.abs(lng) <= 180
+      Math.abs(lng) <= 180 &&
+      (lat !== 0 || lng !== 0)
     ) {
       return `https://www.google.com/maps?q=${lat},${lng}`
     }
@@ -72,7 +73,8 @@ export function parseGoogleMapsLocation(input) {
         Number.isFinite(parsedLat) &&
         Number.isFinite(parsedLng) &&
         Math.abs(parsedLat) <= 90 &&
-        Math.abs(parsedLng) <= 180
+        Math.abs(parsedLng) <= 180 &&
+        (parsedLat !== 0 || parsedLng !== 0)
       ) {
         lat = parsedLat
         lng = parsedLng
@@ -97,7 +99,8 @@ export function parseGoogleMapsLocation(input) {
       Number.isFinite(lat) &&
       Number.isFinite(lng) &&
       Math.abs(lat) <= 90 &&
-      Math.abs(lng) <= 180
+      Math.abs(lng) <= 180 &&
+      (lat !== 0 || lng !== 0)
     ) {
       return {
         lat,
@@ -123,7 +126,8 @@ export function parseGoogleMapsLocation(input) {
       Number.isFinite(lat) &&
       Number.isFinite(lng) &&
       Math.abs(lat) <= 90 &&
-      Math.abs(lng) <= 180
+      Math.abs(lng) <= 180 &&
+      (lat !== 0 || lng !== 0)
     ) {
       const isUrl = str.startsWith('http://') || str.startsWith('https://')
       return {
@@ -138,25 +142,61 @@ export function parseGoogleMapsLocation(input) {
   return null
 }
 
-export function buildGoogleMapsUrl(lat, lng, address) {
+export function isValidCoordinate(lat, lng) {
   if (
-    lat !== null &&
-    lat !== undefined &&
-    lat !== '' &&
-    lng !== null &&
-    lng !== undefined &&
-    lng !== '' &&
-    Number.isFinite(Number(lat)) &&
-    Number.isFinite(Number(lng))
+    lat === null ||
+    lat === undefined ||
+    lat === '' ||
+    lng === null ||
+    lng === undefined ||
+    lng === ''
   ) {
-    return `https://www.google.com/maps?q=${lat},${lng}`
+    return false
+  }
+  const nLat = Number(lat)
+  const nLng = Number(lng)
+  return (
+    Number.isFinite(nLat) &&
+    Number.isFinite(nLng) &&
+    (nLat !== 0 || nLng !== 0) &&
+    nLat >= -90 &&
+    nLat <= 90 &&
+    nLng >= -180 &&
+    nLng <= 180
+  )
+}
+
+export function isValidMapLink(url) {
+  if (!url || typeof url !== 'string') return false
+  const trimmed = url.trim()
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) return false
+  // Reject dummy/invalid links like query=0,0 or q=0,0 or query=0.0,0.0
+  if (/[\?&](?:query|q)=0(?:\.0+)?(?:%2C|,|\+)0(?:\.0+)?(?:&|$)/i.test(trimmed)) {
+    return false
+  }
+  return true
+}
+
+export function normalizeCoordinate(val) {
+  if (val === null || val === undefined || val === '') return null
+  const num = Number(val)
+  if (!Number.isFinite(num) || num === 0) return null
+  return num
+}
+
+export function buildGoogleMapsUrl(lat, lng, address) {
+  if (isValidCoordinate(lat, lng)) {
+    return `https://www.google.com/maps?q=${Number(lat)},${Number(lng)}`
   }
   const cleanAddr = String(address || '').trim()
   if (cleanAddr) {
     if (cleanAddr.startsWith('http://') || cleanAddr.startsWith('https://')) {
-      return cleanAddr
+      if (isValidMapLink(cleanAddr)) {
+        return cleanAddr
+      }
+    } else {
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cleanAddr)}`
     }
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cleanAddr)}`
   }
   return null
 }

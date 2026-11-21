@@ -4,7 +4,7 @@ import { UserPlus, CheckCircle, MapPinned, ChevronDown, ChevronUp, Package, X } 
 import toast from 'react-hot-toast'
 import GoogleMapPicker from './GoogleMapPicker'
 import { WATER_SKUS } from '../constants/skus'
-import { parseGoogleMapsLocation } from '../utils/locationUtils'
+import { parseGoogleMapsLocation, normalizeCoordinate, isValidMapLink } from '../utils/locationUtils'
 import { ensureEnglishText, normalizeDigits, hasIndicScript } from '../utils/textUtils'
 
 export default function AddClient({ onDone, client, initialValues = {} }) {
@@ -87,21 +87,21 @@ export default function AddClient({ onDone, client, initialValues = {} }) {
 
       // Check if locationAddress or mapLink contains coords or URL
       let finalLocation = String(locationAddress || '').trim()
-      let finalMapLink = String(mapLink || '').trim()
-      let finalLat = Number.isFinite(Number(locationLat)) ? Number(locationLat) : null
-      let finalLng = Number.isFinite(Number(locationLng)) ? Number(locationLng) : null
+      let finalMapLink = isValidMapLink(mapLink) ? String(mapLink).trim() : ''
+      let finalLat = normalizeCoordinate(locationLat)
+      let finalLng = normalizeCoordinate(locationLng)
 
       const parsedAddr = parseGoogleMapsLocation(finalLocation)
       if (parsedAddr) {
-        if (!finalMapLink) finalMapLink = parsedAddr.mapLink
-        if (finalLat === null && parsedAddr.lat !== null) finalLat = parsedAddr.lat
-        if (finalLng === null && parsedAddr.lng !== null) finalLng = parsedAddr.lng
+        if (!finalMapLink && isValidMapLink(parsedAddr.mapLink)) finalMapLink = parsedAddr.mapLink
+        if (finalLat === null && parsedAddr.lat !== null) finalLat = normalizeCoordinate(parsedAddr.lat)
+        if (finalLng === null && parsedAddr.lng !== null) finalLng = normalizeCoordinate(parsedAddr.lng)
       }
 
       const parsedLink = parseGoogleMapsLocation(finalMapLink)
       if (parsedLink) {
-        if (finalLat === null && parsedLink.lat !== null) finalLat = parsedLink.lat
-        if (finalLng === null && parsedLink.lng !== null) finalLng = parsedLink.lng
+        if (finalLat === null && parsedLink.lat !== null) finalLat = normalizeCoordinate(parsedLink.lat)
+        if (finalLng === null && parsedLink.lng !== null) finalLng = normalizeCoordinate(parsedLink.lng)
       }
 
       if (!finalMapLink && finalLat !== null && finalLng !== null) {

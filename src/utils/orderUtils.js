@@ -1,4 +1,5 @@
 import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
+import { normalizeCoordinate } from './locationUtils'
 
 export const normalizeOrderWriteData = (data = {}, isUpdate = false) => {
   const result = { ...data }
@@ -19,10 +20,10 @@ export const normalizeOrderWriteData = (data = {}, isUpdate = false) => {
       result.mapLink = String(data.mapLink || '').trim()
     }
     if (data.locationLat !== undefined) {
-      result.locationLat = Number.isFinite(Number(data.locationLat)) ? Number(data.locationLat) : null
+      result.locationLat = normalizeCoordinate(data.locationLat)
     }
     if (data.locationLng !== undefined) {
-      result.locationLng = Number.isFinite(Number(data.locationLng)) ? Number(data.locationLng) : null
+      result.locationLng = normalizeCoordinate(data.locationLng)
     }
   } else {
     const rawAddr = data.address === undefined ? '' : String(data.address).trim()
@@ -30,8 +31,8 @@ export const normalizeOrderWriteData = (data = {}, isUpdate = false) => {
     result.address = rawAddr || rawLoc
     result.location = rawLoc || rawAddr
     result.mapLink = data.mapLink === undefined ? '' : String(data.mapLink).trim()
-    result.locationLat = Number.isFinite(Number(data.locationLat)) ? Number(data.locationLat) : null
-    result.locationLng = Number.isFinite(Number(data.locationLng)) ? Number(data.locationLng) : null
+    result.locationLat = normalizeCoordinate(data.locationLat)
+    result.locationLng = normalizeCoordinate(data.locationLng)
   }
 
   if (data.date !== undefined) {
@@ -184,12 +185,8 @@ export const normalizeOrderDoc = (raw = {}) => {
       raw.googleMap ||
       '',
     mapLink: raw.mapLink || raw.googleMap || '',
-    locationLat: Number.isFinite(Number(raw.locationLat ?? raw.lat))
-      ? Number(raw.locationLat ?? raw.lat)
-      : null,
-    locationLng: Number.isFinite(Number(raw.locationLng ?? raw.lng))
-      ? Number(raw.locationLng ?? raw.lng)
-      : null,
+    locationLat: normalizeCoordinate(raw.locationLat ?? raw.lat),
+    locationLng: normalizeCoordinate(raw.locationLng ?? raw.lng),
   }
 }
 
@@ -263,12 +260,12 @@ export const resolveOrderInitialData = (orderToEdit, clients = []) => {
     ''
   ).trim()
 
-  const lat = Number(
+  const lat = normalizeCoordinate(
     orderToEdit.locationLat ??
     orderToEdit.lat ??
     selectedClient?.locationLat
   )
-  const lng = Number(
+  const lng = normalizeCoordinate(
     orderToEdit.locationLng ??
     orderToEdit.lng ??
     selectedClient?.locationLng
@@ -293,8 +290,8 @@ export const resolveOrderInitialData = (orderToEdit, clients = []) => {
     address: resolvedAddress,
     location: resolvedLocation,
     mapLink: resolvedMapLink,
-    locationLat: Number.isFinite(lat) ? lat : null,
-    locationLng: Number.isFinite(lng) ? lng : null,
+    locationLat: lat,
+    locationLng: lng,
     proofUrl: orderToEdit.proofUrl || '',
   }
 }

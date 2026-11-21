@@ -31,6 +31,7 @@ import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage'
 import { app } from '../firebase-config'
 import { WATER_SKUS, DEFAULT_SKU, getSkuMeta } from '../constants/skus'
 import { getNormalizedOrderStatus, normalizeTimeToHHmm } from '../utils/orderUtils'
+import { isValidCoordinate, isValidMapLink } from '../utils/locationUtils'
 import { checkIsDayTime } from '../services/taskService'
 import { sendBackgroundSms } from '../services/leadSmsService'
 
@@ -201,13 +202,13 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
 
   const getMapsUrl = useCallback(
     (order) => {
-      // 1. Direct order map link if present
+      // 1. Direct order map link if present & valid (not dummy 0,0)
       const directMapLink = String(order.mapLink || order.googleMap || '').trim()
-      if (directMapLink && (directMapLink.startsWith('http://') || directMapLink.startsWith('https://'))) {
+      if (isValidMapLink(directMapLink)) {
         return directMapLink
       }
-      // 2. Direct order coordinates
-      if (Number.isFinite(Number(order.locationLat)) && Number.isFinite(Number(order.locationLng))) {
+      // 2. Direct order coordinates (must not be 0,0)
+      if (isValidCoordinate(order.locationLat, order.locationLng)) {
         return `https://www.google.com/maps/search/?api=1&query=${order.locationLat},${order.locationLng}`
       }
       // 3. Direct order address/location string
@@ -220,8 +221,8 @@ function OrdersDashboard({ onEdit, onCopy, onRecordPayment, onShareInvoice }) {
       // 4. Fall back to client master location
       if (order.clientId) {
         const c = clients.find((c) => c.id === order.clientId)
-        if (c?.mapLink) return c.mapLink
-        if (Number.isFinite(Number(c?.locationLat)) && Number.isFinite(Number(c?.locationLng))) {
+        if (isValidMapLink(c?.mapLink)) return c.mapLink
+        if (isValidCoordinate(c?.locationLat, c?.locationLng)) {
           return `https://www.google.com/maps/search/?api=1&query=${c.locationLat},${c.locationLng}`
         }
       }

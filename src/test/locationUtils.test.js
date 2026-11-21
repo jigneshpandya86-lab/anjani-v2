@@ -3,6 +3,9 @@ import {
   parseGoogleMapsLocation,
   buildGoogleMapsUrl,
   extractGoogleMapsUrl,
+  isValidCoordinate,
+  isValidMapLink,
+  normalizeCoordinate,
 } from '../utils/locationUtils'
 
 describe('locationUtils', () => {
@@ -72,5 +75,30 @@ describe('locationUtils', () => {
   it('builds Google Maps URL properly', () => {
     expect(buildGoogleMapsUrl(22.3072, 73.1812)).toBe('https://www.google.com/maps?q=22.3072,73.1812')
     expect(buildGoogleMapsUrl(null, null, 'Waghodia Road, Vadodara')).toContain('https://www.google.com/maps/search/?api=1&query=')
+    // Rejects 0,0 and falls back to address
+    expect(buildGoogleMapsUrl(0, 0, 'reva party plot')).toBe('https://www.google.com/maps/search/?api=1&query=reva%20party%20plot')
+    expect(buildGoogleMapsUrl('0', '0', 'reva party plot')).toBe('https://www.google.com/maps/search/?api=1&query=reva%20party%20plot')
+  })
+
+  it('validates coordinates and map links to prevent 0,0 bugs', () => {
+    expect(isValidCoordinate(0, 0)).toBe(false)
+    expect(isValidCoordinate('0', '0')).toBe(false)
+    expect(isValidCoordinate(null, null)).toBe(false)
+    expect(isValidCoordinate('', '')).toBe(false)
+    expect(isValidCoordinate(22.3, 73.1)).toBe(true)
+
+    expect(isValidMapLink('https://www.google.com/maps/search/?api=1&query=0,0')).toBe(false)
+    expect(isValidMapLink('https://www.google.com/maps?q=0,0')).toBe(false)
+    expect(isValidMapLink('https://www.google.com/maps/search/?api=1&query=0.0,0.0')).toBe(false)
+    expect(isValidMapLink('https://maps.app.goo.gl/abcdef12345')).toBe(true)
+    expect(isValidMapLink('https://www.google.com/maps?q=22.3,73.1')).toBe(true)
+
+    expect(normalizeCoordinate('')).toBeNull()
+    expect(normalizeCoordinate(null)).toBeNull()
+    expect(normalizeCoordinate(undefined)).toBeNull()
+    expect(normalizeCoordinate(0)).toBeNull()
+    expect(normalizeCoordinate('0')).toBeNull()
+    expect(normalizeCoordinate('22.3072')).toBe(22.3072)
+    expect(normalizeCoordinate(22.3072)).toBe(22.3072)
   })
 })

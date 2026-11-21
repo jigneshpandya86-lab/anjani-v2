@@ -33,6 +33,7 @@ import {
 
 export { normalizeOrderWriteData, normalizeOrderDoc, getOrderSortTime }
 import { ensureEnglishText, normalizeDigits } from '../utils/textUtils'
+import { normalizeCoordinate } from '../utils/locationUtils'
 import { findMatchingClient } from '../utils/clientMatchingUtils'
 import { detectRuleConflict } from '../utils/aiMemoryUtils'
 import {
@@ -1430,8 +1431,8 @@ export const useClientStore = create((set, get) => ({
       skuRates: data.skuRates || {},
       location: ensureEnglishText(data.location || data.mapLink || '').trim(),
       mapLink: String(data.mapLink || '').trim(),
-      locationLat: Number.isFinite(Number(data.locationLat)) ? Number(data.locationLat) : null,
-      locationLng: Number.isFinite(Number(data.locationLng)) ? Number(data.locationLng) : null,
+      locationLat: normalizeCoordinate(data.locationLat),
+      locationLng: normalizeCoordinate(data.locationLng),
       active: true,
       outstanding: Number(data.outstanding) || 0,
       isRegular: Boolean(data.isRegular),
@@ -1518,8 +1519,8 @@ export const useClientStore = create((set, get) => ({
       address: normalizedData.address || selectedClient?.address || '',
       location: normalizedData.location || selectedClient?.location || selectedClient?.mapLink || '',
       mapLink: normalizedData.mapLink || selectedClient?.mapLink || '',
-      locationLat: normalizedData.locationLat ?? selectedClient?.locationLat ?? null,
-      locationLng: normalizedData.locationLng ?? selectedClient?.locationLng ?? null,
+      locationLat: normalizeCoordinate(normalizedData.locationLat ?? selectedClient?.locationLat),
+      locationLng: normalizeCoordinate(normalizedData.locationLng ?? selectedClient?.locationLng),
       items,
       totalQty,
       totalAmount,
@@ -1907,12 +1908,8 @@ export const useClientStore = create((set, get) => ({
               '',
           ).trim(),
           mapLink: String(raw.mapLink || raw.googleMap || '').trim(),
-          locationLat: Number.isFinite(Number(raw.locationLat ?? raw.lat))
-            ? Number(raw.locationLat ?? raw.lat)
-            : null,
-          locationLng: Number.isFinite(Number(raw.locationLng ?? raw.lng))
-            ? Number(raw.locationLng ?? raw.lng)
-            : null,
+          locationLat: normalizeCoordinate(raw.locationLat ?? raw.lat),
+          locationLng: normalizeCoordinate(raw.locationLng ?? raw.lng),
         }
       })
       set({ clients })

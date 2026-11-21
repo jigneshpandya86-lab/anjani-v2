@@ -359,4 +359,42 @@ describe('OrdersDashboard Staff Visibility vs Admin Visibility', () => {
 
     windowOpenSpy.mockRestore()
   })
+
+  it('WhatsApp delivery assignment falls back to address when coordinates are 0,0', () => {
+    mockUserRole = 'admin'
+    const windowOpenSpy = vi.spyOn(window, 'open').mockImplementation(() => {})
+    mockOrders = [
+      {
+        id: 'ord-123',
+        orderId: 'ORD-1795249895659',
+        clientName: 'TwinkleCaterers',
+        mobile: '9879014832',
+        status: 'Confirmed',
+        date: '2026-11-21',
+        time: '14:01',
+        qty: 30,
+        rate: 127,
+        totalAmount: 3810,
+        sku: 'Anjani 200ml',
+        address: 'reva party plot',
+        locationLat: 0,
+        locationLng: 0,
+      },
+    ]
+
+    render(<OrdersDashboard />)
+    const sendBtn = screen.getByTitle('Share details')
+    fireEvent.click(sendBtn)
+
+    expect(windowOpenSpy).toHaveBeenCalled()
+    const sharedUrl = windowOpenSpy.mock.calls[0][0]
+    const decodedMsg = decodeURIComponent(sharedUrl.replace('https://wa.me/?text=', ''))
+
+    expect(decodedMsg).toContain('*Client:* TwinkleCaterers')
+    expect(decodedMsg).toContain('*Address:*\nreva party plot')
+    expect(decodedMsg).not.toContain('query=0,0')
+    expect(decodedMsg).toContain('https://www.google.com/maps/search/?api=1&query=reva%20party%20plot')
+
+    windowOpenSpy.mockRestore()
+  })
 })

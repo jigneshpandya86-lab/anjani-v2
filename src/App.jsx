@@ -66,7 +66,7 @@ import CustomerLedgerReportModal from './components/CustomerLedgerReportModal'
 import NetworkStatusBar from './components/NetworkStatusBar'
 import { parseShareTargetUrl, getLatestSharedRecord } from './utils/shareTargetUtils'
 import { processAiBillImage } from './utils/aiImageHelper'
-import { parseGoogleMapsLocation, extractGoogleMapsUrl } from './utils/locationUtils'
+import { parseGoogleMapsLocation, extractGoogleMapsUrl, normalizeCoordinate } from './utils/locationUtils'
 import {
   isMobileOrNative,
   shareOrDownloadPdf,
@@ -262,8 +262,8 @@ function App() {
         setActiveTab('orders')
         setEditOrder({
           mapLink: parsedShare.mapLink,
-          locationLat: parsedShare.locationLat ?? null,
-          locationLng: parsedShare.locationLng ?? null,
+          locationLat: normalizeCoordinate(parsedShare.locationLat),
+          locationLng: normalizeCoordinate(parsedShare.locationLng),
           location: parsedShare.name || '',
           clientId: matchedClient ? matchedClient.id : '',
           address: matchedClient?.address || '',
@@ -375,8 +375,8 @@ function App() {
             setActiveTab('orders')
             setEditOrder({
               mapLink: parsed.mapLink,
-              locationLat: parsed.lat ?? null,
-              locationLng: parsed.lng ?? null,
+              locationLat: normalizeCoordinate(parsed.lat),
+              locationLng: normalizeCoordinate(parsed.lng),
             })
             toast.success('📍 Map link loaded into New Order!', { id: 'map-link-native-toast', duration: 4000 })
           }
@@ -1333,12 +1333,8 @@ function App() {
                     address: client.address || '',
                     location: client.location || client.mapLink || '',
                     mapLink: client.mapLink || '',
-                    locationLat: Number.isFinite(Number(client.locationLat))
-                      ? Number(client.locationLat)
-                      : null,
-                    locationLng: Number.isFinite(Number(client.locationLng))
-                      ? Number(client.locationLng)
-                      : null,
+                    locationLat: normalizeCoordinate(client.locationLat),
+                    locationLng: normalizeCoordinate(client.locationLng),
                     rate: Number(client.rate) || 0,
                   })
                 }

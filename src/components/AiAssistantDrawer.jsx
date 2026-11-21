@@ -51,7 +51,7 @@ import { processAiBillImage } from '../utils/aiImageHelper'
 import { consolidateRetailSales } from '../utils/salesBatchUtils'
 import { findBestExistingClientMatch, findMatchingClient } from '../utils/clientMatchingUtils'
 import { ensureEnglishText, sanitizeClientForEnglish, isMerchantOrSelfName } from '../utils/textUtils'
-import { extractGoogleMapsUrl } from '../utils/locationUtils'
+import { extractGoogleMapsUrl, normalizeCoordinate } from '../utils/locationUtils'
 import { getRecentSkuPrice, formatPaymentNarration, normalizeTimeToHHmm } from '../utils/orderUtils'
 import {
   getMainMenuMessage,
@@ -1033,8 +1033,8 @@ export default function AiAssistantDrawer({
           await updateOrder(order.id, {
             mapLink: mapLink || '',
             location: mapLink || order.location || '',
-            locationLat: lat ?? null,
-            locationLng: lng ?? null,
+            locationLat: normalizeCoordinate(lat),
+            locationLng: normalizeCoordinate(lng),
           })
           toast.success(`Location saved to Order #${order.id.slice(-6)}!`)
         } catch (err) {
@@ -1046,8 +1046,8 @@ export default function AiAssistantDrawer({
           await updateClient(client.id, {
             mapLink: mapLink || '',
             location: mapLink || client.location || '',
-            locationLat: lat ?? null,
-            locationLng: lng ?? null,
+            locationLat: normalizeCoordinate(lat),
+            locationLng: normalizeCoordinate(lng),
           })
           toast.success(`Location saved to ${client.displayName || client.name}!`)
         } catch (err) {
@@ -2054,7 +2054,9 @@ export default function AiAssistantDrawer({
           : (targetName || (targetMobile ? `Customer (${targetMobile.slice(-4)})` : 'New Customer'))
         const isNewClient = !matched
 
-        const paymentAmount = Number(payRaw.amount) || Number(orderRaw.totalAmount) || 0
+        const rawPayAmount = Number(payRaw?.amount) || 0
+        const hasExplicitPayment = Boolean(payRaw && (rawPayAmount > 0 || (payRaw.utr && String(payRaw.utr).trim().length > 0)))
+        const paymentAmount = hasExplicitPayment ? rawPayAmount : 0
         const orderRate = Number(orderRaw.rate) || (matched?.rate ? Number(matched.rate) : 130) || 130
         const orderSku = orderRaw.sku && orderRaw.sku.trim() ? orderRaw.sku : 'Anjani 200ml'
         let orderQty = Number(orderRaw.qty) || (paymentAmount > 0 && orderRate > 0 ? Math.round(paymentAmount / orderRate) : 10) || 10
@@ -2063,7 +2065,7 @@ export default function AiAssistantDrawer({
           originalPieces = orderQty
           orderQty = orderQty % 48 === 0 ? orderQty / 48 : Number((orderQty / 48).toFixed(2))
         }
-        const orderAmount = Number(orderRaw.totalAmount) || (orderQty * orderRate) || paymentAmount
+        const orderAmount = Number(orderRaw.totalAmount) || (orderQty * orderRate) || (paymentAmount > 0 ? paymentAmount : 0)
 
         const compoundId = 'compound-' + Date.now()
 
@@ -2092,9 +2094,9 @@ export default function AiAssistantDrawer({
                 mapLink: orderRaw.mapLink || '',
                 notes: orderRaw.notes || '',
               } : null,
-              payment: (payRaw && (payRaw.amount || paymentAmount > 0 || payRaw.utr)) ? {
+              payment: hasExplicitPayment ? {
                 payerName: (!isMerchantOrSelfName(payRaw.payerName) ? payRaw.payerName : '') || clientName,
-                amount: paymentAmount || orderAmount,
+                amount: paymentAmount,
                 paymentMode: payRaw.paymentMode || 'online',
                 onlineProvider: payRaw.onlineProvider || 'GPay',
                 utr: payRaw.utr || '',
