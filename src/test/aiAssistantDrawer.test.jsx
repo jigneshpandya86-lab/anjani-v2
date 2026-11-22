@@ -2257,10 +2257,10 @@ describe('AiAssistantDrawer', () => {
     const form = input.closest('form')
     await fireEvent.submit(form)
 
-    await waitFor(() => {
-      expect(screen.getByText(/Delivery Invoice Ready for Jay Ambe/i)).toBeInTheDocument()
-      expect(screen.getByText(/Share Invoice WhatsApp/i)).toBeInTheDocument()
-    })
+    const pdfBtns = await screen.findAllByRole('button', { name: /Download Invoice PDF/i })
+    expect(pdfBtns.length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByRole('button', { name: /WhatsApp Invoice/i }).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByRole('button', { name: /SMS Invoice/i }).length).toBeGreaterThanOrEqual(1)
 
     unmount()
   })
@@ -2289,10 +2289,43 @@ describe('AiAssistantDrawer', () => {
     const form = input.closest('form')
     await fireEvent.submit(form)
 
-    await waitFor(() => {
-      expect(screen.getByText(/Account Ledger Statement: Jay Ambe/i)).toBeInTheDocument()
-      expect(screen.getByText(/Open Ledger Statement/i)).toBeInTheDocument()
+    const stmtBtns = await screen.findAllByRole('button', { name: /Download Statement PDF/i })
+    expect(stmtBtns.length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByRole('button', { name: /WhatsApp Statement/i }).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByRole('button', { name: /Ledger/i }).length).toBeGreaterThanOrEqual(1)
+
+    unmount()
+  })
+
+  it('prepares driver dispatch delivery roster card when send_roster is invoked', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'send_roster',
+        data: {
+          targetDate: 'today',
+          staffName: 'Nilesh',
+          channel: 'whatsapp',
+        },
+      },
     })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(/Ask bot above, type @client/i)
+    fireEvent.change(input, { target: { value: 'Send today roster to Nilesh' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    const rosterBtns = await screen.findAllByRole('button', { name: /WhatsApp Roster/i })
+    expect(rosterBtns.length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByRole('button', { name: /SMS Roster/i }).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByRole('button', { name: /Copy Roster/i }).length).toBeGreaterThanOrEqual(1)
 
     unmount()
   })

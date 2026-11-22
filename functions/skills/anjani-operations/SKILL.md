@@ -1,8 +1,8 @@
 ---
 name: anjani-operations
 description: Authoritative operational skill for Anjani Water ERP. Governs operations across text, voice, and multimodal photo scans with native function calling, pure auto visual classification, dynamic phone resolution, and decoupled entity workflows.
-version: 2.8.0
-last_updated: 2026-11-21
+version: 2.9.0
+last_updated: 2026-11-22
 ---
 
 # Anjani Water ERP Operations (`anjani-operations`)
@@ -29,14 +29,16 @@ last_updated: 2026-11-21
 - **Mandatory Tool Calling**: Always call native tool for operational mutations; never fake execution in plain text.
 
 ## 3. Operational Tool Registry
-- **Orders**: `create_order` (books delivery: `clientName`, `qty`, `deliveryDate`, `time`, `location`, `items`); `edit_order` (modifies/cancels: `clientName`, `updates`: `{ qty, rate, deliveryDate, deliveryTime, location, sku, paymentMode, notes, status }`, `changes`); `mark_orders_delivered` (`clientNames`, `targetDate`); `location_update` (`clientName`, `location`, `mapLink`); `generate_invoice` (`clientName`, `channel`: `'whatsapp' | 'view'`); `query_orders` (strict date isolation: `dateFilter`: `'today' | 'tomorrow' | 'specific'`, `targetDate`, `clientName`, `status`; tomorrow queries MUST use `dateFilter: "tomorrow"`).
-- **Clients**: `create_client` (`name`, `mobile`, `address`, `location`, `rate`, `notes`); `edit_client` (`clientName`, `fieldToUpdate`, `newValue`, `updates`); `update_price` (`clientName`, `rate`, `sku`); `generate_statement` (`clientName`, `dateRange`: `'current-month' | 'last-month' | 'financial-year' | 'all'`); `query_dues` (`clientName`).
+- **Orders**: `create_order` (books delivery: `clientName`, `qty`, `deliveryDate`, `time`, `location`, `items`); `edit_order` (modifies/cancels: `clientName`, `updates`: `{ qty, rate, deliveryDate, deliveryTime, location, sku, paymentMode, notes, status }`, `changes`); `mark_orders_delivered` (`clientNames`, `targetDate`); `location_update` (`clientName`, `location`, `mapLink`); `query_orders` (strict date isolation: `dateFilter`: `'today' | 'tomorrow' | 'specific'`, `targetDate`, `clientName`, `status`).
+- **Dispatch Roster**: `send_roster` (dispatches delivery schedule with customer stops, quantities, addresses, and maps links to delivery staff: `targetDate`, `staffName`, `phone`, `channel`: `'whatsapp' | 'sms' | 'auto'`).
+- **Invoices & Statements**: `generate_invoice` (creates itemized delivery bill with 1-tap PDF download, WhatsApp dispatch, and SMS alert: `clientName`, `phone`, `channel`: `'whatsapp' | 'pdf' | 'sms' | 'view'`); `generate_statement` (generates customer ledger statement with PDF download and WhatsApp dispatch: `clientName`, `phone`, `dateRange`: `'current-month' | 'last-month' | 'financial-year' | 'all'`, `channel`: `'whatsapp' | 'pdf' | 'view'`); `query_dues` (`clientName`).
+- **Clients**: `create_client` (`name`, `mobile`, `address`, `location`, `rate`, `notes`); `edit_client` (`clientName`, `fieldToUpdate`, `newValue`, `updates`); `update_price` (`clientName`, `rate`, `sku`).
 - **Payments**: `receive_payment` (Cash/UPI/Bank/Cheque: `payerName`, `amount`, `paymentMode`, `onlineProvider`, `utr`, `date`, `notes`; if client omitted, set `payerName: ""` for dropdown selection); `edit_payment` (`clientName`, `amount`, `newAmount`, `oldAmount`, `paymentMode`, `changes`); `cancel_payment` (`clientName`, `amount`, `paymentId`, `reason`); `query_accounts` (cash custody & counter balance).
 - **Expenses**: `record_expense` (`amount` [required], `category`: `"Loading / Labor" | "Fuel / Transport" | "Maintenance" | "Food & Refreshments" | "Staff Advance" | "Miscellaneous"`, `note`, `accountId`: `'counter' | 'bank' | 'nilesh' | 'hiteshbhai'`, `paymentMode`); `edit_expense` (`amount`, `newAmount`, `oldAmount`, `category`, `accountId`, `note`, `date`, `changes`); `cancel_expense` (`amount`, `category`, `accountId`, `reason`); `query_expenses` (`dateFilter`: `'today' | 'yesterday' | 'month'`, `category`, `accountId`).
 - **Transfers**: `record_transfer` (cash handover driver to counter/bank: `fromAccountId`, `toAccountId`, `amount`, `notes`, `date`); `cancel_transfer` (`amount`, `fromAccountId`, `toAccountId`, `reason`).
 - **Stock**: `query_stock` (live warehouse check); `add_stock` (factory inward: `sku`, `qty`, `narration`); `record_stock_damage` (`sku`, `qty`, `reason`).
 - **Leads & Greetings**: `query_leads` (`area`, `business_type`); `discover_leads` (`corridor`); `convert_lead` (`leadName`, `rate`, `mobile`, `address`, `notes`); `query_celebrations` (`period`: `'today' | 'upcoming' | 'month'`); `send_celebration_wish` (`contactName`, `type`: `'birthday' | 'anniversary' | 'festival'`, `customMessage`).
-- **Staff & Errands**: `send_client_message` (`clientName`, `phone`, `message`, `channel`, `recipients`: `[{ name, phone }]`); `staff_reminder` (`staffName`: `'Nilesh' | 'Hiteshbhai'`, `message`); `query_tasks` (`staffName`); `query_staff_balance` (`staffName`: `'Nilesh' | 'Hiteshbhai' | 'all'`).
+- **Staff & Errands**: `send_client_message` (`clientName`, `phone`, `message`, `channel`, `recipients`: `[{ name, phone }]`); `staff_reminder` (`staffName`, `message`, `phone`, `channel`, `dueDate`); `query_tasks` (`staffName`); `query_staff_balance` (`staffName`).
 - **Compound Multi-Entity**: `create_client_and_order` (onboards client & books order: `client`: `{ name, mobile, address, location, rate }`, `order`: `{ sku, qty, rate, deliveryDate, deliveryTime, location, mapLink, notes }`). Strictly registers client and books order; NEVER records payments. Financial mutations are decoupled and handled via `receive_payment`.
 
 ## 4. Vision OCR Document Schemas

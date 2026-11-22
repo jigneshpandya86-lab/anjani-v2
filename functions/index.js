@@ -2822,14 +2822,30 @@ ${rawText.slice(0, 3000)}`
         },
         {
           name: 'staff_reminder',
-          description: 'Assigns an operational delivery task, route errand, or empty jar collection to internal delivery staff (Nilesh or Hiteshbhai). NEVER use for external customers.',
+          description: 'Assigns an operational delivery task, route errand, empty jar collection, or SMS/WhatsApp reminder to an internal staff member or driver. NEVER use for external customers.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              staffName: { type: 'STRING', enum: ['Nilesh', 'Hiteshbhai', 'all'], description: 'Staff driver name' },
-              message: { type: 'STRING', description: 'Task description in Gujarati or English' }
+              staffName: { type: 'STRING', description: 'Staff member name (e.g. Nilesh, Hiteshbhai, or any staff from staffList)' },
+              message: { type: 'STRING', description: 'Task description, errand, or alert text' },
+              phone: { type: 'STRING', description: 'Staff 10-digit mobile number if known or visible' },
+              channel: { type: 'STRING', enum: ['sms', 'whatsapp', 'auto'], description: 'Delivery channel (defaults to "auto")' },
+              dueDate: { type: 'STRING', description: 'Due date in YYYY-MM-DD or relative like today' }
             },
             required: ['staffName', 'message']
+          }
+        },
+        {
+          name: 'send_roster',
+          description: 'Prepares and shares the delivery dispatch roster/plan (today or specified date) with order list, quantities, amounts, customer addresses, and Google Maps links to share with delivery staff/drivers via WhatsApp or SMS (e.g. "Send roster to Nilesh", "Send today delivery roster", "Dispatch plan driver ko bhejo", "Roster WhatsApp karo").',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              targetDate: { type: 'STRING', description: 'Target date in YYYY-MM-DD format, or "today" / "tomorrow" (defaults to today)' },
+              staffName: { type: 'STRING', description: 'Optional name of the delivery staff/driver (e.g. Nilesh, Hiteshbhai)' },
+              phone: { type: 'STRING', description: 'Staff mobile number if known or visible' },
+              channel: { type: 'STRING', enum: ['whatsapp', 'sms', 'auto'], description: 'Share channel (defaults to "whatsapp")' }
+            }
           }
         },
         {
@@ -3281,12 +3297,13 @@ ${rawText.slice(0, 3000)}`
         {
           name: 'generate_invoice',
           description:
-            'Generates or triggers a customer delivery invoice to view or share on WhatsApp (e.g. "Create invoice for Maruti Caterers", "Send bill to Bhaveshbhai", "Bill WhatsApp karo", "Generate invoice for today delivery").',
+            'Generates or triggers a customer delivery invoice PDF to view, download, or share on WhatsApp or SMS (e.g. "Create invoice for Maruti Caterers", "Send invoice pdf to Bhaveshbhai", "Bill WhatsApp karo", "Generate invoice for today delivery").',
           parameters: {
             type: 'OBJECT',
             properties: {
               clientName: { type: 'STRING', description: 'Customer or shop name' },
-              channel: { type: 'STRING', enum: ['whatsapp', 'view'], description: 'Share channel (defaults to "whatsapp")' },
+              phone: { type: 'STRING', description: 'Customer 10-digit mobile number if known or visible' },
+              channel: { type: 'STRING', enum: ['whatsapp', 'pdf', 'sms', 'view'], description: 'Share channel (defaults to "whatsapp")' },
             },
             required: ['clientName'],
           },
@@ -3294,12 +3311,14 @@ ${rawText.slice(0, 3000)}`
         {
           name: 'generate_statement',
           description:
-            'Generates or exports a customer financial ledger statement report (e.g. "Show account statement for Maruti Caterers", "Send ledger to Kamleshbhai", "Generate statement PDF").',
+            'Generates or exports a customer financial ledger statement PDF to view, download, or share on WhatsApp (e.g. "Show account statement for Maruti Caterers", "Send ledger to Kamleshbhai", "Generate statement PDF", "Statement WhatsApp karo").',
           parameters: {
             type: 'OBJECT',
             properties: {
               clientName: { type: 'STRING', description: 'Customer or shop name' },
+              phone: { type: 'STRING', description: 'Customer 10-digit mobile number if known or visible' },
               dateRange: { type: 'STRING', enum: ['current-month', 'last-month', 'financial-year', 'all'], description: 'Statement period (defaults to "current-month")' },
+              channel: { type: 'STRING', enum: ['whatsapp', 'pdf', 'view'], description: 'Share channel (defaults to "whatsapp")' },
             },
             required: ['clientName'],
           },
@@ -3311,7 +3330,7 @@ ${rawText.slice(0, 3000)}`
           parameters: {
             type: 'OBJECT',
             properties: {
-              staffName: { type: 'STRING', enum: ['Nilesh', 'Hiteshbhai', 'all'], description: 'Driver staff name (defaults to "all")' },
+              staffName: { type: 'STRING', description: 'Driver or staff name (e.g. Nilesh, Hiteshbhai, or "all")' },
             },
           },
         }
@@ -3743,6 +3762,35 @@ RUNTIME CONTEXT:
           }
         }
 
+        if (returnType === 'send_roster') {
+          return {
+            type: 'send_roster',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              targetDate: args.targetDate || istToday,
+              staffName: args.staffName || '',
+              phone: args.phone || '',
+              channel: args.channel || 'whatsapp',
+            },
+          }
+        }
+
+        if (returnType === 'staff_reminder') {
+          return {
+            type: 'staff_reminder',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              staffName: args.staffName || '',
+              message: args.message || '',
+              phone: args.phone || '',
+              channel: args.channel || 'auto',
+              dueDate: args.dueDate || istToday,
+            },
+          }
+        }
+
         if (returnType === 'generate_invoice') {
           return {
             type: 'generate_invoice',
@@ -3750,6 +3798,7 @@ RUNTIME CONTEXT:
             text: textPart?.text || '',
             data: {
               clientName: args.clientName || '',
+              phone: args.phone || '',
               channel: args.channel || 'whatsapp',
             },
           }
@@ -3762,7 +3811,9 @@ RUNTIME CONTEXT:
             text: textPart?.text || '',
             data: {
               clientName: args.clientName || '',
+              phone: args.phone || '',
               dateRange: args.dateRange || 'current-month',
+              channel: args.channel || 'whatsapp',
             },
           }
         }

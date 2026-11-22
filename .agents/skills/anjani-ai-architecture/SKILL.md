@@ -142,3 +142,19 @@ When adding or improving AI behavior:
   5. Dynamic extraction from recent chat messages (e.g. `📞 7984875717` in leads summary).
 - **Multi-Recipient Batch Messaging:** When user asks to message multiple contacts (e.g. *"Send message for google map review to first 2"*), the model provides a `recipients` array, and the UI generates dedicated 1-tap dispatch cards for each contact.
 - **Zero Fake Cards on Incomplete Queries:** When user enters generic combination phrases (*"client plus order plus payment"*, *"book order"*) without customer details or quantities, the system never synthesizes empty client or dummy order cards; it conversationally prompts for the necessary details.
+
+---
+
+## 14. Interactive Document & Operational Dispatch Engine (`generate_invoice`, `send_roster`, `generate_statement`, `staff_reminder`)
+- **Delivery Invoice PDF & Dispatch (`generate_invoice`):**
+  - Generates itemized delivery invoice with vector QR payment code, SKU details, and rates.
+  - Interactive card provides 1-tap **PDF** (via `shareOrDownloadPdf` using native Web Share or desktop download), 1-tap **WhatsApp Invoice** directly to the customer's phone, and 1-tap **SMS Invoice**.
+- **Delivery Dispatch Roster (`send_roster`):**
+  - Compiles scheduled stops, total cartons/boxes, delivery addresses, customer phones, and Google Maps links for today or a target date.
+  - Interactive card provides 1-tap **WhatsApp Roster** to driver, 1-tap **SMS Roster**, and 1-tap **Copy Roster**.
+- **Customer Ledger Statement PDF (`generate_statement`):**
+  - Generates official multi-page customer statement with opening balance, order debits, payment credits, and running balance.
+  - Interactive card provides 1-tap **Statement PDF** download and 1-tap **WhatsApp Statement**.
+- **Dynamic Staff Reminders & Tasks (`staff_reminder`):**
+  - Assigns route tasks, collection errands, or reminders to any staff member in `staffList`.
+  - Zero hardwiring: staff phone numbers resolved dynamically; interactive cards offer 1-tap WhatsApp and 1-tap SMS with daytime boundary protection.

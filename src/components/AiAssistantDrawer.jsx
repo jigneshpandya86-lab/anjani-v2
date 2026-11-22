@@ -69,6 +69,11 @@ import {
   recordTaskFollowUpHistory,
 } from '../services/taskService'
 import { sendBackgroundSms, normalizeIndianPhone } from '../services/leadSmsService'
+import {
+  buildSimpleInvoicePdfFile,
+  buildLedgerPdf,
+  shareOrDownloadPdf,
+} from '../utils/pdf'
 
 export const SPEECH_LANGUAGES = [
   { code: 'en-IN', label: 'English', short: 'EN', hint: 'English (India)' },
@@ -182,6 +187,9 @@ export default function AiAssistantDrawer({
   const [editingReminderTexts, setEditingReminderTexts] = useState({})
   const [editingReminderIds, setEditingReminderIds] = useState({})
   const [sentClientMessages, setSentClientMessages] = useState({})
+  const [sentInvoices, setSentInvoices] = useState({})
+  const [sentRosters, setSentRosters] = useState({})
+  const [sentStatements, setSentStatements] = useState({})
 
   const [messages, setMessages] = useState([])
 
@@ -1159,6 +1167,204 @@ export default function AiAssistantDrawer({
     if (typeof chip.action === 'string' && chip.action.startsWith('share_invoice:')) {
       const cli = chip.action.slice('share_invoice:'.length)
       handleSend(`Send bill to ${cli}`)
+      return
+    }
+    if (chip.action === 'download_invoice_pdf') {
+      let invMsg = null
+      if (Array.isArray(messages)) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].type === 'invoice_ready' && messages[i].data) {
+            invMsg = messages[i]
+            break
+          }
+        }
+      }
+      if (invMsg?.data) {
+        try {
+          const file = buildSimpleInvoicePdfFile({
+            order: invMsg.data.order || {},
+            clientName: invMsg.data.clientName || 'Valued Customer',
+            mobile: invMsg.data.clientMobile || '',
+            paymentSettings: aiSettings?.paymentSettings,
+          })
+          shareOrDownloadPdf(file, `Invoice - ${invMsg.data.clientName}`)
+          toast.success(`Invoice PDF ready for ${invMsg.data.clientName}!`, { icon: '📄' })
+        } catch (err) {
+          toast.error('Failed to generate invoice PDF: ' + err.message)
+        }
+      }
+      return
+    }
+    if (chip.action === 'whatsapp_invoice') {
+      let invMsg = null
+      if (Array.isArray(messages)) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].type === 'invoice_ready' && messages[i].data) {
+            invMsg = messages[i]
+            break
+          }
+        }
+      }
+      if (invMsg?.data) {
+        const cleanPhone = normalizeIndianPhone(invMsg.data.clientMobile)
+        const amountStr = Number(invMsg.data.totalAmount || invMsg.data.order?.totalAmount || 0).toLocaleString('en-IN')
+        const itemsText = Array.isArray(invMsg.data.items)
+          ? invMsg.data.items.map((it) => `${it.qty || 1} × ${it.sku || 'Anjani 200ml'}`).join(', ')
+          : `${invMsg.data.order?.qty || 10} × ${invMsg.data.order?.sku || 'Anjani 200ml'}`
+        const billMsg = `📄 *DELIVERY INVOICE - ANJANI WATER*\n*Bill To:* ${invMsg.data.clientName}\n*Date:* ${invMsg.data.order?.deliveryDate || invMsg.data.order?.date || 'Today'}\n*Items:* ${itemsText}\n*Total Amount:* ₹${amountStr}\n\n*Payment UPI:* anjaniwater@okicici\nThank you for choosing Anjani Water!`
+        const targetUrl = cleanPhone
+          ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(billMsg)}`
+          : `https://wa.me/?text=${encodeURIComponent(billMsg)}`
+        window.open(targetUrl, '_blank')
+        setSentInvoices((prev) => ({ ...prev, [invMsg.id]: true }))
+        toast.success(`WhatsApp invoice opened for ${invMsg.data.clientName}!`, { icon: '💬' })
+      }
+      return
+    }
+    if (chip.action === 'sms_invoice') {
+      let invMsg = null
+      if (Array.isArray(messages)) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].type === 'invoice_ready' && messages[i].data) {
+            invMsg = messages[i]
+            break
+          }
+        }
+      }
+      if (invMsg?.data) {
+        const cleanPhone = normalizeIndianPhone(invMsg.data.clientMobile)
+        if (!cleanPhone) {
+          toast.error('No mobile number saved for ' + invMsg.data.clientName)
+          return
+        }
+        const amountStr = Number(invMsg.data.totalAmount || invMsg.data.order?.totalAmount || 0).toLocaleString('en-IN')
+        const itemsText = Array.isArray(invMsg.data.items)
+          ? invMsg.data.items.map((it) => `${it.qty || 1} × ${it.sku || 'Anjani 200ml'}`).join(', ')
+          : `${invMsg.data.order?.qty || 10} × ${invMsg.data.order?.sku || 'Anjani 200ml'}`
+        const smsMsg = `Anjani Water Invoice: ${invMsg.data.clientName}, Amount: Rs.${amountStr} for ${itemsText}. Pay via UPI: anjaniwater@okicici. Thank you!`
+        sendBackgroundSms({ phone: cleanPhone, message: smsMsg })
+          .then(() => {
+            setSentInvoices((prev) => ({ ...prev, [invMsg.id]: true }))
+            toast.success(`Invoice SMS sent to ${invMsg.data.clientName}!`, { icon: '📲' })
+          })
+          .catch((err) => toast.error('Failed to send invoice SMS: ' + err.message))
+      }
+      return
+    }
+    if (chip.action === 'download_statement_pdf') {
+      let stmtMsg = null
+      if (Array.isArray(messages)) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].type === 'statement_ready' && messages[i].data) {
+            stmtMsg = messages[i]
+            break
+          }
+        }
+      }
+      if (stmtMsg?.data) {
+        try {
+          const clientOrders = (orders || []).filter((o) => (o.clientId === stmtMsg.data.clientId) || (o.clientName || '').toLowerCase().includes((stmtMsg.data.clientName || '').toLowerCase()))
+          const file = buildLedgerPdf({
+            clientName: stmtMsg.data.clientName,
+            clientMobile: stmtMsg.data.clientMobile || '',
+            clientAddress: stmtMsg.data.clientAddress || '',
+            clientId: stmtMsg.data.clientId || '',
+            dateRangeLabel: stmtMsg.data.dateRange || 'Current Month',
+            txns: clientOrders,
+            openingBalance: 0,
+            paymentSettings: aiSettings?.paymentSettings,
+            filename: `statement_${stmtMsg.data.clientName.replace(/\s+/g, '_')}.pdf`,
+          })
+          shareOrDownloadPdf(file, `Statement - ${stmtMsg.data.clientName}`)
+          toast.success(`Statement PDF ready for ${stmtMsg.data.clientName}!`, { icon: '📊' })
+        } catch (err) {
+          toast.error('Failed to generate statement PDF: ' + err.message)
+        }
+      }
+      return
+    }
+    if (chip.action === 'whatsapp_statement') {
+      let stmtMsg = null
+      if (Array.isArray(messages)) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].type === 'statement_ready' && messages[i].data) {
+            stmtMsg = messages[i]
+            break
+          }
+        }
+      }
+      if (stmtMsg?.data) {
+        const cleanPhone = normalizeIndianPhone(stmtMsg.data.clientMobile)
+        const duesStr = Number(stmtMsg.data.dues || 0).toLocaleString('en-IN')
+        const stmtText = `📊 *ACCOUNT STATEMENT - ANJANI WATER*\n*Customer:* ${stmtMsg.data.clientName}\n*Period:* ${stmtMsg.data.dateRange || 'Current Month'}\n*Current Balance Due:* ₹${duesStr}\n\n*Payment UPI:* anjaniwater@okicici\nThank you for your prompt clearance!`
+        const targetUrl = cleanPhone
+          ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(stmtText)}`
+          : `https://wa.me/?text=${encodeURIComponent(stmtText)}`
+        window.open(targetUrl, '_blank')
+        toast.success(`WhatsApp statement opened for ${stmtMsg.data.clientName}!`, { icon: '💬' })
+      }
+      return
+    }
+    if (chip.action === 'whatsapp_roster') {
+      let rMsg = null
+      if (Array.isArray(messages)) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].type === 'dispatch_roster' && messages[i].data) {
+            rMsg = messages[i]
+            break
+          }
+        }
+      }
+      if (rMsg?.data) {
+        const cleanStaffPhone = normalizeIndianPhone(rMsg.data.staffPhone)
+        const targetUrl = cleanStaffPhone
+          ? `https://api.whatsapp.com/send?phone=${cleanStaffPhone}&text=${encodeURIComponent(rMsg.data.rosterText || '')}`
+          : `https://wa.me/?text=${encodeURIComponent(rMsg.data.rosterText || '')}`
+        window.open(targetUrl, '_blank')
+        setSentRosters((prev) => ({ ...prev, [rMsg.id]: true }))
+        toast.success('WhatsApp roster opened!', { icon: '🚚' })
+      }
+      return
+    }
+    if (chip.action === 'sms_roster') {
+      let rMsg = null
+      if (Array.isArray(messages)) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].type === 'dispatch_roster' && messages[i].data) {
+            rMsg = messages[i]
+            break
+          }
+        }
+      }
+      if (rMsg?.data) {
+        const cleanStaffPhone = normalizeIndianPhone(rMsg.data.staffPhone)
+        if (!cleanStaffPhone) {
+          toast.error('No mobile number saved for ' + (rMsg.data.staffName || 'driver'))
+          return
+        }
+        sendBackgroundSms({ phone: cleanStaffPhone, message: rMsg.data.rosterText?.slice(0, 480) || '' })
+          .then(() => {
+            setSentRosters((prev) => ({ ...prev, [rMsg.id]: true }))
+            toast.success('Roster sent via SMS to ' + (rMsg.data.staffName || 'driver') + '!', { icon: '📲' })
+          })
+          .catch((err) => toast.error('Failed to send SMS: ' + err.message))
+      }
+      return
+    }
+    if (chip.action === 'copy_roster') {
+      let rMsg = null
+      if (Array.isArray(messages)) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].type === 'dispatch_roster' && messages[i].data) {
+            rMsg = messages[i]
+            break
+          }
+        }
+      }
+      if (rMsg?.data?.rosterText && navigator?.clipboard?.writeText) {
+        navigator.clipboard.writeText(rMsg.data.rosterText)
+        toast.success('Roster copied to clipboard!', { icon: '📋' })
+      }
       return
     }
     if (typeof chip.action === 'string' && chip.action.startsWith('open_ledger:')) {
@@ -3643,34 +3849,65 @@ export default function AiAssistantDrawer({
           toast.error('Failed to prepare celebration greeting: ' + err.message)
         }
       } else if (resData.type === 'generate_invoice') {
-        const { clientName } = resData.data || {}
-        const client = findMatchingClient(clientName, clients)
-        const nameToUse = client?.name || clientName || 'Customer'
+        const { clientName, phone } = resData.data || {}
+        const clientMatch = findMatchingClient(clientName, clients)
+        const client = clientMatch?.client || clientMatch
+        const nameToUse = client?.name || client?.displayName || clientName || 'Customer'
+        const rawPhone = phone || client?.mobile || client?.phone || ''
+        const resolvedPhone = rawPhone ? String(rawPhone).replace(/\D/g, '').slice(-10) : ''
         const clientOrders = (orders || []).filter((o) =>
           (o.clientName || o.name || '').toLowerCase().includes(nameToUse.toLowerCase())
         )
         const latestOrder = clientOrders[0] || null
-        const total = latestOrder ? Number(latestOrder.totalAmount || 0) : 0
-        const items = latestOrder?.items || [{ sku: 'Anjani 200ml', qty: latestOrder?.qty || 10, rate: 130 }]
+        const orderData = latestOrder || {
+          id: 'inv-' + Date.now().toString().slice(-6),
+          orderId: 'INV-' + Date.now().toString().slice(-4),
+          clientName: nameToUse,
+          clientId: client?.id || '',
+          date: new Date().toISOString().slice(0, 10),
+          deliveryDate: new Date().toISOString().slice(0, 10),
+          qty: 10,
+          sku: 'Anjani 200ml',
+          rate: Number(client?.agreedRate || client?.rate || 130),
+          totalAmount: (Number(client?.agreedRate || client?.rate || 130)) * 10,
+          items: [{ sku: 'Anjani 200ml', qty: 10, rate: Number(client?.agreedRate || client?.rate || 130) }],
+          address: client?.address || '',
+          location: client?.location || '',
+          mobile: resolvedPhone,
+        }
+        const total = Number(orderData.totalAmount || 0)
+        const items = orderData.items || [{ sku: 'Anjani 200ml', qty: orderData.qty || 10, rate: 130 }]
 
         setMessages((prev) => [
           ...prev,
           {
             id: 'asst-' + Date.now(),
             sender: 'assistant',
-            text: `📄 **Delivery Invoice Ready for ${nameToUse}**:\n• Order Date: **${latestOrder?.deliveryDate || 'Today'}**\n• Amount: **₹${total > 0 ? total.toLocaleString('en-IN') : 'Standard Rates'}**\n• Items: ${items.map((it) => `${it.qty} ${it.sku || 'Box'}`).join(', ')}\n\nTap below to share or preview invoice:`,
+            text: '',
             type: 'invoice_ready',
+            data: {
+              order: orderData,
+              clientName: nameToUse,
+              clientMobile: resolvedPhone,
+              totalAmount: total,
+              items,
+            },
             chips: [
-              { label: `Share Invoice WhatsApp`, action: `share_invoice:${nameToUse}` },
+              { label: 'Download PDF', action: 'download_invoice_pdf' },
+              { label: 'WhatsApp Invoice', action: 'whatsapp_invoice' },
+              { label: 'SMS Invoice', action: 'sms_invoice' },
               { label: 'View Orders', action: 'view_orders' },
             ],
             timestamp: new Date(),
           },
         ])
       } else if (resData.type === 'generate_statement') {
-        const { clientName, dateRange } = resData.data || {}
-        const client = findMatchingClient(clientName, clients)
-        const nameToUse = client?.name || clientName || 'Customer'
+        const { clientName, dateRange, phone } = resData.data || {}
+        const clientMatch = findMatchingClient(clientName, clients)
+        const client = clientMatch?.client || clientMatch
+        const nameToUse = client?.name || client?.displayName || clientName || 'Customer'
+        const rawPhone = phone || client?.mobile || client?.phone || ''
+        const resolvedPhone = rawPhone ? String(rawPhone).replace(/\D/g, '').slice(-10) : ''
         const dues = Number(client?.outstanding || 0)
 
         setMessages((prev) => [
@@ -3678,18 +3915,124 @@ export default function AiAssistantDrawer({
           {
             id: 'asst-' + Date.now(),
             sender: 'assistant',
-            text: `📊 **Account Ledger Statement: ${nameToUse}**:\n• Current Outstanding Balance: **₹${dues.toLocaleString('en-IN')}**\n• Period: **${dateRange || 'Current Month'}**\n• Phone: **${client?.mobile || 'N/A'}**\n\nTap below to open full ledger report:`,
+            text: '',
             type: 'statement_ready',
+            data: {
+              clientName: nameToUse,
+              clientId: client?.id || '',
+              clientMobile: resolvedPhone,
+              clientAddress: client?.address || '',
+              dues,
+              dateRange: dateRange || 'Current Month',
+            },
             chips: [
-              { label: `Open Ledger Statement`, action: `open_ledger:${client?.id || nameToUse}` },
+              { label: 'Download Statement PDF', action: 'download_statement_pdf' },
+              { label: 'WhatsApp Statement', action: 'whatsapp_statement' },
+              { label: 'Open Ledger', action: `open_ledger:${client?.id || nameToUse}` },
               { label: 'View Clients', action: 'view_clients' },
+            ],
+            timestamp: new Date(),
+          },
+        ])
+      } else if (resData.type === 'send_roster') {
+        const { targetDate, staffName } = resData.data || {}
+        const todayStr = new Date().toISOString().slice(0, 10)
+        const effectiveDate = targetDate === 'tomorrow'
+          ? new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+          : (targetDate === 'today' || !targetDate ? todayStr : targetDate)
+
+        const activeOrders = (orders || []).filter((o) => {
+          const s = (o.status || '').toLowerCase()
+          if (s === 'cancelled' || s === 'delivered' || o.isCancelled === true) return false
+          const oDate = o.deliveryDate || o.date || ''
+          return oDate === effectiveDate || (!oDate && effectiveDate === todayStr)
+        })
+
+        let totalBoxes = 0
+        let grandTotalAmount = 0
+        activeOrders.forEach((o) => {
+          const items = Array.isArray(o.items) && o.items.length > 0
+            ? o.items
+            : [{ sku: o.sku || '200ml', qty: o.qty || 0, rate: o.rate || 0 }]
+          const orderQty = items.reduce((sum, it) => sum + (Number(it.qty) || 0), 0)
+          const orderAmount = typeof o.totalAmount === 'number' && o.totalAmount > 0
+            ? o.totalAmount
+            : items.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0)
+          totalBoxes += orderQty
+          grandTotalAmount += orderAmount
+        })
+
+        // Dynamically resolve staff from staffList
+        const qStaff = (staffName || '').toLowerCase().trim()
+        const matchedStaff = qStaff && qStaff !== 'all'
+          ? (staffList || []).find((s) => (s.name || '').toLowerCase().includes(qStaff) || (s.id || '').toLowerCase().includes(qStaff))
+          : null
+        const staffPhone = resData.data?.phone
+          ? String(resData.data.phone).replace(/\D/g, '').slice(-10)
+          : (matchedStaff?.mobile ? String(matchedStaff.mobile).replace(/\D/g, '').slice(-10) : '')
+        const finalStaffName = matchedStaff?.name || (qStaff && qStaff !== 'all' ? staffName : '')
+
+        const separator = '━━━━━━━━━━━━━━━━━━━━'
+        let rosterText = `📋 *DELIVERY DISPATCH PLAN (${effectiveDate})*\n`
+        rosterText += `📦 Deliveries: ${activeOrders.length} | Boxes: ${totalBoxes} | Total: ₹${grandTotalAmount.toLocaleString('en-IN')}\n\n`
+        rosterText += `${separator}\n`
+
+        activeOrders.forEach((o, i) => {
+          const cName = o.clientName || o.name || 'Customer'
+          const cMobile = o.mobile || o.phone || 'N/A'
+          const cAddr = o.address || o.location || 'Address not specified'
+          const mapsUrl = o.mapLink || o.mapsUrl || ''
+          const items = Array.isArray(o.items) && o.items.length > 0
+            ? o.items
+            : [{ sku: o.sku || '200ml', qty: o.qty || 0, rate: o.rate || 0 }]
+          const itemsSummary = items.map((it) => `${it.qty} × ${it.sku || 'Anjani 200ml'}`).join(', ')
+          const orderAmount = typeof o.totalAmount === 'number' && o.totalAmount > 0
+            ? o.totalAmount
+            : items.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0)
+          const timeStr = o.time || o.deliveryTime || '11 AM'
+
+          rosterText += `${i + 1}. *${cName}*\n`
+          rosterText += `📱 *Mobile:* ${cMobile}\n`
+          rosterText += `📦 *Items:* ${itemsSummary}\n`
+          rosterText += `💰 *Amount:* ₹${orderAmount.toLocaleString('en-IN')}\n`
+          rosterText += `🕒 *Time:* ${timeStr}\n`
+          rosterText += `📍 *Address:* ${cAddr}\n`
+          if (mapsUrl) {
+            rosterText += `🗺️ *Map:* ${mapsUrl}\n`
+          }
+          rosterText += `${separator}\n`
+        })
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: '',
+            type: 'dispatch_roster',
+            data: {
+              targetDate: effectiveDate,
+              orders: activeOrders,
+              totalBoxes,
+              totalAmount: grandTotalAmount,
+              staffName: finalStaffName,
+              staffPhone,
+              rosterText,
+            },
+            chips: [
+              { label: 'WhatsApp Roster', action: 'whatsapp_roster' },
+              { label: 'SMS Roster', action: 'sms_roster' },
+              { label: 'Copy Roster', action: 'copy_roster' },
+              { label: 'View Orders', action: 'view_orders' },
             ],
             timestamp: new Date(),
           },
         ])
       } else if (resData.type === 'query_staff_balance') {
         const { staffName } = resData.data || {}
-        const staffToCheck = staffName && staffName.toLowerCase() !== 'all' ? [staffName.toLowerCase()] : ['nilesh', 'hiteshbhai']
+        const staffToCheck = staffName && staffName.toLowerCase() !== 'all'
+          ? [staffName.toLowerCase()]
+          : ((staffList && staffList.length > 0) ? staffList.map((s) => s.id) : ['nilesh', 'hiteshbhai'])
         const lines = []
         for (const sId of staffToCheck) {
           const custody = Number(accountsSummary?.[sId] || 0)
@@ -3697,7 +4040,7 @@ export default function AiAssistantDrawer({
             (tx) => tx.employeeId === sId && (tx.status === 'active' || !tx.status)
           )
           const totalAdv = staffAdvs.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0)
-          const sLabel = sId === 'nilesh' ? 'Nilesh' : sId === 'hiteshbhai' ? 'Hiteshbhai' : sId
+          const sLabel = (staffList || []).find((s) => s.id === sId || (s.name || '').toLowerCase() === sId)?.name || sId
           lines.push(
             `👤 **${sLabel}**:\n  • Route Cash Custody: **₹${custody.toLocaleString('en-IN')}**\n  • Active Salary Advance: **₹${totalAdv.toLocaleString('en-IN')}**`
           )
@@ -7484,6 +7827,328 @@ export default function AiAssistantDrawer({
                     )}
                   </div>
                 )}
+
+                {/* 8. Interactive Delivery Invoice PDF Card */}
+                {msg.type === 'invoice_ready' && msg.data && (() => {
+                  const invData = msg.data
+                  const cleanPhone = normalizeIndianPhone(invData.clientMobile)
+                  const displayPhone =
+                    cleanPhone && cleanPhone.length === 12 && cleanPhone.startsWith('91')
+                      ? `+91 ${cleanPhone.slice(2)}`
+                      : cleanPhone
+                  const isSent = Boolean(sentInvoices[msg.id])
+                  const itemsText = Array.isArray(invData.items)
+                    ? invData.items.map((it) => `${it.qty || 1} × ${it.sku || 'Anjani 200ml'}`).join(', ')
+                    : `${invData.order?.qty || 10} × ${invData.order?.sku || 'Anjani 200ml'}`
+
+                  const handleDownloadPdf = async () => {
+                    try {
+                      const file = buildSimpleInvoicePdfFile({
+                        order: invData.order || {},
+                        clientName: invData.clientName || 'Valued Customer',
+                        mobile: invData.clientMobile || '',
+                        paymentSettings: aiSettings?.paymentSettings,
+                      })
+                      await shareOrDownloadPdf(file, `Invoice - ${invData.clientName}`)
+                      toast.success(`Invoice PDF ready for ${invData.clientName}!`, { icon: '📄' })
+                    } catch (err) {
+                      toast.error('Failed to generate PDF: ' + err.message)
+                    }
+                  }
+
+                  const handleWhatsAppInvoice = () => {
+                    const amountStr = Number(invData.totalAmount || invData.order?.totalAmount || 0).toLocaleString('en-IN')
+                    const billMsg = `📄 *DELIVERY INVOICE - ANJANI WATER*\n*Bill To:* ${invData.clientName}\n*Date:* ${invData.order?.deliveryDate || invData.order?.date || 'Today'}\n*Items:* ${itemsText}\n*Total Amount:* ₹${amountStr}\n\n*Payment UPI:* anjaniwater@okicici\nThank you for choosing Anjani Water!`
+                    const targetUrl = cleanPhone
+                      ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(billMsg)}`
+                      : `https://wa.me/?text=${encodeURIComponent(billMsg)}`
+                    window.open(targetUrl, '_blank')
+                    setSentInvoices((prev) => ({ ...prev, [msg.id]: true }))
+                    toast.success(`WhatsApp invoice opened for ${invData.clientName}!`, { icon: '💬' })
+                  }
+
+                  const handleSmsInvoice = async () => {
+                    if (!cleanPhone) {
+                      toast.error('No phone number saved for ' + invData.clientName)
+                      return
+                    }
+                    const amountStr = Number(invData.totalAmount || invData.order?.totalAmount || 0).toLocaleString('en-IN')
+                    const smsMsg = `Anjani Water Invoice: ${invData.clientName}, Amount: Rs.${amountStr} for ${itemsText}. Pay via UPI: anjaniwater@okicici. Thank you!`
+                    try {
+                      await sendBackgroundSms({ phone: cleanPhone, message: smsMsg })
+                      setSentInvoices((prev) => ({ ...prev, [msg.id]: true }))
+                      toast.success(`Invoice SMS sent to ${invData.clientName}!`, { icon: '📲' })
+                    } catch (err) {
+                      toast.error('Failed to send invoice SMS: ' + err.message)
+                    }
+                  }
+
+                  return (
+                    <div className="mt-2 bg-white border border-emerald-200 hover:border-emerald-400 rounded-xl p-2.5 space-y-1.5 text-xs text-gray-800 shadow-2xs transition-all">
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="shrink-0 px-2 py-0.5 rounded text-[11px] font-black uppercase bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                            <FileText className="w-3 h-3 text-emerald-600" />
+                            {invData.clientName}
+                          </span>
+                          <span className="shrink-0 text-[11px] text-gray-500 font-medium">
+                            {displayPhone || 'No phone'}
+                          </span>
+                        </div>
+                        <span className="shrink-0 text-[11px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          ₹{Number(invData.totalAmount || invData.order?.totalAmount || 0).toLocaleString('en-IN')}
+                        </span>
+                      </div>
+
+                      <div className="p-1.5 bg-gray-50 rounded-lg text-gray-700 font-medium text-[11px] space-y-0.5 border border-gray-100">
+                        <div className="truncate">📦 <span className="font-semibold text-gray-900">{itemsText}</span></div>
+                        <div className="text-gray-500 text-[10px]">📅 Date: {invData.order?.deliveryDate || invData.order?.date || 'Today'} • Ref: {invData.order?.orderId || invData.order?.id || 'Direct'}</div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-1.5 pt-1">
+                        <button
+                          type="button"
+                          aria-label="Download Invoice PDF"
+                          title="Download official PDF invoice"
+                          onClick={handleDownloadPdf}
+                          className="h-7 px-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white flex items-center gap-1 text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>PDF</span>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="WhatsApp Invoice"
+                          title="Send bill on WhatsApp"
+                          onClick={handleWhatsAppInvoice}
+                          className="h-7 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          <span>WhatsApp</span>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="SMS Invoice"
+                          title="Send SMS bill"
+                          onClick={handleSmsInvoice}
+                          className="h-7 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>SMS</span>
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* 9. Interactive Driver Delivery Dispatch Roster Card */}
+                {msg.type === 'dispatch_roster' && msg.data && (() => {
+                  const rData = msg.data
+                  const cleanStaffPhone = normalizeIndianPhone(rData.staffPhone)
+                  const displayStaffPhone =
+                    cleanStaffPhone && cleanStaffPhone.length === 12 && cleanStaffPhone.startsWith('91')
+                      ? `+91 ${cleanStaffPhone.slice(2)}`
+                      : cleanStaffPhone
+                  const isSent = Boolean(sentRosters[msg.id])
+
+                  const handleWhatsAppRoster = () => {
+                    const targetUrl = cleanStaffPhone
+                      ? `https://api.whatsapp.com/send?phone=${cleanStaffPhone}&text=${encodeURIComponent(rData.rosterText || '')}`
+                      : `https://wa.me/?text=${encodeURIComponent(rData.rosterText || '')}`
+                    window.open(targetUrl, '_blank')
+                    setSentRosters((prev) => ({ ...prev, [msg.id]: true }))
+                    toast.success('WhatsApp roster opened!', { icon: '🚚' })
+                  }
+
+                  const handleSmsRoster = async () => {
+                    if (!cleanStaffPhone) {
+                      toast.error('No mobile number saved for ' + (rData.staffName || 'driver'))
+                      return
+                    }
+                    try {
+                      await sendBackgroundSms({ phone: cleanStaffPhone, message: rData.rosterText?.slice(0, 480) || '' })
+                      setSentRosters((prev) => ({ ...prev, [msg.id]: true }))
+                      toast.success('Roster sent via SMS to ' + (rData.staffName || 'driver') + '!', { icon: '📲' })
+                    } catch (err) {
+                      toast.error('Failed to send SMS: ' + err.message)
+                    }
+                  }
+
+                  const handleCopyRoster = () => {
+                    if (navigator?.clipboard?.writeText) {
+                      navigator.clipboard.writeText(rData.rosterText || '')
+                      toast.success('Roster copied to clipboard!', { icon: '📋' })
+                    }
+                  }
+
+                  return (
+                    <div className="mt-2 bg-white border border-teal-200 hover:border-teal-400 rounded-xl p-2.5 space-y-1.5 text-xs text-gray-800 shadow-2xs transition-all">
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="shrink-0 px-2 py-0.5 rounded text-[11px] font-black uppercase bg-teal-100 text-teal-800 flex items-center gap-1">
+                            <Truck className="w-3 h-3 text-teal-600" />
+                            Dispatch Roster ({rData.targetDate})
+                          </span>
+                          {rData.staffName && (
+                            <span className="shrink-0 text-[11px] text-teal-700 font-bold bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200">
+                              👤 {rData.staffName}
+                            </span>
+                          )}
+                        </div>
+                        <span className="shrink-0 text-[11px] font-black text-gray-700">
+                          📦 {rData.orders?.length || 0} stops ({rData.totalBoxes || 0} bxs)
+                        </span>
+                      </div>
+
+                      <div className="p-2 bg-gray-50 rounded-lg text-gray-700 text-[11px] max-h-36 overflow-y-auto space-y-1 border border-gray-100 font-mono">
+                        {Array.isArray(rData.orders) && rData.orders.length > 0 ? (
+                          rData.orders.map((o, idx) => (
+                            <div key={o.id || idx} className="border-b border-gray-200/60 pb-1 last:border-0 last:pb-0">
+                              <span className="font-bold text-gray-900">{idx + 1}. {o.clientName || o.name}</span>
+                              <span className="text-gray-500 ml-1">({o.qty || o.items?.[0]?.qty || 1} bxs)</span>
+                              <div className="text-[10px] text-gray-500 font-sans truncate">📍 {o.address || o.location || 'Vadodara'}</div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="italic text-gray-500">No scheduled deliveries found for this date.</div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-end gap-1.5 pt-1">
+                        <button
+                          type="button"
+                          aria-label="WhatsApp Roster"
+                          title="Share roster via WhatsApp"
+                          onClick={handleWhatsAppRoster}
+                          className="h-7 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          <span>WhatsApp</span>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="SMS Roster"
+                          title="Send roster via SMS"
+                          onClick={handleSmsRoster}
+                          className="h-7 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>SMS</span>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Copy Roster"
+                          title="Copy roster to clipboard"
+                          onClick={handleCopyRoster}
+                          className="h-7 px-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200 flex items-center gap-1 text-[11px] font-bold transition-colors cursor-pointer"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copy</span>
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* 10. Interactive Customer Statement PDF Card */}
+                {msg.type === 'statement_ready' && msg.data && (() => {
+                  const stmtData = msg.data
+                  const cleanPhone = normalizeIndianPhone(stmtData.clientMobile)
+                  const displayPhone =
+                    cleanPhone && cleanPhone.length === 12 && cleanPhone.startsWith('91')
+                      ? `+91 ${cleanPhone.slice(2)}`
+                      : cleanPhone
+
+                  const handleDownloadStatementPdf = async () => {
+                    try {
+                      const clientOrders = (orders || []).filter((o) => (o.clientId === stmtData.clientId) || (o.clientName || '').toLowerCase().includes((stmtData.clientName || '').toLowerCase()))
+                      const file = buildLedgerPdf({
+                        clientName: stmtData.clientName,
+                        clientMobile: stmtData.clientMobile || '',
+                        clientAddress: stmtData.clientAddress || '',
+                        clientId: stmtData.clientId || '',
+                        dateRangeLabel: stmtData.dateRange || 'Current Month',
+                        txns: clientOrders,
+                        openingBalance: 0,
+                        paymentSettings: aiSettings?.paymentSettings,
+                        filename: `statement_${stmtData.clientName.replace(/\s+/g, '_')}.pdf`,
+                      })
+                      await shareOrDownloadPdf(file, `Statement - ${stmtData.clientName}`)
+                      toast.success(`Ledger statement PDF ready for ${stmtData.clientName}!`, { icon: '📊' })
+                    } catch (err) {
+                      toast.error('Failed to generate statement PDF: ' + err.message)
+                    }
+                  }
+
+                  const handleWhatsAppStatement = () => {
+                    const duesStr = Number(stmtData.dues || 0).toLocaleString('en-IN')
+                    const stmtMsg = `📊 *ACCOUNT STATEMENT - ANJANI WATER*\n*Customer:* ${stmtData.clientName}\n*Period:* ${stmtData.dateRange || 'Current Month'}\n*Current Balance Due:* ₹${duesStr}\n\n*Payment UPI:* anjaniwater@okicici\nThank you for your prompt clearance!`
+                    const targetUrl = cleanPhone
+                      ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(stmtMsg)}`
+                      : `https://wa.me/?text=${encodeURIComponent(stmtMsg)}`
+                    window.open(targetUrl, '_blank')
+                    toast.success(`WhatsApp statement opened for ${stmtData.clientName}!`, { icon: '💬' })
+                  }
+
+                  return (
+                    <div className="mt-2 bg-white border border-indigo-200 hover:border-indigo-400 rounded-xl p-2.5 space-y-1.5 text-xs text-gray-800 shadow-2xs transition-all">
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="shrink-0 px-2 py-0.5 rounded text-[11px] font-black uppercase bg-indigo-100 text-indigo-800 flex items-center gap-1">
+                            <ClipboardList className="w-3 h-3 text-indigo-600" />
+                            {stmtData.clientName}
+                          </span>
+                          <span className="shrink-0 text-[11px] text-gray-500 font-medium">
+                            {displayPhone || 'No phone'}
+                          </span>
+                        </div>
+                        <span className="shrink-0 text-[11px] font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                          Due: ₹{Number(stmtData.dues || 0).toLocaleString('en-IN')}
+                        </span>
+                      </div>
+
+                      <div className="p-1.5 bg-gray-50 rounded-lg text-gray-700 font-medium text-[11px] space-y-0.5 border border-gray-100">
+                        <div>📊 Period: <span className="font-semibold text-gray-900">{stmtData.dateRange || 'Current Month'}</span></div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-1.5 pt-1">
+                        <button
+                          type="button"
+                          aria-label="Download Statement PDF"
+                          title="Download official statement PDF"
+                          onClick={handleDownloadStatementPdf}
+                          className="h-7 px-2.5 rounded-lg bg-indigo-700 hover:bg-indigo-800 text-white flex items-center gap-1 text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Statement PDF</span>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="WhatsApp Statement"
+                          title="Send statement via WhatsApp"
+                          onClick={handleWhatsAppStatement}
+                          className="h-7 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          <span>WhatsApp</span>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Open Full Ledger"
+                          title="Open Ledger Tab"
+                          onClick={() => {
+                            onNavigateTab?.('clients')
+                            onClose?.()
+                          }}
+                          className="h-7 px-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200 flex items-center gap-1 text-[11px] font-bold transition-colors cursor-pointer"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Ledger</span>
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* Tiny Thumbs Down Button on Assistant Output */}
                 {msg.sender === 'assistant' && (
