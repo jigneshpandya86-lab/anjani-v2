@@ -135,8 +135,8 @@ export function cleanTextForSpeech(rawText = '') {
     .replace(/https?:\/\/\S+/g, '') // remove URLs
     .replace(/[#*_~>•]/g, ' ') // remove markdown syntax and bullet dots
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // keep link label
-    .replace(/₹\s*(\d+)/g, '$1 rupees') // pronounce currency naturally
-    .replace(/Rs\.?\s*(\d+)/gi, '$1 rupees')
+    .replace(/₹\s*([\d,]+)/g, '$1 rupees') // pronounce currency naturally (supports comma-formatted amounts like 2,600)
+    .replace(/Rs\.?\s*([\d,]+)/gi, '$1 rupees')
     .replace(/\s+/g, ' ')
     .trim()
 }

@@ -207,11 +207,14 @@ export default function AiAssistantDrawer({
 
   const [messages, setMessages] = useState([])
 
-  const [isListening, setIsListening] = useState(false)
+  const [isDictating, setIsDictating] = useState(false)
   const [isLiveVoiceMode, setIsLiveVoiceMode] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
+  const [liveVoiceTranscript, setLiveVoiceTranscript] = useState('')
   const [voiceUsage, setVoiceUsage] = useState(() => getDailyVoiceUsage())
   const liveVoiceActiveRef = useRef(false)
+  const dictatingActiveRef = useRef(false)
+  const liveTranscriptRef = useRef('')
   const voiceTurnStartRef = useRef(null)
   const silenceTimerRef = useRef(null)
   const [speechLang, setSpeechLang] = useState(() => {
@@ -233,6 +236,7 @@ export default function AiAssistantDrawer({
   useEffect(() => {
     return () => {
       liveVoiceActiveRef.current = false
+      dictatingActiveRef.current = false
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current)
       }
@@ -243,13 +247,24 @@ export default function AiAssistantDrawer({
       }
       if (recognitionRef.current) {
         try {
-          recognitionRef.current.stop()
+          recognitionRef.current.abort ? recognitionRef.current.abort() : recognitionRef.current.stop()
         } catch {
           // ignore
         }
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (!isOpen) {
+      if (liveVoiceActiveRef.current) {
+        stopLiveVoiceMode()
+      }
+      if (dictatingActiveRef.current) {
+        stopDictation()
+      }
+    }
+  }, [isOpen])
 
   useEffect(() => {
     if (!showLangMenu) return
@@ -703,8 +718,8 @@ export default function AiAssistantDrawer({
         setIsSpeaking(false)
         if (liveVoiceActiveRef.current) {
           setTimeout(() => {
-            if (liveVoiceActiveRef.current && !isListening) {
-              startListening(speechLang)
+            if (liveVoiceActiveRef.current) {
+              startConversationListening(speechLang)
             }
           }, 350)
         }
@@ -713,8 +728,8 @@ export default function AiAssistantDrawer({
         setIsSpeaking(false)
         if (liveVoiceActiveRef.current) {
           setTimeout(() => {
-            if (liveVoiceActiveRef.current && !isListening) {
-              startListening(speechLang)
+            if (liveVoiceActiveRef.current) {
+              startConversationListening(speechLang)
             }
           }, 350)
         }
@@ -731,7 +746,8 @@ export default function AiAssistantDrawer({
     liveVoiceActiveRef.current = false
     setIsLiveVoiceMode(false)
     setIsSpeaking(false)
-    stopListening()
+    setLiveVoiceTranscript('')
+    liveTranscriptRef.current = ''
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current)
       silenceTimerRef.current = null
@@ -741,10 +757,21 @@ export default function AiAssistantDrawer({
         window.speechSynthesis.cancel()
       } catch {}
     }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort ? recognitionRef.current.abort() : recognitionRef.current.stop()
+      } catch {}
+      recognitionRef.current = null
+    }
   }
 
   const startLiveVoiceMode = () => {
-    const budgetCap = 10
+    // If dictation (speak-to-type) was active, stop it cleanly first
+    if (dictatingActiveRef.current) {
+      stopDictation()
+    }
+
+    const budgetCap = aiSettings?.dailyBudgetInr || aiSettings?.dailyVoiceBudgetInr || 10
     if (isVoiceBudgetExceeded(budgetCap)) {
       const alertMsg = getPlainEnglishBudgetAlert(budgetCap)
       toast.error(alertMsg, { id: 'voice-budget-alert', duration: 6000 })
@@ -763,6 +790,8 @@ export default function AiAssistantDrawer({
 
     liveVoiceActiveRef.current = true
     setIsLiveVoiceMode(true)
+    setLiveVoiceTranscript('')
+    liveTranscriptRef.current = ''
     const current = getDailyVoiceUsage(budgetCap)
     setVoiceUsage(current)
     toast.success('Live Audio Conversation Mode Active. Speak naturally!', {
@@ -770,7 +799,7 @@ export default function AiAssistantDrawer({
       id: 'live-voice-active',
       duration: 2500,
     })
-    startListening(speechLang)
+    startConversationListening(speechLang)
   }
 
   const toggleLiveVoiceMode = () => {
@@ -781,16 +810,9 @@ export default function AiAssistantDrawer({
     }
   }
 
-  const stopListening = () => {
-    try {
-      recognitionRef.current?.stop()
-    } catch {
-      // ignore
-    }
-    setIsListening(false)
-  }
+  const startConversationListening = (langCode = speechLang) => {
+    if (!liveVoiceActiveRef.current) return
 
-  const startListening = (langCode = speechLang) => {
     // Barge-in: immediately cancel assistant speech if user speaks or activates listening
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       try {
@@ -802,17 +824,173 @@ export default function AiAssistantDrawer({
     const SpeechRec = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)
     if (!SpeechRec) {
       toast.error('Voice input is not supported in this browser. Please use Chrome or Edge.')
-      if (liveVoiceActiveRef.current) stopLiveVoiceMode()
+      stopLiveVoiceMode()
       return
     }
 
     try {
       if (recognitionRef.current) {
         try {
-          recognitionRef.current.stop()
-        } catch {
-          // ignore
+          recognitionRef.current.abort ? recognitionRef.current.abort() : recognitionRef.current.stop()
+        } catch {}
+        recognitionRef.current = null
+      }
+
+      const recognition = new SpeechRec()
+      recognition.continuous = false
+      recognition.interimResults = true
+      recognition.lang = langCode
+
+      liveTranscriptRef.current = ''
+      setLiveVoiceTranscript('')
+
+      recognition.onstart = () => {
+        voiceTurnStartRef.current = Date.now()
+
+        // Silence auto-pause (30 seconds) in Live Mode
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+        if (liveVoiceActiveRef.current) {
+          silenceTimerRef.current = setTimeout(() => {
+            if (liveVoiceActiveRef.current) {
+              stopLiveVoiceMode()
+              toast('Live voice call paused due to inactivity. Tap Call to resume.', {
+                icon: '⏸️',
+                id: 'voice-paused',
+              })
+            }
+          }, 30000)
         }
+      }
+
+      recognition.onresult = (event) => {
+        if (silenceTimerRef.current) {
+          clearTimeout(silenceTimerRef.current)
+          silenceTimerRef.current = setTimeout(() => {
+            if (liveVoiceActiveRef.current) {
+              stopLiveVoiceMode()
+              toast('Live voice call paused due to inactivity. Tap Call to resume.', {
+                icon: '⏸️',
+                id: 'voice-paused',
+              })
+            }
+          }, 30000)
+        }
+        let fullTranscript = ''
+        for (let i = 0; i < event.results.length; i++) {
+          fullTranscript += event.results[i][0].transcript
+        }
+        const spoken = fullTranscript.trim()
+        liveTranscriptRef.current = spoken
+        setLiveVoiceTranscript(spoken)
+        // Audio Conversation Mode isolates voice from textarea to prevent interference
+      }
+
+      recognition.onerror = (e) => {
+        if (e.error !== 'no-speech' && e.error !== 'aborted') {
+          console.warn('Conversation speech error:', e.error)
+        }
+      }
+
+      recognition.onend = () => {
+        recognitionRef.current = null
+        if (!liveVoiceActiveRef.current) return
+
+        const elapsedSec = voiceTurnStartRef.current
+          ? Math.max(1, Math.round((Date.now() - voiceTurnStartRef.current) / 1000))
+          : 1
+        const budgetCap = aiSettings?.dailyBudgetInr || aiSettings?.dailyVoiceBudgetInr || 10
+        const updatedUsage = recordVoiceUsage({
+          seconds: elapsedSec,
+          turns: 1,
+          customBudgetInr: budgetCap,
+        })
+        setVoiceUsage(updatedUsage)
+
+        // Strict Budget Cap Guard: If reached, give alert in Plain English & stop voice stream
+        if (updatedUsage.isLimitReached) {
+          const alertMsg = getPlainEnglishBudgetAlert(budgetCap)
+          stopLiveVoiceMode()
+          toast.error(alertMsg, { duration: 6000, id: 'voice-budget-alert' })
+          speakResponse(alertMsg)
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'asst-budget-' + Date.now(),
+              sender: 'assistant',
+              text: `⚠️ **Usage Limit**: ${alertMsg}`,
+              isError: true,
+              timestamp: new Date(),
+            },
+          ])
+          return
+        }
+
+        const captured = liveTranscriptRef.current.trim()
+        liveTranscriptRef.current = ''
+        setLiveVoiceTranscript('')
+
+        if (captured) {
+          handleSend(captured, { isVoiceMode: true })
+        } else if (liveVoiceActiveRef.current && !isSpeaking) {
+          setTimeout(() => {
+            if (liveVoiceActiveRef.current && !isSpeaking) {
+              startConversationListening(langCode)
+            }
+          }, 300)
+        }
+      }
+
+      recognitionRef.current = recognition
+      recognition.start()
+    } catch (err) {
+      console.warn('Could not start live voice recognition:', err)
+      if (liveVoiceActiveRef.current) {
+        setTimeout(() => {
+          if (liveVoiceActiveRef.current && !isSpeaking) {
+            startConversationListening(langCode)
+          }
+        }, 500)
+      }
+    }
+  }
+
+  const stopDictation = () => {
+    dictatingActiveRef.current = false
+    setIsDictating(false)
+    toast.dismiss('voice-rec')
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort ? recognitionRef.current.abort() : recognitionRef.current.stop()
+      } catch {}
+      recognitionRef.current = null
+    }
+  }
+
+  const startDictation = (langCode = speechLang) => {
+    // If Live Voice Mode is active, stop it cleanly first
+    if (liveVoiceActiveRef.current) {
+      stopLiveVoiceMode()
+    }
+
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel()
+      } catch {}
+      setIsSpeaking(false)
+    }
+
+    const SpeechRec = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)
+    if (!SpeechRec) {
+      toast.error('Voice input is not supported in this browser. Please use Chrome or Edge.')
+      return
+    }
+
+    try {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort ? recognitionRef.current.abort() : recognitionRef.current.stop()
+        } catch {}
+        recognitionRef.current = null
       }
 
       const recognition = new SpeechRec()
@@ -825,46 +1003,18 @@ export default function AiAssistantDrawer({
 
       const targetLang = SPEECH_LANGUAGES.find((l) => l.code === langCode) || { label: 'English' }
 
+      dictatingActiveRef.current = true
+      setIsDictating(true)
+
       recognition.onstart = () => {
-        setIsListening(true)
-        voiceTurnStartRef.current = Date.now()
-
-        // Silence auto-pause (30 seconds) in Live Mode
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
-        if (liveVoiceActiveRef.current) {
-          silenceTimerRef.current = setTimeout(() => {
-            if (liveVoiceActiveRef.current) {
-              stopLiveVoiceMode()
-              toast('Live voice call paused due to inactivity. Tap mic to resume.', {
-                icon: '⏸️',
-                id: 'voice-paused',
-              })
-            }
-          }, 30000)
-        }
-
-        if (!liveVoiceActiveRef.current) {
-          toast(`Listening in ${targetLang.label}... Speak now`, {
-            icon: '🎙️',
-            id: 'voice-rec',
-            duration: 2500,
-          })
-        }
+        toast(`Dictating in ${targetLang.label}... Speak now`, {
+          icon: '🎙️',
+          id: 'voice-rec',
+          duration: 2500,
+        })
       }
 
       recognition.onresult = (event) => {
-        if (silenceTimerRef.current) {
-          clearTimeout(silenceTimerRef.current)
-          silenceTimerRef.current = setTimeout(() => {
-            if (liveVoiceActiveRef.current) {
-              stopLiveVoiceMode()
-              toast('Live voice call paused due to inactivity. Tap mic to resume.', {
-                icon: '⏸️',
-                id: 'voice-paused',
-              })
-            }
-          }, 30000)
-        }
         let fullTranscript = ''
         for (let i = 0; i < event.results.length; i++) {
           fullTranscript += event.results[i][0].transcript
@@ -878,88 +1028,36 @@ export default function AiAssistantDrawer({
 
       recognition.onerror = (e) => {
         toast.dismiss('voice-rec')
-        if (e.error !== 'no-speech') {
-          console.warn('Speech error:', e.error)
+        if (e.error !== 'no-speech' && e.error !== 'aborted') {
+          console.warn('Dictation speech error:', e.error)
         }
-        setIsListening(false)
-        if (liveVoiceActiveRef.current && e.error === 'no-speech' && !isSpeaking) {
-          setTimeout(() => {
-            if (liveVoiceActiveRef.current && !isSpeaking) {
-              try {
-                recognition.start()
-              } catch {}
-            }
-          }, 400)
-        }
+        dictatingActiveRef.current = false
+        setIsDictating(false)
       }
 
       recognition.onend = () => {
         toast.dismiss('voice-rec')
-        setIsListening(false)
-
-        if (liveVoiceActiveRef.current) {
-          const elapsedSec = voiceTurnStartRef.current
-            ? Math.max(1, Math.round((Date.now() - voiceTurnStartRef.current) / 1000))
-            : 1
-          const budgetCap = 10
-          const updatedUsage = recordVoiceUsage({
-            seconds: elapsedSec,
-            turns: 1,
-            customBudgetInr: budgetCap,
-          })
-          setVoiceUsage(updatedUsage)
-
-          // Strict Budget Cap Guard: If reached, give alert in Plain English & stop voice stream
-          if (updatedUsage.isLimitReached) {
-            const alertMsg = getPlainEnglishBudgetAlert(budgetCap)
-            stopLiveVoiceMode()
-            toast.error(alertMsg, { duration: 6000, id: 'voice-budget-alert' })
-            speakResponse(alertMsg)
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: 'asst-budget-' + Date.now(),
-                sender: 'assistant',
-                text: `⚠️ **Usage Limit**: ${alertMsg}`,
-                isError: true,
-                timestamp: new Date(),
-              },
-            ])
-            return
-          }
-
-          const captured = inputMessage.trim() || speechBaseTextRef.current.trim()
-          if (captured) {
-            setInputMessage('')
-            speechBaseTextRef.current = ''
-            handleSend(captured, { isVoiceMode: true })
-          } else if (!isSpeaking) {
-            setTimeout(() => {
-              if (liveVoiceActiveRef.current && !isSpeaking) {
-                startListening(speechLang)
-              }
-            }, 350)
-          }
-        } else {
-          inputRef.current?.focus()
-        }
+        dictatingActiveRef.current = false
+        setIsDictating(false)
+        recognitionRef.current = null
+        inputRef.current?.focus()
       }
 
       recognitionRef.current = recognition
       recognition.start()
     } catch (err) {
       toast.dismiss('voice-rec')
-      toast.error('Could not start microphone: ' + err.message)
-      setIsListening(false)
-      if (liveVoiceActiveRef.current) stopLiveVoiceMode()
+      toast.error('Could not start dictation microphone: ' + err.message)
+      dictatingActiveRef.current = false
+      setIsDictating(false)
     }
   }
 
   const toggleMic = () => {
-    if (isListening) {
-      stopListening()
+    if (isDictating) {
+      stopDictation()
     } else {
-      startListening(speechLang)
+      startDictation(speechLang)
     }
   }
 
@@ -974,10 +1072,21 @@ export default function AiAssistantDrawer({
     const targetLang = SPEECH_LANGUAGES.find((l) => l.code === code) || { label: 'English' }
     toast.success(`Voice set to ${targetLang.label}`, { id: 'voice-lang-toast', duration: 1500 })
 
-    if (isListening) {
-      stopListening()
+    if (isDictating) {
+      stopDictation()
       setTimeout(() => {
-        startListening(code)
+        startDictation(code)
+      }, 150)
+    } else if (liveVoiceActiveRef.current) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort ? recognitionRef.current.abort() : recognitionRef.current.stop()
+        } catch {}
+      }
+      setTimeout(() => {
+        if (liveVoiceActiveRef.current) {
+          startConversationListening(code)
+        }
       }, 150)
     }
   }
@@ -5287,14 +5396,24 @@ export default function AiAssistantDrawer({
           },
         ])
       }
-      if (liveVoiceActiveRef.current && (resData.text || resData.summary?.text)) {
-        speakResponse(resData.text || resData.summary?.text)
+      if (liveVoiceActiveRef.current) {
+        if (resData.text || resData.summary?.text) {
+          speakResponse(resData.text || resData.summary?.text)
+        } else {
+          setTimeout(() => {
+            if (liveVoiceActiveRef.current && !isSpeaking) {
+              startConversationListening(speechLang)
+            }
+          }, 350)
+        }
       }
     } catch (err) {
       console.error('AI error:', err)
       const cleanErrMsg = err.message || 'Please check your connection and try again.'
       if (liveVoiceActiveRef.current) {
-        stopLiveVoiceMode()
+        if (cleanErrMsg.includes('budget limit reached') || cleanErrMsg.includes('Usage limit')) {
+          stopLiveVoiceMode()
+        }
         speakResponse(cleanErrMsg)
       }
       setMessages((prev) => [
@@ -5642,19 +5761,25 @@ export default function AiAssistantDrawer({
         {/* Live Audio Mode Banner */}
         {isLiveVoiceMode && (
           <div className="bg-gradient-to-r from-emerald-700 via-teal-700 to-emerald-800 text-white px-3.5 py-2 flex items-center justify-between border-b border-emerald-600 shadow-md shrink-0 animate-in slide-in-from-top-2">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2.5 w-2.5">
+            <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
+              <span className="relative flex h-2.5 w-2.5 shrink-0">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-200 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
               </span>
-              <span className="text-xs font-bold tracking-tight">
-                {isSpeaking ? '🔊 Anjani AI Speaking...' : isListening ? '🎙️ Listening (Speak now)...' : '⚡ Processing...'}
+              <span className="text-xs font-bold tracking-tight truncate">
+                {isSpeaking
+                  ? '🔊 Anjani AI Speaking...'
+                  : loading
+                    ? '⚡ Anjani AI Thinking...'
+                    : liveVoiceTranscript
+                      ? `🎙️ "${liveVoiceTranscript}"`
+                      : '🎙️ Listening (Speak now)...'}
               </span>
-              <span className="text-[10px] bg-black/30 px-1.5 py-0.5 rounded font-mono text-emerald-100">
+              <span className="text-[10px] bg-black/30 px-1.5 py-0.5 rounded font-mono text-emerald-100 shrink-0">
                 ₹{voiceUsage.usedCostInr}/₹{voiceUsage.budgetInr}
               </span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 shrink-0">
               <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-bold uppercase">
                 {SPEECH_LANGUAGES.find((l) => l.code === speechLang)?.short || 'EN'}
               </span>
@@ -8672,31 +8797,31 @@ export default function AiAssistantDrawer({
               <Headphones className="w-4 h-4" />
             </button>
 
-            {/* Mic & Speech Language Control */}
+            {/* Mic & Speech Language Control (Speak-to-Type Dictation) */}
             <div className="relative shrink-0 flex items-center mb-1" ref={speechLangMenuRef}>
               <button
                 type="button"
                 onClick={toggleMic}
                 className={`p-1.5 rounded-l-lg border border-r-0 transition-colors shrink-0 cursor-pointer ${
-                  isListening
+                  isDictating
                     ? 'bg-red-500 text-white border-red-600 animate-pulse shadow-md'
                     : 'text-gray-500 hover:text-amz-orange hover:bg-orange-50 border-gray-300'
                 }`}
                 title={
-                  isListening
-                    ? `Listening in ${SPEECH_LANGUAGES.find((l) => l.code === speechLang)?.label || 'Voice'}... Tap to stop`
+                  isDictating
+                    ? `Dictating in ${SPEECH_LANGUAGES.find((l) => l.code === speechLang)?.label || 'Voice'}... Tap to stop`
                     : `Voice Dictation (${SPEECH_LANGUAGES.find((l) => l.code === speechLang)?.label || 'English'})`
                 }
-                aria-label={isListening ? 'Stop voice listening' : 'Start voice dictation'}
+                aria-label={isDictating ? 'Stop voice dictation' : 'Start voice dictation'}
               >
-                {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                {isDictating ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
               </button>
 
               <button
                 type="button"
                 onClick={() => setShowLangMenu((prev) => !prev)}
                 className={`h-[33px] px-1 rounded-r-lg border text-[9px] font-black tracking-tight transition-colors cursor-pointer flex items-center gap-0.5 shrink-0 ${
-                  isListening
+                  isDictating
                     ? 'bg-red-600 text-white border-red-600'
                     : 'bg-gray-50 hover:bg-gray-100 text-gray-700 hover:text-gray-900 border-gray-300'
                 }`}
@@ -8759,15 +8884,17 @@ export default function AiAssistantDrawer({
               placeholder={
                 activeChatbotFlow?.inputPrompt
                   ? activeChatbotFlow.inputPrompt
-                  : isListening
+                  : isDictating
                     ? speechLang === 'gu-IN'
                       ? 'સાંભળી રહ્યું છે... ગુજરાતીમાં બોલો'
                       : speechLang === 'hi-IN'
                         ? 'सुन रहे हैं... हिंदी में बोलें'
-                        : 'Listening in English... Speak now'
-                    : filePreview
-                      ? 'Add notes or send...'
-                      : 'Ask bot above, type @client, /sku, or speech...'
+                        : 'Dictating in English... Speak now'
+                    : isLiveVoiceMode
+                      ? 'Live voice call active... speak aloud or type here'
+                      : filePreview
+                        ? 'Add notes or send...'
+                        : 'Ask bot above, type @client, /sku, or speech...'
               }
               style={{ minHeight: '42px', height: 'auto' }}
               className="flex-1 py-2 px-3 border-2 border-gray-300 focus:ring-2 focus:ring-[#ff9900] focus:border-[#ff9900] rounded-xl text-xs sm:text-sm outline-none transition-all resize-none max-h-36 overflow-y-auto leading-relaxed"
