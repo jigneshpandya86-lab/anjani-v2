@@ -25,6 +25,8 @@ import {
   Mic,
   MicOff,
   Volume2,
+  VolumeX,
+  Headphones,
   MapPin,
   AtSign,
   ArrowLeft,
@@ -79,6 +81,13 @@ import {
   buildLedgerPdf,
   shareOrDownloadPdf,
 } from '../utils/pdf'
+import {
+  getDailyVoiceUsage,
+  recordVoiceUsage,
+  isVoiceBudgetExceeded,
+  getPlainEnglishBudgetAlert,
+  cleanTextForSpeech,
+} from '../utils/voiceBudgetTracker'
 
 export const SPEECH_LANGUAGES = [
   { code: 'en-IN', label: 'English', short: 'EN', hint: 'English (India)' },
@@ -199,6 +208,12 @@ export default function AiAssistantDrawer({
   const [messages, setMessages] = useState([])
 
   const [isListening, setIsListening] = useState(false)
+  const [isLiveVoiceMode, setIsLiveVoiceMode] = useState(false)
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const [voiceUsage, setVoiceUsage] = useState(() => getDailyVoiceUsage())
+  const liveVoiceActiveRef = useRef(false)
+  const voiceTurnStartRef = useRef(null)
+  const silenceTimerRef = useRef(null)
   const [speechLang, setSpeechLang] = useState(() => {
     try {
       const saved = localStorage.getItem('anjani_ai_speech_lang')
@@ -217,6 +232,15 @@ export default function AiAssistantDrawer({
 
   useEffect(() => {
     return () => {
+      liveVoiceActiveRef.current = false
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current)
+      }
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        try {
+          window.speechSynthesis.cancel()
+        } catch {}
+      }
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop()
@@ -652,6 +676,111 @@ export default function AiAssistantDrawer({
     }
   }, [inputMessage])
 
+  const speakResponse = (text) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return
+    try {
+      window.speechSynthesis.cancel()
+      const clean = cleanTextForSpeech(text)
+      if (!clean) return
+
+      const utterance = new SpeechSynthesisUtterance(clean)
+      utterance.lang = speechLang || 'en-IN'
+      utterance.rate = 1.05
+      utterance.pitch = 1.0
+
+      const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : []
+      if (Array.isArray(voices) && voices.length > 0) {
+        const matched = voices.find(
+          (v) => v.lang === speechLang || (v.lang && v.lang.startsWith(speechLang.slice(0, 2)))
+        )
+        if (matched) utterance.voice = matched
+      }
+
+      utterance.onstart = () => {
+        setIsSpeaking(true)
+      }
+      utterance.onend = () => {
+        setIsSpeaking(false)
+        if (liveVoiceActiveRef.current) {
+          setTimeout(() => {
+            if (liveVoiceActiveRef.current && !isListening) {
+              startListening(speechLang)
+            }
+          }, 350)
+        }
+      }
+      utterance.onerror = () => {
+        setIsSpeaking(false)
+        if (liveVoiceActiveRef.current) {
+          setTimeout(() => {
+            if (liveVoiceActiveRef.current && !isListening) {
+              startListening(speechLang)
+            }
+          }, 350)
+        }
+      }
+
+      window.speechSynthesis.speak(utterance)
+    } catch (e) {
+      console.warn('SpeechSynthesis error:', e)
+      setIsSpeaking(false)
+    }
+  }
+
+  const stopLiveVoiceMode = () => {
+    liveVoiceActiveRef.current = false
+    setIsLiveVoiceMode(false)
+    setIsSpeaking(false)
+    stopListening()
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current)
+      silenceTimerRef.current = null
+    }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel()
+      } catch {}
+    }
+  }
+
+  const startLiveVoiceMode = () => {
+    const budgetCap = 10
+    if (isVoiceBudgetExceeded(budgetCap)) {
+      const alertMsg = getPlainEnglishBudgetAlert(budgetCap)
+      toast.error(alertMsg, { id: 'voice-budget-alert', duration: 6000 })
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: 'asst-budget-' + Date.now(),
+          sender: 'assistant',
+          text: `⚠️ **Usage Limit**: ${alertMsg}`,
+          isError: true,
+          timestamp: new Date(),
+        },
+      ])
+      return
+    }
+
+    liveVoiceActiveRef.current = true
+    setIsLiveVoiceMode(true)
+    const current = getDailyVoiceUsage(budgetCap)
+    setVoiceUsage(current)
+    toast.success('Live Audio Conversation Mode Active. Speak naturally!', {
+      icon: '🎧',
+      id: 'live-voice-active',
+      duration: 2500,
+    })
+    startListening(speechLang)
+  }
+
+  const toggleLiveVoiceMode = () => {
+    if (isLiveVoiceMode) {
+      stopLiveVoiceMode()
+    } else {
+      startLiveVoiceMode()
+    }
+  }
+
   const stopListening = () => {
     try {
       recognitionRef.current?.stop()
@@ -662,9 +791,18 @@ export default function AiAssistantDrawer({
   }
 
   const startListening = (langCode = speechLang) => {
-    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition
+    // Barge-in: immediately cancel assistant speech if user speaks or activates listening
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel()
+      } catch {}
+      setIsSpeaking(false)
+    }
+
+    const SpeechRec = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)
     if (!SpeechRec) {
-      toast.error('Voice input is not supported in this browser. Please use Chrome/Edge.')
+      toast.error('Voice input is not supported in this browser. Please use Chrome or Edge.')
+      if (liveVoiceActiveRef.current) stopLiveVoiceMode()
       return
     }
 
@@ -689,14 +827,44 @@ export default function AiAssistantDrawer({
 
       recognition.onstart = () => {
         setIsListening(true)
-        toast(`Listening in ${targetLang.label}... Speak now`, {
-          icon: '🎙️',
-          id: 'voice-rec',
-          duration: 2500,
-        })
+        voiceTurnStartRef.current = Date.now()
+
+        // Silence auto-pause (30 seconds) in Live Mode
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+        if (liveVoiceActiveRef.current) {
+          silenceTimerRef.current = setTimeout(() => {
+            if (liveVoiceActiveRef.current) {
+              stopLiveVoiceMode()
+              toast('Live voice call paused due to inactivity. Tap mic to resume.', {
+                icon: '⏸️',
+                id: 'voice-paused',
+              })
+            }
+          }, 30000)
+        }
+
+        if (!liveVoiceActiveRef.current) {
+          toast(`Listening in ${targetLang.label}... Speak now`, {
+            icon: '🎙️',
+            id: 'voice-rec',
+            duration: 2500,
+          })
+        }
       }
 
       recognition.onresult = (event) => {
+        if (silenceTimerRef.current) {
+          clearTimeout(silenceTimerRef.current)
+          silenceTimerRef.current = setTimeout(() => {
+            if (liveVoiceActiveRef.current) {
+              stopLiveVoiceMode()
+              toast('Live voice call paused due to inactivity. Tap mic to resume.', {
+                icon: '⏸️',
+                id: 'voice-paused',
+              })
+            }
+          }, 30000)
+        }
         let fullTranscript = ''
         for (let i = 0; i < event.results.length; i++) {
           fullTranscript += event.results[i][0].transcript
@@ -714,12 +882,67 @@ export default function AiAssistantDrawer({
           console.warn('Speech error:', e.error)
         }
         setIsListening(false)
+        if (liveVoiceActiveRef.current && e.error === 'no-speech' && !isSpeaking) {
+          setTimeout(() => {
+            if (liveVoiceActiveRef.current && !isSpeaking) {
+              try {
+                recognition.start()
+              } catch {}
+            }
+          }, 400)
+        }
       }
 
       recognition.onend = () => {
         toast.dismiss('voice-rec')
         setIsListening(false)
-        inputRef.current?.focus()
+
+        if (liveVoiceActiveRef.current) {
+          const elapsedSec = voiceTurnStartRef.current
+            ? Math.max(1, Math.round((Date.now() - voiceTurnStartRef.current) / 1000))
+            : 1
+          const budgetCap = 10
+          const updatedUsage = recordVoiceUsage({
+            seconds: elapsedSec,
+            turns: 1,
+            customBudgetInr: budgetCap,
+          })
+          setVoiceUsage(updatedUsage)
+
+          // Strict Budget Cap Guard: If reached, give alert in Plain English & stop voice stream
+          if (updatedUsage.isLimitReached) {
+            const alertMsg = getPlainEnglishBudgetAlert(budgetCap)
+            stopLiveVoiceMode()
+            toast.error(alertMsg, { duration: 6000, id: 'voice-budget-alert' })
+            speakResponse(alertMsg)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'asst-budget-' + Date.now(),
+                sender: 'assistant',
+                text: `⚠️ **Usage Limit**: ${alertMsg}`,
+                isError: true,
+                timestamp: new Date(),
+              },
+            ])
+            return
+          }
+
+          const captured = inputMessage.trim() || speechBaseTextRef.current.trim()
+          if (captured) {
+            setInputMessage('')
+            speechBaseTextRef.current = ''
+            handleSend(captured, { isVoiceMode: true })
+          } else if (!isSpeaking) {
+            setTimeout(() => {
+              if (liveVoiceActiveRef.current && !isSpeaking) {
+                startListening(speechLang)
+              }
+            }, 350)
+          }
+        } else {
+          inputRef.current?.focus()
+        }
       }
 
       recognitionRef.current = recognition
@@ -728,6 +951,7 @@ export default function AiAssistantDrawer({
       toast.dismiss('voice-rec')
       toast.error('Could not start microphone: ' + err.message)
       setIsListening(false)
+      if (liveVoiceActiveRef.current) stopLiveVoiceMode()
     }
   }
 
@@ -1823,7 +2047,7 @@ export default function AiAssistantDrawer({
     }
   }
 
-  const handleSend = async (customPrompt = null) => {
+  const handleSend = async (customPrompt = null, options = {}) => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       toast.error('AI Assistant requires an active internet connection. Manual entry is available offline.')
       return
@@ -2093,6 +2317,7 @@ export default function AiAssistantDrawer({
       }
 
       const aiRequestPayload = {
+        isVoiceMode: isLiveVoiceMode || !!options?.isVoiceMode,
         memories: aiMemories.filter((m) => m && m.active !== false),
         knownClients: (clients || [])
           .flatMap((c) => {
@@ -5062,14 +5287,22 @@ export default function AiAssistantDrawer({
           },
         ])
       }
+      if (liveVoiceActiveRef.current && (resData.text || resData.summary?.text)) {
+        speakResponse(resData.text || resData.summary?.text)
+      }
     } catch (err) {
       console.error('AI error:', err)
+      const cleanErrMsg = err.message || 'Please check your connection and try again.'
+      if (liveVoiceActiveRef.current) {
+        stopLiveVoiceMode()
+        speakResponse(cleanErrMsg)
+      }
       setMessages((prev) => [
         ...prev,
         {
           id: 'asst-' + Date.now(),
           sender: 'assistant',
-          text: `⚠️ **AI request failed**: ${err.message || 'Please check your connection and try again.'}`,
+          text: `⚠️ **AI request failed**: ${cleanErrMsg}`,
           isError: true,
           timestamp: new Date(),
         },
@@ -5304,6 +5537,28 @@ export default function AiAssistantDrawer({
             <h2 className="font-bold text-sm text-white">Anjani</h2>
           </div>
           <div className="flex items-center gap-1">
+            {/* Live Audio Conversation Toggle Button */}
+            <button
+              type="button"
+              onClick={toggleLiveVoiceMode}
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border shadow-2xs ${
+                isLiveVoiceMode
+                  ? 'bg-emerald-500 text-gray-950 border-emerald-400 animate-pulse ring-2 ring-emerald-300'
+                  : 'bg-white/5 hover:bg-emerald-500/20 text-emerald-400 border-transparent hover:border-emerald-500/30'
+              }`}
+              title={
+                isLiveVoiceMode
+                  ? 'Live Audio Conversation Active (Tap to End Call)'
+                  : 'Start Live Audio Conversation Mode (Hands-free Voice Call)'
+              }
+              aria-label="Live Voice Call Mode"
+            >
+              <Headphones className={`w-3.5 h-3.5 ${isLiveVoiceMode ? 'text-gray-950' : 'text-emerald-400'}`} />
+              <span className="hidden sm:inline font-black text-[10px]">
+                {isLiveVoiceMode ? 'Live Call' : 'Call'}
+              </span>
+            </button>
+
             <button
               type="button"
               onClick={() => {
@@ -5383,6 +5638,38 @@ export default function AiAssistantDrawer({
             </button>
           </div>
         </div>
+
+        {/* Live Audio Mode Banner */}
+        {isLiveVoiceMode && (
+          <div className="bg-gradient-to-r from-emerald-700 via-teal-700 to-emerald-800 text-white px-3.5 py-2 flex items-center justify-between border-b border-emerald-600 shadow-md shrink-0 animate-in slide-in-from-top-2">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-200 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+              </span>
+              <span className="text-xs font-bold tracking-tight">
+                {isSpeaking ? '🔊 Anjani AI Speaking...' : isListening ? '🎙️ Listening (Speak now)...' : '⚡ Processing...'}
+              </span>
+              <span className="text-[10px] bg-black/30 px-1.5 py-0.5 rounded font-mono text-emerald-100">
+                ₹{voiceUsage.usedCostInr}/₹{voiceUsage.budgetInr}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-bold uppercase">
+                {SPEECH_LANGUAGES.find((l) => l.code === speechLang)?.short || 'EN'}
+              </span>
+              <button
+                type="button"
+                onClick={stopLiveVoiceMode}
+                className="bg-red-500 hover:bg-red-600 text-white text-[11px] px-2 py-0.5 rounded-md font-bold transition cursor-pointer flex items-center gap-1 shadow-xs"
+                title="End live voice call"
+              >
+                <VolumeX className="w-3 h-3" />
+                <span>End Call</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Single Streamlined AI Feedback Card */}
         {showFeedbackModal && (
@@ -8364,6 +8651,25 @@ export default function AiAssistantDrawer({
               title="Upload Bill, Receipt or WhatsApp Voice Note"
             >
               <Camera className="w-4 h-4" />
+            </button>
+
+            {/* Live Audio Call Toggle */}
+            <button
+              type="button"
+              onClick={toggleLiveVoiceMode}
+              className={`p-1.5 rounded-lg border transition-all shrink-0 cursor-pointer mb-1 ${
+                isLiveVoiceMode
+                  ? 'bg-emerald-600 text-white border-emerald-700 shadow-md animate-pulse ring-2 ring-emerald-300'
+                  : 'text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 border-gray-300'
+              }`}
+              title={
+                isLiveVoiceMode
+                  ? 'Live Audio Conversation Active (Tap to End Call)'
+                  : 'Start Live Audio Conversation (Hands-Free Voice Call)'
+              }
+              aria-label={isLiveVoiceMode ? 'End Live Audio Call' : 'Start Live Audio Call'}
+            >
+              <Headphones className="w-4 h-4" />
             </button>
 
             {/* Mic & Speech Language Control */}

@@ -1738,23 +1738,7 @@ function formatKnownClientsForPrompt(clientNames = []) {
 exports.askAnjaniAi = onCall(async (request) => {
   // Graceful auth handling: prioritize verified UID, fallback gracefully to app user session
   const uid = request.auth?.uid || 'anjani-app-user'
-
-  // Strict token budget guard: max 300 requests/day per user (caps daily costs to ~₹4/day maximum)
-  const todayDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
-  const userRateKey = `${uid}_${todayDateStr}`
-
-  if (!global.aiRequestCounter) {
-    global.aiRequestCounter = new Map()
-  }
-  if (global.aiRequestCounter.size > 2000) {
-    global.aiRequestCounter.clear()
-  }
-  const currentUsage = global.aiRequestCounter.get(userRateKey) || 0
-  const DAILY_MAX_REQUESTS = 300
-  if (currentUsage >= DAILY_MAX_REQUESTS) {
-    throw new Error(`Daily AI token budget limit reached (${DAILY_MAX_REQUESTS} requests/day). Limit resets at midnight IST.`)
-  }
-  global.aiRequestCounter.set(userRateKey, currentUsage + 1)
+  const aiSettings = await getAiSettings()
 
   const {
     text,
@@ -1763,7 +1747,38 @@ exports.askAnjaniAi = onCall(async (request) => {
     mode = 'auto',
     conversationHistory = [],
     knownClients = [],
+    isVoiceMode = false,
   } = request.data || {}
+
+  // Strict token & voice budget guard (dynamic capping in IST, zero hardwiring)
+  const todayDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+  const userRateKey = `${uid}_${todayDateStr}`
+  const userVoiceRateKey = `${uid}_voice_${todayDateStr}`
+
+  if (!global.aiRequestCounter) {
+    global.aiRequestCounter = new Map()
+  }
+  if (global.aiRequestCounter.size > 2000) {
+    global.aiRequestCounter.clear()
+  }
+
+  const dailyBudgetInr = Number(aiSettings.dailyBudgetInr || aiSettings.dailyVoiceBudgetInr) || 10
+  const dailyMaxRequests = Number(aiSettings.dailyMaxRequests) || 300
+  const dailyMaxVoiceTurns = Number(aiSettings.dailyMaxVoiceTurns) || Math.max(50, Math.floor(dailyBudgetInr * 15))
+
+  if (isVoiceMode) {
+    const currentVoiceUsage = global.aiRequestCounter.get(userVoiceRateKey) || 0
+    if (currentVoiceUsage >= dailyMaxVoiceTurns) {
+      throw new Error(`Daily AI voice budget limit reached (₹${dailyBudgetInr}/day). Limit resets at midnight IST. You can continue using standard text mode.`)
+    }
+    global.aiRequestCounter.set(userVoiceRateKey, currentVoiceUsage + 1)
+  }
+
+  const currentUsage = global.aiRequestCounter.get(userRateKey) || 0
+  if (currentUsage >= dailyMaxRequests) {
+    throw new Error(`Daily AI budget limit reached (${dailyMaxRequests} requests/day). Limit resets at midnight IST.`)
+  }
+  global.aiRequestCounter.set(userRateKey, currentUsage + 1)
 
   if (!text && !imageBase64) {
     throw new Error('Either text prompt or image is required')
@@ -1774,7 +1789,6 @@ exports.askAnjaniAi = onCall(async (request) => {
     throw new Error('Image too large. Please upload an image under 2MB.')
   }
 
-  const aiSettings = await getAiSettings()
   const activeMemories = await getAiMemories()
   const slicedMemories = sliceMemoriesForContext(activeMemories, text, mode)
   const memoriesBlock = formatMemoriesForPrompt(slicedMemories)
