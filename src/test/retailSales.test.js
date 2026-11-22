@@ -504,4 +504,68 @@ Add:- Gangotri Party plot, Sama`
     expect(sale.items[0].qty).toBe(60)
     expect(sale.items[0].sku).toBe('Anjani 200ml')
   })
+
+  it('preserves client mobile on line 3 and defaults SKU to Anjani 200ml without collapsing into Retail (Feedbacks mVqw7e2SW1NJGVdmog85 & 74kEbipFvuh6B3zzIvM9)', () => {
+    // Exact user query from Firestore feedback
+    const query = `30.11.26 -  60 Box -5 Pm
+Add:- Gangotri Party plot, Sama
+
+97144 17771`
+
+    // Case A: Unregistered phone number
+    const parsed = parseLocalSalesText(query, mockClients)
+    expect(parsed).not.toBeNull()
+    expect(parsed.data.sales).toHaveLength(1)
+
+    const order = parsed.data.sales[0]
+    expect(order.clientName).toBe('Customer (9714417771)')
+    expect(order.mobile).toBe('9714417771')
+    expect(order.deliveryDate).toBe('2026-11-30')
+    expect(order.deliveryTime).toBe('5 PM')
+    expect(order.address).toContain('Gangotri Party Plot')
+    expect(order.items[0].sku).toBe('Anjani 200ml')
+    expect(order.items[0].qty).toBe(60)
+
+    // Verify consolidateRetailSales does NOT collapse this into anonymous Retail
+    const enriched = consolidateRetailSales(parsed.data.sales, mockClients, [], [])
+    expect(enriched).toHaveLength(1)
+    expect(enriched[0].clientName).toBe('Customer (9714417771)')
+    expect(enriched[0].mobile).toBe('9714417771')
+    expect(enriched[0].items[0].sku).toBe('Anjani 200ml')
+    expect(enriched[0].items[0].rate).toBe(130)
+    expect(enriched[0].totalAmount).toBe(7800) // 60 * 130
+    expect(enriched[0].isConsolidatedRetail).toBeFalsy()
+
+    // Case B: Registered customer with phone 9714417771
+    const clientsWithDhanlaxmi = [
+      ...mockClients,
+      { id: 'cli-dhanlaxmi', name: 'Dhanlaxmi Caterers', mobile: '9714417771', rate: 128 },
+    ]
+    const parsedMatched = parseLocalSalesText(query, clientsWithDhanlaxmi)
+    expect(parsedMatched.data.sales[0].clientName).toBe('Dhanlaxmi Caterers')
+    const enrichedMatched = consolidateRetailSales(parsedMatched.data.sales, clientsWithDhanlaxmi, [], [])
+    expect(enrichedMatched[0].clientName).toBe('Dhanlaxmi Caterers')
+    expect(enrichedMatched[0].mobile).toBe('9714417771')
+    expect(enrichedMatched[0].items[0].rate).toBe(128)
+    expect(enrichedMatched[0].totalAmount).toBe(7680) // 60 * 128
+
+    // Case C: Raw sale labeled "Retail" by AI but has phone number
+    const rawSalesFromAi = [
+      {
+        clientName: 'Retail',
+        mobile: '9714417771',
+        address: 'Gangotri Party Plot, Sama',
+        deliveryDate: '2026-11-30',
+        deliveryTime: '5 PM',
+        items: [{ sku: 'Anjani 200ml', qty: 60, rate: 0 }],
+      },
+    ]
+    const rescued = consolidateRetailSales(rawSalesFromAi, clientsWithDhanlaxmi, [], [])
+    expect(rescued).toHaveLength(1)
+    expect(rescued[0].clientName).toBe('Dhanlaxmi Caterers')
+    expect(rescued[0].mobile).toBe('9714417771')
+    expect(rescued[0].items[0].sku).toBe('Anjani 200ml')
+    expect(rescued[0].items[0].rate).toBe(128)
+    expect(rescued[0].isConsolidatedRetail).toBeFalsy()
+  })
 })

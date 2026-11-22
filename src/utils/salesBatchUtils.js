@@ -139,7 +139,47 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [],
 
   for (let i = 0; i < rawSales.length; i++) {
     const sale = rawSales[i]
-    const rawName = String(sale.clientName || '').trim()
+    let rawName = String(sale.clientName || '').trim()
+
+    // 0. Extract mobile number from sale.mobile, or find 10-digit number in notes/rawName
+    let cleanMobile = normalizeDigits(String(sale.mobile || '').replace(/\D/g, '')).slice(-10)
+    if (!cleanMobile || !/^[6-9]\d{9}$/.test(cleanMobile)) {
+      const fromNotes = normalizeDigits(String(sale.notes || '')).match(/\b([6-9]\d{9})\b/)
+      if (fromNotes) cleanMobile = fromNotes[1]
+      else {
+        const fromName = normalizeDigits(rawName).match(/\b([6-9]\d{9})\b/)
+        if (fromName) cleanMobile = fromName[1]
+      }
+    }
+
+    // 1. If mobile number is present, check existing customer match or treat as discrete client
+    if (cleanMobile && /^[6-9]\d{9}$/.test(cleanMobile)) {
+      sale.mobile = cleanMobile
+      const matchResult = findMatchingClient(rawName, clients, { mobile: cleanMobile })
+      if (matchResult?.client) {
+        sale.clientName = matchResult.client.name
+        sale.clientId = matchResult.client.id
+        sale.isMatched = true
+        sale.matchType = matchResult.matchType
+        namedSales.push(sale)
+        continue
+      }
+      // Customer has a phone number but not in master -> discrete customer order (NEVER Retail)
+      if (isRetailCustomer(rawName)) {
+        sale.clientName = sale.address ? `${sale.address} (Client)` : `Customer (${cleanMobile})`
+      }
+      namedSales.push(sale)
+      continue
+    }
+
+    // 2. If delivery venue/address & scheduled delivery date/time exist, it is a scheduled delivery (NEVER Retail)
+    if (sale.address && (sale.deliveryDate || sale.deliveryTime) && isRetailCustomer(rawName)) {
+      sale.clientName = `${sale.address} (Client)`
+      namedSales.push(sale)
+      continue
+    }
+
+    // 3. Otherwise, check standard retail walk-in
     if (isRetailCustomer(rawName)) {
       retailSales.push(sale)
     } else {
@@ -197,6 +237,15 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [],
       // Fallback to recent order history
       if (rate <= 0 && Array.isArray(orders) && orders.length > 0) {
         rate = getRecentSkuPrice(meta.label, orders, matched?.id)
+      }
+
+      // Default rate fallback for standard SKUs
+      if (rate <= 0) {
+        if (meta.id === 'anjani_200ml' || meta.label.includes('200ml')) rate = 130
+        else if (meta.id === 'bailey_250ml' || meta.label.includes('250ml')) rate = 130
+        else if (meta.id === 'bailey_500ml' || meta.label.includes('500ml')) rate = 115
+        else if (meta.id === 'bailey_1l' || meta.label.includes('1 Liter') || meta.label.includes('1L')) rate = 125
+        else if (meta.id === 'bailey_2l' || meta.label.includes('2 Liter') || meta.label.includes('2L')) rate = 135
       }
 
       let itQty = Number(it.qty) || 1
@@ -290,6 +339,13 @@ export function consolidateRetailSales(rawSales = [], clients = [], orders = [],
         }
         if (rate <= 0 && Array.isArray(orders) && orders.length > 0) {
           rate = getRecentSkuPrice(meta.label, orders, matchedRetail?.id)
+        }
+        if (rate <= 0) {
+          if (meta.id === 'anjani_200ml' || meta.label.includes('200ml')) rate = 130
+          else if (meta.id === 'bailey_250ml' || meta.label.includes('250ml')) rate = 130
+          else if (meta.id === 'bailey_500ml' || meta.label.includes('500ml')) rate = 115
+          else if (meta.id === 'bailey_1l' || meta.label.includes('1 Liter') || meta.label.includes('1L')) rate = 125
+          else if (meta.id === 'bailey_2l' || meta.label.includes('2 Liter') || meta.label.includes('2L')) rate = 135
         }
 
         const effectiveRate = rate > 0 ? rate : 0
@@ -587,8 +643,12 @@ export function parseLocalSalesText(rawText = '', clients = []) {
     }
     if (currentOrder.items && currentOrder.items.length > 0) {
       const finalDeliveryTime = normalizeDeliveryTime(currentOrder.deliveryTime)
+      let finalClientName = currentOrder.clientName || defaultClientName
+      if ((!finalClientName || isRetailCustomer(finalClientName)) && currentOrder.mobile) {
+        finalClientName = `Customer (${currentOrder.mobile})`
+      }
       orders.push({
-        clientName: currentOrder.clientName || defaultClientName,
+        clientName: finalClientName,
         mobile: currentOrder.mobile || undefined,
         date: currentOrder.date || undefined,
         deliveryDate: currentOrder.deliveryDate || currentOrder.date || undefined,
@@ -622,9 +682,12 @@ export function parseLocalSalesText(rawText = '', clients = []) {
         const cm = (c.mobile || c.phone || '').replace(/\D/g, '')
         return cm.endsWith(cleanDigits)
       })
-      if (clientWithMobile && (!currentOrder.clientName || currentOrder.clientName === 'Retail')) {
+      if (clientWithMobile && (!currentOrder.clientName || isRetailCustomer(currentOrder.clientName))) {
         currentOrder.clientName = clientWithMobile.name
         defaultClientName = clientWithMobile.name
+      } else if (!clientWithMobile && (!currentOrder.clientName || isRetailCustomer(currentOrder.clientName))) {
+        currentOrder.clientName = `Customer (${cleanDigits})`
+        defaultClientName = currentOrder.clientName
       }
       continue
     }
@@ -641,8 +704,20 @@ export function parseLocalSalesText(rawText = '', clients = []) {
 
     const phonePrefix = rawLine.match(/^(?:Phone|Mobile|Contact)\s*:\s*(.+)$/i)
     if (phonePrefix) {
+      const pDigits = normalizeDigits(phonePrefix[1].replace(/[^\d]/g, '')).slice(-10)
       if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }
-      currentOrder.mobile = normalizeDigits(phonePrefix[1].replace(/[^\d]/g, '')).slice(-10)
+      currentOrder.mobile = pDigits
+      const clientWithMobile = clients.find((c) => {
+        const cm = (c.mobile || c.phone || '').replace(/\D/g, '')
+        return cm.endsWith(pDigits)
+      })
+      if (clientWithMobile && (!currentOrder.clientName || isRetailCustomer(currentOrder.clientName))) {
+        currentOrder.clientName = clientWithMobile.name
+        defaultClientName = clientWithMobile.name
+      } else if (!clientWithMobile && (!currentOrder.clientName || isRetailCustomer(currentOrder.clientName))) {
+        currentOrder.clientName = `Customer (${pDigits})`
+        defaultClientName = currentOrder.clientName
+      }
       continue
     }
 

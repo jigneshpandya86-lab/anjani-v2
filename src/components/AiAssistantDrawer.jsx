@@ -2097,6 +2097,11 @@ export default function AiAssistantDrawer({
         knownClients: (clients || [])
           .flatMap((c) => {
             const list = [c?.name, c?.displayName]
+            const cleanMobile = (c?.mobile || c?.phone || '').replace(/\D/g, '').slice(-10)
+            if (cleanMobile && cleanMobile.length === 10) {
+              if (c?.name) list.push(`${c.name} (${cleanMobile})`)
+              if (c?.displayName && c.displayName !== c.name) list.push(`${c.displayName} (${cleanMobile})`)
+            }
             if (c?.displayName) {
               const stripped = c.displayName.replace(/\s*\([^)]*\)/g, '').trim()
               if (stripped) list.push(stripped)

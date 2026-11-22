@@ -1731,6 +1731,7 @@ function formatKnownClientsForPrompt(clientNames = []) {
   block += '2. PHONETIC & SPELLING VARIATION MATCHING: If the user dictates or writes a name that is phonetically or functionally identical to any existing customer above (e.g., "Sandeep" vs "Sandip", "Pradeep" vs "Pradip", "Rohit" vs "Rohitbhai", "Jay Ambe" vs "Jay Ambe Provision Store"), you MUST output the EXACT canonical name from the KNOWN EXISTING CUSTOMERS list above.\n'
   block += '3. REGULAR CLIENT COMMAND: If the user requests to make/mark a client regular ("make Maa Excellence regular client", "mark Nirmalbhai as regular"), confirm setting them as a regular customer.\n'
   block += '4. Only output a new customer name if the business or person is genuinely new and does not match any existing customer or alias above.\n'
+  block += '5. PHONE NUMBER LOOKUP: Known clients may be listed with mobile numbers in parentheses (e.g. "Dhanlaxmi Caterers (9714417771)"). If the user provides a phone number, match it to that client and output their canonical name! If an unregistered phone number is provided, set clientName to "Customer (<mobile>)". NEVER classify an order with a phone number or delivery address as "Retail"!\n'
   return block
 }
 
@@ -2653,11 +2654,18 @@ Map all products EXCLUSIVELY to our 5 canonical SKUs:
 5. "Bailey 2 Liter" (unit: Case / Box)
 
 CRITICAL RULES & USER INSTRUCTIONS:
-1. RETAIL CONSOLIDATION (MANDATORY): All walk-in, counter, cash, unnamed, or retail sales MUST BE COMBINED / CONSOLIDATED INTO A SINGLE order with "clientName": "Retail". NEVER generate multiple separate "Retail" or "Walk-in" sales entries in the "sales" array.
-2. DIFFERENT RATES MUST REMAIN SEPARATE LINE ITEMS (MANDATORY): If the user writes or pastes the same SKU at different rates (for example: "Bailey 1 Liter 10 @ 120" and "Bailey 1 Liter 5 @ 125", or "10 case 120 bhav, 5 case 125 bhav"), ALWAYS output them as SEPARATE items in the "items" array with their own qty and rate. NEVER combine items that have different rates into one line! Only combine items if BOTH the product SKU AND unit rate are identical.
-3. NAMED CUSTOMERS: Regular business / named customers (e.g., "Jay Ambe Provision", "Rohitbhai") each get their own individual order in the "sales" array.
-4. EXTRACT ADDRESS / DELIVERY LOCATION: If an address, delivery location, road, area, or landmark is written or dictated for a customer (e.g. 'Waghodia Road', 'Manjalpur', 'Opposite D-Mart'), ALWAYS extract it into the 'address' field in clean English Title Case.
-5. MULTI-DATE / CATERING / EVENT ORDERS (MANDATORY): If a note or message contains multiple dates, shifts (sanje/evening, savare/morning), or venues (e.g. Party Plots, marriage halls), each date/event represents a SEPARATE ORDER for that client. Generate an individual entry in the "sales" array for EACH date/event.
+1. DEFAULT PRODUCT SKU IS "Anjani 200ml" (MANDATORY): Annapurna Foods' core flagship brand is "Anjani 200ml" (unit: Box, standard rate: 130 Rs per box). When the user specifies a quantity of boxes, peti, cases, nung, or pieces WITHOUT explicitly naming the brand/size (for example: "60 Box", "50 peti", "20 case", "100 nung"), you MUST ALWAYS DEFAULT TO "Anjani 200ml" (unit: "Box", rate: 130). NEVER default to Bailey or 1 Liter unless "Bailey", "1 Liter", "500ml", "250ml", or "2 Liter" is explicitly stated in the note!
+2. CLIENT IDENTIFICATION VS RETAIL CONSOLIDATION (MANDATORY):
+   - If an order note contains a customer mobile number (e.g. 10-digit number like "97144 17771"), customer name, or delivery location/venue (e.g. "Gangotri Party plot, Sama"):
+     * Check if it matches any registered customer in KNOWN EXISTING CUSTOMERS by name or phone number.
+     * If matched, set "clientName" to the matching client's canonical name.
+     * If NOT registered in KNOWN EXISTING CUSTOMERS, set "clientName" to "Customer (<mobile>)" (or venue name if given). NEVER set "clientName": "Retail" when a phone number or delivery address is provided!
+     * Always extract the 10-digit phone number into the "mobile" field.
+   - ONLY anonymous, walk-in counter cash pickups with NO customer name, NO mobile number, and NO delivery address should be consolidated into 'clientName': 'Retail'. NEVER generate multiple separate 'Retail' entries in the 'sales' array.
+3. DIFFERENT RATES MUST REMAIN SEPARATE LINE ITEMS (MANDATORY): If the user writes or pastes the same SKU at different rates (for example: "Anjani 200ml 10 @ 125" and "Anjani 200ml 5 @ 130", or "10 case 120 bhav, 5 case 125 bhav"), ALWAYS output them as SEPARATE items in the "items" array with their own qty and rate. NEVER combine items that have different rates into one line! Only combine items if BOTH the product SKU AND unit rate are identical.
+4. NAMED CUSTOMERS: Regular business / named customers (e.g., "Jay Ambe Provision", "Rohitbhai", "Dhanlaxmi Caterers") each get their own individual order in the "sales" array.
+5. EXTRACT ADDRESS / DELIVERY LOCATION: If an address, delivery location, road, area, or landmark is written or dictated for a customer (e.g. 'Gangotri Party plot, Sama', 'Waghodia Road', 'Manjalpur', 'Opposite D-Mart'), ALWAYS extract it into the 'address' field in clean English Title Case.
+6. MULTI-DATE / CATERING / EVENT ORDERS (MANDATORY): If a note or message contains multiple dates, shifts (sanje/evening, savare/morning), or venues (e.g. Party Plots, marriage halls), each date/event represents a SEPARATE ORDER for that client. Generate an individual entry in the "sales" array for EACH date/event.
    - Populate "date": "YYYY-MM-DD" for that specific order. Convert dates like "30.11.26", "18/11/26", or "18/11/2026" to "YYYY-MM-DD" (e.g. "2026-11-30").
    - Populate "deliveryDate": "YYYY-MM-DD" matching date.
    - Populate "deliveryTime": shift/time. When a specific time is written (e.g. "5 Pm", "5:00 PM", "11 AM"), extract the exact time! When order time says "sanje" (or "evening", "saanj", "સાંજે"), set "4 PM". When order time says "savare" (or "morning", "સવારે"), set "9 AM". When NO time or shift is defined, ALWAYS set "11 AM".
@@ -2665,7 +2673,7 @@ CRITICAL RULES & USER INSTRUCTIONS:
    - Understand Gujarati colloquial expressions:
      * "nung" / "nang" / "નંગ" / "bottle" / "બોટલ" = Individual bottle pieces. CRITICAL CONVERSION: 48 pieces (નંગ) = 1 Box of Anjani 200ml. All order quantities MUST be output in whole Boxes rounded UP using ceiling! (e.g. 48 nung = 1 box, 96 nung = 2 boxes, 4800 nung = 100 boxes, 2400 nung = 50 boxes, 1000 nung = 21 boxes, 4000 nung = 84 boxes).
      * "hajar" / "હજાર" = thousand. Note: "4000 hajar nung" is a Gujarati vernacular idiom meaning 4000 bottles/pieces (qty: 83.33 boxes). "4 hajar" means 4000 bottles (83.33 boxes).
-6. USER INSTRUCTIONS: Strictly follow any explicit instructions written by the user in the prompt (such as specific pricing, dates, or payment notes).
+7. USER INSTRUCTIONS: Strictly follow any explicit instructions written by the user in the prompt (such as specific pricing, dates, or payment notes).
 
 Return strict JSON:
 {
@@ -2677,17 +2685,17 @@ Return strict JSON:
   },
   "sales": [
     {
-      "clientName": string (customer or shop name; for unknown, walk-in, or unnamed retail buyers, use "Retail"),
-      "mobile": string (if provided, else ""),
+      "clientName": string (customer or shop name; for unregistered customer with mobile, use "Customer (<mobile>)"; ONLY for anonymous walk-in counter sales without mobile/address, use "Retail"),
+      "mobile": string (10-digit mobile number if provided, else ""),
       "address": string (delivery address, road, area, or landmark in English if mentioned, else ""),
       "date": string (order or event date in YYYY-MM-DD, e.g. "2026-11-18", if specified; else today),
       "deliveryDate": string (delivery/event date in YYYY-MM-DD if specified),
       "deliveryTime": string (delivery shift/time: set "4 PM" for sanje/evening, "9 AM" for savare/morning, "11 AM" if no time defined, else specific time written),
       "items": [
         {
-          "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter",
+          "sku": "Anjani 200ml" | "Bailey 250ml" | "Bailey 500ml" | "Bailey 1 Liter" | "Bailey 2 Liter" (DEFAULT to "Anjani 200ml" if brand/size is not specified),
           "qty": number (positive integer),
-          "rate": number (unit rate if written, else 0),
+          "rate": number (unit rate if written, else 130 for Anjani 200ml or 0),
           "unit": "Box" | "Case / Box"
         }
       ],
@@ -2716,9 +2724,32 @@ ${rawText.slice(0, 3000)}`
                 sale.date = normalizeDateStringHelper(sale.date || sale.deliveryDate) || sale.date || istToday
                 sale.deliveryDate = normalizeDateStringHelper(sale.deliveryDate || sale.date) || sale.deliveryDate || sale.date || istToday
                 sale.deliveryTime = normalizeDeliveryTimeHelper(sale.deliveryTime || sale.time || extractTimeFromText(rawText) || '11 AM')
+
+                // Extract 10-digit mobile if present in note/rawText but missed in sale.mobile
+                if (!sale.mobile) {
+                  const mMatch = rawText.match(/\b([6-9]\d{4}\s*\d{5})\b/) || rawText.match(/\b([6-9]\d{9})\b/)
+                  if (mMatch) {
+                    sale.mobile = mMatch[1].replace(/\D/g, '')
+                  }
+                }
+
+                // If sale has mobile or address and was labeled 'Retail', fix clientName
+                if ((sale.mobile || sale.address) && (!sale.clientName || sale.clientName.toLowerCase() === 'retail')) {
+                  sale.clientName = sale.mobile ? `Customer (${sale.mobile})` : (sale.address ? `${sale.address} (Client)` : 'Customer')
+                }
               }
               if (Array.isArray(sale.items)) {
                 for (const it of sale.items) {
+                  if (!it.sku || it.sku.toLowerCase() === 'box' || it.sku.toLowerCase() === 'case' || it.sku.toLowerCase() === 'peti') {
+                    it.sku = 'Anjani 200ml'
+                  }
+                  if (!it.rate || Number(it.rate) <= 0) {
+                    if (it.sku === 'Anjani 200ml') it.rate = 130
+                    else if (it.sku === 'Bailey 250ml') it.rate = 130
+                    else if (it.sku === 'Bailey 500ml') it.rate = 115
+                    else if (it.sku === 'Bailey 1 Liter') it.rate = 125
+                    else if (it.sku === 'Bailey 2 Liter') it.rate = 135
+                  }
                   const skuStr = String(it.sku || '').toLowerCase()
                   const unitStr = String(it.unit || '').toLowerCase()
                   if (skuStr.includes('200') || skuStr.includes('anjani') || !it.sku) {
@@ -2733,6 +2764,10 @@ ${rawText.slice(0, 3000)}`
                       it.unit = 'Box'
                     }
                   }
+                }
+                const calcAmt = sale.items.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.rate) || 0), 0)
+                if (!sale.totalAmount || Number(sale.totalAmount) <= 0) {
+                  sale.totalAmount = calcAmt
                 }
               }
             }
