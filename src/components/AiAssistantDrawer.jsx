@@ -48,7 +48,12 @@ import { useClientStore } from '../store/clientStore'
 import { WATER_SKUS } from '../constants/skus'
 import { getAccountMeta } from '../constants/accounts'
 import { processAiBillImage } from '../utils/aiImageHelper'
-import { consolidateRetailSales } from '../utils/salesBatchUtils'
+import {
+  consolidateRetailSales,
+  normalizeDateString,
+  normalizeDeliveryTime,
+  extractDeliveryTimeFromText,
+} from '../utils/salesBatchUtils'
 import { findBestExistingClientMatch, findMatchingClient } from '../utils/clientMatchingUtils'
 import { ensureEnglishText, sanitizeClientForEnglish, isMerchantOrSelfName } from '../utils/textUtils'
 import { extractGoogleMapsUrl, normalizeCoordinate } from '../utils/locationUtils'
@@ -1830,10 +1835,14 @@ export default function AiAssistantDrawer({
     const isPayment = isPaymentMode
     const isClient = isClientMode
     const isAccounts = isAccountsMode
-    const hasClientIntent = /\b(?:client|customer|party|khata)\b/i.test(query)
+    const hasClientIntent =
+      /\b(?:client|customer|khata)\b/i.test(query) ||
+      (/\bparty\b/i.test(query) && !/\bparty\s*plot\b/i.test(query))
     const hasOrderIntent = /\b(?:order|sales?|peti|box|cases?)\b/i.test(query)
     const hasPaymentIntent = /\b(?:pay(?:ment|ing)?|jama|received?|cash|upi|gpay|bank)\b/i.test(query)
-    const isCompoundExplicit = (hasClientIntent ? 1 : 0) + (hasOrderIntent ? 1 : 0) + (hasPaymentIntent ? 1 : 0) >= 2
+    const isExplicitCombinationPhrase =
+      /\b(?:client\s*(?:\+|plus|and)\s*order|create\s*client\s*and|combination|all[- ]in[- ]one|both\s*client\s*and)\b/i.test(query)
+    const isCompoundExplicit = isExplicitCombinationPhrase || (hasClientIntent && hasOrderIntent && hasPaymentIntent)
     const isOnlyPayment = isPayment && !isClient && !isSales && !isAccounts && !isCompoundExplicit
 
     if (!query && !filePayload) return
@@ -2295,8 +2304,16 @@ export default function AiAssistantDrawer({
                 qty: orderQty,
                 rate: orderRate,
                 totalAmount: orderAmount,
-                deliveryDate: orderRaw.deliveryDate || orderRaw.date || '',
-                deliveryTime: orderRaw.deliveryTime || orderRaw.time || '',
+                deliveryDate:
+                  normalizeDateString(orderRaw.deliveryDate || orderRaw.date) ||
+                  orderRaw.deliveryDate ||
+                  orderRaw.date ||
+                  normalizeDateString(promptText) ||
+                  '',
+                deliveryTime:
+                  normalizeDeliveryTime(orderRaw.deliveryTime || orderRaw.time) ||
+                  extractDeliveryTimeFromText(promptText) ||
+                  '11 AM',
                 location: orderRaw.location || orderRaw.address || clientRaw.address || '',
                 mapLink: orderRaw.mapLink || '',
                 notes: orderRaw.notes || '',

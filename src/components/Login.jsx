@@ -4,7 +4,7 @@
 // sign-in. Changes here affect every user's ability to access the app.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState } from 'react'
-import toast, { Toaster } from 'react-hot-toast'
+import toast, { Toaster, ToastBar } from 'react-hot-toast'
 import {
   signInWithGoogle,
   signInWithEmailPassword,
@@ -77,17 +77,46 @@ export default function Login() {
       <Toaster
         position="top-center"
         toastOptions={{
+          duration: 2500,
           style: {
             background: '#ffffff',
             color: '#131921',
             border: '1px solid #e5e7eb',
             borderRadius: '12px',
-            fontWeight: '900',
+            fontWeight: '700',
             fontSize: '14px',
-            padding: '16px 24px',
+            padding: '12px 18px',
+            cursor: 'pointer',
           },
         }}
-      />
+      >
+        {(t) => (
+          <ToastBar toast={t}>
+            {({ icon, message }) => (
+              <div
+                onClick={() => toast.dismiss(t.id)}
+                className="flex items-center gap-2 cursor-pointer w-full select-none"
+              >
+                {icon}
+                <div className="flex-1">{message}</div>
+                {t.type !== 'loading' && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toast.dismiss(t.id)
+                    }}
+                    className="p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 ml-1 inline-flex items-center justify-center text-xs font-bold transition-colors"
+                    aria-label="Dismiss notification"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            )}
+          </ToastBar>
+        )}
+      </Toaster>
 
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
         <div className="text-center mb-6">

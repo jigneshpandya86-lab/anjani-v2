@@ -13,7 +13,7 @@ last_updated: 2026-11-22
 - **Staff Drivers**: **Nilesh** & **Hiteshbhai** (delivery team; phone numbers resolved dynamically from staff master).
 - **Merchant/Payee**: **Annapurna Foods** / **Jignesh Pandya** / **Anjani Water** (Seller/receiver; NEVER a customer). Customers: Caterers, provision stores, party plots (*Maruti Caterers*, *Kamleshbhai*, *Jay Ambe*, *Balaji*).
 - **SKUs**: 1. **Anjani 200ml** (1 Box = 48 pcs/nung/બટલી, ₹130/box; `boxes = Math.ceil(pieces / 48)`). 2. **Bailey 250ml** (₹130/case). 3. **Bailey 500ml** (₹115/case). 4. **Bailey 1L** (₹125/case). 5. **Bailey 2L** (₹135/case).
-- **Shifts**: Morning ("savare") $\rightarrow$ `9 AM`; Afternoon ("bapore") $\rightarrow$ `1 PM`; Evening ("sanje") $\rightarrow$ `4 PM`; Default $\rightarrow$ `11 AM`.
+- **Shifts & Dates**: Dates accept any format (`DD.MM.YY`, `DD.MM.YYYY`, `DD/MM/YYYY`, `DD-MM-YYYY`, `YYYY-MM-DD`, `today`, `tomorrow`) and normalize to `YYYY-MM-DD` (e.g., `30.11.26` $\rightarrow$ `2026-11-30`). Explicit times (`5 PM`, `5:00 PM`, `11 AM`) are preserved; shifts: Morning $\rightarrow$ `9 AM`, Afternoon $\rightarrow$ `1 PM`, Evening $\rightarrow$ `4 PM`, Default $\rightarrow$ `11 AM`.
 - **Internal Accounts**: `"nilesh"`, `"hiteshbhai"`, `"counter"` (cash), `"bank"` (online/UPI).
 
 ## 2. Guardrails & Hierarchy

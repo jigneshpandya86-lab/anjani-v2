@@ -36,8 +36,8 @@ export function normalizeDateString(dateStr) {
     return `${y}-${m}-${d}`
   }
 
-  // DD/MM/YY or DD/MM/YYYY or DD-MM-YY or DD-MM-YYYY
-  const m = s.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b/)
+  // DD/MM/YY or DD/MM/YYYY or DD-MM-YY or DD-MM-YYYY or DD.MM.YY or DD.MM.YYYY
+  const m = s.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b/)
   if (m) {
     const day = m[1].padStart(2, '0')
     const month = m[2].padStart(2, '0')
@@ -51,8 +51,8 @@ export function normalizeDateString(dateStr) {
     return `${year}-${month}-${day}`
   }
 
-  // YYYY/MM/DD
-  const mIso = s.match(/\b(\d{4})[/-](\d{1,2})[/-](\d{1,2})\b/)
+  // YYYY/MM/DD or YYYY.MM.DD
+  const mIso = s.match(/\b(\d{4})[./-](\d{1,2})[./-](\d{1,2})\b/)
   if (mIso) {
     let year = mIso[1]
     const month = mIso[2].padStart(2, '0')
@@ -71,6 +71,7 @@ export function normalizeDateString(dateStr) {
  * - "sanje" / "evening" -> "4 PM"
  * - "savare" / "morning" -> "9 AM"
  * - "bapore" / "afternoon" -> "1 PM"
+ * - "5 Pm" / "5pm" / "5:00 PM" -> "5 PM" / "5:00 PM"
  * - When no time is defined or empty -> "11 AM"
  */
 export function normalizeDeliveryTime(rawTime) {
@@ -87,7 +88,23 @@ export function normalizeDeliveryTime(rawTime) {
   if (/(?:\b(?:bapore|dupahar|afternoon)\b|બપોરે|બપોર)/i.test(t)) {
     return '1 PM'
   }
+  if (/\b(?:am|pm)\b/i.test(t)) {
+    return t.replace(/\s+/g, ' ').replace(/(\d+)\s*(am|pm)/gi, '$1 $2').replace(/\b(am|pm)\b/gi, (m) => m.toUpperCase())
+  }
   return t
+}
+
+/**
+ * Extracts delivery time or shift from freeform text if present.
+ */
+export function extractDeliveryTimeFromText(text) {
+  if (!text || typeof text !== 'string') return ''
+  const m12 = text.match(/\b(\d{1,2}(?::\d{2})?)\s*(am|pm)\b/i)
+  if (m12) return `${m12[1].trim()} ${m12[2].toUpperCase()}`
+  if (/(?:\b(?:sanje|saanj|saanje|evening|shyam)\b|સાંજે|સાંજ)/i.test(text)) return '4 PM'
+  if (/(?:\b(?:savare|sakal|morning)\b|સવારે|સવાર)/i.test(text)) return '9 AM'
+  if (/(?:\b(?:bapore|dupahar|afternoon)\b|બપોરે|બપોર)/i.test(text)) return '1 PM'
+  return ''
 }
 
 /**
@@ -545,7 +562,7 @@ export function parseLocalSalesText(rawText = '', clients = []) {
   const isCateringOrSales =
     /(?:caterer|caterers|mandap|decorator|party\s*plot|પાર્ટી\s*પ્લોટ|nung|nang|નંગ|botal|bottel|bottle|બોટલ|sales|box|petli)/i.test(
       cleanInput
-    ) || lines.some((l) => /\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/.test(l))
+    ) || lines.some((l) => /\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/.test(l))
 
   if (!isCateringOrSales) return null
 
@@ -596,7 +613,23 @@ export function parseLocalSalesText(rawText = '', clients = []) {
     const rawLine = lines[i]
     const lineEn = ensureEnglishText(transliterateIndicToEnglish(rawLine))
 
-    // 0. Check Name: or Phone: lines
+    // 0. Check standalone mobile phone number (e.g. "97144 17771")
+    const cleanDigits = normalizeDigits(rawLine.replace(/\D/g, ''))
+    if (cleanDigits.length === 10 && /^[6-9]\d{9}$/.test(cleanDigits)) {
+      if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }
+      currentOrder.mobile = cleanDigits
+      const clientWithMobile = clients.find((c) => {
+        const cm = (c.mobile || c.phone || '').replace(/\D/g, '')
+        return cm.endsWith(cleanDigits)
+      })
+      if (clientWithMobile && (!currentOrder.clientName || currentOrder.clientName === 'Retail')) {
+        currentOrder.clientName = clientWithMobile.name
+        defaultClientName = clientWithMobile.name
+      }
+      continue
+    }
+
+    // Check Name: or Phone: lines
     const namePrefix = rawLine.match(/^(?:Name|Customer|Client)\s*:\s*(.+)$/i)
     if (namePrefix) {
       const detectedName = namePrefix[1].trim()
@@ -613,10 +646,18 @@ export function parseLocalSalesText(rawText = '', clients = []) {
       continue
     }
 
-    // 1. Check Date
+    // Check Add:- or Address: prefix
+    const addrPrefix = rawLine.match(/^(?:Add|Address|Venue|Location)\s*[:-]+\s*(.+)$/i)
+    if (addrPrefix) {
+      if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }
+      currentOrder.address = ensureEnglishText(transliterateIndicToEnglish(addrPrefix[1].trim()))
+      continue
+    }
+
+    // 1. Check Date (including multi-token line like "30.11.26 -  60 Box -5 Pm")
     const dateMatch =
-      rawLine.match(/\b(?:Date[:\s-]*)?(\d{4}[/-]\d{1,2}[/-]\d{1,2})\b/i) ||
-      rawLine.match(/\b(?:Date[:\s-]*)?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/i)
+      rawLine.match(/\b(?:Date[:\s-]*)?(\d{4}[./-](\d{1,2})[./-](\d{1,2}))\b/i) ||
+      rawLine.match(/\b(?:Date[:\s-]*)?(\d{1,2}[./-](\d{1,2})[./-](\d{2,4}))\b/i)
     if (dateMatch) {
       const parsedDate = normalizeDateString(dateMatch[1])
       if (
@@ -639,23 +680,51 @@ export function parseLocalSalesText(rawText = '', clients = []) {
         currentOrder.date = parsedDate
         currentOrder.deliveryDate = parsedDate
       }
+
+      // Check if time is also present on same line (e.g. "-5 Pm")
+      const timeInSameLine = extractDeliveryTimeFromText(rawLine)
+      if (timeInSameLine) {
+        currentOrder.deliveryTime = timeInSameLine
+      }
+
+      // Check if quantity is also present on same line (e.g. "60 Box")
+      const qtyMatch = rawLine.match(/(\d+)\s*(?:box|boxes|peti|case|cases|nung|nang|નંગ|bottle|bottel|બોટલ|pieces?|pcs?)/i)
+      if (qtyMatch) {
+        let num = parseInt(qtyMatch[1], 10)
+        let sku = DEFAULT_SKU
+        if (/200\s*ml|200ml/i.test(rawLine)) sku = 'Anjani 200ml'
+        else if (/250\s*ml|250ml/i.test(rawLine)) sku = 'Bailey 250ml'
+        else if (/500\s*ml|500ml/i.test(rawLine)) sku = 'Bailey 500ml'
+        else if (/1\s*l(?:iter|tr)?/i.test(rawLine)) sku = 'Bailey 1 Liter'
+        else if (/2\s*l(?:iter|tr)?/i.test(rawLine)) sku = 'Bailey 2 Liter'
+
+        const isPieces =
+          /(?:nung|nang|નંગ|bottle|bottel|બોટલ|pieces?|pcs?)\b/i.test(rawLine) &&
+          !/(?:box|boxes|peti|case|cases)\b/i.test(rawLine)
+        let finalQty = num
+        let originalPieces = null
+        if (isPieces && (sku === 'Anjani 200ml' || !sku || sku.includes('200ml'))) {
+          originalPieces = num
+          finalQty = Math.ceil(num / 48)
+        }
+        currentOrder.items = currentOrder.items || []
+        currentOrder.items.push({
+          sku,
+          qty: finalQty,
+          rate: 0,
+          unit: 'Box',
+          ...(originalPieces ? { originalPieces } : {}),
+        })
+      }
+
       continue
     }
 
     // 2. Check Shift / Delivery Time
-    if (/\b(?:sanje|saanj|shyam|evening|સાંજે|સાંજ)\b/i.test(rawLine)) {
+    const explicitTime = extractDeliveryTimeFromText(rawLine)
+    if (explicitTime) {
       if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }
-      currentOrder.deliveryTime = '4 PM'
-      continue
-    }
-    if (/\b(?:savare|sakal|morning|સવારે|સવાર)\b/i.test(rawLine)) {
-      if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }
-      currentOrder.deliveryTime = '9 AM'
-      continue
-    }
-    if (/\b(?:bapore|dupahar|afternoon|બપોરે|બપોર)\b/i.test(rawLine)) {
-      if (!currentOrder) currentOrder = { clientName: defaultClientName, items: [] }
-      currentOrder.deliveryTime = '1 PM'
+      currentOrder.deliveryTime = explicitTime
       continue
     }
 

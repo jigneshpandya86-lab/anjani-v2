@@ -431,7 +431,7 @@ export function parseDateUpdateIntent(rawQ, store = {}) {
       targetDate = `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`
       targetDateLabel = targetDate
     } else {
-      const ddmmyyyy = normQ.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/)
+      const ddmmyyyy = normQ.match(/\b(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?\b/)
       if (ddmmyyyy) {
         const d = String(parseInt(ddmmyyyy[1], 10)).padStart(2, '0')
         const m = String(parseInt(ddmmyyyy[2], 10)).padStart(2, '0')

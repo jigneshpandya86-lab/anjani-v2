@@ -1828,6 +1828,9 @@ exports.askAnjaniAi = onCall(async (request) => {
     if (/(?:\b(?:bapore|dupahar|afternoon)\b|બપોરે|બપોર)/i.test(t)) {
       return '1 PM'
     }
+    if (/\b(?:am|pm)\b/i.test(t)) {
+      return t.replace(/\s+/g, ' ').replace(/(\d+)\s*(am|pm)/gi, '$1 $2').replace(/\b(am|pm)\b/gi, (m) => m.toUpperCase())
+    }
     return t
   }
 
@@ -2032,6 +2035,53 @@ exports.askAnjaniAi = onCall(async (request) => {
   const dayAfterDate = new Date(now.getTime() + 48 * 60 * 60 * 1000);
   const istDayAfter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dayAfterDate);
 
+  const normalizeDateStringHelper = (dateStr) => {
+    if (!dateStr || typeof dateStr !== 'string') return null;
+    const s = normalizeDigits(dateStr.trim());
+    if (!s) return null;
+
+    if (/\b(?:today|aaj|aaje|now|આજે|આજ)\b/i.test(s)) {
+      return istToday;
+    }
+    if (/\b(?:tomorrow|kal|kale|કાલે|કાલ)\b/i.test(s)) {
+      return istTomorrow;
+    }
+    if (/\b(?:parso|day\s*after\s*tomorrow)\b/i.test(s)) {
+      return istDayAfter;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      return s;
+    }
+    const m = s.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b/);
+    if (m) {
+      const day = m[1].padStart(2, '0');
+      const month = m[2].padStart(2, '0');
+      let year = m[3];
+      if (year.length === 2) {
+        year = `20${year}`;
+      }
+      return `${year}-${month}-${day}`;
+    }
+    const mIso = s.match(/\b(\d{4})[./-](\d{1,2})[./-](\d{1,2})\b/);
+    if (mIso) {
+      const year = mIso[1];
+      const month = mIso[2].padStart(2, '0');
+      const day = mIso[3].padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    return null;
+  };
+
+  const extractTimeFromText = (str) => {
+    if (!str || typeof str !== 'string') return '';
+    const tm = str.match(/\b(\d{1,2}(?::\d{2})?)\s*(am|pm)\b/i);
+    if (tm) return `${tm[1].trim()} ${tm[2].toUpperCase()}`;
+    if (/(?:\b(?:sanje|saanj|saanje|evening|shyam)\b|સાંજે|સાંજ)/i.test(str)) return '4 PM';
+    if (/(?:\b(?:savare|sakal|morning)\b|સવારે|સવાર)/i.test(str)) return '9 AM';
+    if (/(?:\b(?:bapore|dupahar|afternoon)\b|બપોરે|બપોર)/i.test(str)) return '1 PM';
+    return '';
+  };
+
   const tryGenerate = async (modelName) => {
     if (imageBase64) {
       const model = vertexAI.getGenerativeModel({
@@ -2115,7 +2165,10 @@ Return a single valid JSON object strictly matching the schema for the detected 
               qty: Number(orderData.qty) || defaultQty,
               rate: Number(orderData.rate) || defaultRate,
               totalAmount: Number(orderData.totalAmount) || ((Number(orderData.qty) || defaultQty) * (Number(orderData.rate) || defaultRate)),
-              address: orderData.address || '',
+              deliveryDate: orderData.deliveryDate ? (normalizeDateStringHelper(orderData.deliveryDate) || orderData.deliveryDate) : '',
+              deliveryTime: normalizeDeliveryTimeHelper(orderData.deliveryTime || orderData.time || '11 AM'),
+              address: orderData.address || orderData.location || '',
+              location: orderData.location || orderData.address || '',
             } : null,
             payment: shouldIncludePayment ? {
               ...parsedData.payment,
@@ -2336,12 +2389,15 @@ ${rawText.slice(0, 3000)}`
         }
       }
 
-      // 0. Check for compound action intent in text (explicit mode or references 2 or more distinct core entities)
-      const hasClientWord = /\b(?:client|customer|party|khata)\b/i.test(rawText)
+      // 0. Check for compound action intent in text (only if explicit mode or explicit combination requested)
+      const hasClientWord =
+        /\b(?:client|customer|khata)\b/i.test(rawText) ||
+        (/\bparty\b/i.test(rawText) && !/\bparty\s*plot\b/i.test(rawText))
       const hasOrderWord = /\b(?:order|sales?|peti|box|cases?)\b/i.test(rawText)
       const hasPaymentWord = /\b(?:pay(?:ment|ing)?|jama|received?|cheque|gpay|upi|cash)\b/i.test(rawText)
-      const compoundEntitiesCount = (hasClientWord ? 1 : 0) + (hasOrderWord ? 1 : 0) + (hasPaymentWord ? 1 : 0)
-      const isCompoundTextIntent = mode === 'compound_action' || compoundEntitiesCount >= 2
+      const isExplicitCombinationPhrase =
+        /\b(?:client\s*(?:\+|plus|and)\s*order|create\s*client\s*and|combination|all[- ]in[- ]one|both\s*client\s*and)\b/i.test(rawText)
+      const isCompoundTextIntent = mode === 'compound_action' || isExplicitCombinationPhrase || (hasClientWord && hasOrderWord && hasPaymentWord)
 
       if (isCompoundTextIntent) {
         const model = vertexAI.getGenerativeModel({
@@ -2369,7 +2425,10 @@ Parse the user's multi-action request (Client + Order + Payment) into strict JSO
     "qty": number (Calculate integer boxes from totalAmount / rate, or default to 10 if total is around 1300),
     "rate": number (unit rate, CRITICAL: default strictly to 130 Rs per box if not specified),
     "totalAmount": number,
-    "address": string
+    "address": string,
+    "deliveryDate": string (delivery or event date in YYYY-MM-DD, e.g. "2026-11-30"; convert DD.MM.YY, DD/MM/YYYY, DD-MM-YY to YYYY-MM-DD. If none specified, leave empty ""),
+    "deliveryTime": string (delivery time slot, e.g. "5 PM", "4 PM" for evening/sanje, "9 AM" for morning/savare, "11 AM" if unspecified),
+    "location": string (venue, party plot, or delivery address)
   },
   "payment": null or {
     "payerName": string,
@@ -2438,7 +2497,10 @@ User Text: ${rawText.slice(0, 1000)}`
                   qty: Number(orderData.qty) || defaultQty,
                   rate: Number(orderData.rate) || defaultRate,
                   totalAmount: Number(orderData.totalAmount) || ((Number(orderData.qty) || defaultQty) * (Number(orderData.rate) || defaultRate)),
-                  address: orderData.address || '',
+                  deliveryDate: orderData.deliveryDate ? (normalizeDateStringHelper(orderData.deliveryDate) || orderData.deliveryDate) : (normalizeDateStringHelper(rawText) || ''),
+                  deliveryTime: normalizeDeliveryTimeHelper(orderData.deliveryTime || orderData.time || extractTimeFromText(rawText) || '11 AM'),
+                  address: orderData.address || orderData.location || '',
+                  location: orderData.location || orderData.address || '',
                 },
                 payment: shouldIncludePayment ? {
                   ...parsedData.payment,
@@ -2596,9 +2658,10 @@ CRITICAL RULES & USER INSTRUCTIONS:
 3. NAMED CUSTOMERS: Regular business / named customers (e.g., "Jay Ambe Provision", "Rohitbhai") each get their own individual order in the "sales" array.
 4. EXTRACT ADDRESS / DELIVERY LOCATION: If an address, delivery location, road, area, or landmark is written or dictated for a customer (e.g. 'Waghodia Road', 'Manjalpur', 'Opposite D-Mart'), ALWAYS extract it into the 'address' field in clean English Title Case.
 5. MULTI-DATE / CATERING / EVENT ORDERS (MANDATORY): If a note or message contains multiple dates, shifts (sanje/evening, savare/morning), or venues (e.g. Party Plots, marriage halls), each date/event represents a SEPARATE ORDER for that client. Generate an individual entry in the "sales" array for EACH date/event.
-   - Populate "date": "YYYY-MM-DD" for that specific order. Convert dates like "18/11/26" or "18/11/2026" to "2026-11-18".
-   - Populate "deliveryTime": shift/time. CRITICAL DELIVERY TIME RULE: When order time says "sanje" (or "evening", "saanj", "સાંજે"), set "4 PM". When order time says "savare" (or "morning", "સવારે"), set "9 AM". When NO time or shift is defined, ALWAYS set "11 AM".
-   - Populate "address": venue/location in English Title Case (e.g., "Balaji Party Plot Harni Road Vadodara", "PG Party Plot Harni Baroda").
+   - Populate "date": "YYYY-MM-DD" for that specific order. Convert dates like "30.11.26", "18/11/26", or "18/11/2026" to "YYYY-MM-DD" (e.g. "2026-11-30").
+   - Populate "deliveryDate": "YYYY-MM-DD" matching date.
+   - Populate "deliveryTime": shift/time. When a specific time is written (e.g. "5 Pm", "5:00 PM", "11 AM"), extract the exact time! When order time says "sanje" (or "evening", "saanj", "સાંજે"), set "4 PM". When order time says "savare" (or "morning", "સવારે"), set "9 AM". When NO time or shift is defined, ALWAYS set "11 AM".
+   - Populate "address": venue/location in English Title Case (e.g., "Gangotri Party Plot, Sama, Vadodara", "Balaji Party Plot Harni Road Vadodara", "PG Party Plot Harni Baroda").
    - Understand Gujarati colloquial expressions:
      * "nung" / "nang" / "નંગ" / "bottle" / "બોટલ" = Individual bottle pieces. CRITICAL CONVERSION: 48 pieces (નંગ) = 1 Box of Anjani 200ml. All order quantities MUST be output in whole Boxes rounded UP using ceiling! (e.g. 48 nung = 1 box, 96 nung = 2 boxes, 4800 nung = 100 boxes, 2400 nung = 50 boxes, 1000 nung = 21 boxes, 4000 nung = 84 boxes).
      * "hajar" / "હજાર" = thousand. Note: "4000 hajar nung" is a Gujarati vernacular idiom meaning 4000 bottles/pieces (qty: 83.33 boxes). "4 hajar" means 4000 bottles (83.33 boxes).
@@ -2650,7 +2713,9 @@ ${rawText.slice(0, 3000)}`
             // Delivery time normalization & piece conversion safety (48 pieces = 1 Box for Anjani 200ml)
             for (const sale of parsedData.sales) {
               if (sale) {
-                sale.deliveryTime = normalizeDeliveryTimeHelper(sale.deliveryTime || sale.time)
+                sale.date = normalizeDateStringHelper(sale.date || sale.deliveryDate) || sale.date || istToday
+                sale.deliveryDate = normalizeDateStringHelper(sale.deliveryDate || sale.date) || sale.deliveryDate || sale.date || istToday
+                sale.deliveryTime = normalizeDeliveryTimeHelper(sale.deliveryTime || sale.time || extractTimeFromText(rawText) || '11 AM')
               }
               if (Array.isArray(sale.items)) {
                 for (const it of sale.items) {
@@ -3403,7 +3468,7 @@ RUNTIME CONTEXT:
                 qty: orderQty,
                 rate: orderRate,
                 totalAmount,
-                deliveryDate: rawOrder.deliveryDate || rawOrder.date || istToday,
+                deliveryDate: normalizeDateStringHelper(rawOrder.deliveryDate || rawOrder.date) || rawOrder.deliveryDate || rawOrder.date || istToday,
                 deliveryTime: normalizeDeliveryTimeHelper(rawOrder.deliveryTime || rawOrder.time || '11 AM'),
                 location: rawOrder.location || rawOrder.address || clientData.address || '',
                 address: rawOrder.address || clientData.address || '',
@@ -3439,7 +3504,7 @@ RUNTIME CONTEXT:
                 qty: orderQty,
                 rate: orderRate,
                 totalAmount,
-                deliveryDate: orderArgs.deliveryDate || orderArgs.date || istToday,
+                deliveryDate: normalizeDateStringHelper(orderArgs.deliveryDate || orderArgs.date) || orderArgs.deliveryDate || orderArgs.date || istToday,
                 deliveryTime: normalizeDeliveryTimeHelper(orderArgs.time || orderArgs.deliveryTime || '11 AM'),
                 location: orderArgs.location || clientData.address || '',
                 address: orderArgs.location || clientData.address || '',

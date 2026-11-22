@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import toast, { Toaster } from 'react-hot-toast'
+import toast, { Toaster, ToastBar } from 'react-hot-toast'
 import { useClientStore } from './store/clientStore'
 import {
   ShoppingCart,
@@ -305,14 +305,12 @@ function App() {
                   })
 
             const processed = await processAiBillImage(fileObj)
-            const prompt = sharedRecord.text
-              ? `client plus order plus payment: ${sharedRecord.text}`
-              : 'client plus order plus payment'
+            const prompt = sharedRecord.text || ''
 
-            openAiWithMode('compound_action', prompt, processed)
-            toast.success('🧾 GPay Receipt attached to AI Assistant!', {
-              id: 'gpay-share-toast',
-              duration: 4000,
+            openAiWithMode('auto', prompt, processed)
+            toast.success('📷 Receipt/Image attached to AI Assistant!', {
+              id: 'media-share-toast',
+              duration: 3000,
             })
             return
           }
@@ -1151,15 +1149,42 @@ function App() {
             border: '1px solid #e5e7eb',
             boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
             borderRadius: '12px',
-            fontWeight: '900',
+            fontWeight: '700',
             fontSize: '14px',
-            padding: '16px 24px',
+            padding: '12px 18px',
             cursor: 'pointer',
           },
           success: { iconTheme: { primary: '#25D366', secondary: '#fff' }, duration: 2500 },
           error: { iconTheme: { primary: '#EF4444', secondary: '#fff' }, duration: 4000 },
         }}
-      />
+      >
+        {(t) => (
+          <ToastBar toast={t}>
+            {({ icon, message }) => (
+              <div
+                onClick={() => toast.dismiss(t.id)}
+                className="flex items-center gap-2 cursor-pointer w-full select-none"
+              >
+                {icon}
+                <div className="flex-1">{message}</div>
+                {t.type !== 'loading' && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toast.dismiss(t.id)
+                    }}
+                    className="p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 ml-1 inline-flex items-center justify-center text-xs font-bold transition-colors"
+                    aria-label="Dismiss notification"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            )}
+          </ToastBar>
+        )}
+      </Toaster>
 
       {/* Unified Top Header (all screen sizes) */}
       <header className="sticky top-0 bg-white shadow-sm z-40 flex items-center justify-between px-4 py-3">

@@ -471,5 +471,37 @@ Please confirm price, stock and delivery availability.`
 
     const pastIso = normalizeDateString('2024-05-15')
     expect(pastIso).toBe(`${currentYear}-05-15`)
+
+    // Dot-separated Indian dates (e.g. 30.11.26 -> 2026-11-30)
+    const dotDate = normalizeDateString('30.11.26')
+    expect(dotDate).toBe('2026-11-30')
+
+    const dotDateFull = normalizeDateString('30.11.2026')
+    expect(dotDateFull).toBe('2026-11-30')
+  })
+
+  it('correctly parses catering order with dot-separated date, time, and address from note', () => {
+    const note = `97144 17771
+30.11.26 -  60 Box -5 Pm
+Add:- Gangotri Party plot, Sama`
+
+    const mockClientsWithDhanlaxmi = [
+      ...mockClients,
+      { id: 'cli-dhanlaxmi', name: 'Dhanlaxmi Caterers', mobile: '9714417771', rate: 128 },
+    ]
+
+    const parsed = parseLocalSalesText(note, mockClientsWithDhanlaxmi)
+    expect(parsed).not.toBeNull()
+    expect(parsed.data.sales).toHaveLength(1)
+
+    const sale = parsed.data.sales[0]
+    expect(sale.clientName).toBe('Dhanlaxmi Caterers')
+    expect(sale.mobile).toBe('9714417771')
+    expect(sale.date).toBe('2026-11-30')
+    expect(sale.deliveryDate).toBe('2026-11-30')
+    expect(sale.deliveryTime).toBe('5 PM')
+    expect(sale.address).toContain('Gangotri Party Plot')
+    expect(sale.items[0].qty).toBe(60)
+    expect(sale.items[0].sku).toBe('Anjani 200ml')
   })
 })
