@@ -1,8 +1,8 @@
 ---
 name: anjani-operations
 description: Authoritative operational skill for Anjani Water ERP. Governs operations across text, voice, and multimodal photo scans with native function calling, pure auto visual classification, dynamic phone resolution, and decoupled entity workflows.
-version: 2.9.0
-last_updated: 2026-11-22
+version: 3.0.0
+last_updated: 2026-11-23
 ---
 
 # Anjani Water ERP Operations (`anjani-operations`)
@@ -21,6 +21,7 @@ last_updated: 2026-11-22
 - **Full Auto Mode**: All photos, documents, and screenshots operate in Full Auto Mode. Multimodal AI classifies document type directly from layout and text. UI chips act as hints; visual truth takes precedence.
 - **Incomplete / General Combination Request in Chat**: If user types or dictates general compound keywords (e.g. *"client plus order plus payment"*, *"client + order + payment"*, *"book order"*) WITHOUT specifying the customer name or quantity, and without attaching an image, the AI MUST NOT hallucinate an empty client or fake order card. It MUST politely ask: `"Please provide the customer name, order quantity, and delivery date/time to proceed."`
 - **Direct Messaging to Leads & Contacts**: When user requests to message leads (e.g., *"Send message for google map review to first 2"*, *"Message today's any one lead"*, *"Send SMS to lead"*), invoke `send_client_message` with recipient name and phone extracted from context/leads. Never drop phone numbers when visible. For multiple contacts, pass them in `recipients: [{ name, phone }]`. If user says "Today's any one lead" in context of messaging, draft a message for the first available lead rather than dumping all leads again.
+- **Contact Ambiguity & Contact Picker**: When contact name or mobile is missing or ambiguous for celebration or lead registration, offer 1-tap "Pick from Phone Contacts" (native Web Contact Picker / client lookup) to avoid dropping phone numbers or hallucinating contacts.
 - **Zero Hardwiring & Candidate Coverage Matching**: Do NOT use static surname lists, artificial typo dictionaries, or hardcoded phone numbers. All staff and contact phone numbers are resolved dynamically from client records, lead records, or staff profiles. Matches Indian names (`[SURNAME] [GIVEN] [FATHER]`) via token coverage:
   $$\text{Coverage}(C, T) = \frac{|C \cap T|}{|C|}$$
   Candidates whose given name is contained in receipt name (e.g., `Drumil Bhai` in `PARMAR DHRUMIL RAMJIBHAI`) take priority over generic shared surnames.
@@ -38,7 +39,7 @@ last_updated: 2026-11-22
 - **Expenses**: `record_expense` (`amount` [required], `category`: `"Loading / Labor" | "Fuel / Transport" | "Maintenance" | "Food & Refreshments" | "Staff Advance" | "Miscellaneous"`, `note`, `accountId`: `'counter' | 'bank' | 'nilesh' | 'hiteshbhai'`, `paymentMode`); `edit_expense` (`amount`, `newAmount`, `oldAmount`, `category`, `accountId`, `note`, `date`, `changes`); `cancel_expense` (`amount`, `category`, `accountId`, `reason`); `query_expenses` (`dateFilter`: `'today' | 'yesterday' | 'month'`, `category`, `accountId`).
 - **Transfers**: `record_transfer` (cash handover driver to counter/bank: `fromAccountId`, `toAccountId`, `amount`, `notes`, `date`); `cancel_transfer` (`amount`, `fromAccountId`, `toAccountId`, `reason`).
 - **Stock**: `query_stock` (live warehouse check); `add_stock` (factory inward: `sku`, `qty`, `narration`); `record_stock_damage` (`sku`, `qty`, `reason`).
-- **Leads & Greetings**: `query_leads` (`area`, `business_type`); `discover_leads` (`corridor`); `convert_lead` (`leadName`, `rate`, `mobile`, `address`, `notes`); `query_celebrations` (`period`: `'today' | 'upcoming' | 'month'`); `send_celebration_wish` (`contactName`, `type`: `'birthday' | 'anniversary' | 'festival'`, `customMessage`).
+- **Leads & Greetings**: `create_lead` (`name`, `phone`, `area`, `businessType`, `notes`); `query_leads` (`area`, `businessType`); `discover_leads` (`corridor`); `convert_lead` (`leadName`, `rate`, `mobile`, `address`, `notes`); `add_celebration` (`name`, `phone`, `relation`: `'Client' | 'Friend' | 'Family' | 'Vendor' | 'Staff'`, `celebrationType`: `'anniversary' | 'birthday' | 'both'`, `date`, `birthday`, `anniversary`); `update_celebration` (`contactName`, `fieldToUpdate`: `'anniversary' | 'birthday' | 'phone' | 'relation'`, `newValue`); `query_celebrations` (`period`: `'today' | 'upcoming' | 'month'`); `send_celebration_wish` (`contactName`, `type`: `'birthday' | 'anniversary' | 'festival'`, `customMessage`). When user states contact anniversary/birthday (e.g. *"Harshit N Pandya, Happy Anniversary Today"*), invoke `add_celebration` to save celebration & prepare wish. If follow-up asks *"Added to Celebration?"*, verify or invoke `add_celebration`.
 - **Staff & Errands**: `send_client_message` (`clientName`, `phone`, `message`, `channel`, `recipients`: `[{ name, phone }]`); `staff_reminder` (`staffName`, `message`, `phone`, `channel`, `dueDate`); `query_tasks` (`staffName`); `query_staff_balance` (`staffName`).
 - **Compound Multi-Entity**: `create_client_and_order` (onboards client & books order: `client`: `{ name, mobile, address, location, rate }`, `order`: `{ sku, qty, rate, deliveryDate, deliveryTime, location, mapLink, notes }`). Strictly registers client and books order; NEVER records payments. Financial mutations are decoupled and handled via `receive_payment`.
 

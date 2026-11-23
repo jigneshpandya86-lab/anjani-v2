@@ -3384,6 +3384,54 @@ ${rawText.slice(0, 3000)}`
           },
         },
         {
+          name: 'create_lead',
+          description:
+            'Adds a new prospective business lead into the Leads database without converting to client (e.g. "Add new lead Ramesh Caterers Gotri 9825012345", "New lead Krishna Provision Alkapuri", "Save lead").',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              name: { type: 'STRING', description: 'Name of lead or shop or contact person' },
+              phone: { type: 'STRING', description: '10-digit mobile number' },
+              area: { type: 'STRING', description: 'Area or corridor (e.g. Gotri, Sama, Alkapuri, Manjalpur)' },
+              businessType: { type: 'STRING', enum: ['Caterer', 'Hotel', 'Provision', 'Other'], description: 'Business category (defaults to Caterer)' },
+              notes: { type: 'STRING', description: 'Notes or requirement details' },
+            },
+            required: ['name'],
+          },
+        },
+        {
+          name: 'add_celebration',
+          description:
+            'Saves or records a customer or personal contact anniversary, birthday, or celebration date into the Celebrations database (e.g. "Add Harshit N Pandya anniversary today", "Harshit N Pandya, Happy Anniversary Today", "Record birthday for Kamleshbhai 15 August", "Add to celebration", "Save celebration for Ramesh").',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              name: { type: 'STRING', description: 'Full name of the contact or customer' },
+              phone: { type: 'STRING', description: 'Contact 10-digit mobile number if stated or known' },
+              relation: { type: 'STRING', enum: ['Client', 'Friend', 'Family', 'Vendor', 'Staff', 'Other'], description: 'Relation to business (defaults to Client)' },
+              celebrationType: { type: 'STRING', enum: ['anniversary', 'birthday', 'both'], description: 'Type of celebration being added' },
+              date: { type: 'STRING', description: 'Date in natural form or MM-DD or YYYY-MM-DD (e.g. "today", "tomorrow", "11-23", "2026-11-23")' },
+              birthday: { type: 'STRING', description: 'Birthday in MM-DD format if adding birthday' },
+              anniversary: { type: 'STRING', description: 'Anniversary in MM-DD format if adding anniversary' },
+            },
+            required: ['name'],
+          },
+        },
+        {
+          name: 'update_celebration',
+          description:
+            'Updates or changes an existing celebration date or contact details in Celebrations database (e.g. "Change Harshit anniversary to 25th Nov", "Update birthday for Jay Ambe").',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              contactName: { type: 'STRING', description: 'Name of the contact to update' },
+              fieldToUpdate: { type: 'STRING', enum: ['anniversary', 'birthday', 'phone', 'relation'], description: 'Field being modified' },
+              newValue: { type: 'STRING', description: 'New value or date (MM-DD or phone number)' },
+            },
+            required: ['contactName'],
+          },
+        },
+        {
           name: 'query_celebrations',
           description:
             'Inquires customer or contact birthdays and anniversaries for today, upcoming this week, or this month (e.g. "Whose birthday is it today?", "Upcoming birthdays", "Aaje kono birthday chhe?", "Any anniversaries today?").',
@@ -3848,6 +3896,51 @@ RUNTIME CONTEXT:
               mobile: args.mobile || '',
               address: args.address || '',
               notes: args.notes || '',
+            },
+          }
+        }
+
+        if (returnType === 'create_lead') {
+          return {
+            type: 'create_lead',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              name: args.name || '',
+              phone: args.phone || '',
+              area: args.area || '',
+              businessType: args.businessType || 'Caterer',
+              notes: args.notes || '',
+            },
+          }
+        }
+
+        if (returnType === 'add_celebration') {
+          return {
+            type: 'add_celebration',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              name: args.name || '',
+              phone: args.phone || '',
+              relation: args.relation || 'Client',
+              celebrationType: args.celebrationType || 'anniversary',
+              date: args.date || '',
+              birthday: args.birthday || '',
+              anniversary: args.anniversary || '',
+            },
+          }
+        }
+
+        if (returnType === 'update_celebration') {
+          return {
+            type: 'update_celebration',
+            modelUsed: modelName,
+            text: textPart?.text || '',
+            data: {
+              contactName: args.contactName || '',
+              fieldToUpdate: args.fieldToUpdate || 'anniversary',
+              newValue: args.newValue || '',
             },
           }
         }

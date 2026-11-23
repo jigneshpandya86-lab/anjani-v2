@@ -21,6 +21,8 @@ const mockGetDocs = vi.fn(() => Promise.resolve({
 vi.mock('firebase/firestore', () => ({
   collection: vi.fn(() => ({})),
   addDoc: vi.fn(),
+  updateDoc: vi.fn(() => Promise.resolve()),
+  doc: vi.fn(() => ({})),
   serverTimestamp: vi.fn(),
   getDocs: (...args) => mockGetDocs(...args),
   query: vi.fn(() => ({})),
@@ -2228,6 +2230,173 @@ describe('AiAssistantDrawer', () => {
     await waitFor(() => {
       expect(screen.getByText(/Celebration Wish Prepared for Jay Ambe Provision/i)).toBeInTheDocument()
       expect(screen.getByText(/Send WhatsApp to Jay Ambe Provision/i)).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('saves celebration contact and prepares wish when add_celebration is invoked', async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      empty: true,
+      docs: [],
+    })
+
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'add_celebration',
+        data: {
+          name: 'Harshit N Pandya',
+          celebrationType: 'anniversary',
+          date: 'today',
+          phone: '9879011111',
+          relation: 'Client',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText((content) => content.includes('Ask bot above'))
+    fireEvent.change(input, { target: { value: 'Harshit N Pandya, Happy Anniversary Today' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(screen.getByText((content) => content.includes('Saved to Celebrations Database!'))).toBeInTheDocument()
+      expect(screen.getAllByText((content) => content.includes('Harshit N Pandya')).length).toBeGreaterThanOrEqual(1)
+      expect(screen.getByText('Send WhatsApp to Harshit N Pandya')).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('updates celebration record when update_celebration is invoked', async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      empty: false,
+      docs: [
+        {
+          id: 'cel-harshit',
+          data: () => ({
+            name: 'Harshit N Pandya',
+            anniversary: '11-23',
+            phone: '9879011111',
+            relation: 'Client',
+          }),
+        },
+      ],
+    })
+
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'update_celebration',
+        data: {
+          contactName: 'Harshit N Pandya',
+          fieldToUpdate: 'anniversary',
+          newValue: '11-25',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText((content) => content.includes('Ask bot above'))
+    fireEvent.change(input, { target: { value: 'Update Harshit anniversary to 25th Nov' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(screen.getByText((content) => content.includes('Updated Celebrations Record for Harshit N Pandya'))).toBeInTheDocument()
+      expect(screen.getByText((content) => content.includes('11-25'))).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('creates prospective lead in database when create_lead is invoked', async () => {
+    mockHttpsCallableResponse.mockResolvedValueOnce({
+      data: {
+        type: 'create_lead',
+        data: {
+          name: 'Ramesh Caterers',
+          phone: '9825012345',
+          area: 'Gotri',
+          businessType: 'Caterer',
+          notes: 'Requires 50 boxes daily',
+        },
+      },
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText((content) => content.includes('Ask bot above'))
+    fireEvent.change(input, { target: { value: 'Add new lead Ramesh Caterers Gotri 9825012345' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(screen.getByText((content) => content.includes('New Prospective Lead Added to Database!'))).toBeInTheDocument()
+      expect(screen.getAllByText((content) => content.includes('Ramesh Caterers')).length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText((content) => content.includes('9825012345')).length).toBeGreaterThanOrEqual(1)
+      expect(screen.getByText('Send WhatsApp to Ramesh Caterers')).toBeInTheDocument()
+      expect(screen.getByText('View Leads Tab')).toBeInTheDocument()
+    })
+
+    unmount()
+  })
+
+  it('confirms celebration in database when user asks "Added to Celebration?"', async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      empty: false,
+      docs: [
+        {
+          id: 'cel-harshit',
+          data: () => ({
+            name: 'Harshit N Pandya',
+            anniversary: '11-23',
+            phone: '9879011111',
+            relation: 'Client',
+          }),
+        },
+      ],
+    })
+
+    const { unmount } = render(
+      <AiAssistantDrawer
+        isOpen={true}
+        onClose={() => {}}
+        onNavigateTab={() => {}}
+      />
+    )
+
+    const input = screen.getByPlaceholderText((content) => content.includes('Ask bot above'))
+    fireEvent.change(input, { target: { value: 'Harshit N Pandya, Happy Anniversary Today' } })
+    const form = input.closest('form')
+    await fireEvent.submit(form)
+
+    fireEvent.change(input, { target: { value: 'Added to Celebration?' } })
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(screen.getByText((content) => content.includes('Yes! Harshit N Pandya is saved in Celebrations'))).toBeInTheDocument()
+      expect(screen.getByText('View Celebrations Tab')).toBeInTheDocument()
     })
 
     unmount()

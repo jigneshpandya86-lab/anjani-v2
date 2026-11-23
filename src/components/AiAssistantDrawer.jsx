@@ -41,7 +41,7 @@ import {
   ThumbsDown,
 } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
-import { collection, addDoc, serverTimestamp, getDocs, query as firestoreQuery, where, orderBy, limit } from 'firebase/firestore'
+import { collection, addDoc, updateDoc, doc, serverTimestamp, getDocs, query as firestoreQuery, where, orderBy, limit } from 'firebase/firestore'
 import toast from 'react-hot-toast'
 import { app, db, auth } from '../firebase-config'
 import { useClientStore } from '../store/clientStore'
@@ -992,6 +992,304 @@ export default function AiAssistantDrawer({
     }
   }
 
+  // Helper: Normalize date string into MM-DD for celebrations (Strictly 0 regex)
+  const parseCelebrationMD = (dateInput) => {
+    if (!dateInput) {
+      const now = new Date()
+      return String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
+    }
+    const lower = String(dateInput).toLowerCase().trim()
+    if (lower.includes('today') || lower.includes('aaje')) {
+      const now = new Date()
+      return String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
+    }
+    if (lower.includes('tomorrow') || lower.includes('kale')) {
+      const tom = new Date(Date.now() + 86400000)
+      return String(tom.getMonth() + 1).padStart(2, '0') + '-' + String(tom.getDate()).padStart(2, '0')
+    }
+    const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+    for (let m = 0; m < monthNames.length; m++) {
+      if (lower.includes(monthNames[m])) {
+        const monthNum = String(m + 1).padStart(2, '0')
+        const tokens = lower.split(' ')
+        let dayNum = '01'
+        for (const tok of tokens) {
+          const digits = Array.from(tok).filter((c) => c >= '0' && c <= '9').join('')
+          if (digits.length >= 1 && digits.length <= 2) {
+            dayNum = String(Number(digits) || 1).padStart(2, '0')
+            break
+          }
+        }
+        return `${monthNum}-${dayNum}`
+      }
+    }
+    const sep = ['-', '/', '.'].find((d) => lower.includes(d))
+    if (sep) {
+      const parts = lower.split(sep).map((p) => p.trim())
+      if (parts.length >= 2) {
+        if (parts[0].length === 4) {
+          return `${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`
+        }
+        const p1 = Number(parts[0])
+        const p2 = Number(parts[1])
+        if (p1 > 12 && p2 <= 12) {
+          return `${String(p2).padStart(2, '0')}-${String(p1).padStart(2, '0')}`
+        }
+        return `${String(p1).padStart(2, '0')}-${String(p2).padStart(2, '0')}`
+      }
+    }
+    const now = new Date()
+    return String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
+  }
+
+  // Helper: Persist celebration contact into Firestore (Phase 1 Parity)
+  const executeAddCelebration = async (celebrationData) => {
+    const { name, phone, relation, celebrationType, date, birthday, anniversary } = celebrationData || {}
+    if (!name || !name.trim()) return
+
+    const tName = name.trim()
+    const lowerName = tName.toLowerCase()
+    const targetMD = parseCelebrationMD(date || (celebrationType === 'birthday' ? birthday : anniversary))
+    const isAnniversary = celebrationType !== 'birthday'
+
+    const digitsOnly = Array.from(String(phone || '')).filter((ch) => ch >= '0' && ch <= '9').join('')
+    let resolvedPhone = digitsOnly.slice(-10)
+
+    try {
+      const snap = await getDocs(firestoreQuery(collection(db, 'celebrations'), orderBy('name', 'asc')))
+      const allCelebrations = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      const existing = allCelebrations.find((c) =>
+        (c.name || '').toLowerCase().trim() === lowerName ||
+        (c.name || '').toLowerCase().includes(lowerName) ||
+        lowerName.includes((c.name || '').toLowerCase().trim())
+      )
+
+      if (!resolvedPhone) {
+        const clientMatch = (clients || []).find((c) =>
+          (c.name || '').toLowerCase().includes(lowerName) ||
+          lowerName.includes((c.name || '').toLowerCase())
+        )
+        const rawCliPhone = clientMatch?.mobile || clientMatch?.phone || existing?.phone || ''
+        resolvedPhone = Array.from(String(rawCliPhone)).filter((ch) => ch >= '0' && ch <= '9').join('').slice(-10)
+      }
+
+      const bDaySave = celebrationType === 'birthday' || celebrationType === 'both'
+        ? (birthday ? parseCelebrationMD(birthday) : targetMD)
+        : (existing?.birthday || null)
+      const aDaySave = celebrationType === 'anniversary' || celebrationType === 'both'
+        ? (anniversary ? parseCelebrationMD(anniversary) : targetMD)
+        : (existing?.anniversary || null)
+
+      const payload = {
+        name: existing?.name || tName,
+        phone: resolvedPhone || existing?.phone || '',
+        relation: relation || existing?.relation || 'Client',
+        birthday: bDaySave,
+        anniversary: aDaySave,
+        updatedAt: new Date(),
+      }
+
+      if (existing) {
+        await updateDoc(doc(db, 'celebrations', existing.id), payload)
+      } else {
+        payload.createdAt = new Date()
+        payload.lastSentBirthdayYear = null
+        payload.lastSentAnniversaryYear = null
+        await addDoc(collection(db, 'celebrations'), payload)
+      }
+
+      let greeting = isAnniversary
+        ? `Dear ${tName}, wishing you a very Happy Marriage Anniversary! May your bond grow stronger and sweeter each year. Best wishes from Jignesh Pandya & Anjani Water.`
+        : `Dear ${tName}, wishing you a very Happy Birthday! May you be blessed with good health, joy, and prosperity. Warm wishes from Jignesh Pandya & Anjani Water.`
+      const encoded = encodeURIComponent(greeting)
+      const waUrl = resolvedPhone ? `https://wa.me/91${resolvedPhone}?text=${encoded}` : `https://wa.me/?text=${encoded}`
+
+      const chips = [
+        { label: `Send WhatsApp to ${tName}`, action: `open_url:${waUrl}` },
+        { label: 'View Celebrations Tab', action: 'view_celebrations' },
+      ]
+      if (!resolvedPhone) {
+        chips.unshift({
+          label: '📇 Pick from Phone Contacts',
+          action: 'pick_contact_celebration',
+          data: { name: tName, relation, celebrationType, date, birthday, anniversary },
+        })
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: 'asst-' + Date.now(),
+          sender: 'assistant',
+          text: `🎉 **Saved to Celebrations Database!**\n• Contact: **${tName}**\n• Relation: **${payload.relation}**\n• ${isAnniversary ? 'Anniversary' : 'Birthday'}: **${targetMD}**\n${resolvedPhone ? `• Mobile: **${resolvedPhone}**` : '• Mobile: _Not specified_ (tap below to pick from contacts)'}\n\n💌 **Celebration Wish Prepared**:\n*"${greeting}"*`,
+          type: 'celebration_saved',
+          data: payload,
+          chips,
+          timestamp: new Date(),
+        },
+      ])
+      toast.success(`Celebration saved for ${tName}!`)
+    } catch (err) {
+      console.error('Failed to save celebration:', err)
+      toast.error('Failed to save celebration: ' + err.message)
+    }
+  }
+
+  // Helper: Update existing celebration contact (Strictly 0 regex)
+  const executeUpdateCelebration = async (updateData) => {
+    const { contactName, fieldToUpdate, newValue } = updateData || {}
+    if (!contactName || !contactName.trim()) return
+
+    const tName = contactName.trim().toLowerCase()
+    try {
+      const snap = await getDocs(firestoreQuery(collection(db, 'celebrations'), orderBy('name', 'asc')))
+      const allCelebrations = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      const matched = allCelebrations.find((c) =>
+        (c.name || '').toLowerCase().trim() === tName ||
+        (c.name || '').toLowerCase().includes(tName) ||
+        tName.includes((c.name || '').toLowerCase().trim())
+      )
+
+      if (!matched) {
+        toast.error(`Contact "${contactName}" not found in Celebrations.`)
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'asst-' + Date.now(),
+            sender: 'assistant',
+            text: `⚠️ Could not find **${contactName}** in Celebrations. Would you like to add them?`,
+            type: 'celebration_not_found',
+            chips: [
+              { label: `Add ${contactName} to Celebrations`, action: 'save_celebration_now', data: { name: contactName } },
+              { label: 'View Celebrations Tab', action: 'view_celebrations' },
+            ],
+            timestamp: new Date(),
+          },
+        ])
+        return
+      }
+
+      const updates = { updatedAt: new Date() }
+      if (fieldToUpdate === 'anniversary') {
+        updates.anniversary = parseCelebrationMD(newValue)
+      } else if (fieldToUpdate === 'birthday') {
+        updates.birthday = parseCelebrationMD(newValue)
+      } else if (fieldToUpdate === 'phone') {
+        updates.phone = Array.from(String(newValue || '')).filter((ch) => ch >= '0' && ch <= '9').join('').slice(-10)
+      } else if (fieldToUpdate === 'relation') {
+        updates.relation = newValue || 'Client'
+      }
+
+      await updateDoc(doc(db, 'celebrations', matched.id), updates)
+      toast.success(`Updated celebration for ${matched.name}!`)
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: 'asst-' + Date.now(),
+          sender: 'assistant',
+          text: `✅ **Updated Celebrations Record for ${matched.name}**:\n• Updated Field: **${fieldToUpdate}**\n• New Value: **${updates[fieldToUpdate] || newValue}**`,
+          type: 'celebration_updated',
+          chips: [{ label: 'View Celebrations Tab', action: 'view_celebrations' }],
+          timestamp: new Date(),
+        },
+      ])
+    } catch (err) {
+      console.error('Failed to update celebration:', err)
+      toast.error('Failed to update celebration: ' + err.message)
+    }
+  }
+
+  // Helper: Add prospective lead to Firestore (Phase 2 - SN2 Only, Strictly 0 regex)
+  const executeCreateLead = async (leadData) => {
+    const { name, phone, area, businessType, notes } = leadData || {}
+    if (!name || !name.trim()) return
+
+    const tName = name.trim()
+    const digitsOnly = Array.from(String(phone || '')).filter((ch) => ch >= '0' && ch <= '9').join('')
+    const cleanedPhone = digitsOnly.slice(-10)
+
+    try {
+      const payload = {
+        name: tName,
+        mobile: cleanedPhone,
+        area: area || '',
+        businessType: businessType || 'Caterer',
+        notes: notes || '',
+        source: 'ai',
+        Tag: null,
+        createdAt: new Date().toISOString(),
+      }
+
+      await addDoc(collection(db, 'leads'), payload)
+      toast.success(`Lead added: ${tName}!`)
+
+      const leadGreeting = `Hello ${tName}, Greetings from Anjani Packaged Drinking Water! We supply high-quality packaged drinking water (200ml, 500ml, 1L, 2L) for caterers, events, and commercial supply across Vadodara. How can we serve you today?`
+      const waUrl = cleanedPhone ? `https://wa.me/91${cleanedPhone}?text=${encodeURIComponent(leadGreeting)}` : `https://wa.me/?text=${encodeURIComponent(leadGreeting)}`
+
+      const chips = [
+        { label: `Send WhatsApp to ${tName}`, action: `open_url:${waUrl}` },
+        { label: 'View Leads Tab', action: 'view_leads' },
+      ]
+      if (!cleanedPhone) {
+        chips.unshift({
+          label: '📇 Pick from Phone Contacts',
+          action: 'pick_contact_lead',
+          data: { name: tName, area, businessType, notes },
+        })
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: 'asst-' + Date.now(),
+          sender: 'assistant',
+          text: `📋 **New Prospective Lead Added to Database!**\n• Name: **${tName}**\n${cleanedPhone ? `• Mobile: **${cleanedPhone}**` : '• Mobile: _Not specified_ (tap below to pick from contacts)'}\n${area ? `• Area / Corridor: **${area}**\n` : ''}${businessType ? `• Category: **${businessType}**\n` : ''}${notes ? `• Notes: _${notes}_\n` : ''}\nOutreach greeting ready for WhatsApp:`,
+          type: 'lead_created',
+          data: payload,
+          chips,
+          timestamp: new Date(),
+        },
+      ])
+    } catch (err) {
+      console.error('Failed to add lead:', err)
+      toast.error('Failed to add lead: ' + err.message)
+    }
+  }
+
+  // Native Web Contact Picker Integration (navigator.contacts.select with fallback)
+  const handleNativeContactPicker = async (targetAction = 'add_celebration', prefillData = {}) => {
+    if (typeof window !== 'undefined' && 'contacts' in navigator && 'ContactsManager' in window && typeof navigator.contacts?.select === 'function') {
+      try {
+        const picked = await navigator.contacts.select(['name', 'tel'], { multiple: false })
+        if (picked && picked.length > 0) {
+          const contact = picked[0]
+          const selectedName = contact.name && contact.name[0] ? contact.name[0] : (prefillData.name || '')
+          const rawTel = contact.tel && contact.tel[0] ? contact.tel[0] : ''
+          const cleanedPhone = Array.from(String(rawTel)).filter((ch) => ch >= '0' && ch <= '9').join('').slice(-10)
+
+          if (targetAction === 'add_celebration') {
+            await executeAddCelebration({
+              ...prefillData,
+              name: selectedName || prefillData.name,
+              phone: cleanedPhone || prefillData.phone,
+            })
+          } else if (targetAction === 'create_lead') {
+            await executeCreateLead({
+              ...prefillData,
+              name: selectedName || prefillData.name,
+              phone: cleanedPhone || prefillData.phone,
+            })
+          }
+          return
+        }
+      } catch (err) {
+        console.warn('Contact picker cancelled or failed:', err)
+      }
+    }
+    toast.info('Please type the 10-digit mobile number or client name directly in chat.')
+  }
+
   const handleChipClick = async (chip) => {
     // 1. If starting a flow from Main Menu
     if (chip.flow) {
@@ -1159,6 +1457,18 @@ export default function AiAssistantDrawer({
         onNavigateTab('celebrations')
         onClose?.()
       }
+      return
+    }
+    if (chip.action === 'pick_contact_celebration') {
+      handleNativeContactPicker('add_celebration', chip.data || {})
+      return
+    }
+    if (chip.action === 'pick_contact_lead') {
+      handleNativeContactPicker('create_lead', chip.data || {})
+      return
+    }
+    if (chip.action === 'save_celebration_now') {
+      executeAddCelebration(chip.data || {})
       return
     }
     if (chip.action === 'view_staff') {
@@ -1922,6 +2232,89 @@ export default function AiAssistantDrawer({
         ])
         setInputMessage('')
         return
+      }
+
+      // Conversational Follow-Up Verification: e.g. "Added to Celebration?", "Is it added?", "Saved to celebrations?"
+      const isCelebrationVerification =
+        lowerQ.includes('added to celebration') ||
+        lowerQ.includes('saved to celebration') ||
+        lowerQ.includes('add to celebration') ||
+        lowerQ.includes('in celebration') ||
+        (lowerQ.includes('celebration') && (lowerQ.includes('added') || lowerQ.includes('saved') || lowerQ.includes('record') || lowerQ.includes('check')))
+
+      if (isCelebrationVerification) {
+        let candidateName = ''
+        let candidateDate = 'today'
+        let candidateType = 'anniversary'
+        if (Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            if (m.type === 'celebration_wish' || m.type === 'celebration_saved' || (m.text && m.text.includes('Celebration Wish Prepared'))) {
+              const textContent = m.text || ''
+              const forIdx = textContent.indexOf('Prepared for ')
+              if (forIdx !== -1) {
+                const afterFor = textContent.slice(forIdx + 'Prepared for '.length)
+                const endIdx = afterFor.indexOf('*') !== -1 ? afterFor.indexOf('*') : afterFor.indexOf(':')
+                if (endIdx !== -1) {
+                  candidateName = afterFor.slice(0, endIdx).split('*').join('').trim()
+                }
+              }
+              if (textContent.toLowerCase().includes('anniversary')) candidateType = 'anniversary'
+              if (textContent.toLowerCase().includes('birthday')) candidateType = 'birthday'
+              break
+            }
+            if (m.sender === 'user' && (m.text && (m.text.toLowerCase().includes('anniversary') || m.text.toLowerCase().includes('birthday')))) {
+              const userTxt = m.text
+              const commaIdx = userTxt.indexOf(',')
+              if (commaIdx !== -1) {
+                candidateName = userTxt.slice(0, commaIdx).trim()
+              }
+              if (userTxt.toLowerCase().includes('anniversary')) candidateType = 'anniversary'
+              if (userTxt.toLowerCase().includes('birthday')) candidateType = 'birthday'
+              break
+            }
+          }
+        }
+
+        if (candidateName) {
+          try {
+            const snap = await getDocs(firestoreQuery(collection(db, 'celebrations'), orderBy('name', 'asc')))
+            const allCelebrations = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+            const tCandidate = candidateName.toLowerCase().trim()
+            const found = allCelebrations.find((c) =>
+              (c.name || '').toLowerCase().trim() === tCandidate ||
+              (c.name || '').toLowerCase().includes(tCandidate) ||
+              tCandidate.includes((c.name || '').toLowerCase().trim())
+            )
+
+            if (found) {
+              setMessages((prev) => [
+                ...prev,
+                { id: 'usr-' + Date.now(), sender: 'user', text: query, timestamp: new Date() },
+                {
+                  id: 'asst-' + (Date.now() + 1),
+                  sender: 'assistant',
+                  text: `✅ **Yes! ${found.name} is saved in Celebrations**:\n• Relation: **${found.relation || 'Client'}**\n${found.anniversary ? `• Anniversary: **${found.anniversary}**\n` : ''}${found.birthday ? `• Birthday: **${found.birthday}**\n` : ''}• Mobile: **${found.phone || 'Not specified'}**\nCRM record is active ✓`,
+                  type: 'celebration_verified',
+                  chips: [{ label: 'View Celebrations Tab', action: 'view_celebrations' }],
+                  timestamp: new Date(),
+                },
+              ])
+              setInputMessage('')
+              return
+            } else {
+              setInputMessage('')
+              await executeAddCelebration({
+                name: candidateName,
+                celebrationType: candidateType,
+                date: candidateDate,
+              })
+              return
+            }
+          } catch (verErr) {
+            console.error('Error verifying celebration:', verErr)
+          }
+        }
       }
 
       // Quick confirmation for pending payment draft (e.g. typing "confirm", "confirm payment", "record payment", "haan")
@@ -3872,6 +4265,26 @@ export default function AiAssistantDrawer({
           const encoded = encodeURIComponent(greeting)
           const waUrl = phoneToUse ? `https://wa.me/91${phoneToUse}?text=${encoded}` : `https://wa.me/?text=${encoded}`
 
+          if (!all.find((c) => (c.name || '').toLowerCase().trim() === tName)) {
+            const now = new Date()
+            const curMD = String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
+            try {
+              await addDoc(collection(db, 'celebrations'), {
+                name: nameToUse,
+                phone: phoneToUse || '',
+                relation: 'Client',
+                anniversary: type === 'anniversary' ? curMD : null,
+                birthday: type === 'birthday' ? curMD : null,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                lastSentBirthdayYear: type === 'birthday' ? now.getFullYear() : null,
+                lastSentAnniversaryYear: type === 'anniversary' ? now.getFullYear() : null,
+              })
+            } catch (_persistErr) {
+              console.warn('Auto-persist celebration failed:', _persistErr)
+            }
+          }
+
           setMessages((prev) => [
             ...prev,
             {
@@ -3889,6 +4302,12 @@ export default function AiAssistantDrawer({
         } catch (err) {
           toast.error('Failed to prepare celebration greeting: ' + err.message)
         }
+      } else if (resData.type === 'add_celebration') {
+        await executeAddCelebration(resData.data)
+      } else if (resData.type === 'update_celebration') {
+        await executeUpdateCelebration(resData.data)
+      } else if (resData.type === 'create_lead') {
+        await executeCreateLead(resData.data)
       } else if (resData.type === 'generate_invoice') {
         const { clientName, phone } = resData.data || {}
         const clientMatch = findMatchingClient(clientName, clients)
