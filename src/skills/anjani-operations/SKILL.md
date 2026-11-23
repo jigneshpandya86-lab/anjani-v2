@@ -26,7 +26,7 @@ last_updated: 2026-11-22
   Candidates whose given name is contained in receipt name (e.g., `Drumil Bhai` in `PARMAR DHRUMIL RAMJIBHAI`) take priority over generic shared surnames.
 - **Price Bounds**: Floor ₹115 (500ml), ₹125 (1L), ₹130 (200ml); ceiling ₹250.
 - **Decoupled Compound Action**: `create_client_and_order` strictly registers client and books delivery order. NEVER records payments. Financial mutations are decoupled and require `receive_payment`.
-- **Audio Conversation & Daily Budget Capping**: Supports hands-free voice dialog (Gujarati, Hindi, English) with barge-in interruption. Daily usage is strictly capped dynamically (default ₹10/day). When limit is reached, alerts in plain English: *"Daily AI voice budget limit reached (₹10/day). Limit resets at midnight IST. You can continue using standard text mode."*
+- **Voice Dictation (Speak-to-Type)**: Supports 1-tap voice dictation in Gujarati, Hindi, and English directly into chat draft. Daily AI usage is capped dynamically (default ₹10/day).
 - **Mandatory Tool Calling**: Always call native tool for operational mutations; never fake execution in plain text.
 
 ## 3. Operational Tool Registry
